@@ -64,6 +64,9 @@ This will create `better-coretax-source.zip` containing all original source file
 - **Excel Generation:** SheetJS (xlsx)
 - **UI:** Vanilla DOM & CSS
 
+## License
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
 ---
 
 ## Information for Mozilla Reviewers
