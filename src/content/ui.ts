@@ -71,10 +71,28 @@ function findAnchorButton(): HTMLElement | null {
 
 let badgeEl: HTMLDivElement | null = null;
 let statsEl: HTMLDivElement | null = null;
-let exportBtnEl: HTMLButtonElement | null = null;  // withholding page: single "Bulk Download PDF" button
+let exportBtnEl: HTMLButtonElement | null = null;  // withholding page: single "Download PDF" button
 let xlsxBtnEl: HTMLButtonElement | null = null;    // non-withholding: "Export XLSX" button
 let csvBtnEl: HTMLButtonElement | null = null;     // non-withholding: "Export CSV" button
 let isInjected = false;
+let isPanelRunning = false;
+
+type ExportButtonKind = "xlsx" | "csv" | "pdf";
+
+export function getIdlePanelStatus(): string {
+	return "Tidak ada proses berjalan. Mulai export dari tombol Better Export.";
+}
+
+export function getToggledPanelVisibility(isCurrentlyVisible: boolean): boolean {
+	return !isCurrentlyVisible;
+}
+
+export function getExportButtonLabel(kind: ExportButtonKind, isRunning: boolean): string {
+	if (isRunning) return "Stop Export";
+	if (kind === "xlsx") return "Export XLSX";
+	if (kind === "csv") return "Export CSV";
+	return "Download PDF";
+}
 
 interface FloatingElements {
 	statusText: HTMLDivElement;
@@ -172,28 +190,20 @@ export function injectBadge() {
 	statsEl.appendChild(statusText);
 	statsEl.appendChild(progressContainer);
 
-	// Add dismiss button (×) after progress container
-	const dismissBtn = document.createElement("button");
-	dismissBtn.id = "ch-dismiss-btn";
-	dismissBtn.className = "ch-dismiss-btn";
-	dismissBtn.textContent = "×";
-	dismissBtn.addEventListener("click", () => {
-		statsEl?.classList.add("ch-hidden");
-	});
-	statsEl.appendChild(dismissBtn);
-
 	// Create badge element
 	badgeEl = document.createElement("div");
 	badgeEl.id = "ch-badge";
 	badgeEl.className = "ch-badge";
-	badgeEl.textContent = "BC";
+	badgeEl.textContent = "bc";
 
-	// Wire badge click → show panel only if currently hidden (no-op if already visible)
+	// Wire badge click to toggle the panel.
 	badgeEl.addEventListener("click", () => {
-		if (statsEl && statsEl.classList.contains("ch-hidden")) {
-			statsEl.classList.remove("ch-hidden");
+		if (!statsEl) return;
+		const shouldShow = getToggledPanelVisibility(!statsEl.classList.contains("ch-hidden"));
+		if (shouldShow && !isPanelRunning) {
+			setIdlePanelContent();
 		}
-		// No action if already visible (Req 4.5)
+		statsEl.classList.toggle("ch-hidden", !shouldShow);
 	});
 
 	container.appendChild(statsEl);
@@ -207,6 +217,37 @@ export function injectBadge() {
 		statTime: timeStat.val,
 		progressBar,
 	};
+}
+
+function setIdlePanelContent(): void {
+	if (!els) return;
+	els.statTotal.textContent = "0";
+	els.statPages.textContent = "0";
+	els.statTime.textContent = "-";
+	els.statusText.textContent = getIdlePanelStatus();
+	els.progressBar.style.width = "0%";
+}
+
+function getExportButtonIcon(kind: ExportButtonKind, isRunning: boolean): string {
+	if (isRunning) return "pi pi-spin pi-spinner";
+	if (kind === "xlsx") return "pi pi-file-excel";
+	if (kind === "csv") return "pi pi-file";
+	return "pi pi-download";
+}
+
+function setExportButtonState(
+	btn: HTMLButtonElement | null,
+	kind: ExportButtonKind,
+	isRunning: boolean,
+): void {
+	if (!btn) return;
+	const icon = btn.querySelector(".p-button-icon") as HTMLElement | null;
+	if (icon) icon.className = `p-button-icon p-button-icon-left ${getExportButtonIcon(kind, isRunning)} mr-1`;
+
+	const label = btn.querySelector(".p-button-label") as HTMLElement | null;
+	if (label) label.textContent = getExportButtonLabel(kind, isRunning);
+
+	btn.classList.toggle("ch-btn-danger", isRunning);
 }
 
 /**
@@ -440,17 +481,12 @@ export function injectExportButton(retries = 15): void {
 
 	isInjected = true;
 
-	// For withholding pages: single "Bulk Download PDF" button
+	// For withholding pages: single "Download PDF" button
 	if (isWithholding) {
 		exportBtnEl = document.createElement("button");
 		exportBtnEl.id = "ch-export-btn";
 		exportBtnEl.type = "button";
 		exportBtnEl.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
-		Object.assign(exportBtnEl.style, {
-			backgroundColor: "#ff5722",
-			borderColor: "#ff5722",
-			color: "white"
-		});
 		
 		const icon = document.createElement("span");
 		icon.className = "p-button-icon p-button-icon-left pi pi-download";
@@ -458,7 +494,7 @@ export function injectExportButton(retries = 15): void {
 		
 		const label = document.createElement("span");
 		label.className = "p-button-label";
-		label.textContent = "Bulk Download PDF";
+		label.textContent = getExportButtonLabel("pdf", false);
 		
 		exportBtnEl.appendChild(icon);
 		exportBtnEl.appendChild(label);
@@ -480,11 +516,6 @@ export function injectExportButton(retries = 15): void {
 		xlsxBtnEl.id = "ch-export-xlsx-btn";
 		xlsxBtnEl.type = "button";
 		xlsxBtnEl.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
-		Object.assign(xlsxBtnEl.style, {
-			backgroundColor: "#ff5722",
-			borderColor: "#ff5722",
-			color: "white"
-		});
 		
 		const xlsxIcon = document.createElement("span");
 		xlsxIcon.className = "p-button-icon p-button-icon-left pi pi-file-excel";
@@ -492,7 +523,7 @@ export function injectExportButton(retries = 15): void {
 		
 		const xlsxLabel = document.createElement("span");
 		xlsxLabel.className = "p-button-label";
-		xlsxLabel.textContent = "Export XLSX";
+		xlsxLabel.textContent = getExportButtonLabel("xlsx", false);
 		
 		xlsxBtnEl.appendChild(xlsxIcon);
 		xlsxBtnEl.appendChild(xlsxLabel);
@@ -501,11 +532,6 @@ export function injectExportButton(retries = 15): void {
 		csvBtnEl.id = "ch-export-csv-btn";
 		csvBtnEl.type = "button";
 		csvBtnEl.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
-		Object.assign(csvBtnEl.style, {
-			backgroundColor: "#ff5722",
-			borderColor: "#ff5722",
-			color: "white"
-		});
 		
 		const csvIcon = document.createElement("span");
 		csvIcon.className = "p-button-icon p-button-icon-left pi pi-file";
@@ -513,7 +539,7 @@ export function injectExportButton(retries = 15): void {
 		
 		const csvLabel = document.createElement("span");
 		csvLabel.className = "p-button-label";
-		csvLabel.textContent = "Export CSV";
+		csvLabel.textContent = getExportButtonLabel("csv", false);
 		
 		csvBtnEl.appendChild(csvIcon);
 		csvBtnEl.appendChild(csvLabel);
@@ -549,6 +575,7 @@ export function updatePanelProgress(
 	status: string,
 ): void {
 	if (!els || !statsEl) return;
+	isPanelRunning = true;
 	statsEl.classList.remove("ch-hidden");
 	els.statTotal.textContent = total.toLocaleString("id-ID");
 	els.statPages.textContent = String(page);
@@ -558,38 +585,11 @@ export function updatePanelProgress(
 	// Update button state based on page type
 	if (isWithholdingPage()) {
 		// Withholding page: update single export button
-		if (exportBtnEl) {
-			const icon = exportBtnEl.querySelector(".p-button-icon") as HTMLElement;
-			if (icon) icon.className = "p-button-icon p-button-icon-left pi pi-spin pi-spinner mr-1";
-			
-			const label = exportBtnEl.querySelector(".p-button-label") as HTMLElement;
-			if (label) label.textContent = "STOP Download";
-			
-			exportBtnEl.style.backgroundColor = "#ef4444";
-			exportBtnEl.style.borderColor = "#ef4444";
-		}
+		setExportButtonState(exportBtnEl, "pdf", true);
 	} else {
 		// Non-withholding page: update XLSX and CSV buttons
-		if (xlsxBtnEl) {
-			const icon = xlsxBtnEl.querySelector(".p-button-icon") as HTMLElement;
-			if (icon) icon.className = "p-button-icon p-button-icon-left pi pi-spin pi-spinner mr-1";
-			
-			const label = xlsxBtnEl.querySelector(".p-button-label") as HTMLElement;
-			if (label) label.textContent = " STOP Scrape";
-			
-			xlsxBtnEl.style.backgroundColor = "#ef4444";
-			xlsxBtnEl.style.borderColor = "#ef4444";
-		}
-		if (csvBtnEl) {
-			const icon = csvBtnEl.querySelector(".p-button-icon") as HTMLElement;
-			if (icon) icon.className = "p-button-icon p-button-icon-left pi pi-spin pi-spinner mr-1";
-			
-			const label = csvBtnEl.querySelector(".p-button-label") as HTMLElement;
-			if (label) label.textContent = " STOP Scrape";
-			
-			csvBtnEl.style.backgroundColor = "#ef4444";
-			csvBtnEl.style.borderColor = "#ef4444";
-		}
+		setExportButtonState(xlsxBtnEl, "xlsx", true);
+		setExportButtonState(csvBtnEl, "csv", true);
 	}
 
 	els.progressBar.style.width = `${Math.min(95, (page * 10) || 5)}%`;
@@ -601,6 +601,7 @@ export function updatePanelComplete(
 	elapsed: string,
 ): void {
 	if (!els || !statsEl) return;
+	isPanelRunning = false;
 	statsEl.classList.remove("ch-hidden");
 	els.statTotal.textContent = total.toLocaleString("id-ID");
 	els.statPages.textContent = String(pages);
@@ -614,38 +615,11 @@ export function updatePanelComplete(
 
 	if (isWithholdingPage()) {
 		// Restore single export button
-		if (exportBtnEl) {
-			const icon = exportBtnEl.querySelector(".p-button-icon") as HTMLElement;
-			if (icon) icon.className = "p-button-icon p-button-icon-left pi pi-download mr-1";
-			
-			const label = exportBtnEl.querySelector(".p-button-label") as HTMLElement;
-			if (label) label.textContent = "Bulk Download PDF";
-
-			exportBtnEl.style.backgroundColor = "#ff5722";
-			exportBtnEl.style.borderColor = "#ff5722";
-		}
+		setExportButtonState(exportBtnEl, "pdf", false);
 	} else {
 		// Restore XLSX and CSV buttons
-		if (xlsxBtnEl) {
-			const icon = xlsxBtnEl.querySelector(".p-button-icon") as HTMLElement;
-			if (icon) icon.className = "p-button-icon p-button-icon-left pi pi-file-excel mr-1";
-			
-			const label = xlsxBtnEl.querySelector(".p-button-label") as HTMLElement;
-			if (label) label.textContent = "Export XLSX";
-
-			xlsxBtnEl.style.backgroundColor = "#ff5722";
-			xlsxBtnEl.style.borderColor = "#ff5722";
-		}
-		if (csvBtnEl) {
-			const icon = csvBtnEl.querySelector(".p-button-icon") as HTMLElement;
-			if (icon) icon.className = "p-button-icon p-button-icon-left pi pi-file mr-1";
-			
-			const label = csvBtnEl.querySelector(".p-button-label") as HTMLElement;
-			if (label) label.textContent = "Export CSV";
-
-			csvBtnEl.style.backgroundColor = "#ff5722";
-			csvBtnEl.style.borderColor = "#ff5722";
-		}
+		setExportButtonState(xlsxBtnEl, "xlsx", false);
+		setExportButtonState(csvBtnEl, "csv", false);
 	}
 
 	els.progressBar.style.width = "100%";
@@ -653,84 +627,33 @@ export function updatePanelComplete(
 
 export function updatePanelError(message: string): void {
 	if (!els || !statsEl) return;
+	isPanelRunning = false;
 	statsEl.classList.remove("ch-hidden");
 	els.statusText.textContent = `❌ ${message}`;
 
 	if (isWithholdingPage()) {
 		// Restore single export button
-		if (exportBtnEl) {
-			const icon = exportBtnEl.querySelector(".p-button-icon") as HTMLElement;
-			if (icon) icon.className = "p-button-icon p-button-icon-left pi pi-download mr-1";
-			
-			const label = exportBtnEl.querySelector(".p-button-label") as HTMLElement;
-			if (label) label.textContent = "Bulk Download PDF";
-
-			exportBtnEl.style.backgroundColor = "#ff5722";
-			exportBtnEl.style.borderColor = "#ff5722";
-		}
+		setExportButtonState(exportBtnEl, "pdf", false);
 	} else {
 		// Restore XLSX and CSV buttons
-		if (xlsxBtnEl) {
-			const icon = xlsxBtnEl.querySelector(".p-button-icon") as HTMLElement;
-			if (icon) icon.className = "p-button-icon p-button-icon-left pi pi-file-excel mr-1";
-			
-			const label = xlsxBtnEl.querySelector(".p-button-label") as HTMLElement;
-			if (label) label.textContent = "Export XLSX";
-
-			xlsxBtnEl.style.backgroundColor = "#ff5722";
-			xlsxBtnEl.style.borderColor = "#ff5722";
-		}
-		if (csvBtnEl) {
-			const icon = csvBtnEl.querySelector(".p-button-icon") as HTMLElement;
-			if (icon) icon.className = "p-button-icon p-button-icon-left pi pi-file mr-1";
-			
-			const label = csvBtnEl.querySelector(".p-button-label") as HTMLElement;
-			if (label) label.textContent = "Export CSV";
-
-			csvBtnEl.style.backgroundColor = "#ff5722";
-			csvBtnEl.style.borderColor = "#ff5722";
-		}
+		setExportButtonState(xlsxBtnEl, "xlsx", false);
+		setExportButtonState(csvBtnEl, "csv", false);
 	}
 }
 
 export function updatePanelIdle(): void {
 	if (!els || !statsEl) return;
+	isPanelRunning = false;
+	setIdlePanelContent();
 	statsEl.classList.add("ch-hidden");
 	
 	if (isWithholdingPage()) {
 		// Restore single export button
-		if (exportBtnEl) {
-			const icon = exportBtnEl.querySelector(".p-button-icon") as HTMLElement;
-			if (icon) icon.className = "p-button-icon p-button-icon-left pi pi-download mr-1";
-			
-			const label = exportBtnEl.querySelector(".p-button-label") as HTMLElement;
-			if (label) label.textContent = "Bulk Download PDF";
-
-			exportBtnEl.style.backgroundColor = "#ff5722";
-			exportBtnEl.style.borderColor = "#ff5722";
-		}
+		setExportButtonState(exportBtnEl, "pdf", false);
 	} else {
 		// Restore XLSX and CSV buttons
-		if (xlsxBtnEl) {
-			const icon = xlsxBtnEl.querySelector(".p-button-icon") as HTMLElement;
-			if (icon) icon.className = "p-button-icon p-button-icon-left pi pi-file-excel mr-1";
-			
-			const label = xlsxBtnEl.querySelector(".p-button-label") as HTMLElement;
-			if (label) label.textContent = "Export XLSX";
-
-			xlsxBtnEl.style.backgroundColor = "#ff5722";
-			xlsxBtnEl.style.borderColor = "#ff5722";
-		}
-		if (csvBtnEl) {
-			const icon = csvBtnEl.querySelector(".p-button-icon") as HTMLElement;
-			if (icon) icon.className = "p-button-icon p-button-icon-left pi pi-file mr-1";
-			
-			const label = csvBtnEl.querySelector(".p-button-label") as HTMLElement;
-			if (label) label.textContent = "Export CSV";
-
-			csvBtnEl.style.backgroundColor = "#ff5722";
-			csvBtnEl.style.borderColor = "#ff5722";
-		}
+		setExportButtonState(xlsxBtnEl, "xlsx", false);
+		setExportButtonState(csvBtnEl, "csv", false);
 	}
 }
 
@@ -754,4 +677,5 @@ export function removeExportButton(): void {
 	badgeEl = null;
 	statsEl = null;
 	isInjected = false;
+	isPanelRunning = false;
 }

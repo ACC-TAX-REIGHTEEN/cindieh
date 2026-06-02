@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Better Coretax",
-  "version": "1.0.4",
-  "description": "Helper for Coretax DJP",
+  "version": "1.0.5",
+  "description": "Better Coretax DJP Extension",
   "background": {
     "scripts": ["background/background.js"],
     "type": "module"
@@ -37,7 +37,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "better-coretax-ext-v1@arism.me"
+      "id": "better-coretax-ext-v2@arisman.me"
     }
   }
 }

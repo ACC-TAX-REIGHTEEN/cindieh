@@ -102,20 +102,30 @@
 
 /* ── Export Button in Toolbar ────────────────────── */
 
-#ch-export-btn {
+.ch-btn-highlight {
   background-color: #ff5722 !important;
   border-color: #ff5722 !important;
   color: #fff !important;
   transition: background-color 0.2s, box-shadow 0.2s, transform 0.1s;
 }
 
-#ch-export-btn:hover {
+.ch-btn-highlight:hover {
   background-color: #e64a19 !important;
   box-shadow: 0 2px 8px rgba(255, 87, 34, 0.4);
 }
 
-#ch-export-btn:active {
+.ch-btn-highlight:active {
   transform: scale(0.95);
+}
+
+.ch-btn-highlight.ch-btn-danger {
+  background-color: #ef4444 !important;
+  border-color: #ef4444 !important;
+}
+
+.ch-btn-highlight.ch-btn-danger:hover {
+  background-color: #dc2626 !important;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
 }
 
 /* Grid Filter Styling */
