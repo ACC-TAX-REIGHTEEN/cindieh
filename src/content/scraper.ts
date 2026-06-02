@@ -201,12 +201,12 @@ import {
 	};
 
 	const origWindowOpen = window.open;
-	window.open = function(...args: any[]) {
+	window.open = function(url?: string | URL, target?: string, features?: string) {
 		if (isProcessingBetterDownload) {
 			console.log("[Better Coretax] Memblokir window.open bawaan.");
 			return null;
 		}
-		return origWindowOpen.apply(window, args);
+		return origWindowOpen.call(window, url, target, features);
 	};
 
 	// ── Fetch Interceptor — sole mechanism for DownloadInvoice/download-invoice-document ──

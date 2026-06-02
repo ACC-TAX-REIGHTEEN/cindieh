@@ -15,6 +15,16 @@ const safeDateArb = fc
   .integer({ min: DATE_MIN_MS, max: DATE_MAX_MS })
   .map((ms) => new Date(ms));
 
+function parseDateBound(value: string, endOfDay: boolean): Date {
+  const d = new Date(value);
+  if (endOfDay) {
+    d.setHours(23, 59, 59, 999);
+  } else {
+    d.setHours(0, 0, 0, 0);
+  }
+  return d;
+}
+
 /**
  * Row arbitrary: rows with optional InvoiceDate (ISO string or null),
  * plus Status and Name string fields.
@@ -75,10 +85,10 @@ describe("applyFilters - Property 3: date range exclusion", () => {
 
               // Requirement 11.5 (a): date must be within the specified bounds (inclusive)
               if (options.dateFrom) {
-                expect(d >= new Date(options.dateFrom)).toBe(true);
+                expect(d >= parseDateBound(options.dateFrom, false)).toBe(true);
               }
               if (options.dateTo) {
-                expect(d <= new Date(options.dateTo)).toBe(true);
+                expect(d <= parseDateBound(options.dateTo, true)).toBe(true);
               }
             }
           }

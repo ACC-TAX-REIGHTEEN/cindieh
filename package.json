@@ -1,6 +1,6 @@
 {
   "name": "better-coretax",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Better Coretax DJP Firefox Extension",
   "main": "build.js",
   "scripts": {

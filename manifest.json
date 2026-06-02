@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Better Coretax",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Helper for Coretax DJP",
   "background": {
     "scripts": ["background/background.js"],

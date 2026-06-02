@@ -9,6 +9,16 @@ export interface FilterOptions {
 	keyword?: string;
 }
 
+function parseDateBound(value: string, endOfDay: boolean): Date {
+	const d = new Date(value);
+	if (endOfDay) {
+		d.setHours(23, 59, 59, 999);
+	} else {
+		d.setHours(0, 0, 0, 0);
+	}
+	return d;
+}
+
 export function applyFilters(
 	data: Record<string, unknown>[],
 	options: FilterOptions,
@@ -20,8 +30,8 @@ export function applyFilters(
 			if (raw == null) return false;
 			const d = new Date(String(raw));
 			if (isNaN(d.getTime())) return false;
-			if (options.dateFrom && d < new Date(options.dateFrom)) return false;
-			if (options.dateTo   && d > new Date(options.dateTo))   return false;
+			if (options.dateFrom && d < parseDateBound(options.dateFrom, false)) return false;
+			if (options.dateTo   && d > parseDateBound(options.dateTo, true))   return false;
 		}
 		// Status filter (case-insensitive exact match)
 		if (options.status !== undefined) {

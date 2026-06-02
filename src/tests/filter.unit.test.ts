@@ -117,6 +117,17 @@ describe("applyFilters — date range", () => {
     expect(result).toHaveLength(1);
     expect(result[0]["InvoiceDate"]).toBe("2024-06-15");
   });
+
+  it("includes rows on dateTo even when InvoiceDate has a time component", () => {
+    const rows = [
+      row({ InvoiceDate: "2024-12-31T12:30:00" }),
+      row({ InvoiceDate: "2025-01-01T00:00:00" }),
+    ];
+    const result = applyFilters(rows, { dateTo: "2024-12-31" });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]["InvoiceDate"]).toBe("2024-12-31T12:30:00");
+  });
 });
 
 // ---------------------------------------------------------------------------
