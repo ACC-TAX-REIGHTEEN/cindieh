@@ -1,150 +1,252 @@
 /* ── Better Coretax Floating Info ─────────────────── */
 
 #ch-floating-info-container {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 9999;
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  pointer-events: none;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    pointer-events: none;
 }
 
 /* The "BC" Circle Badge */
 .ch-badge {
-  width: 40px;
-  height: 40px;
-  background-color: #ff5722;
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: bold;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-  pointer-events: auto;
-  user-select: none;
-  transition: transform 0.2s, background-color 0.2s;
-  cursor: pointer;
+    width: 40px;
+    height: 40px;
+    background-color: #ff5722;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: bold;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    pointer-events: auto;
+    user-select: none;
+    transition:
+        transform 0.2s,
+        background-color 0.2s;
+    cursor: pointer;
 }
 
 .ch-badge:hover {
-  transform: scale(1.1);
-  background-color: #e64a19;
+    transform: scale(1.1);
+    background-color: #e64a19;
 }
 
 /* Floating Stats Unit */
 .ch-floating-stats {
-  background: rgba(15, 23, 42, 0.9);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 12px 16px;
-  color: #fff;
-  min-width: 240px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  pointer-events: auto;
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: center;
+    background: rgba(15, 23, 42, 0.9);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: #fff;
+    min-width: 240px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    pointer-events: auto;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
 }
 
 .ch-f-stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
 }
 
 .ch-f-label {
-  font-size: 9px;
-  text-transform: uppercase;
-  color: #94a3b8;
-  letter-spacing: 0.5px;
-  margin-bottom: 2px;
+    font-size: 9px;
+    text-transform: uppercase;
+    color: #94a3b8;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
 }
 
 .ch-f-value {
-  font-size: 16px;
-  font-weight: 700;
-  color: #60a5fa;
+    font-size: 16px;
+    font-weight: 700;
+    color: #60a5fa;
 }
 
 .ch-f-status {
-  width: 100%;
-  font-size: 11px;
-  color: #cbd5e1;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-  padding-top: 8px;
-  margin-top: 4px;
-  font-style: italic;
+    width: 100%;
+    font-size: 11px;
+    color: #cbd5e1;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    padding-top: 8px;
+    margin-top: 4px;
+    font-style: italic;
 }
 
 /* Mini Progress Bar inside the floating unit */
 .ch-f-progress-container {
-  width: 100%;
-  height: 3px;
-  background: rgba(255,255,255,0.1);
-  border-radius: 2px;
-  overflow: hidden;
+    width: 100%;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
 }
 
 .ch-f-progress-bar {
-  height: 100%;
-  background: #3b82f6;
-  width: 0%;
-  transition: width 0.3s ease;
+    height: 100%;
+    background: #3b82f6;
+    width: 0%;
+    transition: width 0.3s ease;
 }
 
 /* ── Export Button in Toolbar ────────────────────── */
 
 .ch-btn-highlight {
-  background-color: #ff5722 !important;
-  border-color: #ff5722 !important;
-  color: #fff !important;
-  transition: background-color 0.2s, box-shadow 0.2s, transform 0.1s;
+    background-color: #ff5722 !important;
+    border-color: #ff5722 !important;
+    color: #fff !important;
+    transition:
+        background-color 0.2s,
+        box-shadow 0.2s,
+        transform 0.1s;
 }
 
 .ch-btn-highlight:hover {
-  background-color: #e64a19 !important;
-  box-shadow: 0 2px 8px rgba(255, 87, 34, 0.4);
+    background-color: #e64a19 !important;
+    box-shadow: 0 2px 8px rgba(255, 87, 34, 0.4);
 }
 
 .ch-btn-highlight:active {
-  transform: scale(0.95);
+    transform: scale(0.95);
 }
 
 .ch-btn-highlight.ch-btn-danger {
-  background-color: #ef4444 !important;
-  border-color: #ef4444 !important;
+    background-color: #ef4444 !important;
+    border-color: #ef4444 !important;
 }
 
 .ch-btn-highlight.ch-btn-danger:hover {
-  background-color: #dc2626 !important;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
+    background-color: #dc2626 !important;
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
 }
 
-/* Grid Filter Styling */
+/* ── Unified Filter Inputs (Toolbar + Grid + Multi-Invoice) ── */
+/* Matches PrimeNG default light theme */
+
+/* Shared input style for all extension-injected filter fields */
+.ch-filter-input {
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+}
+
+/* Inputgroup addon for search/filter icons */
+.ch-filter-addon {
+    font-size: 13px;
+    padding: 0 0.6rem;
+}
+
+/* Grid Filter Container */
 .ch-grid-filter-container {
-  padding: 4px;
+    padding: 4px;
+}
+
+/* Multi-Invoice Toggle Button — matches input height, has visible border */
+.ch-multi-invoice-toggle {
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    border-radius: 3px;
+    border: 1px solid #ced4da;
+    background: #ffffff;
+    color: #495057;
+    transition:
+        background 0.2s,
+        border-color 0.2s,
+        box-shadow 0.2s;
+}
+
+.ch-multi-invoice-toggle:hover {
+    background: #e9ecef;
+    border-color: #2196f3;
+}
+
+.ch-multi-invoice-toggle:focus {
+    border-color: #2196f3;
+    box-shadow: 0 0 0 0.2rem rgba(33, 150, 243, 0.25);
+    outline: none;
+}
+
+/* Multi-Invoice Panel */
+.ch-multi-invoice-panel {
+    display: none;
+    position: absolute;
+    z-index: 1000;
+    background: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 10px;
+    min-width: 300px;
+    margin-top: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.ch-multi-invoice-panel label {
+    color: #495057;
+    font-size: 12px;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.ch-multi-invoice-textarea {
+    width: 100%;
+    background: #ffffff;
+    color: #495057;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    padding: 8px;
+    font-size: 13px;
+    font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+    resize: vertical;
+    outline: none;
+    transition:
+        border-color 0.2s,
+        box-shadow 0.2s;
+}
+
+.ch-multi-invoice-textarea:focus {
+    border-color: #2196f3;
+    box-shadow: 0 0 0 0.2rem rgba(33, 150, 243, 0.25);
+}
+
+.ch-multi-invoice-textarea::placeholder {
+    color: #6c757d;
+}
+
+.ch-multi-invoice-count {
+    color: #2196f3;
+    font-size: 11px;
+    margin-top: 6px;
 }
 
 /* Utility */
 .ch-hidden {
-  display: none !important;
+    display: none !important;
 }
 
 /* Angular/PrimeNG icons spin if needed */
 .pi-spin {
-  display: inline-block;
-  animation: ch-spin 2s infinite linear;
+    display: inline-block;
+    animation: ch-spin 2s infinite linear;
 }
 
 @keyframes ch-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(359deg); }
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(359deg);
+    }
 }

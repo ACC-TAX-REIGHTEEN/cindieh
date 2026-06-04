@@ -33,25 +33,17 @@ export {
 function findAnchorButton(): HTMLElement | null {
   if (isInputTaxPage()) {
     const inputTaxAnchor = document.getElementById("CreditInvoiceButtonButton");
-    return inputTaxAnchor && inputTaxAnchor.offsetParent !== null
-      ? inputTaxAnchor
-      : null;
+    return inputTaxAnchor && inputTaxAnchor.offsetParent !== null ? inputTaxAnchor : null;
   }
 
   if (isOutputReturnPage()) {
-    const outputReturnAnchor = document.getElementById(
-      "CancelSelectedInvoicesButton",
-    );
-    return outputReturnAnchor && outputReturnAnchor.offsetParent !== null
-      ? outputReturnAnchor
-      : null;
+    const outputReturnAnchor = document.getElementById("CancelSelectedInvoicesButton");
+    return outputReturnAnchor && outputReturnAnchor.offsetParent !== null ? outputReturnAnchor : null;
   }
 
   if (isInputReturnPage()) {
     const inputReturnAnchor = document.getElementById("SubmitReturnButton");
-    return inputReturnAnchor && inputReturnAnchor.offsetParent !== null
-      ? inputReturnAnchor
-      : null;
+    return inputReturnAnchor && inputReturnAnchor.offsetParent !== null ? inputReturnAnchor : null;
   }
 
   const byId = document.getElementById("SubmitSelectedInvoicesButton");
@@ -71,8 +63,7 @@ function findAnchorButton(): HTMLElement | null {
   const tableHeaderAnchor = document.querySelector(
     ".p-datatable-header .float-left, .p-datatable-header, .card-header .float-left, .card-header",
   ) as HTMLElement | null;
-  if (tableHeaderAnchor && tableHeaderAnchor.offsetParent !== null)
-    return tableHeaderAnchor;
+  if (tableHeaderAnchor && tableHeaderAnchor.offsetParent !== null) return tableHeaderAnchor;
 
   return null;
 }
@@ -94,16 +85,11 @@ export function getIdlePanelStatus(): string {
   return "Tidak ada proses berjalan. Mulai export dari tombol Better Export.";
 }
 
-export function getToggledPanelVisibility(
-  isCurrentlyVisible: boolean,
-): boolean {
+export function getToggledPanelVisibility(isCurrentlyVisible: boolean): boolean {
   return !isCurrentlyVisible;
 }
 
-export function getExportButtonLabel(
-  kind: ExportButtonKind,
-  isRunning: boolean,
-): string {
+export function getExportButtonLabel(kind: ExportButtonKind, isRunning: boolean): string {
   if (isRunning) return "Stop Export";
   if (kind === "xlsx") return "Export XLSX";
   if (kind === "csv") return "Export CSV";
@@ -136,10 +122,7 @@ function isButtonPlacedCorrectly(btn: HTMLElement): boolean {
   return container.contains(btn) || anchor.contains(btn);
 }
 
-function moveButtonNextToAnchor(
-  btn: HTMLElement,
-  anchor: HTMLElement,
-): boolean {
+function moveButtonNextToAnchor(btn: HTMLElement, anchor: HTMLElement): boolean {
   const parent = anchor.parentElement;
   if (!parent) return false;
   parent.insertBefore(btn, anchor);
@@ -210,9 +193,7 @@ export function injectBadge() {
   // Wire badge click to toggle the panel.
   badgeEl.addEventListener("click", () => {
     if (!statsEl) return;
-    const shouldShow = getToggledPanelVisibility(
-      !statsEl.classList.contains("ch-hidden"),
-    );
+    const shouldShow = getToggledPanelVisibility(!statsEl.classList.contains("ch-hidden"));
     if (shouldShow && !isPanelRunning) {
       setIdlePanelContent();
     }
@@ -241,25 +222,17 @@ function setIdlePanelContent(): void {
   els.progressBar.style.width = "0%";
 }
 
-function getExportButtonIcon(
-  kind: ExportButtonKind,
-  isRunning: boolean,
-): string {
+function getExportButtonIcon(kind: ExportButtonKind, isRunning: boolean): string {
   if (isRunning) return "pi pi-spin pi-spinner";
   if (kind === "xlsx") return "pi pi-file-excel";
   if (kind === "csv") return "pi pi-file";
   return "pi pi-download";
 }
 
-function setExportButtonState(
-  btn: HTMLButtonElement | null,
-  kind: ExportButtonKind,
-  isRunning: boolean,
-): void {
+function setExportButtonState(btn: HTMLButtonElement | null, kind: ExportButtonKind, isRunning: boolean): void {
   if (!btn) return;
   const icon = btn.querySelector(".p-button-icon") as HTMLElement | null;
-  if (icon)
-    icon.className = `p-button-icon p-button-icon-left ${getExportButtonIcon(kind, isRunning)} mr-1`;
+  if (icon) icon.className = `p-button-icon p-button-icon-left ${getExportButtonIcon(kind, isRunning)} mr-1`;
 
   const label = btn.querySelector(".p-button-label") as HTMLElement | null;
   if (label) label.textContent = getExportButtonLabel(kind, isRunning);
@@ -278,10 +251,7 @@ export function showPanel(): void {
 /**
  * Finds column index by text.
  */
-function findColumnIndex(
-  headerRow: HTMLTableRowElement,
-  searchTexts: string[],
-): number {
+function findColumnIndex(headerRow: HTMLTableRowElement, searchTexts: string[]): number {
   const ths = Array.from(headerRow.querySelectorAll("th"));
   return ths.findIndex((th) => {
     const text = th.textContent?.trim().toLowerCase() || "";
@@ -318,21 +288,30 @@ export function injectGridFilters(): void {
   const filterWrapper = document.createElement("div");
   filterWrapper.className = "p-column-filter p-column-filter-row";
 
-  const fluidWrapper = document.createElement("div");
-  fluidWrapper.className = "p-fluid";
+  const group = document.createElement("div");
+  group.className = "p-inputgroup";
+
+  const addon = document.createElement("span");
+  addon.className = "p-inputgroup-addon ch-filter-addon";
+  addon.style.display = "flex";
+  addon.style.alignItems = "center";
+  const icon = document.createElement("i");
+  icon.className = "pi pi-search";
+  addon.appendChild(icon);
 
   const input = document.createElement("input");
   input.type = "text";
   input.id = "ch-grid-filter-reference";
-  input.className = "p-inputtext p-component";
+  input.className = "p-inputtext p-component ch-filter-input";
   input.placeholder = "Cari Referensi...";
-  Object.assign(input.style, {
-    width: "100%",
-    fontSize: "12px",
-    padding: "0.5rem",
-  });
+  input.style.width = "100%";
 
-  fluidWrapper.appendChild(input);
+  group.appendChild(addon);
+  group.appendChild(input);
+
+  const fluidWrapper = document.createElement("div");
+  fluidWrapper.className = "p-fluid";
+  fluidWrapper.appendChild(group);
   filterWrapper.appendChild(fluidWrapper);
   container.appendChild(filterWrapper);
 
@@ -353,8 +332,7 @@ export function injectToolbarFilter(retries = 15): void {
     buttons.find((b) => b.querySelector(".pi-filter-slash")) ||
     buttons.find(
       (b) =>
-        (b.className.includes("ct-ovw-btn-mini-cancel") ||
-          b.className.includes("ct-ovw-btn-mini")) &&
+        (b.className.includes("ct-ovw-btn-mini-cancel") || b.className.includes("ct-ovw-btn-mini")) &&
         (b.querySelector(".pi-filter-slash") || b.querySelector(".pi-refresh")),
     );
 
@@ -375,15 +353,9 @@ export function injectToolbarFilter(retries = 15): void {
   group.className = "p-inputgroup";
 
   const addon = document.createElement("span");
-  addon.className = "p-inputgroup-addon";
-  Object.assign(addon.style, {
-    padding: "0 0.5rem",
-    fontSize: "12px",
-    background: "#334155",
-    color: "white",
-    border: "1px solid #475569",
-    borderRight: "none",
-  });
+  addon.className = "p-inputgroup-addon ch-filter-addon";
+  addon.style.display = "flex";
+  addon.style.alignItems = "center";
   const icon = document.createElement("i");
   icon.className = "pi pi-search";
   addon.appendChild(icon);
@@ -391,14 +363,9 @@ export function injectToolbarFilter(retries = 15): void {
   const input = document.createElement("input");
   input.type = "text";
   input.id = "ch-toolbar-filter-reference";
-  input.className = "p-inputtext p-component";
+  input.className = "p-inputtext p-component ch-filter-input";
   input.placeholder = "Cari Referensi...";
-  Object.assign(input.style, {
-    width: "180px",
-    fontSize: "12px",
-    padding: "0.5rem",
-    borderColor: "#475569",
-  });
+  input.style.width = "180px";
 
   group.appendChild(addon);
   group.appendChild(input);
@@ -430,89 +397,48 @@ export function injectMultiInvoiceFilter(retries = 15): void {
   const anchor =
     document.getElementById("ch-toolbar-filter-container") ||
     Array.from(document.querySelectorAll("button")).find(
-      (b) =>
-        b.getAttribute("ptooltip") === "Setel Ulang Filter" ||
-        !!b.querySelector(".pi-filter-slash"),
+      (b) => b.getAttribute("ptooltip") === "Setel Ulang Filter" || !!b.querySelector(".pi-filter-slash"),
     );
 
   if (!anchor) {
-    if (retries > 0)
-      setTimeout(() => injectMultiInvoiceFilter(retries - 1), 1000);
+    if (retries > 0) setTimeout(() => injectMultiInvoiceFilter(retries - 1), 1000);
     return;
   }
 
   const toggleBtn = document.createElement("button");
   toggleBtn.id = "ch-multi-invoice-toggle";
   toggleBtn.type = "button";
-  toggleBtn.className =
-    "p-element btn ct-btn-group mr-1 p-button p-component p-button-text";
+  toggleBtn.className = "ch-multi-invoice-toggle";
   toggleBtn.title = "Filter berdasarkan No. Faktur (multi)";
-  Object.assign(toggleBtn.style, {
-    fontSize: "12px",
-    padding: "0.3rem 0.6rem",
-    color: "#94a3b8",
-  });
+  toggleBtn.style.marginLeft = "8px";
   const toggleIcon = document.createElement("i");
   toggleIcon.className = "pi pi-filter";
   toggleIcon.setAttribute("aria-hidden", "true");
-  const toggleLabel = document.createElement("span");
-  toggleLabel.textContent = " No. Faktur";
-  toggleLabel.style.marginLeft = "4px";
+  toggleIcon.style.marginRight = "4px";
   toggleBtn.appendChild(toggleIcon);
-  toggleBtn.appendChild(toggleLabel);
+  toggleBtn.appendChild(document.createTextNode("No. Faktur"));
 
   multiInvoicePanel = document.createElement("div");
   multiInvoicePanel.id = "ch-multi-invoice-filter";
-  Object.assign(multiInvoicePanel.style, {
-    display: "none",
-    position: "absolute",
-    zIndex: "1000",
-    background: "#1e293b",
-    border: "1px solid #475569",
-    borderRadius: "6px",
-    padding: "8px",
-    minWidth: "300px",
-    marginTop: "4px",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
-  });
+  multiInvoicePanel.className = "ch-multi-invoice-panel";
 
-  const label = document.createElement("div");
+  const label = document.createElement("label");
+  label.htmlFor = "ch-multi-invoice-textarea";
   label.textContent = "No. Faktur (satu per baris / koma / titik koma):";
-  Object.assign(label.style, {
-    color: "#94a3b8",
-    fontSize: "11px",
-    marginBottom: "6px",
-  });
 
   multiInvoiceTextarea = document.createElement("textarea");
   multiInvoiceTextarea.id = "ch-multi-invoice-textarea";
+  multiInvoiceTextarea.className = "ch-multi-invoice-textarea";
   multiInvoiceTextarea.rows = 5;
-  multiInvoiceTextarea.placeholder =
-    "04012600023333322\n04012600023333323\n...";
-  Object.assign(multiInvoiceTextarea.style, {
-    width: "100%",
-    background: "#0f172a",
-    color: "#e2e8f0",
-    border: "1px solid #475569",
-    borderRadius: "4px",
-    padding: "6px",
-    fontSize: "12px",
-    fontFamily: "monospace",
-    resize: "vertical",
-  });
+  multiInvoiceTextarea.placeholder = "04012600023333322\n04012600023333323\n...";
 
   const countHint = document.createElement("div");
   countHint.id = "ch-multi-invoice-count";
-  Object.assign(countHint.style, {
-    color: "#60a5fa",
-    fontSize: "11px",
-    marginTop: "4px",
-  });
+  countHint.className = "ch-multi-invoice-count";
 
   multiInvoiceTextarea.addEventListener("input", () => {
     const nums = getMultiInvoiceNumbers();
-    countHint.textContent =
-      nums.length > 0 ? `${nums.length} nomor faktur terdeteksi` : "";
+    countHint.textContent = nums.length > 0 ? `${nums.length} nomor faktur terdeteksi` : "";
   });
 
   multiInvoicePanel.appendChild(label);
@@ -559,12 +485,7 @@ export function injectExportButton(retries = 15): void {
 
     // For non-withholding pages, check both XLSX and CSV buttons
     if (!isWithholdingPage()) {
-      if (
-        !xlsxBtn ||
-        xlsxBtn.offsetParent === null ||
-        !csvBtn ||
-        csvBtn.offsetParent === null
-      ) {
+      if (!xlsxBtn || xlsxBtn.offsetParent === null || !csvBtn || csvBtn.offsetParent === null) {
         isInjected = false;
         if (xlsxBtn) xlsxBtn.remove();
         if (csvBtn) csvBtn.remove();
@@ -573,14 +494,8 @@ export function injectExportButton(retries = 15): void {
           pdfBtnEl = null;
         }
       } else if (!isButtonPlacedCorrectly(xlsxBtn)) {
-        const inputTaxAnchor = isInputTaxPage()
-          ? document.getElementById("CreditInvoiceButtonButton")
-          : null;
-        if (
-          inputTaxAnchor &&
-          inputTaxAnchor.offsetParent !== null &&
-          moveButtonNextToAnchor(xlsxBtn, inputTaxAnchor)
-        ) {
+        const inputTaxAnchor = isInputTaxPage() ? document.getElementById("CreditInvoiceButtonButton") : null;
+        if (inputTaxAnchor && inputTaxAnchor.offsetParent !== null && moveButtonNextToAnchor(xlsxBtn, inputTaxAnchor)) {
           return;
         }
         isInjected = false;
@@ -644,21 +559,11 @@ export function injectExportButton(retries = 15): void {
 			rshshr-art2126-l3-grid .p-datatable-header .float-left
 		`),
     );
-    anchorEl =
-      (headers.find(
-        (el) => (el as HTMLElement).offsetParent !== null,
-      ) as HTMLElement) || null;
+    anchorEl = (headers.find((el) => (el as HTMLElement).offsetParent !== null) as HTMLElement) || null;
     insertMode = "append";
   } else if (isWithholding) {
-    const headers = Array.from(
-      document.querySelectorAll(
-        ".p-datatable-header .float-left, .card-header .float-left",
-      ),
-    );
-    anchorEl =
-      (headers.find(
-        (el) => (el as HTMLElement).offsetParent !== null,
-      ) as HTMLElement) || null;
+    const headers = Array.from(document.querySelectorAll(".p-datatable-header .float-left, .card-header .float-left"));
+    anchorEl = (headers.find((el) => (el as HTMLElement).offsetParent !== null) as HTMLElement) || null;
     insertMode = "append";
   }
 
@@ -667,8 +572,7 @@ export function injectExportButton(retries = 15): void {
     return;
   }
 
-  let containerNode =
-    insertMode === "append" ? anchorEl : anchorEl.parentElement;
+  let containerNode = insertMode === "append" ? anchorEl : anchorEl.parentElement;
   if (!containerNode) return;
 
   isInjected = true;
@@ -678,8 +582,7 @@ export function injectExportButton(retries = 15): void {
     exportBtnEl = document.createElement("button");
     exportBtnEl.id = "ch-export-btn";
     exportBtnEl.type = "button";
-    exportBtnEl.className =
-      "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
+    exportBtnEl.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
 
     const icon = document.createElement("span");
     icon.className = "p-button-icon p-button-icon-left pi pi-download";
@@ -708,8 +611,7 @@ export function injectExportButton(retries = 15): void {
     xlsxBtnEl = document.createElement("button");
     xlsxBtnEl.id = "ch-export-xlsx-btn";
     xlsxBtnEl.type = "button";
-    xlsxBtnEl.className =
-      "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
+    xlsxBtnEl.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
 
     const xlsxIcon = document.createElement("span");
     xlsxIcon.className = "p-button-icon p-button-icon-left pi pi-file-excel";
@@ -725,8 +627,7 @@ export function injectExportButton(retries = 15): void {
     csvBtnEl = document.createElement("button");
     csvBtnEl.id = "ch-export-csv-btn";
     csvBtnEl.type = "button";
-    csvBtnEl.className =
-      "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
+    csvBtnEl.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
 
     const csvIcon = document.createElement("span");
     csvIcon.className = "p-button-icon p-button-icon-left pi pi-file";
@@ -760,14 +661,12 @@ export function injectExportButton(retries = 15): void {
     });
 
     // Add PDF Download button for efaktur pages
-    const isEfaktur =
-      isOutputTax || isInputTax || isOutputReturn || isInputReturn;
+    const isEfaktur = isOutputTax || isInputTax || isOutputReturn || isInputReturn;
     if (isEfaktur) {
       pdfBtnEl = document.createElement("button");
       pdfBtnEl.id = "ch-export-pdf-btn";
       pdfBtnEl.type = "button";
-      pdfBtnEl.className =
-        "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
+      pdfBtnEl.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
 
       const pdfIcon = document.createElement("span");
       pdfIcon.className = "p-button-icon p-button-icon-left pi pi-file-pdf";
@@ -797,12 +696,7 @@ export function injectExportButton(retries = 15): void {
 
 // ── Public API: Update Floating Info Bar ───────────────
 
-export function updatePanelProgress(
-  total: number,
-  page: number,
-  elapsed: string,
-  status: string,
-): void {
+export function updatePanelProgress(total: number, page: number, elapsed: string, status: string): void {
   if (!els || !statsEl) return;
   isPanelRunning = true;
   statsEl.classList.remove("ch-hidden");
@@ -824,12 +718,7 @@ export function updatePanelProgress(
   els.progressBar.style.width = `${Math.min(95, page * 10 || 5)}%`;
 }
 
-export function updatePanelComplete(
-  total: number,
-  pages: number,
-  elapsed: string,
-  failureCount?: number,
-): void {
+export function updatePanelComplete(total: number, pages: number, elapsed: string, failureCount?: number): void {
   if (!els || !statsEl) return;
   isPanelRunning = false;
   statsEl.classList.remove("ch-hidden");
