@@ -98,6 +98,28 @@ function injectScraper(): void {
   (document.head || document.documentElement).appendChild(script);
 }
 
+// ── Shared PDF Export ───────────────────────────────
+// Filter → confirm → start download. Returns true if download was started.
+
+function handlePdfExport(data: Record<string, unknown>[]): boolean {
+  const filtered = applyMultiInvoiceFilter(data);
+  if (filtered.length === 0) {
+    alert("Tidak ada faktur yang cocok dengan filter No. Faktur.\nKosongkan filter atau periksa nomor faktur.");
+    return false;
+  }
+  const total = filtered.length;
+  if (total > 10) {
+    const confirmed = window.confirm(
+      `Anda akan mengunduh ${total} file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?`,
+    );
+    if (!confirmed) return false;
+  }
+  setIsRunning(true);
+  showPanel();
+  window.postMessage({ type: "START_PDF_DOWNLOAD", data: filtered, direction: "FROM_CONTENT" }, window.location.origin);
+  return true;
+}
+
 // ── Helper: safely send message to popup ────────────
 
 function sendToPopup(msg: Record<string, unknown>): void {
@@ -176,31 +198,7 @@ window.addEventListener("message", (event: MessageEvent) => {
     const fields = getScrapedFields();
     if (pendingFormat && data && fields) {
       if (pendingFormat === "pdf") {
-        const filtered = applyMultiInvoiceFilter(data);
-        if (filtered.length === 0) {
-          setPendingExportFormat(null);
-          alert("Tidak ada faktur yang cocok dengan filter No. Faktur.");
-          return;
-        }
-        const total = filtered.length;
-        if (total > 10) {
-          const confirmed = window.confirm(
-            `Anda akan mengunduh ${total} file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?`,
-          );
-          if (!confirmed) {
-            setPendingExportFormat(null);
-            return;
-          }
-        }
-        setIsRunning(true);
-        window.postMessage(
-          {
-            type: "START_PDF_DOWNLOAD",
-            data: filtered,
-            direction: "FROM_CONTENT",
-          },
-          window.location.origin,
-        );
+        handlePdfExport(data);
       } else {
         const exportData: ExportData = {
           data,
@@ -308,25 +306,7 @@ document.addEventListener("ch:export-csv", () => {
 // Export PDF
 document.addEventListener("ch:export-pdf", () => {
   if (!handleExportAction("pdf")) {
-    // Data is available — apply PDF-specific filtering, confirmation, and download
-    const filtered = applyMultiInvoiceFilter(getScrapedData()!);
-    if (filtered.length === 0) {
-      alert("Tidak ada faktur yang cocok dengan filter No. Faktur.\nKosongkan filter atau periksa nomor faktur.");
-      return;
-    }
-    const total = filtered.length;
-    if (total > 10) {
-      const confirmed = window.confirm(
-        `Anda akan mengunduh ${total} file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?`,
-      );
-      if (!confirmed) return;
-    }
-    setIsRunning(true);
-    showPanel();
-    window.postMessage(
-      { type: "START_PDF_DOWNLOAD", data: filtered, direction: "FROM_CONTENT" },
-      window.location.origin,
-    );
+    handlePdfExport(getScrapedData()!);
   }
 });
 
