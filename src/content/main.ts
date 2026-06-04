@@ -8,13 +8,9 @@
 // Stores scrape state so popup can reconnect after being closed.
 // ============================================================
 
-// Cross-browser shim
-// @ts-ignore
-const _browser =
-  typeof browser !== "undefined" ? browser : (globalThis as any).chrome;
-const browserAPI: any = _browser;
-
+import { browserAPI } from "./browser-shim";
 import { type ExportData, exportXLSX, exportCSV } from "./exporter";
+import type { ExportSource } from "./page-context";
 import {
   injectBadge,
   injectExportButton,
@@ -33,8 +29,9 @@ import {
 } from "./ui";
 import { handlePdfDownload } from "./downloader";
 import { registerShortcuts } from "./shortcuts";
+import { debugLog, debugWarn, debugError } from "./debug";
 
-console.log("better coretax aktif");
+debugLog("Better Coretax aktif");
 
 // ── Types ────────────────────────────────────────────
 
@@ -56,7 +53,7 @@ let lastState: ScrapeState | null = null;
 let isRunning = false;
 let scrapedData: Record<string, unknown>[] | null = null;
 let scrapedFields: string[] | null = null;
-let lastExportMeta: { filenameHint?: string; source?: string } | null = null;
+let lastExportMeta: { filenameHint?: string; source?: ExportSource } | null = null;
 
 let lastUrl = location.href;
 let debounceTimer: any = null;
@@ -65,7 +62,7 @@ const observer = new MutationObserver(() => {
   const url = location.href;
   if (url !== lastUrl) {
     lastUrl = url;
-    console.log("Better Coretax: URL changed to", url);
+    debugLog("URL changed to", url);
     if (debounceTimer) clearTimeout(debounceTimer);
     onNavigate();
     return;
@@ -96,7 +93,7 @@ function injectScraper(): void {
   script.id = "__ch_scraper_injected__";
   script.src = browserAPI.runtime.getURL("content/scraper.js");
   script.onload = () => {
-    console.log("Better Coretax: Scraper injected into page context");
+    debugLog("Scraper injected into page context");
   };
   (document.head || document.documentElement).appendChild(script);
 }
@@ -116,16 +113,9 @@ function sendToPopup(msg: Record<string, unknown>): void {
 // ── Relay: Popup → Content → Page ───────────────────
 
 browserAPI.runtime.onMessage.addListener(
-  (
-    msg: Record<string, any>,
-    _sender: any,
-    sendResponse: (response?: any) => void,
-  ) => {
+  (msg: Record<string, any>, _sender: any, sendResponse: (response?: any) => void) => {
     if (msg.type === "START_SCRAPE" || msg.type === "STOP_SCRAPE") {
-      window.postMessage(
-        { ...msg, direction: "FROM_CONTENT" },
-        window.location.origin,
-      );
+      window.postMessage({ ...msg, direction: "FROM_CONTENT" }, window.location.origin);
       if (msg.type === "START_SCRAPE") {
         isRunning = true;
         lastState = {
@@ -160,22 +150,13 @@ window.addEventListener("message", (event: MessageEvent) => {
   const { direction: _direction, ...cleanMsg } = event.data;
 
   // Store state for reconnection
-  if (
-    cleanMsg.type === "SCRAPE_PROGRESS" ||
-    cleanMsg.type === "SCRAPE_COMPLETE" ||
-    cleanMsg.type === "SCRAPE_ERROR"
-  ) {
+  if (cleanMsg.type === "SCRAPE_PROGRESS" || cleanMsg.type === "SCRAPE_COMPLETE" || cleanMsg.type === "SCRAPE_ERROR") {
     lastState = cleanMsg as ScrapeState;
   }
 
   // Update in-page panel
   if (cleanMsg.type === "SCRAPE_PROGRESS") {
-    updatePanelProgress(
-      cleanMsg.total || 0,
-      cleanMsg.page || 0,
-      cleanMsg.elapsed || "0s",
-      cleanMsg.status || "",
-    );
+    updatePanelProgress(cleanMsg.total || 0, cleanMsg.page || 0, cleanMsg.elapsed || "0s", cleanMsg.status || "");
   }
 
   if (cleanMsg.type === "SCRAPE_COMPLETE") {
@@ -185,17 +166,11 @@ window.addEventListener("message", (event: MessageEvent) => {
     if (cleanMsg.fields && cleanMsg.fields.length > 0) {
       scrapedFields = cleanMsg.fields;
     }
-    // @ts-ignore
     lastExportMeta = {
-      filenameHint: cleanMsg.filenameHint,
-      source: cleanMsg.source,
+      filenameHint: cleanMsg.filenameHint as string | undefined,
+      source: cleanMsg.source as ExportSource | undefined,
     };
-    updatePanelComplete(
-      cleanMsg.total || 0,
-      cleanMsg.pages || 0,
-      cleanMsg.elapsed || "0s",
-      cleanMsg.failureCount,
-    );
+    updatePanelComplete(cleanMsg.total || 0, cleanMsg.pages || 0, cleanMsg.elapsed || "0s", cleanMsg.failureCount);
 
     // Auto-export if a pending format was requested before scrape started
     if (pendingExportFormat && scrapedData && scrapedFields) {
@@ -230,7 +205,6 @@ window.addEventListener("message", (event: MessageEvent) => {
           data: scrapedData,
           fields: scrapedFields,
           filenameHint: lastExportMeta?.filenameHint,
-          // @ts-ignore
           source: lastExportMeta?.source,
         };
         if (pendingExportFormat === "xlsx") {
@@ -248,7 +222,7 @@ window.addEventListener("message", (event: MessageEvent) => {
     try {
       handlePdfDownload(base64, item as Record<string, unknown>, source);
     } catch (err) {
-      console.error("Better Coretax: Gagal memproses download file", err);
+      debugError("Gagal memproses download file", err);
     }
   }
 
@@ -268,12 +242,9 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
   if (!target) return;
 
   // Reference filter (existing)
-  if (
-    target.id === "ch-toolbar-filter-reference" ||
-    target.id === "ch-grid-filter-reference"
-  ) {
+  if (target.id === "ch-toolbar-filter-reference" || target.id === "ch-grid-filter-reference") {
     if (e.key === "Enter") {
-      console.log("Better Coretax: Reference filter triggered via Enter");
+      debugLog("Reference filter triggered via Enter");
       const value = target.value.trim();
       window.postMessage(
         {
@@ -303,10 +274,7 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
       // Just update hint — no API filter, no search. Targeted scrape runs on Download PDF click.
       const hint = document.getElementById("ch-multi-invoice-count");
       if (hint) {
-        hint.textContent =
-          numbers.length > 0
-            ? `${numbers.length} nomor siap (klik Download PDF)`
-            : "";
+        hint.textContent = numbers.length > 0 ? `${numbers.length} nomor siap (klik Download PDF)` : "";
       }
     }
   }
@@ -314,24 +282,17 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
 
 /** Helper: find and click the search/refresh button */
 function triggerSearch(): void {
-  const searchBtn = Array.from(document.querySelectorAll("button")).find(
-    (btn) => {
-      const text = btn.textContent?.toLowerCase() || "";
-      const hasIcon = !!btn.querySelector(
-        ".pi-search, .pi-refresh, .pi-filter",
-      );
-      return text.includes("cari") || text.includes("refresh") || hasIcon;
-    },
-  ) as HTMLButtonElement;
+  const searchBtn = Array.from(document.querySelectorAll("button")).find((btn) => {
+    const text = btn.textContent?.toLowerCase() || "";
+    const hasIcon = !!btn.querySelector(".pi-search, .pi-refresh, .pi-filter");
+    return text.includes("cari") || text.includes("refresh") || hasIcon;
+  }) as HTMLButtonElement;
 
   if (searchBtn) {
-    console.log(
-      "Better Coretax: Triggering search via button:",
-      searchBtn.textContent?.trim(),
-    );
+    debugLog("Triggering search via button:", searchBtn.textContent?.trim());
     setTimeout(() => searchBtn.click(), 100);
   } else {
-    console.warn("Better Coretax: Could not find search/refresh button");
+    debugWarn("Could not find search/refresh button");
   }
 }
 
@@ -340,10 +301,7 @@ function triggerSearch(): void {
 document.addEventListener("ch:scrape-toggle", () => {
   if (isRunning) {
     // Stop
-    window.postMessage(
-      { type: "STOP_SCRAPE", direction: "FROM_CONTENT" },
-      window.location.origin,
-    );
+    window.postMessage({ type: "STOP_SCRAPE", direction: "FROM_CONTENT" }, window.location.origin);
     isRunning = false;
     pendingExportFormat = null;
     updatePanelIdle();
@@ -355,34 +313,49 @@ document.addEventListener("ch:scrape-toggle", () => {
 // Pending export format: when set, auto-export after scrape completes
 let pendingExportFormat: "xlsx" | "csv" | "pdf" | null = null;
 
-// Export XLSX: if data available, export immediately; otherwise start scrape first
-document.addEventListener("ch:export-xlsx", () => {
+/**
+ * Common export action handler shared by XLSX, CSV, and PDF.
+ * - Stops if already running
+ * - Exports immediately if data is available (XLSX/CSV only; PDF returns false for caller to handle)
+ * - Checks multi-invoice filter (XLSX/CSV) and starts invoice-targeted scrape if needed
+ * - Otherwise sets pendingExportFormat and calls startScrape()
+ *
+ * Returns false when data is available for PDF (caller must handle filtering/confirmation).
+ * Returns true otherwise (action was fully handled).
+ */
+function handleExportAction(format: "xlsx" | "csv" | "pdf"): boolean {
   if (isRunning) {
-    // Already running — stop it
-    window.postMessage(
-      { type: "STOP_SCRAPE", direction: "FROM_CONTENT" },
-      window.location.origin,
-    );
+    window.postMessage({ type: "STOP_SCRAPE", direction: "FROM_CONTENT" }, window.location.origin);
     isRunning = false;
     pendingExportFormat = null;
     updatePanelIdle();
-    return;
+    return true;
   }
+
   if (scrapedData && scrapedFields) {
-    // Data already available — export immediately
+    // PDF: let caller handle filtering, confirmation, and download
+    if (format === "pdf") return false;
+
+    // XLSX / CSV: export immediately
     const exportData: ExportData = {
       data: scrapedData,
       fields: scrapedFields,
       filenameHint: lastExportMeta?.filenameHint,
-      // @ts-ignore
       source: lastExportMeta?.source,
     };
-    exportXLSX(exportData);
-  } else {
-    // No data yet — start scrape, then auto-export when done
+    if (format === "xlsx") {
+      exportXLSX(exportData);
+    } else {
+      exportCSV(exportData);
+    }
+    return true;
+  }
+
+  // No data yet — check multi-invoice filter (XLSX/CSV only)
+  if (format !== "pdf") {
     const nums2 = getMultiInvoiceNumbers();
     if (nums2.length > 0) {
-      console.log("[BC] ch:export-pdf else: sending SCRAPE_BY_INVOICES", nums2);
+      debugLog("[BC] sending SCRAPE_BY_INVOICES", nums2);
       isRunning = true;
       showPanel();
       pendingExportFormat = "pdf";
@@ -394,78 +367,32 @@ document.addEventListener("ch:export-xlsx", () => {
         },
         window.location.origin,
       );
-      return;
+      return true;
     }
-    pendingExportFormat = "xlsx";
-    startScrape();
   }
+
+  pendingExportFormat = format;
+  startScrape();
+  return true;
+}
+
+// Export XLSX
+document.addEventListener("ch:export-xlsx", () => {
+  handleExportAction("xlsx");
 });
 
-// Export CSV: if data available, export immediately; otherwise start scrape first
+// Export CSV
 document.addEventListener("ch:export-csv", () => {
-  if (isRunning) {
-    // Already running — stop it
-    window.postMessage(
-      { type: "STOP_SCRAPE", direction: "FROM_CONTENT" },
-      window.location.origin,
-    );
-    isRunning = false;
-    pendingExportFormat = null;
-    updatePanelIdle();
-    return;
-  }
-  if (scrapedData && scrapedFields) {
-    // Data already available — export immediately
-    const exportData: ExportData = {
-      data: scrapedData,
-      fields: scrapedFields,
-      filenameHint: lastExportMeta?.filenameHint,
-      // @ts-ignore
-      source: lastExportMeta?.source,
-    };
-    exportCSV(exportData);
-  } else {
-    // No data yet — start scrape, then auto-export when done
-    const nums2 = getMultiInvoiceNumbers();
-    if (nums2.length > 0) {
-      console.log("[BC] ch:export-pdf else: sending SCRAPE_BY_INVOICES", nums2);
-      isRunning = true;
-      showPanel();
-      pendingExportFormat = "pdf";
-      window.postMessage(
-        {
-          type: "SCRAPE_BY_INVOICES",
-          invoiceNumbers: nums2,
-          direction: "FROM_CONTENT",
-        },
-        window.location.origin,
-      );
-      return;
-    }
-    pendingExportFormat = "csv";
-    startScrape();
-  }
+  handleExportAction("csv");
 });
 
 // Export PDF
 document.addEventListener("ch:export-pdf", () => {
-  if (isRunning) {
-    window.postMessage(
-      { type: "STOP_SCRAPE", direction: "FROM_CONTENT" },
-      window.location.origin,
-    );
-    isRunning = false;
-    pendingExportFormat = null;
-    updatePanelIdle();
-    return;
-  }
-
-  if (scrapedData && scrapedFields) {
-    const filtered = applyMultiInvoiceFilter(scrapedData);
+  if (!handleExportAction("pdf")) {
+    // Data is available — apply PDF-specific filtering, confirmation, and download
+    const filtered = applyMultiInvoiceFilter(scrapedData!);
     if (filtered.length === 0) {
-      alert(
-        "Tidak ada faktur yang cocok dengan filter No. Faktur.\nKosongkan filter atau periksa nomor faktur.",
-      );
+      alert("Tidak ada faktur yang cocok dengan filter No. Faktur.\nKosongkan filter atau periksa nomor faktur.");
       return;
     }
     const total = filtered.length;
@@ -483,9 +410,6 @@ document.addEventListener("ch:export-pdf", () => {
       { type: "START_PDF_DOWNLOAD", data: filtered, direction: "FROM_CONTENT" },
       window.location.origin,
     );
-  } else {
-    pendingExportFormat = "pdf";
-    startScrape();
   }
 });
 
@@ -495,15 +419,11 @@ document.addEventListener("ch:scrape-start", () => {
   startScrape();
 });
 
-function applyMultiInvoiceFilter(
-  d: Record<string, unknown>[],
-): Record<string, unknown>[] {
+function applyMultiInvoiceFilter(d: Record<string, unknown>[]): Record<string, unknown>[] {
   const nums = getMultiInvoiceNumbers();
   if (nums.length === 0) return d;
   const set = new Set(nums.map((n) => n.toLowerCase()));
-  return d.filter((r) =>
-    set.has(String(r.TaxInvoiceNumber || r.LetterNumber || "").toLowerCase()),
-  );
+  return d.filter((r) => set.has(String(r.TaxInvoiceNumber || r.LetterNumber || "").toLowerCase()));
 }
 
 function startScrape(): void {
@@ -520,23 +440,15 @@ function startScrape(): void {
     status: "Menunggu...",
   };
   updatePanelProgress(0, 0, "0s", "Menangkap request dari Angular...");
-  window.postMessage(
-    { type: "START_SCRAPE", direction: "FROM_CONTENT" },
-    window.location.origin,
-  );
+  window.postMessage({ type: "START_SCRAPE", direction: "FROM_CONTENT" }, window.location.origin);
 }
 
 // ── Init & Navigation ───────────────────────────────
 
 function onNavigate(): void {
-  console.log(
-    "Better Coretax: Navigate event triggered. Current URL:",
-    window.location.href,
-  );
+  debugLog("Navigate event triggered. Current URL:", window.location.href);
   if (isSupportedExportPage()) {
-    console.log(
-      "Better Coretax: Supported page detected, ensuring injection...",
-    );
+    debugLog("Supported page detected, ensuring injection...");
     injectBadge();
     injectScraper();
     injectExportButton();
@@ -548,24 +460,19 @@ function onNavigate(): void {
       }, 1500);
     }
   } else {
-    console.log(
-      "Better Coretax: Unrecognized page, removing tools if present.",
-    );
+    debugLog("Unrecognized page, removing tools if present.");
     removeExportButton();
   }
 }
 
 function init(): void {
-  console.log(
-    "Better Coretax: Extension starting up on page...",
-    window.location.href,
-  );
+  debugLog("Extension starting up on page...", window.location.href);
   injectBadge();
   injectScraper();
   registerShortcuts(() => isRunning);
 
   if (isSupportedExportPage()) {
-    console.log("Better Coretax: Page match found on init.");
+    debugLog("Page match found on init.");
     injectExportButton();
     injectMultiInvoiceFilter();
     if (isOutputTaxPage()) {
@@ -575,8 +482,16 @@ function init(): void {
       }, 1500);
     }
   } else {
-    console.log("Better Coretax: Page match not found on init.");
+    debugLog("Page match not found on init.");
   }
+
+  window.addEventListener("unhandledrejection", (event) => {
+    debugError("Unhandled rejection:", event.reason);
+  });
+
+  window.addEventListener("error", (event) => {
+    debugError("Global error:", event.message, "at", event.filename, ":", event.lineno);
+  });
 }
 
 if (document.readyState === "complete") {

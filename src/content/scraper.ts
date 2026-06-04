@@ -61,11 +61,7 @@ import {
     message: string;
   }
 
-  type ScrapeMessage =
-    | ScrapeProgress
-    | ScrapeComplete
-    | ScrapeError
-    | { type: "INJECTED_READY" };
+  type ScrapeMessage = ScrapeProgress | ScrapeComplete | ScrapeError | { type: "INJECTED_READY" };
 
   // Extend XHR for intercepted properties
   interface InterceptedXHR extends XMLHttpRequest {
@@ -133,16 +129,11 @@ import {
     const masaLabel =
       labels.find((el) => {
         const txt = el.textContent?.toUpperCase() || "";
-        return (
-          txt.includes("MASA PAJAK") &&
-          (txt.includes("MM") || txt.includes("YYYY"))
-        );
-      }) ||
-      labels.find((el) => el.textContent?.toUpperCase().includes("MASA PAJAK"));
+        return txt.includes("MASA PAJAK") && (txt.includes("MM") || txt.includes("YYYY"));
+      }) || labels.find((el) => el.textContent?.toUpperCase().includes("MASA PAJAK"));
 
     if (masaLabel) {
-      const container =
-        masaLabel.closest(".form-group.row") || masaLabel.parentElement;
+      const container = masaLabel.closest(".form-group.row") || masaLabel.parentElement;
       if (container) {
         // 1. Try input first
         const input = container.querySelector("input") as HTMLInputElement;
@@ -155,8 +146,7 @@ import {
 
         // 3. Fallback to last child text
         const lastChild = container.lastElementChild;
-        if (lastChild && lastChild.textContent)
-          return lastChild.textContent.trim();
+        if (lastChild && lastChild.textContent) return lastChild.textContent.trim();
       }
     }
     return "";
@@ -164,10 +154,7 @@ import {
 
   function sendToContent(msg: ScrapeMessage): void {
     try {
-      window.postMessage(
-        { ...msg, direction: "FROM_PAGE" },
-        window.location.origin,
-      );
+      window.postMessage({ ...msg, direction: "FROM_PAGE" }, window.location.origin);
     } catch {
       // Never let messaging errors stop the scraping loop
     }
@@ -190,9 +177,7 @@ import {
     if (processingResetTimer) clearTimeout(processingResetTimer);
     processingResetTimer = setTimeout(() => {
       if (isProcessingBetterDownload) {
-        console.warn(
-          "[Better Coretax] isProcessingBetterDownload reset by timeout",
-        );
+        console.warn("[Better Coretax] isProcessingBetterDownload reset by timeout");
         isProcessingBetterDownload = false;
       }
       processingResetTimer = null;
@@ -209,10 +194,7 @@ import {
 
   const origAnchorClick = HTMLAnchorElement.prototype.click;
   HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
-    if (
-      isProcessingBetterDownload &&
-      (this.download || this.href.startsWith("blob:"))
-    ) {
+    if (isProcessingBetterDownload && (this.download || this.href.startsWith("blob:"))) {
       console.log("[Better Coretax] Memblokir download klik bawaan.");
       clearProcessingFlag();
       return;
@@ -222,11 +204,7 @@ import {
 
   const origCreateObjectURL = window.URL.createObjectURL;
   window.URL.createObjectURL = function (obj: any) {
-    if (
-      isProcessingBetterDownload &&
-      obj instanceof Blob &&
-      obj.type === "application/pdf"
-    ) {
+    if (isProcessingBetterDownload && obj instanceof Blob && obj.type === "application/pdf") {
       console.log("[Better Coretax] Memblokir pembuatan blob URL bawaan.");
       // isProcessingBetterDownload = false; // Don't reset yet, might be multiple calls
       return "javascript:void(0)";
@@ -235,11 +213,7 @@ import {
   };
 
   const origWindowOpen = window.open;
-  window.open = function (
-    url?: string | URL,
-    target?: string,
-    features?: string,
-  ) {
+  window.open = function (url?: string | URL, target?: string, features?: string) {
     if (isProcessingBetterDownload) {
       console.log("[Better Coretax] Memblokir window.open bawaan.");
       return null;
@@ -248,17 +222,17 @@ import {
   };
 
   // ── Fetch Interceptor — sole mechanism for DownloadInvoice/download-invoice-document ──
+  // SECURITY: Only intercepts URLs matching the specific Coretax download endpoint.
+  // All other fetch requests pass through unchanged.
   const origFetch = window.fetch;
   window.fetch = async function (...args: any[]) {
-    const url =
-      typeof args[0] === "string" ? args[0] : (args[0] as Request)?.url;
+    const url = typeof args[0] === "string" ? args[0] : (args[0] as Request)?.url;
     if (url?.includes("DownloadInvoice/download-invoice-document")) {
       setProcessingFlag();
       try {
         const resp = await origFetch.apply(window, args as any);
         const json = await resp.clone().json();
-        const pdfData =
-          json.Content ?? json.Payload?.Content ?? json.Payload?.Message?.Data;
+        const pdfData = json.Content ?? json.Payload?.Content ?? json.Payload?.Message?.Data;
         if (pdfData) {
           window.postMessage(
             {
@@ -270,18 +244,26 @@ import {
             },
             window.location.origin,
           );
-        }
-        clearProcessingFlag();
-        return new Response(
-          JSON.stringify({ IsSuccessful: true, Content: "" }),
-          {
+          clearProcessingFlag();
+          // Return a sanitised response to prevent the page from triggering
+          // a secondary download or showing an error to the user.
+          return new Response(JSON.stringify({ IsSuccessful: true, Content: "" }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          },
+          });
+        }
+        // PDF data not found in expected location — log warning and pass through
+        console.warn(
+          "[Better Coretax] Fetch interceptor: PDF data not found in response.",
+          "Response keys:",
+          Object.keys(json),
         );
+        clearProcessingFlag();
+        return resp;
       } catch (err) {
         console.error("[Better Coretax] Fetch interceptor error:", err);
         clearProcessingFlag();
+        // Fall through to original fetch on error to avoid breaking the page
         return origFetch.apply(window, args as any);
       }
     }
@@ -302,6 +284,9 @@ import {
     if (event.data.type === "SET_SERVER_FILTER") {
       const { field, value } = event.data;
       if (value) {
+        // Invalidate cache when filter changes to ensure fresh request
+        lastCaptured = null;
+        lastCapturedTime = 0;
         // Support array values for multi-invoice filtering
         filterState[field] = {
           value,
@@ -331,23 +316,15 @@ import {
     this.__url = String(url);
     this.__method = method;
     this.__headers = {};
-    return origOpen.apply(this, [method, url, ...args] as Parameters<
-      typeof origOpen
-    >);
+    return origOpen.apply(this, [method, url, ...args] as Parameters<typeof origOpen>);
   } as typeof XMLHttpRequest.prototype.open;
 
-  XMLHttpRequest.prototype.setRequestHeader = function (
-    this: InterceptedXHR,
-    ...args: [string, string]
-  ) {
+  XMLHttpRequest.prototype.setRequestHeader = function (this: InterceptedXHR, ...args: [string, string]) {
     if (this.__headers) this.__headers[args[0]] = args[1];
     return origSetHeader.apply(this, args);
   };
 
-  XMLHttpRequest.prototype.send = function (
-    this: InterceptedXHR,
-    body?: Document | XMLHttpRequestBodyInit | null,
-  ) {
+  XMLHttpRequest.prototype.send = function (this: InterceptedXHR, body?: Document | XMLHttpRequestBodyInit | null) {
     let finalBody = body;
     const pageSource = getPageExportSource();
     const inferredSource = this.__url ? inferCapturedSource(this.__url) : null;
@@ -357,15 +334,13 @@ import {
     if (typeof body === "string") {
       try {
         const parsed = JSON.parse(body) as Record<string, unknown>;
-        isPaginatedGridRequest =
-          parsed.First !== undefined && parsed.Rows !== undefined;
+        isPaginatedGridRequest = parsed.First !== undefined && parsed.Rows !== undefined;
       } catch {
         isPaginatedGridRequest = false;
       }
     }
 
-    const isTargetApi =
-      isKnownSource || (!!pageSource && isPaginatedGridRequest);
+    const isTargetApi = isKnownSource || (!!pageSource && isPaginatedGridRequest);
 
     // 1. Inject Filter (Strategi B)
     if (isTargetApi && typeof body === "string") {
@@ -378,8 +353,7 @@ import {
           // Remove existing extension-injected filters to prevent duplicates
           const extFields = ["Reference", "TaxInvoiceNumber"];
           parsed[filterKey] = parsed[filterKey].filter(
-            (f: { PropertyName?: string }) =>
-              !extFields.includes(f.PropertyName || ""),
+            (f: { PropertyName?: string }) => !extFields.includes(f.PropertyName || ""),
           );
 
           // Inject active filters
@@ -426,21 +400,14 @@ import {
           body: null,
           rawBody: typeof currentFinalBody === "string" ? currentFinalBody : "",
           response: respData,
-          initialData: Array.isArray(
-            (respData as { Payload?: { Data?: unknown[] } })?.Payload?.Data,
-          )
-            ? (respData as { Payload: { Data: Record<string, unknown>[] } })
-                .Payload.Data
+          initialData: Array.isArray((respData as { Payload?: { Data?: unknown[] } })?.Payload?.Data)
+            ? (respData as { Payload: { Data: Record<string, unknown>[] } }).Payload.Data
             : [],
           initialFirst: 0,
           source: inferredSource || pageSource || "OUTPUT_TAX",
         };
 
-        if (
-          !Array.isArray(
-            (respData as { Payload?: { Data?: unknown[] } })?.Payload?.Data,
-          )
-        ) {
+        if (!Array.isArray((respData as { Payload?: { Data?: unknown[] } })?.Payload?.Data)) {
           return;
         }
 
@@ -469,8 +436,7 @@ import {
         Date.now() - lastCapturedTime < 300000 &&
         // Ensure we only reuse if the source matches EXACTLY what is currently on screen
         ((visibleSource !== null && lastCaptured.source === visibleSource) ||
-          (currentPageSource !== null &&
-            lastCaptured.source === currentPageSource) ||
+          (currentPageSource !== null && lastCaptured.source === currentPageSource) ||
           (isWithholdingPage() && lastCaptured.source === "WITHHOLDING_SLIPS"));
 
       // 1. Check if we have a "warm" cache from the same portal context
@@ -489,20 +455,14 @@ import {
 
       // 2. Strategy: Try clicking "Next Page" first
       setTimeout(() => {
-        const nextBtn = document.querySelector(
-          "button.p-paginator-next:not(.p-disabled)",
-        ) as HTMLButtonElement;
+        const nextBtn = document.querySelector("button.p-paginator-next:not(.p-disabled)") as HTMLButtonElement;
         if (nextBtn) {
           console.log("[Scraper] Triggering Next Page...");
           nextBtn.click();
         } else {
           // 3. Fallback Strategy: Try clicking "Refresh" or "Cari" if Next is not available
-          console.log(
-            "[Scraper] Next button not available/disabled. Trying fallback trigger...",
-          );
-          const fallbackBtn = Array.from(
-            document.querySelectorAll("button"),
-          ).find((b) => {
+          console.log("[Scraper] Next button not available/disabled. Trying fallback trigger...");
+          const fallbackBtn = Array.from(document.querySelectorAll("button")).find((b) => {
             const t = b.textContent?.toLowerCase() || "";
             return (
               t.includes("cari") ||
@@ -515,10 +475,7 @@ import {
           }) as HTMLButtonElement;
 
           if (fallbackBtn) {
-            console.log(
-              "[Scraper] Triggering fallback button:",
-              fallbackBtn.textContent?.trim(),
-            );
+            console.log("[Scraper] Triggering fallback button:", fallbackBtn.textContent?.trim());
             fallbackBtn.click();
           } else {
             console.warn("[Scraper] No trigger buttons found.");
@@ -544,11 +501,7 @@ import {
 
   // ── XHR request function ────────────────────────────
 
-  function xhrRequest(
-    captured: CapturedRequest,
-    first: number,
-    rows: number,
-  ): Promise<Record<string, unknown>[]> {
+  function xhrRequest(captured: CapturedRequest, first: number, rows: number): Promise<Record<string, unknown>[]> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", captured.url, true);
@@ -584,15 +537,11 @@ import {
   }
 
   /** Make a targeted API request filtered by a single invoice number. */
-  function xhrRequestByInvoice(
-    captured: CapturedRequest,
-    invoiceNumber: string,
-  ): Promise<Record<string, unknown>[]> {
+  function xhrRequestByInvoice(captured: CapturedRequest, invoiceNumber: string): Promise<Record<string, unknown>[]> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", captured.url, true);
-      for (const [k, v] of Object.entries(captured.headers))
-        xhr.setRequestHeader(k, v);
+      for (const [k, v] of Object.entries(captured.headers)) xhr.setRequestHeader(k, v);
       xhr.timeout = TIMEOUT;
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
@@ -655,10 +604,7 @@ import {
       try {
         const rows = await xhrRequestByInvoice(lastCaptured, num);
         for (const row of rows) {
-          const key =
-            (row.RecordId as string) ||
-            (row.AggregateIdentifier as string) ||
-            JSON.stringify(row);
+          const key = (row.RecordId as string) || (row.AggregateIdentifier as string) || JSON.stringify(row);
           if (!seen.has(key)) {
             seen.add(key);
             allData.push(row);
@@ -687,16 +633,10 @@ import {
   /**
    * Fetch PDF document from DJP API
    */
-  function xhrDownloadPdf(
-    captured: CapturedRequest,
-    row: any,
-  ): Promise<string> {
+  function xhrDownloadPdf(captured: CapturedRequest, row: any): Promise<string> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      const url = captured.url.replace(
-        "GetMyWithholdingSlip",
-        "DownloadWithholdingSlips/download-pdf-document",
-      );
+      const url = captured.url.replace("GetMyWithholdingSlip", "DownloadWithholdingSlips/download-pdf-document");
       xhr.open("POST", url, true);
 
       for (const [k, v] of Object.entries(captured.headers)) {
@@ -709,20 +649,13 @@ import {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const res = JSON.parse(xhr.responseText);
-            if (
-              res.IsSuccessful &&
-              res.Payload &&
-              res.Payload.Message &&
-              res.Payload.Message.Data
-            ) {
+            if (res.IsSuccessful && res.Payload && res.Payload.Message && res.Payload.Message.Data) {
               resolve(res.Payload.Message.Data);
             } else {
               reject(
                 new Error(
                   res.Message ||
-                    (res.Payload &&
-                      res.Payload.Message &&
-                      res.Payload.Message.ErrorMessage) ||
+                    (res.Payload && res.Payload.Message && res.Payload.Message.ErrorMessage) ||
                     "Gagal mengambil konten PDF",
                 ),
               );
@@ -740,8 +673,7 @@ import {
       // Map identifiers from row to expected request body
       const capturedBody = captured.rawBody ? JSON.parse(captured.rawBody) : {};
       const body = {
-        WithholdingSlipsAggregateIdentifier:
-          row.WithholdingslipsAggregateIdentifier,
+        WithholdingSlipsAggregateIdentifier: row.WithholdingslipsAggregateIdentifier,
         WithholdingSlipsRecordIdentifier: row.RecordId,
         DocumentAggregateIdentifier: row.DocumentFormAggregateIdentifier,
         TaxpayerAggregateIdentifier: row.TaxpayerAggregateIdentifier,
@@ -759,10 +691,8 @@ import {
    * Build the download PDF URL for efaktur pages.
    * API: einvoiceportal/api/DownloadInvoice/download-invoice-document
    */
-  function buildEfakturDownloadUrl(
-    capturedUrl: string,
-    source: string,
-  ): string {
+  function buildEfakturDownloadUrl(capturedUrl: string, _source: string): string {
+    void _source; // reserved for future source-dependent URL construction
     // Extract base: everything up to einvoiceportal/api/
     const baseMatch = capturedUrl.match(/(.*einvoiceportal\/api\/)/i);
     if (baseMatch) {
@@ -772,10 +702,7 @@ import {
     // Fallback: try to construct from origin + known path
     const originMatch = capturedUrl.match(/^(https?:\/\/[^/]+)/i);
     if (originMatch) {
-      return (
-        originMatch[1] +
-        "/einvoiceportal/api/DownloadInvoice/download-invoice-document"
-      );
+      return originMatch[1] + "/einvoiceportal/api/DownloadInvoice/download-invoice-document";
     }
 
     return capturedUrl;
@@ -790,25 +717,17 @@ import {
     source: string,
     capturedBody: Record<string, unknown>,
   ): Record<string, unknown> {
-    const menuType =
-      source === "OUTPUT_TAX" || source === "OUTPUT_RETURN"
-        ? "Outgoing"
-        : "Incoming";
+    const menuType = source === "OUTPUT_TAX" || source === "OUTPUT_RETURN" ? "Outgoing" : "Incoming";
 
     const body = {
-      EInvoiceRecordIdentifier:
-        row.EInvoiceRecordIdentifier || row.RecordId || "",
-      EInvoiceAggregateIdentifier:
-        row.EInvoiceAggregateIdentifier || row.AggregateIdentifier || "",
+      EInvoiceRecordIdentifier: row.EInvoiceRecordIdentifier || row.RecordId || "",
+      EInvoiceAggregateIdentifier: row.EInvoiceAggregateIdentifier || row.AggregateIdentifier || "",
       DocumentAggregateIdentifier:
         row.DocumentFormAggregateIdentifier ||
         row.DocumentAggregateIdentifier ||
         capturedBody.DocumentAggregateIdentifier ||
         "",
-      TaxpayerAggregateIdentifier:
-        row.TaxpayerAggregateIdentifier ||
-        capturedBody.TaxpayerAggregateIdentifier ||
-        "",
+      TaxpayerAggregateIdentifier: row.TaxpayerAggregateIdentifier || capturedBody.TaxpayerAggregateIdentifier || "",
       LetterNumber: row.LetterNumber || row.TaxInvoiceNumber || "",
       DocumentDate: row.DocumentDate || row.TaxInvoiceDate || "",
       EInvoiceMenuType: menuType,
@@ -822,11 +741,7 @@ import {
    * Fetch PDF document from DJP API for efaktur pages
    * (Pajak Masukan, Pajak Keluaran, Retur)
    */
-  function xhrDownloadEfakturPdf(
-    captured: CapturedRequest,
-    row: any,
-    source: string,
-  ): Promise<string> {
+  function xhrDownloadEfakturPdf(captured: CapturedRequest, row: any, source: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       const url = buildEfakturDownloadUrl(captured.url, source);
@@ -844,22 +759,13 @@ import {
             const res = JSON.parse(xhr.responseText);
             // PDF data: res.Content (top-level) or res.Payload.Message.Data
             const pdfData =
-              res.Content ||
-              (res.IsSuccessful && res.Payload?.Message?.Data) ||
-              res.Payload?.Data ||
-              res.Data;
-            if (
-              pdfData &&
-              typeof pdfData === "string" &&
-              pdfData.length > 100
-            ) {
+              res.Content || (res.IsSuccessful && res.Payload?.Message?.Data) || res.Payload?.Data || res.Data;
+            if (pdfData && typeof pdfData === "string" && pdfData.length > 100) {
               resolve(pdfData);
             } else {
               reject(
                 new Error(
-                  res.Message ||
-                    res.Payload?.Message?.ErrorMessage ||
-                    "Gagal mengambil konten PDF (data kosong)",
+                  res.Message || res.Payload?.Message?.ErrorMessage || "Gagal mengambil konten PDF (data kosong)",
                 ),
               );
             }
@@ -885,16 +791,128 @@ import {
     return new Promise((r) => setTimeout(r, ms));
   }
 
-  /**
-   * Check if source is an efaktur page (for bulk PDF download)
-   */
-  function isEfakturSource(source: string): boolean {
-    return (
-      source === "OUTPUT_TAX" ||
-      source === "INPUT_TAX" ||
-      source === "OUTPUT_RETURN" ||
-      source === "INPUT_RETURN"
-    );
+  // ── Paginated scraping loop ────────────────────────
+
+  async function scrapePaginated(
+    captured: CapturedRequest,
+    step: number,
+    delayMs: number,
+  ): Promise<{ allData: Record<string, unknown>[]; page: number }> {
+    const allData: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    let page = 0;
+    let first = 0;
+    let keepGoing = true;
+    let errorCount = 0;
+    const startTime = Date.now();
+
+    while (keepGoing && !stopRequested) {
+      page++;
+      try {
+        const rows = await xhrRequest(captured, first, step);
+        const newRows: Record<string, unknown>[] = [];
+
+        for (const row of rows) {
+          // Fallback identifier if RecordId/AggregateIdentifier is missing.
+          const key = (row.RecordId as string) || (row.AggregateIdentifier as string) || JSON.stringify(row);
+          if (!seen.has(key)) {
+            seen.add(key);
+            newRows.push(row);
+            allData.push(row);
+          }
+        }
+
+        const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
+
+        console.log(
+          `[Scraper] Page ${page}: ${rows.length} rows, ${newRows.length} new, total=${allData.length}, ${elapsed}`,
+        );
+
+        sendToContent({
+          type: "SCRAPE_PROGRESS",
+          total: allData.length,
+          page,
+          elapsed,
+          status: `Page ${page}: ${rows.length} baris, ${newRows.length} baru`,
+        });
+
+        if (rows.length < step) {
+          keepGoing = false;
+        } else {
+          first += step;
+          errorCount = 0;
+          await delay(delayMs);
+        }
+      } catch (err) {
+        errorCount++;
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (errorCount >= MAX_ERRORS) {
+          keepGoing = false;
+          sendToContent({
+            type: "SCRAPE_ERROR",
+            message: `${MAX_ERRORS} error berturut-turut: ${errMsg}`,
+          });
+        } else {
+          await delay(2000);
+        }
+      }
+    }
+
+    return { allData, page };
+  }
+
+  // ── Bulk PDF download for withholding slips ─────────
+
+  async function downloadBulkWithholdingPdf(
+    captured: CapturedRequest,
+    allData: Record<string, unknown>[],
+    page: number,
+    totalElapsed: string,
+  ): Promise<number> {
+    let failureCount = 0;
+    const total = allData.length;
+    console.log(`[Scraper] Starting Bulk PDF download for ${total} items...`);
+
+    for (let i = 0; i < total; i++) {
+      if (stopRequested) break;
+
+      const row = allData[i];
+      const status = `Mengunduh PDF ${i + 1}/${total}: ${row.WithholdingSlipNumber || "..."}`;
+
+      sendToContent({
+        type: "SCRAPE_PROGRESS",
+        total: i + 1,
+        page,
+        elapsed: totalElapsed,
+        status: status,
+        currentIndex: i + 1,
+        totalCount: total,
+        failureCount: failureCount,
+      });
+
+      try {
+        const base64 = await xhrDownloadPdf(captured, row);
+        // Send the individual PDF to content script to trigger browser download
+        window.postMessage(
+          {
+            type: "DOWNLOAD_PDF_ITEM",
+            base64: base64,
+            item: row,
+            direction: "FROM_PAGE",
+          },
+          window.location.origin,
+        );
+
+        // Wait a bit between downloads to be safe
+        await delay(800);
+      } catch (err) {
+        failureCount++;
+        console.error(`[Scraper] Gagal unduh PDF idx ${i}:`, err);
+        // Continue to next file even if one fails
+      }
+    }
+
+    return failureCount;
   }
 
   // ── Main scraping function ──────────────────────────
@@ -913,78 +931,15 @@ import {
       });
 
       const captured = await interceptRequest();
-
-      const allData: Record<string, unknown>[] = [];
-      const seen = new Set<string>();
-      let page = 0;
-      let first = 0;
-      let keepGoing = true;
-      let errorCount = 0;
-      let failureCount = 0; // Track PDF download failures for bulk operations
       const startTime = Date.now();
 
       const isSpt =
-        captured.source === "SPT_A2" ||
-        captured.source === "SPT_B2" ||
-        captured.source.startsWith("PPH_21_");
+        captured.source === "SPT_A2" || captured.source === "SPT_B2" || captured.source.startsWith("PPH_21_");
       // Boost OutputTax (e-faktur) step to 500 per page and reduce delay to 100ms
       const step = isSpt ? 1000 : 500;
       const delayMs = isSpt ? 150 : 100;
 
-      while (keepGoing && !stopRequested) {
-        page++;
-        try {
-          const rows = await xhrRequest(captured, first, step);
-          const newRows: Record<string, unknown>[] = [];
-
-          for (const row of rows) {
-            // Fallback identifier if RecordId/AggregateIdentifier is missing.
-            const key =
-              (row.RecordId as string) ||
-              (row.AggregateIdentifier as string) ||
-              JSON.stringify(row);
-            if (!seen.has(key)) {
-              seen.add(key);
-              newRows.push(row);
-              allData.push(row);
-            }
-          }
-
-          const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
-
-          console.log(
-            `[Scraper] Page ${page}: ${rows.length} rows, ${newRows.length} new, total=${allData.length}, ${elapsed}`,
-          );
-
-          sendToContent({
-            type: "SCRAPE_PROGRESS",
-            total: allData.length,
-            page,
-            elapsed,
-            status: `Page ${page}: ${rows.length} baris, ${newRows.length} baru`,
-          });
-
-          if (rows.length < step) {
-            keepGoing = false;
-          } else {
-            first += step;
-            errorCount = 0;
-            await delay(delayMs);
-          }
-        } catch (err) {
-          errorCount++;
-          const errMsg = err instanceof Error ? err.message : String(err);
-          if (errorCount >= MAX_ERRORS) {
-            keepGoing = false;
-            sendToContent({
-              type: "SCRAPE_ERROR",
-              message: `${MAX_ERRORS} error berturut-turut: ${errMsg}`,
-            });
-          } else {
-            await delay(2000);
-          }
-        }
-      }
+      const { allData, page } = await scrapePaginated(captured, step, delayMs);
 
       if (stopRequested) {
         console.log("[Scraper] ⏹ Stopped by user.");
@@ -1002,12 +957,9 @@ import {
 
       const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
 
-      console.log(
-        `[Scraper] ✅ Complete: ${allData.length} records in ${totalElapsed}`,
-      );
+      console.log(`[Scraper] ✅ Complete: ${allData.length} records in ${totalElapsed}`);
 
-      let filenameHint =
-        extractFilenameHintFromBody(captured.rawBody, captured.source) || "";
+      let filenameHint = extractFilenameHintFromBody(captured.rawBody, captured.source) || "";
 
       // If body doesn't have it (PPh 21/26), try DOM header
       if (!filenameHint && captured.source.startsWith("PPH_21_")) {
@@ -1015,51 +967,9 @@ import {
         console.log("[Scraper] Filename hint from DOM:", filenameHint);
       }
 
+      let failureCount = 0;
       if (captured.source === "WITHHOLDING_SLIPS") {
-        // Special handling for Bulk PDF Download
-        const total = allData.length;
-        console.log(
-          `[Scraper] Starting Bulk PDF download for ${total} items...`,
-        );
-
-        for (let i = 0; i < total; i++) {
-          if (stopRequested) break;
-
-          const row = allData[i];
-          const status = `Mengunduh PDF ${i + 1}/${total}: ${row.WithholdingSlipNumber || "..."}`;
-
-          sendToContent({
-            type: "SCRAPE_PROGRESS",
-            total: i + 1,
-            page,
-            elapsed: totalElapsed,
-            status: status,
-            currentIndex: i + 1,
-            totalCount: total,
-            failureCount: failureCount,
-          });
-
-          try {
-            const base64 = await xhrDownloadPdf(captured, row);
-            // Send the individual PDF to content script to trigger browser download
-            window.postMessage(
-              {
-                type: "DOWNLOAD_PDF_ITEM",
-                base64: base64,
-                item: row,
-                direction: "FROM_PAGE",
-              },
-              window.location.origin,
-            );
-
-            // Wait a bit between downloads to be safe
-            await delay(800);
-          } catch (err) {
-            failureCount++;
-            console.error(`[Scraper] Gagal unduh PDF idx ${i}:`, err);
-            // Continue to next file even if one fails
-          }
-        }
+        failureCount = await downloadBulkWithholdingPdf(captured, allData, page, totalElapsed);
       }
 
       sendToContent({
@@ -1091,14 +1001,11 @@ import {
    * Start bulk PDF download for efaktur pages using cached request data.
    * Called from main.ts after scrape completes or when data is already available.
    */
-  async function startPdfDownload(
-    data: Record<string, unknown>[],
-  ): Promise<void> {
+  async function startPdfDownload(data: Record<string, unknown>[]): Promise<void> {
     if (!lastCaptured) {
       sendToContent({
         type: "SCRAPE_ERROR",
-        message:
-          "Tidak ada data request yang tersimpan. Silakan jalankan export terlebih dahulu.",
+        message: "Tidak ada data request yang tersimpan. Silakan jalankan export terlebih dahulu.",
       });
       return;
     }
@@ -1109,9 +1016,7 @@ import {
     let failureCount = 0;
     const total = data.length;
 
-    console.log(
-      `[Scraper] ▶ Starting Bulk PDF download for ${total} efaktur items (source: ${source})...`,
-    );
+    console.log(`[Scraper] ▶ Starting Bulk PDF download for ${total} efaktur items (source: ${source})...`);
 
     sendToContent({
       type: "SCRAPE_PROGRESS",
@@ -1131,8 +1036,7 @@ import {
       }
 
       const row = data[i];
-      const ref =
-        (row.Reference as string) || (row.TaxInvoiceNumber as string) || "...";
+      const ref = (row.Reference as string) || (row.TaxInvoiceNumber as string) || "...";
       const status = `Mengunduh PDF ${i + 1}/${total}: ${ref}`;
 
       const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
@@ -1165,10 +1069,7 @@ import {
         await delay(800);
       } catch (err) {
         failureCount++;
-        console.error(
-          `[Scraper] Gagal unduh PDF efaktur idx ${i} (${ref}):`,
-          err,
-        );
+        console.error(`[Scraper] Gagal unduh PDF efaktur idx ${i} (${ref}):`, err);
         // Continue to next file even if one fails
       }
     }
