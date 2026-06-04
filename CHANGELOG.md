@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.1.1](https://github.com/allababbot/better-coretax/compare/v1.1.0...v1.1.1) (2026-06-04)
+
+
+### Bug Fixes
+
+* **content:** format imports and fix export format variable assignment ([dc82a9f](https://github.com/allababbot/better-coretax/commit/dc82a9f8b5de4ee2ce246bfb3b2a0181dab48109))
+
 ## 1.1.0 (2026-06-04)
 
 
