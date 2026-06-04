@@ -7,12 +7,7 @@
 
 import { type ExportData, exportXLSX, exportCSV } from "./exporter";
 import type { ExportSource } from "./page-context";
-import {
-  getMultiInvoiceNumbers,
-  showPanel,
-  updatePanelProgress,
-  updatePanelIdle,
-} from "./ui";
+import { getMultiInvoiceNumbers, showPanel, updatePanelProgress, updatePanelIdle } from "./ui";
 import { debugLog, debugWarn } from "./debug";
 
 // ── Types ────────────────────────────────────────────
@@ -188,7 +183,7 @@ export function handleExportAction(format: "xlsx" | "csv" | "pdf"): boolean {
       debugLog("[BC] sending SCRAPE_BY_INVOICES", nums2);
       setIsRunning(true);
       showPanel();
-      setPendingExportFormat("pdf");
+      setPendingExportFormat(format);
       window.postMessage(
         {
           type: "SCRAPE_BY_INVOICES",
