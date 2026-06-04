@@ -407,6 +407,146 @@ export function injectToolbarFilter(retries = 15): void {
   anchor.insertAdjacentElement("afterend", container);
 }
 
+// ── Multi-Invoice Filter State ────────────────────────
+
+let multiInvoiceTextarea: HTMLTextAreaElement | null = null;
+let multiInvoicePanel: HTMLElement | null = null;
+
+/** Get parsed invoice numbers from the multi-invoice filter */
+export function getMultiInvoiceNumbers(): string[] {
+  if (!multiInvoiceTextarea) return [];
+  const raw = multiInvoiceTextarea.value.trim();
+  if (!raw) return [];
+  return raw
+    .split(/[\n;,]+|\s{2,}/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/** Inject multi-invoice filter toggle on efaktur pages. */
+export function injectMultiInvoiceFilter(retries = 15): void {
+  if (document.getElementById("ch-multi-invoice-filter")) return;
+
+  const anchor =
+    document.getElementById("ch-toolbar-filter-container") ||
+    Array.from(document.querySelectorAll("button")).find(
+      (b) =>
+        b.getAttribute("ptooltip") === "Setel Ulang Filter" ||
+        !!b.querySelector(".pi-filter-slash"),
+    );
+
+  if (!anchor) {
+    if (retries > 0)
+      setTimeout(() => injectMultiInvoiceFilter(retries - 1), 1000);
+    return;
+  }
+
+  const toggleBtn = document.createElement("button");
+  toggleBtn.id = "ch-multi-invoice-toggle";
+  toggleBtn.type = "button";
+  toggleBtn.className =
+    "p-element btn ct-btn-group mr-1 p-button p-component p-button-text";
+  toggleBtn.title = "Filter berdasarkan No. Faktur (multi)";
+  Object.assign(toggleBtn.style, {
+    fontSize: "12px",
+    padding: "0.3rem 0.6rem",
+    color: "#94a3b8",
+  });
+  const toggleIcon = document.createElement("i");
+  toggleIcon.className = "pi pi-filter";
+  toggleIcon.setAttribute("aria-hidden", "true");
+  const toggleLabel = document.createElement("span");
+  toggleLabel.textContent = " No. Faktur";
+  toggleLabel.style.marginLeft = "4px";
+  toggleBtn.appendChild(toggleIcon);
+  toggleBtn.appendChild(toggleLabel);
+
+  multiInvoicePanel = document.createElement("div");
+  multiInvoicePanel.id = "ch-multi-invoice-filter";
+  Object.assign(multiInvoicePanel.style, {
+    display: "none",
+    position: "absolute",
+    zIndex: "1000",
+    background: "#1e293b",
+    border: "1px solid #475569",
+    borderRadius: "6px",
+    padding: "8px",
+    minWidth: "300px",
+    marginTop: "4px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+  });
+
+  const label = document.createElement("div");
+  label.textContent = "No. Faktur (satu per baris / koma / titik koma):";
+  Object.assign(label.style, {
+    color: "#94a3b8",
+    fontSize: "11px",
+    marginBottom: "6px",
+  });
+
+  multiInvoiceTextarea = document.createElement("textarea");
+  multiInvoiceTextarea.id = "ch-multi-invoice-textarea";
+  multiInvoiceTextarea.rows = 5;
+  multiInvoiceTextarea.placeholder =
+    "04012600023333322\n04012600023333323\n...";
+  Object.assign(multiInvoiceTextarea.style, {
+    width: "100%",
+    background: "#0f172a",
+    color: "#e2e8f0",
+    border: "1px solid #475569",
+    borderRadius: "4px",
+    padding: "6px",
+    fontSize: "12px",
+    fontFamily: "monospace",
+    resize: "vertical",
+  });
+
+  const countHint = document.createElement("div");
+  countHint.id = "ch-multi-invoice-count";
+  Object.assign(countHint.style, {
+    color: "#60a5fa",
+    fontSize: "11px",
+    marginTop: "4px",
+  });
+
+  multiInvoiceTextarea.addEventListener("input", () => {
+    const nums = getMultiInvoiceNumbers();
+    countHint.textContent =
+      nums.length > 0 ? `${nums.length} nomor faktur terdeteksi` : "";
+  });
+
+  multiInvoicePanel.appendChild(label);
+  multiInvoicePanel.appendChild(multiInvoiceTextarea);
+  multiInvoicePanel.appendChild(countHint);
+
+  toggleBtn.addEventListener("click", (e: MouseEvent) => {
+    e.stopPropagation();
+    if (!multiInvoicePanel) return;
+    const isVisible = multiInvoicePanel.style.display !== "none";
+    multiInvoicePanel.style.display = isVisible ? "none" : "block";
+  });
+
+  document.addEventListener("click", (e: MouseEvent) => {
+    if (!multiInvoicePanel || !toggleBtn) return;
+    const target = e.target as HTMLElement;
+    if (
+      multiInvoicePanel.style.display !== "none" &&
+      !multiInvoicePanel.contains(target) &&
+      !toggleBtn.contains(target)
+    ) {
+      multiInvoicePanel.style.display = "none";
+    }
+  });
+
+  const parent = anchor.parentElement;
+  if (!parent) return;
+  if (getComputedStyle(parent).position === "static") {
+    parent.style.position = "relative";
+  }
+  parent.insertBefore(toggleBtn, anchor.nextSibling);
+  parent.insertBefore(multiInvoicePanel, toggleBtn.nextSibling);
+}
+
 /**
  * Inject the "Better Export" button into the toolbar.
  */

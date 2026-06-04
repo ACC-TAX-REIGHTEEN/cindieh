@@ -98,6 +98,16 @@ import {
       stopRequested = false;
       startPdfDownload(msg.data as Record<string, unknown>[]);
     }
+
+    if (msg.type === "SCRAPE_BY_INVOICES") {
+      console.log("[Scraper] RECEIVED SCRAPE_BY_INVOICES:", msg.invoiceNumbers);
+      if (isRunning) {
+        console.log("[Scraper] SCRAPE_BY_INVOICES blocked: already running");
+        return;
+      }
+      stopRequested = false;
+      scrapeByInvoices(msg.invoiceNumbers as string[]);
+    }
   });
 
   // ── Send message to content.js ──────────────────────
@@ -292,9 +302,20 @@ import {
     if (event.data.type === "SET_SERVER_FILTER") {
       const { field, value } = event.data;
       if (value) {
-        filterState[field] = { value, matchMode: "contains" };
+        // Support array values for multi-invoice filtering
+        filterState[field] = {
+          value,
+          matchMode: Array.isArray(value) ? "equals" : "contains",
+        };
       } else {
         delete filterState[field];
+      }
+    }
+
+    if (event.data.type === "CLEAR_FILTERS") {
+      const { fields } = event.data;
+      if (Array.isArray(fields)) {
+        fields.forEach((f: string) => delete filterState[f]);
       }
     }
   });
@@ -354,19 +375,31 @@ import {
         if (!parsed[filterKey]) parsed[filterKey] = [];
 
         if (Array.isArray(parsed[filterKey])) {
-          // Remove existing "Reference" filter to prevent duplicates
+          // Remove existing extension-injected filters to prevent duplicates
+          const extFields = ["Reference", "TaxInvoiceNumber"];
           parsed[filterKey] = parsed[filterKey].filter(
-            (f: { PropertyName?: string }) => f.PropertyName !== "Reference",
+            (f: { PropertyName?: string }) =>
+              !extFields.includes(f.PropertyName || ""),
           );
 
           // Inject active filters
           for (const [field, config] of Object.entries(filterState)) {
-            parsed[filterKey].push({
-              PropertyName: field,
-              Value: (config as { value: unknown }).value,
-              MatchMode: "contains",
-              CaseSensitive: false,
-              AsString: false, // Changed to false to try matching native behavior
+            const cfg = config as { value: unknown; matchMode?: string };
+            const values = Array.isArray(cfg.value) ? cfg.value : [cfg.value];
+            const matchMode = cfg.matchMode || "contains";
+            values.forEach((val: unknown, idx: number) => {
+              const filterEntry: Record<string, unknown> = {
+                PropertyName: field,
+                Value: val,
+                MatchMode: matchMode,
+                CaseSensitive: false,
+                AsString: false,
+              };
+              // Add LogicalOperator OR for multi-value filters (except first)
+              if (Array.isArray(cfg.value) && idx > 0) {
+                filterEntry.LogicalOperator = "OR";
+              }
+              parsed[filterKey].push(filterEntry);
             });
           }
         }
@@ -550,6 +583,107 @@ import {
     });
   }
 
+  /** Make a targeted API request filtered by a single invoice number. */
+  function xhrRequestByInvoice(
+    captured: CapturedRequest,
+    invoiceNumber: string,
+  ): Promise<Record<string, unknown>[]> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", captured.url, true);
+      for (const [k, v] of Object.entries(captured.headers))
+        xhr.setRequestHeader(k, v);
+      xhr.timeout = TIMEOUT;
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText) as {
+              Payload?: { Data?: Record<string, unknown>[] };
+            };
+            resolve(data?.Payload?.Data || []);
+          } catch {
+            reject(new Error("Parse error"));
+          }
+        } else {
+          reject(new Error(`HTTP ${xhr.status}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Network error"));
+      xhr.ontimeout = () => reject(new Error("Timeout"));
+      const body = JSON.parse(captured.rawBody) as Record<string, unknown>;
+      body.First = 0;
+      body.Rows = 1;
+      // Replace ALL filters with only TaxInvoiceNumber — ignore masa/tahun/status
+      const fk = "Filters" in body ? "Filters" : "filters";
+      (body as any)[fk] = [
+        {
+          PropertyName: "TaxInvoiceNumber",
+          Value: invoiceNumber,
+          MatchMode: "equals",
+          CaseSensitive: false,
+          AsString: false,
+        },
+      ];
+      xhr.send(JSON.stringify(body));
+    });
+  }
+
+  /** Scrape by individual invoice numbers — much faster than full scrape. */
+  async function scrapeByInvoices(invoiceNumbers: string[]): Promise<void> {
+    if (!lastCaptured) {
+      sendToContent({
+        type: "SCRAPE_ERROR",
+        message: "Tidak ada request tersimpan.",
+      });
+      return;
+    }
+    isRunning = true;
+    const startTime = Date.now();
+    const allData: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    for (let i = 0; i < invoiceNumbers.length; i++) {
+      if (stopRequested) break;
+      const num = invoiceNumbers[i];
+      const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
+      sendToContent({
+        type: "SCRAPE_PROGRESS",
+        total: i + 1,
+        page: i + 1,
+        elapsed,
+        status: `Mencari: ${num} (${i + 1}/${invoiceNumbers.length})`,
+      });
+      try {
+        const rows = await xhrRequestByInvoice(lastCaptured, num);
+        for (const row of rows) {
+          const key =
+            (row.RecordId as string) ||
+            (row.AggregateIdentifier as string) ||
+            JSON.stringify(row);
+          if (!seen.has(key)) {
+            seen.add(key);
+            allData.push(row);
+          }
+        }
+        await delay(50);
+      } catch (err) {
+        console.error(`[Scraper] Gagal mencari ${num}:`, err);
+      }
+    }
+    const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
+    const fieldSet = new Set<string>();
+    for (const r of allData) for (const k of Object.keys(r)) fieldSet.add(k);
+    sendToContent({
+      type: "SCRAPE_COMPLETE",
+      data: allData,
+      fields: [...fieldSet],
+      total: allData.length,
+      pages: invoiceNumbers.length,
+      elapsed: totalElapsed,
+      source: lastCaptured.source,
+    });
+    isRunning = false;
+  }
+
   /**
    * Fetch PDF document from DJP API
    */
@@ -661,13 +795,6 @@ import {
         ? "Outgoing"
         : "Incoming";
 
-    // Debug: log available row keys to diagnose 400 errors
-    console.log("[Scraper] Row keys:", Object.keys(row).sort().join(", "));
-    console.log(
-      "[Scraper] CapturedBody keys:",
-      Object.keys(capturedBody).sort().join(", "),
-    );
-
     const body = {
       EInvoiceRecordIdentifier:
         row.EInvoiceRecordIdentifier || row.RecordId || "",
@@ -687,17 +814,6 @@ import {
       EInvoiceMenuType: menuType,
       TaxInvoiceStatus: row.TaxInvoiceStatus || "",
     };
-
-    // Debug: log which fields are empty
-    const emptyFields = Object.entries(body)
-      .filter(([, v]) => !v)
-      .map(([k]) => k);
-    if (emptyFields.length > 0) {
-      console.warn(
-        "[Scraper] Empty fields in PDF body:",
-        emptyFields.join(", "),
-      );
-    }
 
     return body;
   }

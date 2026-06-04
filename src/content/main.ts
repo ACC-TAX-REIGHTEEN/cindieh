@@ -19,6 +19,8 @@ import {
   injectBadge,
   injectExportButton,
   injectGridFilters,
+  injectMultiInvoiceFilter,
+  getMultiInvoiceNumbers,
   isOutputTaxPage,
   isSupportedExportPage,
   removeExportButton,
@@ -79,6 +81,7 @@ const observer = new MutationObserver(() => {
       injectGridFilters();
     }
     injectExportButton();
+    injectMultiInvoiceFilter();
   }, 300);
 });
 
@@ -197,8 +200,13 @@ window.addEventListener("message", (event: MessageEvent) => {
     // Auto-export if a pending format was requested before scrape started
     if (pendingExportFormat && scrapedData && scrapedFields) {
       if (pendingExportFormat === "pdf") {
-        // Confirm if > 10 items before starting PDF download
-        const total = scrapedData.length;
+        const filtered = applyMultiInvoiceFilter(scrapedData);
+        if (filtered.length === 0) {
+          pendingExportFormat = null;
+          alert("Tidak ada faktur yang cocok dengan filter No. Faktur.");
+          return;
+        }
+        const total = filtered.length;
         if (total > 10) {
           const confirmed = window.confirm(
             `Anda akan mengunduh ${total} file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?`,
@@ -208,12 +216,11 @@ window.addEventListener("message", (event: MessageEvent) => {
             return;
           }
         }
-        // Trigger PDF download via scraper with the freshly scraped data
         isRunning = true;
         window.postMessage(
           {
             type: "START_PDF_DOWNLOAD",
-            data: scrapedData,
+            data: filtered,
             direction: "FROM_CONTENT",
           },
           window.location.origin,
@@ -258,10 +265,12 @@ window.addEventListener("message", (event: MessageEvent) => {
 
 document.addEventListener("keyup", (e: KeyboardEvent) => {
   const target = e.target as HTMLInputElement;
+  if (!target) return;
+
+  // Reference filter (existing)
   if (
-    target &&
-    (target.id === "ch-toolbar-filter-reference" ||
-      target.id === "ch-grid-filter-reference")
+    target.id === "ch-toolbar-filter-reference" ||
+    target.id === "ch-grid-filter-reference"
   ) {
     if (e.key === "Enter") {
       console.log("Better Coretax: Reference filter triggered via Enter");
@@ -275,33 +284,56 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
         },
         window.location.origin,
       );
+      triggerSearch();
+    }
+  }
 
-      // Trigger a search by clicking the "Cari" or "Refresh" button
-      const searchBtn = Array.from(document.querySelectorAll("button")).find(
-        (btn) => {
-          const text = btn.textContent?.toLowerCase() || "";
-          // Check for icon classes inside the button or spans
-          const hasIcon = !!btn.querySelector(
-            ".pi-search, .pi-refresh, .pi-filter",
-          );
-          return text.includes("cari") || text.includes("refresh") || hasIcon;
-        },
-      ) as HTMLButtonElement;
+  // Multi-invoice filter textarea — just store values, no API filter
+  if (target.id === "ch-multi-invoice-textarea") {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      const raw = target.value.trim();
+      const numbers = raw
+        ? raw
+            .split(/[\n;,]+|\s{2,}/)
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0)
+        : [];
 
-      if (searchBtn) {
-        console.log(
-          "Better Coretax: Triggering search via button in 100ms:",
-          searchBtn.textContent?.trim(),
-        );
-        setTimeout(() => searchBtn.click(), 100);
-      } else {
-        console.warn(
-          "Better Coretax: Could not find search/refresh button to trigger filter",
-        );
+      // Just update hint — no API filter, no search. Targeted scrape runs on Download PDF click.
+      const hint = document.getElementById("ch-multi-invoice-count");
+      if (hint) {
+        hint.textContent =
+          numbers.length > 0
+            ? `${numbers.length} nomor siap (klik Download PDF)`
+            : "";
       }
     }
   }
 });
+
+/** Helper: find and click the search/refresh button */
+function triggerSearch(): void {
+  const searchBtn = Array.from(document.querySelectorAll("button")).find(
+    (btn) => {
+      const text = btn.textContent?.toLowerCase() || "";
+      const hasIcon = !!btn.querySelector(
+        ".pi-search, .pi-refresh, .pi-filter",
+      );
+      return text.includes("cari") || text.includes("refresh") || hasIcon;
+    },
+  ) as HTMLButtonElement;
+
+  if (searchBtn) {
+    console.log(
+      "Better Coretax: Triggering search via button:",
+      searchBtn.textContent?.trim(),
+    );
+    setTimeout(() => searchBtn.click(), 100);
+  } else {
+    console.warn("Better Coretax: Could not find search/refresh button");
+  }
+}
 
 // ── In-page button events ───────────────────────────
 
@@ -348,6 +380,22 @@ document.addEventListener("ch:export-xlsx", () => {
     exportXLSX(exportData);
   } else {
     // No data yet — start scrape, then auto-export when done
+    const nums2 = getMultiInvoiceNumbers();
+    if (nums2.length > 0) {
+      console.log("[BC] ch:export-pdf else: sending SCRAPE_BY_INVOICES", nums2);
+      isRunning = true;
+      showPanel();
+      pendingExportFormat = "pdf";
+      window.postMessage(
+        {
+          type: "SCRAPE_BY_INVOICES",
+          invoiceNumbers: nums2,
+          direction: "FROM_CONTENT",
+        },
+        window.location.origin,
+      );
+      return;
+    }
     pendingExportFormat = "xlsx";
     startScrape();
   }
@@ -378,15 +426,30 @@ document.addEventListener("ch:export-csv", () => {
     exportCSV(exportData);
   } else {
     // No data yet — start scrape, then auto-export when done
+    const nums2 = getMultiInvoiceNumbers();
+    if (nums2.length > 0) {
+      console.log("[BC] ch:export-pdf else: sending SCRAPE_BY_INVOICES", nums2);
+      isRunning = true;
+      showPanel();
+      pendingExportFormat = "pdf";
+      window.postMessage(
+        {
+          type: "SCRAPE_BY_INVOICES",
+          invoiceNumbers: nums2,
+          direction: "FROM_CONTENT",
+        },
+        window.location.origin,
+      );
+      return;
+    }
     pendingExportFormat = "csv";
     startScrape();
   }
 });
 
-// Export PDF: if data available, download immediately; otherwise start scrape first
+// Export PDF
 document.addEventListener("ch:export-pdf", () => {
   if (isRunning) {
-    // Already running — stop it
     window.postMessage(
       { type: "STOP_SCRAPE", direction: "FROM_CONTENT" },
       window.location.origin,
@@ -398,27 +461,29 @@ document.addEventListener("ch:export-pdf", () => {
   }
 
   if (scrapedData && scrapedFields) {
-    // Data already available — confirm if > 10 items
-    const total = scrapedData.length;
+    const filtered = applyMultiInvoiceFilter(scrapedData);
+    if (filtered.length === 0) {
+      alert(
+        "Tidak ada faktur yang cocok dengan filter No. Faktur.\nKosongkan filter atau periksa nomor faktur.",
+      );
+      return;
+    }
+    const total = filtered.length;
     if (total > 10) {
       const confirmed = window.confirm(
-        `Anda akan mengunduh ${total} file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?`,
+        "Anda akan mengunduh " +
+          total +
+          " file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?",
       );
       if (!confirmed) return;
     }
-    // Trigger PDF download via scraper
     isRunning = true;
     showPanel();
     window.postMessage(
-      {
-        type: "START_PDF_DOWNLOAD",
-        data: scrapedData,
-        direction: "FROM_CONTENT",
-      },
+      { type: "START_PDF_DOWNLOAD", data: filtered, direction: "FROM_CONTENT" },
       window.location.origin,
     );
   } else {
-    // No data yet — start scrape first, then auto-download PDF
     pendingExportFormat = "pdf";
     startScrape();
   }
@@ -429,6 +494,17 @@ document.addEventListener("ch:scrape-start", () => {
   if (isRunning) return; // Already running, don't restart
   startScrape();
 });
+
+function applyMultiInvoiceFilter(
+  d: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const nums = getMultiInvoiceNumbers();
+  if (nums.length === 0) return d;
+  const set = new Set(nums.map((n) => n.toLowerCase()));
+  return d.filter((r) =>
+    set.has(String(r.TaxInvoiceNumber || r.LetterNumber || "").toLowerCase()),
+  );
+}
 
 function startScrape(): void {
   showPanel();
@@ -464,6 +540,7 @@ function onNavigate(): void {
     injectBadge();
     injectScraper();
     injectExportButton();
+    injectMultiInvoiceFilter();
     if (isOutputTaxPage()) {
       injectToolbarFilter();
       setTimeout(() => {
@@ -490,6 +567,7 @@ function init(): void {
   if (isSupportedExportPage()) {
     console.log("Better Coretax: Page match found on init.");
     injectExportButton();
+    injectMultiInvoiceFilter();
     if (isOutputTaxPage()) {
       injectToolbarFilter();
       setTimeout(() => {
