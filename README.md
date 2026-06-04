@@ -48,15 +48,6 @@ Generate the production-ready extension for your preferred browser:
 3. Select the `better-coretax-firefox.xpi` file generated in the root directory.
    *(Note: For local testing, ensure `xpinstall.signatures.required` is set to `false` in `about:config`)*.
 
-## Mozilla Submission (Source Code)
-If you are submitting a new version to Mozilla Add-ons (AMO), you must provide the source code as required by their policies for bundled/minified extensions.
-
-Run the following command to generate the source package:
-```bash
-npm run package:source
-```
-This will create `better-coretax-source.zip` containing all original source files for review.
-
 ## Tech Stack
 - **Language:** TypeScript
 - **Bundler:** esbuild

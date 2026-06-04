@@ -2,9 +2,7 @@
 // BACKGROUND.TS — Background Script
 // ============================================================
 
-// Cross-browser shim — @types/firefox-webext-browser provides global `browser` type
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const browserAPI = typeof browser !== "undefined" ? browser : (globalThis as any).chrome;
+import { browserAPI } from "../content/browser-shim";
 
 console.log("Better Coretax: Background script active");
 

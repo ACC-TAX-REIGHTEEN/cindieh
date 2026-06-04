@@ -12,6 +12,14 @@ import {
   inferCapturedSource,
   isWithholdingPage,
 } from "./page-context";
+import { debugLog, debugWarn, debugError } from "./debug";
+import type { CapturedRequest, ScrapeMessage, InterceptedXHR } from "./scraper-types";
+import { buildEfakturDownloadUrl, buildEfakturPdfBody, getRowDedupeKey } from "./scraper-helpers";
+import {
+  makeXhrRequest,
+  xhrRequest as xhrRequestFn,
+  xhrRequestByInvoice as xhrRequestByInvoiceFn,
+} from "./scraper-xhr";
 
 (() => {
   const TIMEOUT = 30000;
@@ -19,56 +27,6 @@ import {
 
   let isRunning = false;
   let stopRequested = false;
-
-  // ── Types ──────────────────────────────────────────
-
-  interface CapturedRequest {
-    url: string;
-    headers: Record<string, string>;
-    body: Record<string, unknown> | null;
-    rawBody: string;
-    response: unknown;
-    initialData: Record<string, unknown>[];
-    initialFirst: number;
-    source: ExportSource;
-  }
-
-  interface ScrapeProgress {
-    type: "SCRAPE_PROGRESS";
-    total: number;
-    page: number;
-    elapsed: string;
-    status: string;
-    currentIndex?: number; // 1-based position in bulk download
-    totalCount?: number; // total items in bulk download
-    failureCount?: number; // cumulative failures so far
-  }
-
-  interface ScrapeComplete {
-    type: "SCRAPE_COMPLETE";
-    data: Record<string, unknown>[];
-    fields: string[];
-    total: number;
-    pages: number;
-    elapsed: string;
-    filenameHint?: string;
-    source: ExportSource;
-    failureCount?: number; // total failures in bulk download
-  }
-
-  interface ScrapeError {
-    type: "SCRAPE_ERROR";
-    message: string;
-  }
-
-  type ScrapeMessage = ScrapeProgress | ScrapeComplete | ScrapeError | { type: "INJECTED_READY" };
-
-  // Extend XHR for intercepted properties
-  interface InterceptedXHR extends XMLHttpRequest {
-    __url?: string;
-    __method?: string;
-    __headers?: Record<string, string>;
-  }
 
   // ── Listen for messages from content.js ─────────────
 
@@ -96,9 +54,9 @@ import {
     }
 
     if (msg.type === "SCRAPE_BY_INVOICES") {
-      console.log("[Scraper] RECEIVED SCRAPE_BY_INVOICES:", msg.invoiceNumbers);
+      debugLog("RECEIVED SCRAPE_BY_INVOICES:", msg.invoiceNumbers);
       if (isRunning) {
-        console.log("[Scraper] SCRAPE_BY_INVOICES blocked: already running");
+        debugLog("SCRAPE_BY_INVOICES blocked: already running");
         return;
       }
       stopRequested = false;
@@ -159,6 +117,8 @@ import {
       // Never let messaging errors stop the scraping loop
     }
   }
+
+  (window as any).__scraperSendToContent = sendToContent;
 
   // ── Intercept XHR to capture Angular's request ──────
 
@@ -441,7 +401,7 @@ import {
 
       // 1. Check if we have a "warm" cache from the same portal context
       if (canReuseCachedRequest) {
-        console.log("[Scraper] Using cached request from history.");
+        debugLog("Using cached request from history.");
         resolved = true;
         resolve(lastCaptured as CapturedRequest);
         return;
@@ -457,11 +417,11 @@ import {
       setTimeout(() => {
         const nextBtn = document.querySelector("button.p-paginator-next:not(.p-disabled)") as HTMLButtonElement;
         if (nextBtn) {
-          console.log("[Scraper] Triggering Next Page...");
+          debugLog("Triggering Next Page...");
           nextBtn.click();
         } else {
           // 3. Fallback Strategy: Try clicking "Refresh" or "Cari" if Next is not available
-          console.log("[Scraper] Next button not available/disabled. Trying fallback trigger...");
+          debugLog("Next button not available/disabled. Trying fallback trigger...");
           const fallbackBtn = Array.from(document.querySelectorAll("button")).find((b) => {
             const t = b.textContent?.toLowerCase() || "";
             return (
@@ -475,10 +435,10 @@ import {
           }) as HTMLButtonElement;
 
           if (fallbackBtn) {
-            console.log("[Scraper] Triggering fallback button:", fallbackBtn.textContent?.trim());
+            debugLog("Triggering fallback button:", fallbackBtn.textContent?.trim());
             fallbackBtn.click();
           } else {
-            console.warn("[Scraper] No trigger buttons found.");
+            debugWarn("No trigger buttons found.");
           }
         }
       }, 500);
@@ -499,82 +459,15 @@ import {
     });
   }
 
-  // ── XHR request function ────────────────────────────
+  // ── XHR request wrappers ─────────────────────────────────
+  // Delegate to scraper-xhr.ts with the closure's TIMEOUT.
 
   function xhrRequest(captured: CapturedRequest, first: number, rows: number): Promise<Record<string, unknown>[]> {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", captured.url, true);
-
-      for (const [k, v] of Object.entries(captured.headers)) {
-        xhr.setRequestHeader(k, v);
-      }
-
-      xhr.timeout = TIMEOUT;
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const data = JSON.parse(xhr.responseText) as {
-              Payload?: { Data?: Record<string, unknown>[] };
-            };
-            resolve(data?.Payload?.Data || []);
-          } catch {
-            reject(new Error(`Parse error di First=${first}`));
-          }
-        } else {
-          reject(new Error(`HTTP ${xhr.status} di First=${first}`));
-        }
-      };
-      xhr.onerror = () => reject(new Error(`Network error di First=${first}`));
-      xhr.ontimeout = () => reject(new Error(`Timeout di First=${first}`));
-
-      const body = JSON.parse(captured.rawBody) as Record<string, unknown>;
-      body.First = first;
-      body.Rows = rows;
-      xhr.send(JSON.stringify(body));
-    });
+    return xhrRequestFn(captured, first, rows, TIMEOUT);
   }
 
-  /** Make a targeted API request filtered by a single invoice number. */
   function xhrRequestByInvoice(captured: CapturedRequest, invoiceNumber: string): Promise<Record<string, unknown>[]> {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", captured.url, true);
-      for (const [k, v] of Object.entries(captured.headers)) xhr.setRequestHeader(k, v);
-      xhr.timeout = TIMEOUT;
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const data = JSON.parse(xhr.responseText) as {
-              Payload?: { Data?: Record<string, unknown>[] };
-            };
-            resolve(data?.Payload?.Data || []);
-          } catch {
-            reject(new Error("Parse error"));
-          }
-        } else {
-          reject(new Error(`HTTP ${xhr.status}`));
-        }
-      };
-      xhr.onerror = () => reject(new Error("Network error"));
-      xhr.ontimeout = () => reject(new Error("Timeout"));
-      const body = JSON.parse(captured.rawBody) as Record<string, unknown>;
-      body.First = 0;
-      body.Rows = 1;
-      // Replace ALL filters with only TaxInvoiceNumber — ignore masa/tahun/status
-      const fk = "Filters" in body ? "Filters" : "filters";
-      (body as any)[fk] = [
-        {
-          PropertyName: "TaxInvoiceNumber",
-          Value: invoiceNumber,
-          MatchMode: "equals",
-          CaseSensitive: false,
-          AsString: false,
-        },
-      ];
-      xhr.send(JSON.stringify(body));
-    });
+    return xhrRequestByInvoiceFn(captured, invoiceNumber, TIMEOUT);
   }
 
   /** Scrape by individual invoice numbers — much faster than full scrape. */
@@ -604,7 +497,7 @@ import {
       try {
         const rows = await xhrRequestByInvoice(lastCaptured, num);
         for (const row of rows) {
-          const key = (row.RecordId as string) || (row.AggregateIdentifier as string) || JSON.stringify(row);
+          const key = getRowDedupeKey(row);
           if (!seen.has(key)) {
             seen.add(key);
             allData.push(row);
@@ -612,7 +505,7 @@ import {
         }
         await delay(50);
       } catch (err) {
-        console.error(`[Scraper] Gagal mencari ${num}:`, err);
+        debugError(`Gagal mencari ${num}:`, err);
       }
     }
     const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
@@ -682,59 +575,9 @@ import {
         TaxIdentificationNumber: row.TaxIdentificationNumber,
       };
 
-      console.log("[Scraper] Mengirim request PDF dengan payload:", body);
+      debugLog("Mengirim request PDF dengan payload:", body);
       xhr.send(JSON.stringify(body));
     });
-  }
-
-  /**
-   * Build the download PDF URL for efaktur pages.
-   * API: einvoiceportal/api/DownloadInvoice/download-invoice-document
-   */
-  function buildEfakturDownloadUrl(capturedUrl: string, _source: string): string {
-    void _source; // reserved for future source-dependent URL construction
-    // Extract base: everything up to einvoiceportal/api/
-    const baseMatch = capturedUrl.match(/(.*einvoiceportal\/api\/)/i);
-    if (baseMatch) {
-      return baseMatch[1] + "DownloadInvoice/download-invoice-document";
-    }
-
-    // Fallback: try to construct from origin + known path
-    const originMatch = capturedUrl.match(/^(https?:\/\/[^/]+)/i);
-    if (originMatch) {
-      return originMatch[1] + "/einvoiceportal/api/DownloadInvoice/download-invoice-document";
-    }
-
-    return capturedUrl;
-  }
-
-  /**
-   * Build the request body for efaktur PDF download.
-   * Uses field names discovered from the DJP Coretax DownloadInvoice API.
-   */
-  function buildEfakturPdfBody(
-    row: any,
-    source: string,
-    capturedBody: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const menuType = source === "OUTPUT_TAX" || source === "OUTPUT_RETURN" ? "Outgoing" : "Incoming";
-
-    const body = {
-      EInvoiceRecordIdentifier: row.EInvoiceRecordIdentifier || row.RecordId || "",
-      EInvoiceAggregateIdentifier: row.EInvoiceAggregateIdentifier || row.AggregateIdentifier || "",
-      DocumentAggregateIdentifier:
-        row.DocumentFormAggregateIdentifier ||
-        row.DocumentAggregateIdentifier ||
-        capturedBody.DocumentAggregateIdentifier ||
-        "",
-      TaxpayerAggregateIdentifier: row.TaxpayerAggregateIdentifier || capturedBody.TaxpayerAggregateIdentifier || "",
-      LetterNumber: row.LetterNumber || row.TaxInvoiceNumber || "",
-      DocumentDate: row.DocumentDate || row.TaxInvoiceDate || "",
-      EInvoiceMenuType: menuType,
-      TaxInvoiceStatus: row.TaxInvoiceStatus || "",
-    };
-
-    return body;
   }
 
   /**
@@ -744,7 +587,7 @@ import {
   function xhrDownloadEfakturPdf(captured: CapturedRequest, row: any, source: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      const url = buildEfakturDownloadUrl(captured.url, source);
+      const url = buildEfakturDownloadUrl(captured.url);
       xhr.open("POST", url, true);
 
       for (const [k, v] of Object.entries(captured.headers)) {
@@ -782,7 +625,7 @@ import {
       const capturedBody = captured.rawBody ? JSON.parse(captured.rawBody) : {};
       const body = buildEfakturPdfBody(row, source, capturedBody);
 
-      console.log("[Scraper] Mengirim request PDF efaktur:", { url, body });
+      debugLog("Mengirim request PDF efaktur:", { url, body });
       xhr.send(JSON.stringify(body));
     });
   }
@@ -814,7 +657,7 @@ import {
 
         for (const row of rows) {
           // Fallback identifier if RecordId/AggregateIdentifier is missing.
-          const key = (row.RecordId as string) || (row.AggregateIdentifier as string) || JSON.stringify(row);
+          const key = getRowDedupeKey(row);
           if (!seen.has(key)) {
             seen.add(key);
             newRows.push(row);
@@ -824,9 +667,7 @@ import {
 
         const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
 
-        console.log(
-          `[Scraper] Page ${page}: ${rows.length} rows, ${newRows.length} new, total=${allData.length}, ${elapsed}`,
-        );
+        debugLog(`Page ${page}: ${rows.length} rows, ${newRows.length} new, total=${allData.length}, ${elapsed}`);
 
         sendToContent({
           type: "SCRAPE_PROGRESS",
@@ -871,7 +712,7 @@ import {
   ): Promise<number> {
     let failureCount = 0;
     const total = allData.length;
-    console.log(`[Scraper] Starting Bulk PDF download for ${total} items...`);
+    debugLog(`Starting Bulk PDF download for ${total} items...`);
 
     for (let i = 0; i < total; i++) {
       if (stopRequested) break;
@@ -907,7 +748,7 @@ import {
         await delay(800);
       } catch (err) {
         failureCount++;
-        console.error(`[Scraper] Gagal unduh PDF idx ${i}:`, err);
+        debugError(`Gagal unduh PDF idx ${i}:`, err);
         // Continue to next file even if one fails
       }
     }
@@ -919,7 +760,7 @@ import {
 
   async function startScraping(): Promise<void> {
     isRunning = true;
-    console.log("[Scraper] ▶ Starting scrape...");
+    debugLog("▶ Starting scrape...");
 
     try {
       sendToContent({
@@ -942,7 +783,7 @@ import {
       const { allData, page } = await scrapePaginated(captured, step, delayMs);
 
       if (stopRequested) {
-        console.log("[Scraper] ⏹ Stopped by user.");
+        debugLog("⏹ Stopped by user.");
         isRunning = false;
         return;
       }
@@ -957,14 +798,14 @@ import {
 
       const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
 
-      console.log(`[Scraper] ✅ Complete: ${allData.length} records in ${totalElapsed}`);
+      debugLog(`✅ Complete: ${allData.length} records in ${totalElapsed}`);
 
       let filenameHint = extractFilenameHintFromBody(captured.rawBody, captured.source) || "";
 
       // If body doesn't have it (PPh 21/26), try DOM header
       if (!filenameHint && captured.source.startsWith("PPH_21_")) {
         filenameHint = getMasaPajakFromDOM();
-        console.log("[Scraper] Filename hint from DOM:", filenameHint);
+        debugLog("Filename hint from DOM:", filenameHint);
       }
 
       let failureCount = 0;
@@ -985,7 +826,7 @@ import {
       });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.error("[Scraper] ❌ Error:", errMsg);
+      debugError("❌ Error:", errMsg);
 
       sendToContent({
         type: "SCRAPE_ERROR",
@@ -993,7 +834,7 @@ import {
       });
     }
 
-    console.log("[Scraper] ⏹ Scraping finished. isRunning=false");
+    debugLog("⏹ Scraping finished. isRunning=false");
     isRunning = false;
   }
 
@@ -1005,7 +846,7 @@ import {
     if (!lastCaptured) {
       sendToContent({
         type: "SCRAPE_ERROR",
-        message: "Tidak ada data request yang tersimpan. Silakan jalankan export terlebih dahulu.",
+        message: "Tidak ada data request yang tersimpan. Silakan jalankan ekspor terlebih dahulu.",
       });
       return;
     }
@@ -1016,14 +857,14 @@ import {
     let failureCount = 0;
     const total = data.length;
 
-    console.log(`[Scraper] ▶ Starting Bulk PDF download for ${total} efaktur items (source: ${source})...`);
+    debugLog(`▶ Starting Bulk PDF download for ${total} efaktur items (source: ${source})...`);
 
     sendToContent({
       type: "SCRAPE_PROGRESS",
       total: 0,
       page: 0,
       elapsed: "0s",
-      status: `Memulai download ${total} PDF...`,
+      status: `Memulai unduh ${total} PDF...`,
       currentIndex: 0,
       totalCount: total,
       failureCount: 0,
@@ -1031,7 +872,7 @@ import {
 
     for (let i = 0; i < total; i++) {
       if (stopRequested) {
-        console.log("[Scraper] ⏹ PDF download stopped by user.");
+        debugLog("⏹ PDF download stopped by user.");
         break;
       }
 
@@ -1069,14 +910,14 @@ import {
         await delay(800);
       } catch (err) {
         failureCount++;
-        console.error(`[Scraper] Gagal unduh PDF efaktur idx ${i} (${ref}):`, err);
+        debugError(`Gagal unduh PDF efaktur idx ${i} (${ref}):`, err);
         // Continue to next file even if one fails
       }
     }
 
     const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
-    console.log(
-      `[Scraper] ✅ PDF download complete: ${total - failureCount}/${total} succeeded, ${failureCount} failed in ${totalElapsed}`,
+    debugLog(
+      `✅ PDF download complete: ${total - failureCount}/${total} succeeded, ${failureCount} failed in ${totalElapsed}`,
     );
 
     sendToContent({

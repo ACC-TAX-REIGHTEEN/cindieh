@@ -7,7 +7,6 @@
 // Requires @types/firefox-webext-browser for browser.* types.
 // ============================================================
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getBrowserAPI(): typeof browser {
   if (typeof browser !== "undefined") return browser;
   // chrome.* uses callback style, but we only use runtime.sendMessage,

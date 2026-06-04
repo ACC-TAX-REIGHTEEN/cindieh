@@ -11,12 +11,12 @@
 import { browserAPI } from "./browser-shim";
 import { type ExportData, exportXLSX, exportCSV } from "./exporter";
 import type { ExportSource } from "./page-context";
+import { shouldProcessPageMessage } from "./postmessage-guard";
 import {
   injectBadge,
   injectExportButton,
   injectGridFilters,
   injectMultiInvoiceFilter,
-  getMultiInvoiceNumbers,
   isOutputTaxPage,
   isSupportedExportPage,
   removeExportButton,
@@ -29,34 +29,34 @@ import {
 } from "./ui";
 import { handlePdfDownload } from "./downloader";
 import { registerShortcuts } from "./shortcuts";
-import { debugLog, debugWarn, debugError } from "./debug";
+import { debugLog, debugError } from "./debug";
+import {
+  handleExportAction,
+  applyMultiInvoiceFilter,
+  startScrape,
+  triggerSearch,
+  getIsRunning,
+  setIsRunning,
+  getScrapedData,
+  setScrapedData,
+  getScrapedFields,
+  setScrapedFields,
+  getLastExportMeta,
+  setLastExportMeta,
+  getPendingExportFormat,
+  setPendingExportFormat,
+  getLastState,
+  setLastState,
+  type ScrapeState,
+} from "./main-actions";
+
+const DEBOUNCE_DELAY_MS = 300;
+const GRID_FILTER_INJECT_DELAY_MS = 1500;
 
 debugLog("Better Coretax aktif");
 
-// ── Types ────────────────────────────────────────────
-
-interface ScrapeState {
-  type: "SCRAPE_PROGRESS" | "SCRAPE_COMPLETE" | "SCRAPE_ERROR";
-  total?: number;
-  page?: number;
-  pages?: number;
-  elapsed?: string;
-  status?: string;
-  message?: string;
-  data?: Record<string, unknown>[];
-  fields?: string[];
-}
-
-// ── State storage (persists while page is open) ─────
-
-let lastState: ScrapeState | null = null;
-let isRunning = false;
-let scrapedData: Record<string, unknown>[] | null = null;
-let scrapedFields: string[] | null = null;
-let lastExportMeta: { filenameHint?: string; source?: ExportSource } | null = null;
-
 let lastUrl = location.href;
-let debounceTimer: any = null;
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 const observer = new MutationObserver(() => {
   const url = location.href;
@@ -79,7 +79,7 @@ const observer = new MutationObserver(() => {
     }
     injectExportButton();
     injectMultiInvoiceFilter();
-  }, 300);
+  }, DEBOUNCE_DELAY_MS);
 });
 
 observer.observe(document.body, { subtree: true, childList: true });
@@ -113,25 +113,25 @@ function sendToPopup(msg: Record<string, unknown>): void {
 // ── Relay: Popup → Content → Page ───────────────────
 
 browserAPI.runtime.onMessage.addListener(
-  (msg: Record<string, any>, _sender: any, sendResponse: (response?: any) => void) => {
+  (msg: Record<string, unknown>, _sender: unknown, sendResponse: (response?: any) => void) => {
     if (msg.type === "START_SCRAPE" || msg.type === "STOP_SCRAPE") {
       window.postMessage({ ...msg, direction: "FROM_CONTENT" }, window.location.origin);
       if (msg.type === "START_SCRAPE") {
-        isRunning = true;
-        lastState = {
+        setIsRunning(true);
+        setLastState({
           type: "SCRAPE_PROGRESS",
           total: 0,
           page: 0,
           elapsed: "0s",
           status: "Menunggu...",
-        };
+        });
       }
       sendResponse({ ok: true });
       return true;
     }
 
     if (msg.type === "GET_STATE") {
-      sendResponse({ state: lastState });
+      sendResponse({ state: getLastState() });
       return true;
     }
 
@@ -142,16 +142,14 @@ browserAPI.runtime.onMessage.addListener(
 // ── Relay: Page → Content → Popup + In-page panel ───
 
 window.addEventListener("message", (event: MessageEvent) => {
-  if (event.source !== window) return;
-  if (event.origin !== window.location.origin) return;
-  if (!event.data || event.data.direction !== "FROM_PAGE") return;
+  if (!shouldProcessPageMessage(event)) return;
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { direction: _direction, ...cleanMsg } = event.data;
 
   // Store state for reconnection
   if (cleanMsg.type === "SCRAPE_PROGRESS" || cleanMsg.type === "SCRAPE_COMPLETE" || cleanMsg.type === "SCRAPE_ERROR") {
-    lastState = cleanMsg as ScrapeState;
+    setLastState(cleanMsg as ScrapeState);
   }
 
   // Update in-page panel
@@ -160,24 +158,27 @@ window.addEventListener("message", (event: MessageEvent) => {
   }
 
   if (cleanMsg.type === "SCRAPE_COMPLETE") {
-    isRunning = false;
-    scrapedData = cleanMsg.data || null;
+    setIsRunning(false);
+    setScrapedData(cleanMsg.data || null);
     // Only update fields if we got actual field data (PDF download sends empty fields)
     if (cleanMsg.fields && cleanMsg.fields.length > 0) {
-      scrapedFields = cleanMsg.fields;
+      setScrapedFields(cleanMsg.fields);
     }
-    lastExportMeta = {
+    setLastExportMeta({
       filenameHint: cleanMsg.filenameHint as string | undefined,
       source: cleanMsg.source as ExportSource | undefined,
-    };
+    });
     updatePanelComplete(cleanMsg.total || 0, cleanMsg.pages || 0, cleanMsg.elapsed || "0s", cleanMsg.failureCount);
 
     // Auto-export if a pending format was requested before scrape started
-    if (pendingExportFormat && scrapedData && scrapedFields) {
-      if (pendingExportFormat === "pdf") {
-        const filtered = applyMultiInvoiceFilter(scrapedData);
+    const pendingFormat = getPendingExportFormat();
+    const data = getScrapedData();
+    const fields = getScrapedFields();
+    if (pendingFormat && data && fields) {
+      if (pendingFormat === "pdf") {
+        const filtered = applyMultiInvoiceFilter(data);
         if (filtered.length === 0) {
-          pendingExportFormat = null;
+          setPendingExportFormat(null);
           alert("Tidak ada faktur yang cocok dengan filter No. Faktur.");
           return;
         }
@@ -187,11 +188,11 @@ window.addEventListener("message", (event: MessageEvent) => {
             `Anda akan mengunduh ${total} file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?`,
           );
           if (!confirmed) {
-            pendingExportFormat = null;
+            setPendingExportFormat(null);
             return;
           }
         }
-        isRunning = true;
+        setIsRunning(true);
         window.postMessage(
           {
             type: "START_PDF_DOWNLOAD",
@@ -202,18 +203,18 @@ window.addEventListener("message", (event: MessageEvent) => {
         );
       } else {
         const exportData: ExportData = {
-          data: scrapedData,
-          fields: scrapedFields,
-          filenameHint: lastExportMeta?.filenameHint,
-          source: lastExportMeta?.source,
+          data,
+          fields,
+          filenameHint: getLastExportMeta()?.filenameHint,
+          source: getLastExportMeta()?.source,
         };
-        if (pendingExportFormat === "xlsx") {
+        if (pendingFormat === "xlsx") {
           exportXLSX(exportData);
         } else {
           exportCSV(exportData);
         }
       }
-      pendingExportFormat = null;
+      setPendingExportFormat(null);
     }
   }
 
@@ -227,7 +228,7 @@ window.addEventListener("message", (event: MessageEvent) => {
   }
 
   if (cleanMsg.type === "SCRAPE_ERROR") {
-    isRunning = false;
+    setIsRunning(false);
     updatePanelError(cleanMsg.message || "Error");
   }
 
@@ -280,101 +281,19 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
   }
 });
 
-/** Helper: find and click the search/refresh button */
-function triggerSearch(): void {
-  const searchBtn = Array.from(document.querySelectorAll("button")).find((btn) => {
-    const text = btn.textContent?.toLowerCase() || "";
-    const hasIcon = !!btn.querySelector(".pi-search, .pi-refresh, .pi-filter");
-    return text.includes("cari") || text.includes("refresh") || hasIcon;
-  }) as HTMLButtonElement;
-
-  if (searchBtn) {
-    debugLog("Triggering search via button:", searchBtn.textContent?.trim());
-    setTimeout(() => searchBtn.click(), 100);
-  } else {
-    debugWarn("Could not find search/refresh button");
-  }
-}
-
 // ── In-page button events ───────────────────────────
 
 document.addEventListener("ch:scrape-toggle", () => {
-  if (isRunning) {
+  if (getIsRunning()) {
     // Stop
     window.postMessage({ type: "STOP_SCRAPE", direction: "FROM_CONTENT" }, window.location.origin);
-    isRunning = false;
-    pendingExportFormat = null;
+    setIsRunning(false);
+    setPendingExportFormat(null);
     updatePanelIdle();
   } else {
     startScrape();
   }
 });
-
-// Pending export format: when set, auto-export after scrape completes
-let pendingExportFormat: "xlsx" | "csv" | "pdf" | null = null;
-
-/**
- * Common export action handler shared by XLSX, CSV, and PDF.
- * - Stops if already running
- * - Exports immediately if data is available (XLSX/CSV only; PDF returns false for caller to handle)
- * - Checks multi-invoice filter (XLSX/CSV) and starts invoice-targeted scrape if needed
- * - Otherwise sets pendingExportFormat and calls startScrape()
- *
- * Returns false when data is available for PDF (caller must handle filtering/confirmation).
- * Returns true otherwise (action was fully handled).
- */
-function handleExportAction(format: "xlsx" | "csv" | "pdf"): boolean {
-  if (isRunning) {
-    window.postMessage({ type: "STOP_SCRAPE", direction: "FROM_CONTENT" }, window.location.origin);
-    isRunning = false;
-    pendingExportFormat = null;
-    updatePanelIdle();
-    return true;
-  }
-
-  if (scrapedData && scrapedFields) {
-    // PDF: let caller handle filtering, confirmation, and download
-    if (format === "pdf") return false;
-
-    // XLSX / CSV: export immediately
-    const exportData: ExportData = {
-      data: scrapedData,
-      fields: scrapedFields,
-      filenameHint: lastExportMeta?.filenameHint,
-      source: lastExportMeta?.source,
-    };
-    if (format === "xlsx") {
-      exportXLSX(exportData);
-    } else {
-      exportCSV(exportData);
-    }
-    return true;
-  }
-
-  // No data yet — check multi-invoice filter (XLSX/CSV only)
-  if (format !== "pdf") {
-    const nums2 = getMultiInvoiceNumbers();
-    if (nums2.length > 0) {
-      debugLog("[BC] sending SCRAPE_BY_INVOICES", nums2);
-      isRunning = true;
-      showPanel();
-      pendingExportFormat = "pdf";
-      window.postMessage(
-        {
-          type: "SCRAPE_BY_INVOICES",
-          invoiceNumbers: nums2,
-          direction: "FROM_CONTENT",
-        },
-        window.location.origin,
-      );
-      return true;
-    }
-  }
-
-  pendingExportFormat = format;
-  startScrape();
-  return true;
-}
 
 // Export XLSX
 document.addEventListener("ch:export-xlsx", () => {
@@ -390,7 +309,7 @@ document.addEventListener("ch:export-csv", () => {
 document.addEventListener("ch:export-pdf", () => {
   if (!handleExportAction("pdf")) {
     // Data is available — apply PDF-specific filtering, confirmation, and download
-    const filtered = applyMultiInvoiceFilter(scrapedData!);
+    const filtered = applyMultiInvoiceFilter(getScrapedData()!);
     if (filtered.length === 0) {
       alert("Tidak ada faktur yang cocok dengan filter No. Faktur.\nKosongkan filter atau periksa nomor faktur.");
       return;
@@ -398,13 +317,11 @@ document.addEventListener("ch:export-pdf", () => {
     const total = filtered.length;
     if (total > 10) {
       const confirmed = window.confirm(
-        "Anda akan mengunduh " +
-          total +
-          " file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?",
+        `Anda akan mengunduh ${total} file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?`,
       );
       if (!confirmed) return;
     }
-    isRunning = true;
+    setIsRunning(true);
     showPanel();
     window.postMessage(
       { type: "START_PDF_DOWNLOAD", data: filtered, direction: "FROM_CONTENT" },
@@ -415,33 +332,9 @@ document.addEventListener("ch:export-pdf", () => {
 
 // Auto-start scrape (only starts if not already running, never stops)
 document.addEventListener("ch:scrape-start", () => {
-  if (isRunning) return; // Already running, don't restart
+  if (getIsRunning()) return; // Already running, don't restart
   startScrape();
 });
-
-function applyMultiInvoiceFilter(d: Record<string, unknown>[]): Record<string, unknown>[] {
-  const nums = getMultiInvoiceNumbers();
-  if (nums.length === 0) return d;
-  const set = new Set(nums.map((n) => n.toLowerCase()));
-  return d.filter((r) => set.has(String(r.TaxInvoiceNumber || r.LetterNumber || "").toLowerCase()));
-}
-
-function startScrape(): void {
-  showPanel();
-  isRunning = true;
-  scrapedData = null;
-  scrapedFields = null;
-  lastExportMeta = null;
-  lastState = {
-    type: "SCRAPE_PROGRESS",
-    total: 0,
-    page: 0,
-    elapsed: "0s",
-    status: "Menunggu...",
-  };
-  updatePanelProgress(0, 0, "0s", "Menangkap request dari Angular...");
-  window.postMessage({ type: "START_SCRAPE", direction: "FROM_CONTENT" }, window.location.origin);
-}
 
 // ── Init & Navigation ───────────────────────────────
 
@@ -457,7 +350,7 @@ function onNavigate(): void {
       injectToolbarFilter();
       setTimeout(() => {
         injectGridFilters();
-      }, 1500);
+      }, GRID_FILTER_INJECT_DELAY_MS);
     }
   } else {
     debugLog("Unrecognized page, removing tools if present.");
@@ -469,7 +362,7 @@ function init(): void {
   debugLog("Extension starting up on page...", window.location.href);
   injectBadge();
   injectScraper();
-  registerShortcuts(() => isRunning);
+  registerShortcuts(() => getIsRunning());
 
   if (isSupportedExportPage()) {
     debugLog("Page match found on init.");
@@ -479,7 +372,7 @@ function init(): void {
       injectToolbarFilter();
       setTimeout(() => {
         injectGridFilters();
-      }, 1500);
+      }, GRID_FILTER_INJECT_DELAY_MS);
     }
   } else {
     debugLog("Page match not found on init.");
@@ -499,3 +392,5 @@ if (document.readyState === "complete") {
 } else {
   window.addEventListener("load", init);
 }
+
+export { shouldProcessPageMessage };

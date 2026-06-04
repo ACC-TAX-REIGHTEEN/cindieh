@@ -1,3 +1,22 @@
+:root {
+    --ch-primary: #ff5722;
+    --ch-primary-hover: #e64a19;
+    --ch-primary-dark: #dc2626;
+    --ch-danger: #ef4444;
+    --ch-danger-hover: #dc2626;
+    --ch-blue: #3b82f6;
+    --ch-blue-light: #60a5fa;
+    --ch-blue-border: #2196f3;
+    --ch-bg-dark: rgba(15, 23, 42, 0.9);
+    --ch-text-light: #cbd5e1;
+    --ch-text-muted: #94a3b8;
+    --ch-text-dark: #495057;
+    --ch-white: #ffffff;
+    --ch-border: #ced4da;
+    --ch-border-light: #dee2e6;
+    --ch-bg-hover: #e9ecef;
+}
+
 /* ── Better Coretax Floating Info ─────────────────── */
 
 #ch-floating-info-container {
@@ -15,8 +34,8 @@
 .ch-badge {
     width: 40px;
     height: 40px;
-    background-color: #ff5722;
-    color: white;
+    background-color: var(--ch-primary);
+    color: var(--ch-white);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -34,12 +53,12 @@
 
 .ch-badge:hover {
     transform: scale(1.1);
-    background-color: #e64a19;
+    background-color: var(--ch-primary-hover);
 }
 
 /* Floating Stats Unit */
 .ch-floating-stats {
-    background: rgba(15, 23, 42, 0.9);
+    background: var(--ch-bg-dark);
     backdrop-filter: blur(8px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
@@ -65,7 +84,7 @@
 .ch-f-label {
     font-size: 9px;
     text-transform: uppercase;
-    color: #94a3b8;
+    color: var(--ch-text-muted);
     letter-spacing: 0.5px;
     margin-bottom: 2px;
 }
@@ -73,13 +92,13 @@
 .ch-f-value {
     font-size: 16px;
     font-weight: 700;
-    color: #60a5fa;
+    color: var(--ch-blue-light);
 }
 
 .ch-f-status {
     width: 100%;
     font-size: 11px;
-    color: #cbd5e1;
+    color: var(--ch-text-light);
     border-top: 1px solid rgba(255, 255, 255, 0.05);
     padding-top: 8px;
     margin-top: 4px;
@@ -97,7 +116,7 @@
 
 .ch-f-progress-bar {
     height: 100%;
-    background: #3b82f6;
+    background: var(--ch-blue);
     width: 0%;
     transition: width 0.3s ease;
 }
@@ -105,8 +124,8 @@
 /* ── Export Button in Toolbar ────────────────────── */
 
 .ch-btn-highlight {
-    background-color: #ff5722 !important;
-    border-color: #ff5722 !important;
+    background-color: var(--ch-primary) !important;
+    border-color: var(--ch-primary) !important;
     color: #fff !important;
     transition:
         background-color 0.2s,
@@ -115,7 +134,7 @@
 }
 
 .ch-btn-highlight:hover {
-    background-color: #e64a19 !important;
+    background-color: var(--ch-primary-hover) !important;
     box-shadow: 0 2px 8px rgba(255, 87, 34, 0.4);
 }
 
@@ -124,12 +143,12 @@
 }
 
 .ch-btn-highlight.ch-btn-danger {
-    background-color: #ef4444 !important;
-    border-color: #ef4444 !important;
+    background-color: var(--ch-danger) !important;
+    border-color: var(--ch-danger) !important;
 }
 
 .ch-btn-highlight.ch-btn-danger:hover {
-    background-color: #dc2626 !important;
+    background-color: var(--ch-danger-hover) !important;
     box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
 }
 
@@ -159,9 +178,9 @@
     padding: 0.5rem 0.75rem;
     cursor: pointer;
     border-radius: 3px;
-    border: 1px solid #ced4da;
-    background: #ffffff;
-    color: #495057;
+    border: 1px solid var(--ch-border);
+    background: var(--ch-white);
+    color: var(--ch-text-dark);
     transition:
         background 0.2s,
         border-color 0.2s,
@@ -169,12 +188,12 @@
 }
 
 .ch-multi-invoice-toggle:hover {
-    background: #e9ecef;
-    border-color: #2196f3;
+    background: var(--ch-bg-hover);
+    border-color: var(--ch-blue-border);
 }
 
 .ch-multi-invoice-toggle:focus {
-    border-color: #2196f3;
+    border-color: var(--ch-blue-border);
     box-shadow: 0 0 0 0.2rem rgba(33, 150, 243, 0.25);
     outline: none;
 }
@@ -184,8 +203,8 @@
     display: none;
     position: absolute;
     z-index: 1000;
-    background: #ffffff;
-    border: 1px solid #dee2e6;
+    background: var(--ch-white);
+    border: 1px solid var(--ch-border-light);
     border-radius: 6px;
     padding: 10px;
     min-width: 300px;
@@ -194,7 +213,7 @@
 }
 
 .ch-multi-invoice-panel label {
-    color: #495057;
+    color: var(--ch-text-dark);
     font-size: 12px;
     margin-bottom: 6px;
     display: block;
@@ -202,9 +221,9 @@
 
 .ch-multi-invoice-textarea {
     width: 100%;
-    background: #ffffff;
-    color: #495057;
-    border: 1px solid #ced4da;
+    background: var(--ch-white);
+    color: var(--ch-text-dark);
+    border: 1px solid var(--ch-border);
     border-radius: 4px;
     padding: 8px;
     font-size: 13px;
@@ -217,7 +236,7 @@
 }
 
 .ch-multi-invoice-textarea:focus {
-    border-color: #2196f3;
+    border-color: var(--ch-blue-border);
     box-shadow: 0 0 0 0.2rem rgba(33, 150, 243, 0.25);
 }
 
@@ -226,7 +245,7 @@
 }
 
 .ch-multi-invoice-count {
-    color: #2196f3;
+    color: var(--ch-blue-border);
     font-size: 11px;
     margin-top: 6px;
 }

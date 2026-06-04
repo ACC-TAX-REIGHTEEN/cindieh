@@ -15,6 +15,7 @@
     "package:source": "node package-source.js",
     "version": "node sync-manifest.js",
     "release": "standard-version",
+    "typecheck": "tsc --noEmit",
     "test": "vitest --run",
     "lint": "eslint src/**/*.ts"
   },
