@@ -4,21 +4,33 @@
   "version": "1.0.5",
   "description": "Better Coretax DJP Extension",
   "background": {
-    "scripts": ["background/background.js"],
+    "scripts": [
+      "background/background.js"
+    ],
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["https://coretaxdjp.pajak.go.id/*"],
-      "js": ["content/main.js"],
-      "css": ["styles/injected.css"],
+      "matches": [
+        "https://coretaxdjp.pajak.go.id/*"
+      ],
+      "js": [
+        "content/main.js"
+      ],
+      "css": [
+        "styles/injected.css"
+      ],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["content/scraper.js"],
-      "matches": ["https://coretaxdjp.pajak.go.id/*"]
+      "resources": [
+        "content/scraper.js"
+      ],
+      "matches": [
+        "https://coretaxdjp.pajak.go.id/*"
+      ]
     }
   ],
   "host_permissions": [

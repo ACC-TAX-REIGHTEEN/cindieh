@@ -12,6 +12,7 @@
     "package:firefox": "node build.js --browser=firefox && node package.js --browser=firefox",
     "package": "npm run package:chrome && npm run package:firefox && npm run package:source",
     "package:source": "node package-source.js",
+    "version": "node sync-manifest.js",
     "test": "vitest --run",
     "lint": "eslint src/**/*.ts"
   },
