@@ -6,7 +6,7 @@
 // ============================================================
 
 import { isWithholdingPage } from "./page-context";
-import { exportBtnEl, xlsxBtnEl, csvBtnEl } from "./ui";
+import { exportBtnEl, xlsxBtnEl, csvBtnEl } from "./button-state";
 
 // ── Floating Info State ──────────────────────────────
 
