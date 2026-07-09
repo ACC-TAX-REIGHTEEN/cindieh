@@ -28,7 +28,7 @@ import {
   destroyBadge,
 } from "./ui-badge";
 
-import { injectGridFilters, injectToolbarFilter, injectMultiInvoiceFilter, getMultiInvoiceNumbers } from "./ui-filters";
+import { injectGridFilters, injectToolbarFilter, injectMultiInvoiceFilter, getMultiInvoiceNumbers, clearFilterTimers, scheduleRetry } from "./ui-filters";
 
 import {
   setExportBtnEl,
@@ -74,7 +74,6 @@ export {
 
 // ── Constants ─────────────────────────────────────────
 
-const RETRY_DELAY_MS = 1000;
 const MAX_RETRIES = 15;
 
 let isInjected = false;
@@ -242,7 +241,7 @@ export function injectExportButton(retries = MAX_RETRIES): void {
   }
 
   if (!anchorEl) {
-    if (retries > 0) setTimeout(() => injectExportButton(retries - 1), RETRY_DELAY_MS);
+    if (retries > 0) scheduleRetry(() => injectExportButton(retries - 1));
     return;
   }
 
@@ -372,6 +371,7 @@ export function injectExportButton(retries = MAX_RETRIES): void {
 
 /** Remove elements on navigation */
 export function removeExportButton(): void {
+  clearFilterTimers();
   if (exportBtnEl) {
     exportBtnEl.remove();
   }

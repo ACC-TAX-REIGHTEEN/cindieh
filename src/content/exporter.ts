@@ -31,11 +31,33 @@ export function escapeCSV(value: unknown): string {
 function formatDate(dateStr: unknown): string {
   if (!dateStr || typeof dateStr !== "string") return String(dateStr || "");
 
-  const parts = dateStr.split("T")[0].split("-");
-  if (parts.length === 3 && parts[0].length === 4) {
-    return `${parts[2]}/${parts[1]}/${parts[0]}`; // DD/MM/YYYY
+  // Fast path: pure date "YYYY-MM-DD" (no time component) — safe from timezone shift.
+  const dateOnly = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`; // DD/MM/YYYY
   }
 
+  // ISO datetime with explicit offset (e.g. "2026-01-31T23:00:00+07:00").
+  // Parse the calendar date in the stated offset, not the local timezone,
+  // so the displayed day matches what Coretax shows to the user.
+  const iso = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})([+-]\d{2}:?\d{2}|Z)$/i);
+  if (iso) {
+    const year = Number(iso[1]);
+    const month = Number(iso[2]);
+    const day = Number(iso[3]);
+    const hour = Number(iso[4]);
+    const minute = Number(iso[5]);
+    const second = Number(iso[6]);
+    const offsetMin = parseOffset(iso[7]);
+    // Convert to UTC ms, then extract the calendar date at the source offset.
+    const utcMs = Date.UTC(year, month - 1, day, hour, minute, second) - offsetMin * 60000;
+    const d = new Date(utcMs);
+    const dd = String(d.getUTCDate()).padStart(2, "0");
+    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+    return `${dd}/${mm}/${d.getUTCFullYear()}`;
+  }
+
+  // Fallback: best-effort parse (may be timezone-dependent).
   const d = new Date(dateStr);
   if (!isNaN(d.getTime())) {
     const day = String(d.getDate()).padStart(2, "0");
@@ -45,6 +67,14 @@ function formatDate(dateStr: unknown): string {
   }
 
   return dateStr;
+}
+
+function parseOffset(offset: string): number {
+  if (offset.toUpperCase() === "Z") return 0;
+  const m = offset.match(/^([+-])(\d{2}):?(\d{2})$/);
+  if (!m) return 0;
+  const sign = m[1] === "-" ? -1 : 1;
+  return sign * (Number(m[2]) * 60 + Number(m[3]));
 }
 
 function processData(exportData: ExportData): ExportData {

@@ -30,7 +30,8 @@
       ],
       "matches": [
         "https://coretaxdjp.pajak.go.id/*"
-      ]
+      ],
+      "use_dynamic_url": true
     }
   ],
   "host_permissions": [
@@ -38,8 +39,7 @@
   ],
   "permissions": [
     "activeTab",
-    "storage",
-    "tabs"
+    "storage"
   ],
   "icons": {
     "16": "icons/icon16.png",

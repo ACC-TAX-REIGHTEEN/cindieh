@@ -15,6 +15,23 @@ const RETRY_DELAY_MS = 1000;
 const MAX_RETRIES = 15;
 const TOOLBAR_FILTER_WIDTH = "180px";
 
+// Track pending retry timers so they can be cancelled on navigation.
+const pendingTimers: ReturnType<typeof setTimeout>[] = [];
+
+export function scheduleRetry(fn: () => void): void {
+  const t = setTimeout(() => {
+    const idx = pendingTimers.indexOf(t);
+    if (idx > -1) pendingTimers.splice(idx, 1);
+    fn();
+  }, RETRY_DELAY_MS);
+  pendingTimers.push(t);
+}
+
+/** Cancel all pending injection retries (call on navigation). */
+export function clearFilterTimers(): void {
+  while (pendingTimers.length) clearTimeout(pendingTimers.pop());
+}
+
 /**
  * Finds column index by text.
  */
@@ -104,7 +121,7 @@ export function injectToolbarFilter(retries = MAX_RETRIES): void {
     );
 
   if (!anchor) {
-    if (retries > 0) setTimeout(() => injectToolbarFilter(retries - 1), RETRY_DELAY_MS);
+    if (retries > 0) scheduleRetry(() => injectToolbarFilter(retries - 1));
     return;
   }
 
@@ -168,7 +185,7 @@ export function injectMultiInvoiceFilter(retries = MAX_RETRIES): void {
     );
 
   if (!anchor) {
-    if (retries > 0) setTimeout(() => injectMultiInvoiceFilter(retries - 1), RETRY_DELAY_MS);
+    if (retries > 0) scheduleRetry(() => injectMultiInvoiceFilter(retries - 1));
     return;
   }
 

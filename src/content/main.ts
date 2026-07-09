@@ -12,6 +12,7 @@ import { browserAPI } from "./browser-shim";
 import { type ExportData, exportXLSX, exportCSV } from "./exporter";
 import type { ExportSource } from "./page-context";
 import { shouldProcessPageMessage } from "./postmessage-guard";
+import { generateBridgeToken, getBridgeToken, postToScraper } from "./bridge";
 import {
   injectBadge,
   injectExportButton,
@@ -89,9 +90,10 @@ observer.observe(document.body, { subtree: true, childList: true });
 function injectScraper(): void {
   if (document.getElementById("__ch_scraper_injected__")) return;
 
+  const token = generateBridgeToken();
   const script = document.createElement("script");
   script.id = "__ch_scraper_injected__";
-  script.src = browserAPI.runtime.getURL("content/scraper.js");
+  script.src = `${browserAPI.runtime.getURL("content/scraper.js")}?token=${encodeURIComponent(token)}`;
   script.onload = () => {
     debugLog("Scraper injected into page context");
   };
@@ -116,28 +118,21 @@ function handlePdfExport(data: Record<string, unknown>[]): boolean {
   }
   setIsRunning(true);
   showPanel();
-  window.postMessage({ type: "START_PDF_DOWNLOAD", data: filtered, direction: "FROM_CONTENT" }, window.location.origin);
+  postToScraper({ type: "START_PDF_DOWNLOAD", data: filtered });
   return true;
 }
 
-// ── Helper: safely send message to popup ────────────
-
-function sendToPopup(msg: Record<string, unknown>): void {
-  try {
-    browserAPI.runtime.sendMessage(msg).catch(() => {
-      // Popup closed or extension context invalidated
-    });
-  } catch {
-    // Extension context invalidated or popup closed
-  }
-}
-
 // ── Relay: Popup → Content → Page ───────────────────
+// NOTE: This extension currently has no browser-action popup defined in the
+// manifest, so these messages originate from the (future) popup or external
+// callers. postToScraper applies the bridge token for consistency, but
+// verification is redundant here because popup→background→content messaging
+// is already authenticated by the extension's own message channel.
 
 browserAPI.runtime.onMessage.addListener(
   (msg: Record<string, unknown>, _sender: unknown, sendResponse: (response?: any) => void) => {
     if (msg.type === "START_SCRAPE" || msg.type === "STOP_SCRAPE") {
-      window.postMessage({ ...msg, direction: "FROM_CONTENT" }, window.location.origin);
+      postToScraper(msg);
       if (msg.type === "START_SCRAPE") {
         setIsRunning(true);
         setLastState({
@@ -164,7 +159,7 @@ browserAPI.runtime.onMessage.addListener(
 // ── Relay: Page → Content → Popup + In-page panel ───
 
 window.addEventListener("message", (event: MessageEvent) => {
-  if (!shouldProcessPageMessage(event)) return;
+  if (!shouldProcessPageMessage(event, getBridgeToken())) return;
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { direction: _direction, ...cleanMsg } = event.data;
@@ -177,6 +172,16 @@ window.addEventListener("message", (event: MessageEvent) => {
   // Update in-page panel
   if (cleanMsg.type === "SCRAPE_PROGRESS") {
     updatePanelProgress(cleanMsg.total || 0, cleanMsg.page || 0, cleanMsg.elapsed || "0s", cleanMsg.status || "");
+  }
+
+  if (cleanMsg.type === "INJECTED_READY") {
+    // Scraper just finished initializing. If the user already requested a
+    // scrape before the scraper was ready (message would have been lost),
+    // resend START_SCRAPE so the two worlds stay in sync.
+    if (getIsRunning()) {
+      debugLog("Scraper ready; resending START_SCRAPE (was requested earlier)");
+      postToScraper({ type: "START_SCRAPE" });
+    }
   }
 
   if (cleanMsg.type === "SCRAPE_COMPLETE") {
@@ -230,8 +235,9 @@ window.addEventListener("message", (event: MessageEvent) => {
     updatePanelError(cleanMsg.message || "Error");
   }
 
-  // Forward to popup
-  sendToPopup(cleanMsg);
+  // NOTE: No browser-action popup is defined in the manifest, so there is no
+  // popup to forward to. State is already persisted via main-actions for the
+  // in-page panel and potential future popup.
 });
 
 // ── Grid Filter Event ───────────────────────────────
@@ -245,15 +251,11 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
     if (e.key === "Enter") {
       debugLog("Reference filter triggered via Enter");
       const value = target.value.trim();
-      window.postMessage(
-        {
-          type: "SET_SERVER_FILTER",
-          field: "Reference",
-          value: value.toUpperCase(),
-          direction: "FROM_CONTENT",
-        },
-        window.location.origin,
-      );
+      postToScraper({
+        type: "SET_SERVER_FILTER",
+        field: "Reference",
+        value: value.toUpperCase(),
+      });
       triggerSearch();
     }
   }
@@ -282,15 +284,14 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
 // ── In-page button events ───────────────────────────
 
 document.addEventListener("ch:scrape-toggle", () => {
-  if (getIsRunning()) {
-    // Stop
-    window.postMessage({ type: "STOP_SCRAPE", direction: "FROM_CONTENT" }, window.location.origin);
-    setIsRunning(false);
-    setPendingExportFormat(null);
-    updatePanelIdle();
-  } else {
-    startScrape();
-  }
+if (getIsRunning()) {
+  postToScraper({ type: "STOP_SCRAPE" });
+  setIsRunning(false);
+  setPendingExportFormat(null);
+  updatePanelIdle();
+} else {
+  startScrape();
+}
 });
 
 // Export XLSX

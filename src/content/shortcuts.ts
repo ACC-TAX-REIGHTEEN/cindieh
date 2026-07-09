@@ -1,4 +1,5 @@
 import { isSupportedExportPage } from "./page-context";
+import { postToScraper } from "./bridge";
 
 export function registerShortcuts(isRunning: () => boolean): void {
   document.addEventListener("keydown", (e: KeyboardEvent) => {
@@ -16,10 +17,7 @@ export function registerShortcuts(isRunning: () => boolean): void {
       if (!isSupportedExportPage()) return;
       if (!isRunning()) return;
       e.preventDefault();
-      window.postMessage(
-        { type: "STOP_SCRAPE", direction: "FROM_CONTENT" },
-        window.location.origin,
-      );
+      postToScraper({ type: "STOP_SCRAPE" });
     }
   });
 }

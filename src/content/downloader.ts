@@ -6,7 +6,18 @@ export interface WithholdingSlip {
   WithholdingSlipsNumber: string;
   WithholdingSlipsDate: string; // "2026-01-31T00:00:00+07:00"
   EmployerName: string;
-  [key: string]: any;
+  [key: string]: unknown;
+}
+
+/** Common shape of an efaktur/return row used for PDF naming. */
+export interface PdfItem {
+  Reference?: string;
+  LetterNumber?: string;
+  TaxInvoiceNumber?: string;
+  ReturnNumber?: string;
+  DocumentNumber?: string;
+  ReturnInvoiceNumber?: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -45,15 +56,23 @@ export function generateWithholdingFilename(item: WithholdingSlip): string {
   let year = new Date().getFullYear().toString();
 
   if (item.WithholdingSlipsDate) {
-    const d = new Date(item.WithholdingSlipsDate);
-    if (!isNaN(d.getTime())) {
-      month = String(d.getMonth() + 1).padStart(2, "0");
-      year = String(d.getFullYear());
+    // Parse the calendar date directly from the ISO string to avoid
+    // timezone-dependent shifts from `new Date("...+07:00")`.
+    const m = String(item.WithholdingSlipsDate).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      year = m[1];
+      month = m[2];
+    } else {
+      const d = new Date(item.WithholdingSlipsDate);
+      if (!isNaN(d.getTime())) {
+        month = String(d.getMonth() + 1).padStart(2, "0");
+        year = String(d.getFullYear());
+      }
     }
   }
 
   const nomor = (item.WithholdingSlipsNumber || "TANPA_NOMOR").replace(
-    /[/\\?%*:|"<>]/g,
+    /[/\\?%*:| "<>]/g,
     "-",
   );
   const nama = (item.EmployerName || "TANPA_NAMA")
@@ -67,15 +86,15 @@ export function generateWithholdingFilename(item: WithholdingSlip): string {
  * Formats Output Tax PDF filename as Reference - InvoiceNumber.pdf
  */
 export function generateOutputTaxFilename(
-  item: any,
+  item: PdfItem,
   reference?: string,
 ): string {
   const ref = (reference || item.Reference || "TANPA_REFERENSI")
-    .replace(/[/\\?%*:|"<>]/g, "-")
+    .replace(/[/\\?%*:| "<>]/g, "-")
     .trim();
 
   const invoiceNumber = (item.LetterNumber || item.TaxInvoiceNumber || "000")
-    .replace(/[/\\?%*:|"<>]/g, "-")
+    .replace(/[/\\?%*:| "<>]/g, "-")
     .trim();
 
   return `${ref} - ${invoiceNumber}.pdf`;
@@ -84,13 +103,13 @@ export function generateOutputTaxFilename(
 /**
  * Formats Input Tax PDF filename
  */
-export function generateInputTaxFilename(item: any): string {
+export function generateInputTaxFilename(item: PdfItem): string {
   const ref = (item.Reference || "TANPA_REFERENSI")
-    .replace(/[/\\?%*:|"<>]/g, "-")
+    .replace(/[/\\?%*:| "<>]/g, "-")
     .trim();
 
   const invoiceNumber = (item.TaxInvoiceNumber || item.LetterNumber || "000")
-    .replace(/[/\\?%*:|"<>]/g, "-")
+    .replace(/[/\\?%*:| "<>]/g, "-")
     .trim();
 
   return `${ref} - ${invoiceNumber}.pdf`;
@@ -99,14 +118,14 @@ export function generateInputTaxFilename(item: any): string {
 /**
  * Formats Return PDF filename (output return or input return)
  */
-export function generateReturnFilename(item: any): string {
+export function generateReturnFilename(item: PdfItem): string {
   const ref = (
     item.ReturnNumber ||
     item.Reference ||
     item.DocumentNumber ||
     "TANPA_REFERENSI"
   )
-    .replace(/[/\\?%*:|"<>]/g, "-")
+    .replace(/[/\\?%*:| "<>]/g, "-")
     .trim();
 
   const invoiceNumber = (
@@ -115,7 +134,7 @@ export function generateReturnFilename(item: any): string {
     item.ReturnInvoiceNumber ||
     "000"
   )
-    .replace(/[/\\?%*:|"<>]/g, "-")
+    .replace(/[/\\?%*:| "<>]/g, "-")
     .trim();
 
   return `${ref} - ${invoiceNumber}.pdf`;
@@ -135,14 +154,14 @@ export function handlePdfDownload(
 
   switch (source) {
     case "OUTPUT_TAX":
-      filename = generateOutputTaxFilename(item as any);
+      filename = generateOutputTaxFilename(item as PdfItem);
       break;
     case "INPUT_TAX":
-      filename = generateInputTaxFilename(item as any);
+      filename = generateInputTaxFilename(item as PdfItem);
       break;
     case "OUTPUT_RETURN":
     case "INPUT_RETURN":
-      filename = generateReturnFilename(item as any);
+      filename = generateReturnFilename(item as PdfItem);
       break;
     default:
       filename = generateWithholdingFilename(item as WithholdingSlip);

@@ -53,8 +53,68 @@ export function buildEfakturPdfBody(
 
 /**
  * Generate a deduplication key for a data row.
- * Uses RecordId, AggregateIdentifier, or JSON fallback.
+ * Uses RecordId, AggregateIdentifier, or a deterministic JSON fallback.
+ *
+ * The JSON fallback sorts object keys so that two rows with identical
+ * field values but different key ordering produce the SAME key
+ * (preventing missed deduplication). If a row is not a plain object,
+ * it is stringified directly.
  */
 export function getRowDedupeKey(row: Record<string, unknown>): string {
-  return (row.RecordId as string) || (row.AggregateIdentifier as string) || JSON.stringify(row);
+  const id = row.RecordId || row.AggregateIdentifier;
+  if (id) return String(id);
+  return stableStringify(row);
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
+}
+
+/**
+ * Merge new rows into an existing dataset with deduplication.
+ *
+ * Pure function extracted from the scraping loops so it can be unit-tested
+ * without a live XHR/portal. Rows already present (by dedupe key) are skipped;
+ * new rows are appended to `allData` and their keys recorded in `seen`.
+ *
+ * @param allData  Accumulated rows (mutated in place, then returned).
+ * @param seen     Set of already-seen dedupe keys (mutated in place).
+ * @param rows     New rows from the current page/request.
+ * @returns        The rows that were actually added (newRows).
+ */
+export function mergeRows(
+  allData: Record<string, unknown>[],
+  seen: Set<string>,
+  rows: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const added: Record<string, unknown>[] = [];
+  for (const row of rows) {
+    const key = getRowDedupeKey(row);
+    if (!seen.has(key)) {
+      seen.add(key);
+      allData.push(row);
+      added.push(row);
+    }
+  }
+  return added;
+}
+
+/**
+ * Collect the union of all field names across the dataset.
+ * Pure helper extracted from the scraping loops.
+ */
+export function collectFields(data: Record<string, unknown>[]): string[] {
+  const fieldSet = new Set<string>();
+  for (const row of data) {
+    for (const k of Object.keys(row)) fieldSet.add(k);
+  }
+  return [...fieldSet];
 }

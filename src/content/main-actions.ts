@@ -8,6 +8,7 @@
 import { type ExportData, exportXLSX, exportCSV } from "./exporter";
 import type { ExportSource } from "./page-context";
 import { getMultiInvoiceNumbers, showPanel, updatePanelProgress, updatePanelIdle } from "./ui";
+import { postToScraper } from "./bridge";
 import { debugLog, debugWarn } from "./debug";
 
 // ── Types ────────────────────────────────────────────
@@ -135,7 +136,7 @@ export function startScrape(): void {
     status: "Menunggu...",
   });
   updatePanelProgress(0, 0, "0s", "Menangkap request dari Angular...");
-  window.postMessage({ type: "START_SCRAPE", direction: "FROM_CONTENT" }, window.location.origin);
+  postToScraper({ type: "START_SCRAPE" });
 }
 
 /**
@@ -150,7 +151,7 @@ export function startScrape(): void {
  */
 export function handleExportAction(format: "xlsx" | "csv" | "pdf"): boolean {
   if (getIsRunning()) {
-    window.postMessage({ type: "STOP_SCRAPE", direction: "FROM_CONTENT" }, window.location.origin);
+    postToScraper({ type: "STOP_SCRAPE" });
     setIsRunning(false);
     setPendingExportFormat(null);
     updatePanelIdle();
@@ -184,14 +185,10 @@ export function handleExportAction(format: "xlsx" | "csv" | "pdf"): boolean {
       setIsRunning(true);
       showPanel();
       setPendingExportFormat(format);
-      window.postMessage(
-        {
-          type: "SCRAPE_BY_INVOICES",
-          invoiceNumbers: nums2,
-          direction: "FROM_CONTENT",
-        },
-        window.location.origin,
-      );
+      postToScraper({
+        type: "SCRAPE_BY_INVOICES",
+        invoiceNumbers: nums2,
+      });
       return true;
     }
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildEfakturDownloadUrl, buildEfakturPdfBody, getRowDedupeKey } from "../content/scraper-helpers";
+import { buildEfakturDownloadUrl, buildEfakturPdfBody, getRowDedupeKey, mergeRows, collectFields } from "../content/scraper-helpers";
 
 describe("buildEfakturDownloadUrl", () => {
   it("extracts base URL when einvoiceportal/api/ is present", () => {
@@ -135,12 +135,79 @@ describe("getRowDedupeKey", () => {
     expect(getRowDedupeKey({ AggregateIdentifier: "agg-456" })).toBe("agg-456");
   });
 
-  it("returns JSON.stringify when both RecordId and AggregateIdentifier are missing", () => {
-    const row = { Name: "Test", Amount: 100 };
-    expect(getRowDedupeKey(row)).toBe(JSON.stringify(row));
+  it("produces a deterministic key (key-order independent) when RecordId/AggregateIdentifier are missing", () => {
+    const a = { Name: "Test", Amount: 100 };
+    const b = { Amount: 100, Name: "Test" }; // same data, different key order
+    // The two rows are logically identical, so their dedupe keys must match.
+    expect(getRowDedupeKey(a)).toBe(getRowDedupeKey(b));
+    // The key must not depend on insertion order of keys.
+    expect(getRowDedupeKey(a)).toBe('{"Amount":100,"Name":"Test"}');
   });
 
   it("prefers RecordId over AggregateIdentifier when both are present", () => {
     expect(getRowDedupeKey({ RecordId: "rec-1", AggregateIdentifier: "agg-1" })).toBe("rec-1");
+  });
+});
+
+describe("mergeRows", () => {
+  it("appends new rows and returns only the added ones", () => {
+    const allData: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    const added = mergeRows(allData, seen, [{ RecordId: "a" }, { RecordId: "b" }]);
+    expect(added).toHaveLength(2);
+    expect(allData).toHaveLength(2);
+  });
+
+  it("skips duplicates by RecordId across pages (pagination dedupe)", () => {
+    const allData: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    // Page 1
+    mergeRows(allData, seen, [
+      { RecordId: "r1", Name: "A" },
+      { RecordId: "r2", Name: "B" },
+    ]);
+    // Page 2 overlaps r2 and adds r3
+    const added = mergeRows(allData, seen, [
+      { RecordId: "r2", Name: "B" },
+      { RecordId: "r3", Name: "C" },
+    ]);
+    expect(added).toHaveLength(1);
+    expect(added[0]).toMatchObject({ RecordId: "r3" });
+    expect(allData).toHaveLength(3);
+    // No duplicate RecordId in the final dataset
+    const ids = allData.map((r) => r.RecordId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("dedupes by deterministic JSON key when RecordId is missing (order-independent)", () => {
+    const allData: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    mergeRows(allData, seen, [{ Name: "X", Amount: 10 }]);
+    const added = mergeRows(allData, seen, [{ Amount: 10, Name: "X" }]); // same data, swapped keys
+    expect(added).toHaveLength(0); // correctly treated as duplicate
+    expect(allData).toHaveLength(1);
+  });
+
+  it("treats different values with same key shape as distinct", () => {
+    const allData: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    mergeRows(allData, seen, [{ Name: "X", Amount: 10 }]);
+    const added = mergeRows(allData, seen, [{ Name: "X", Amount: 11 }]); // different amount
+    expect(added).toHaveLength(1);
+    expect(allData).toHaveLength(2);
+  });
+});
+
+describe("collectFields", () => {
+  it("returns the union of field names across rows", () => {
+    const fields = collectFields([
+      { a: 1, b: 2 },
+      { b: 3, c: 4 },
+    ]);
+    expect(fields.sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("returns empty array for empty dataset", () => {
+    expect(collectFields([])).toEqual([]);
   });
 });

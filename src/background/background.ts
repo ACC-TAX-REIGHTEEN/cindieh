@@ -3,9 +3,10 @@
 // ============================================================
 
 import { browserAPI } from "../content/browser-shim";
+import { debugLog } from "../content/debug";
 
-console.log("Better Coretax: Background script active");
+debugLog("Better Coretax: Background script active");
 
 browserAPI.runtime.onInstalled.addListener(() => {
-  console.log("Better Coretax: Extension installed/updated");
+  debugLog("Better Coretax: Extension installed/updated");
 });

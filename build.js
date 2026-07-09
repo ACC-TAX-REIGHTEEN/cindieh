@@ -50,7 +50,7 @@ function copyAndModifyAssets() {
 	const manifestPath = path.join(__dirname, "manifest.json");
 	if (fs.existsSync(manifestPath)) {
 		const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-		
+
 		if (browser === "chrome") {
 			// Chrome specific: use service_worker
 			manifest.background = {
@@ -64,16 +64,11 @@ function copyAndModifyAssets() {
 				scripts: ["background/background.js"],
 				type: "module"
 			};
-			// Ensure gecko settings exist
+			// Ensure gecko settings exist (id is sourced from manifest.json)
 			if (!manifest.browser_specific_settings) {
 				manifest.browser_specific_settings = {};
 			}
-			if (!manifest.browser_specific_settings.gecko) {
-				manifest.browser_specific_settings.gecko = {
-					id: "better-coretax-ext-v1@arism.me"
-				};
-			}
-			
+
 			// Set data_collection_permissions
 			manifest.browser_specific_settings.gecko.data_collection_permissions = {
 				required: ["none"],

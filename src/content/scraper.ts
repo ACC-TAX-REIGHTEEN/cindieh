@@ -14,9 +14,8 @@ import {
 } from "./page-context";
 import { debugLog, debugWarn, debugError } from "./debug";
 import type { CapturedRequest, ScrapeMessage, InterceptedXHR } from "./scraper-types";
-import { buildEfakturDownloadUrl, buildEfakturPdfBody, getRowDedupeKey } from "./scraper-helpers";
+import { buildEfakturDownloadUrl, buildEfakturPdfBody, mergeRows, collectFields } from "./scraper-helpers";
 import {
-  makeXhrRequest,
   xhrRequest as xhrRequestFn,
   xhrRequestByInvoice as xhrRequestByInvoiceFn,
 } from "./scraper-xhr";
@@ -24,6 +23,21 @@ import {
 (() => {
   const TIMEOUT = 30000;
   const MAX_ERRORS = 3;
+
+  // ── Bridge token (anti-spoofing) ───────────────────
+  // Read the token that the content script embedded into THIS script's
+  // own <script src> URL. Other MAIN-world scripts cannot read it because
+  // they don't have access to our specific <script> element's src.
+  let bridgeToken = "";
+  try {
+    const selfScript = document.getElementById("__ch_scraper_injected__") as HTMLScriptElement | null;
+    if (selfScript && selfScript.src) {
+      const url = new URL(selfScript.src, location.href);
+      bridgeToken = url.searchParams.get("token") || "";
+    }
+  } catch {
+    bridgeToken = "";
+  }
 
   let isRunning = false;
   let stopRequested = false;
@@ -34,6 +48,8 @@ import {
     if (event.source !== window) return;
     if (event.origin !== window.location.origin) return;
     if (!event.data || event.data.direction !== "FROM_CONTENT") return;
+    // Anti-spoofing: reject messages without the correct bridge token.
+    if (event.data.token !== bridgeToken) return;
 
     const msg = event.data;
 
@@ -112,7 +128,7 @@ import {
 
   function sendToContent(msg: ScrapeMessage): void {
     try {
-      window.postMessage({ ...msg, direction: "FROM_PAGE" }, window.location.origin);
+      window.postMessage({ ...msg, direction: "FROM_PAGE", token: bridgeToken }, window.location.origin);
     } catch {
       // Never let messaging errors stop the scraping loop
     }
@@ -137,7 +153,7 @@ import {
     if (processingResetTimer) clearTimeout(processingResetTimer);
     processingResetTimer = setTimeout(() => {
       if (isProcessingBetterDownload) {
-        console.warn("[Better Coretax] isProcessingBetterDownload reset by timeout");
+        debugWarn("[Better Coretax] isProcessingBetterDownload reset by timeout");
         isProcessingBetterDownload = false;
       }
       processingResetTimer = null;
@@ -155,7 +171,7 @@ import {
   const origAnchorClick = HTMLAnchorElement.prototype.click;
   HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
     if (isProcessingBetterDownload && (this.download || this.href.startsWith("blob:"))) {
-      console.log("[Better Coretax] Memblokir download klik bawaan.");
+      debugLog("[Better Coretax] Memblokir download klik bawaan.");
       clearProcessingFlag();
       return;
     }
@@ -165,7 +181,7 @@ import {
   const origCreateObjectURL = window.URL.createObjectURL;
   window.URL.createObjectURL = function (obj: any) {
     if (isProcessingBetterDownload && obj instanceof Blob && obj.type === "application/pdf") {
-      console.log("[Better Coretax] Memblokir pembuatan blob URL bawaan.");
+      debugLog("[Better Coretax] Memblokir pembuatan blob URL bawaan.");
       // isProcessingBetterDownload = false; // Don't reset yet, might be multiple calls
       return "javascript:void(0)";
     }
@@ -175,7 +191,7 @@ import {
   const origWindowOpen = window.open;
   window.open = function (url?: string | URL, target?: string, features?: string) {
     if (isProcessingBetterDownload) {
-      console.log("[Better Coretax] Memblokir window.open bawaan.");
+      debugLog("[Better Coretax] Memblokir window.open bawaan.");
       return null;
     }
     return origWindowOpen.call(window, url, target, features);
@@ -204,7 +220,10 @@ import {
             },
             window.location.origin,
           );
-          clearProcessingFlag();
+          // NOTE: intentionally do NOT clear the processing flag here. The flag
+          // stays set (auto-reset by setProcessingFlag's 5s timeout) so the
+          // portal's own download/anchor is blocked until this PDF is handled,
+          // preventing a duplicate native download.
           // Return a sanitised response to prevent the page from triggering
           // a secondary download or showing an error to the user.
           return new Response(JSON.stringify({ IsSuccessful: true, Content: "" }), {
@@ -213,7 +232,7 @@ import {
           });
         }
         // PDF data not found in expected location — log warning and pass through
-        console.warn(
+        debugWarn(
           "[Better Coretax] Fetch interceptor: PDF data not found in response.",
           "Response keys:",
           Object.keys(json),
@@ -221,7 +240,7 @@ import {
         clearProcessingFlag();
         return resp;
       } catch (err) {
-        console.error("[Better Coretax] Fetch interceptor error:", err);
+        debugError("[Better Coretax] Fetch interceptor error:", err);
         clearProcessingFlag();
         // Fall through to original fetch on error to avoid breaking the page
         return origFetch.apply(window, args as any);
@@ -229,6 +248,27 @@ import {
     }
     return origFetch.apply(window, args as any);
   };
+
+  // ── Teardown: restore original prototypes ───────────
+  // Restores all monkey-patched globals. Called on full page unload so the
+  // portal is not left intercepted if the extension is disabled without a
+  // hard reload. (On SPA navigations the patch must stay active, so we only
+  // tear down on a real document unload.)
+  function teardownInterceptors(): void {
+    try {
+      XMLHttpRequest.prototype.open = origOpen;
+      XMLHttpRequest.prototype.send = origSend;
+      XMLHttpRequest.prototype.setRequestHeader = origSetHeader;
+      HTMLAnchorElement.prototype.click = origAnchorClick;
+      window.URL.createObjectURL = origCreateObjectURL;
+      window.open = origWindowOpen;
+      window.fetch = origFetch;
+    } catch (err) {
+      debugError("[Better Coretax] teardown failed:", err);
+    }
+  }
+
+  window.addEventListener("pagehide", teardownInterceptors, { once: true });
 
   const filterState: Record<string, any> = {};
   const captureSubscribers: ((req: CapturedRequest) => void)[] = [];
@@ -241,6 +281,8 @@ import {
     if (event.source !== window) return;
     if (event.origin !== window.location.origin) return;
     if (event.data.direction !== "FROM_CONTENT") return;
+    // Anti-spoofing: reject filter messages without the correct bridge token.
+    if (event.data.token !== bridgeToken) return;
     if (event.data.type === "SET_SERVER_FILTER") {
       const { field, value } = event.data;
       if (value) {
@@ -339,7 +381,7 @@ import {
         }
         finalBody = JSON.stringify(parsed);
       } catch (e) {
-        console.error("Better Coretax [Scraper]: Filter injection failed", e);
+        debugError("Better Coretax [Scraper]: Filter injection failed", e);
       }
     }
 
@@ -496,21 +538,14 @@ import {
       });
       try {
         const rows = await xhrRequestByInvoice(lastCaptured, num);
-        for (const row of rows) {
-          const key = getRowDedupeKey(row);
-          if (!seen.has(key)) {
-            seen.add(key);
-            allData.push(row);
-          }
-        }
+        mergeRows(allData, seen, rows);
         await delay(50);
       } catch (err) {
         debugError(`Gagal mencari ${num}:`, err);
       }
     }
     const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
-    const fieldSet = new Set<string>();
-    for (const r of allData) for (const k of Object.keys(r)) fieldSet.add(k);
+    const fieldSet = collectFields(allData);
     sendToContent({
       type: "SCRAPE_COMPLETE",
       data: allData,
@@ -653,17 +688,7 @@ import {
       page++;
       try {
         const rows = await xhrRequest(captured, first, step);
-        const newRows: Record<string, unknown>[] = [];
-
-        for (const row of rows) {
-          // Fallback identifier if RecordId/AggregateIdentifier is missing.
-          const key = getRowDedupeKey(row);
-          if (!seen.has(key)) {
-            seen.add(key);
-            newRows.push(row);
-            allData.push(row);
-          }
-        }
+        const newRows = mergeRows(allData, seen, rows);
 
         const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
 
@@ -789,12 +814,7 @@ import {
       }
 
       // Collect all fields
-      const fieldSet = new Set<string>();
-      for (const r of allData) {
-        for (const k of Object.keys(r)) {
-          fieldSet.add(k);
-        }
-      }
+      const fieldSet = collectFields(allData);
 
       const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
 
