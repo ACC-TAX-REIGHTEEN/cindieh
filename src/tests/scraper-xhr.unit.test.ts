@@ -153,7 +153,7 @@ describe("xhrRequestByInvoice", () => {
 
     const sentBody = JSON.parse(instances[0].send.mock.calls[0][0] as string);
     expect(sentBody.First).toBe(0);
-    expect(sentBody.Rows).toBe(1);
+    expect(sentBody.Rows).toBe(10);
     expect(sentBody.Filters).toHaveLength(1);
     expect(sentBody.Filters[0]).toMatchObject({
       PropertyName: "TaxInvoiceNumber",

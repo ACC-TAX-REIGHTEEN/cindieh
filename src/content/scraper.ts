@@ -3,22 +3,34 @@
 // ============================================================
 // Injected by main.ts into the page to access Angular's XHR.
 // Communicates with content script via window.postMessage.
+//
+// Responsibilities of this file:
+//   1. Read the bridge token from our own <script> src URL.
+//   2. Monkey-patch XHR / fetch / anchor to intercept Coretax
+//      requests and block duplicate native downloads.
+//   3. Maintain the captured-request cache and filter state.
+//   4. Listen for messages from the content script and delegate
+//      to the action functions in scraper-actions.ts.
+//
+// All scraping/download orchestration lives in scraper-actions.ts
+// so it can be unit-tested without a live browser.
 // ============================================================
 
 import {
   type ExportSource,
-  extractFilenameHintFromBody,
   getPageExportSource,
   inferCapturedSource,
   isWithholdingPage,
 } from "./page-context";
 import { debugLog, debugWarn, debugError } from "./debug";
 import type { CapturedRequest, ScrapeMessage, InterceptedXHR } from "./scraper-types";
-import { buildEfakturDownloadUrl, buildEfakturPdfBody, mergeRows, collectFields } from "./scraper-helpers";
+import { buildEfakturDownloadUrl, mergeRows, collectFields } from "./scraper-helpers";
 import {
-  xhrRequest as xhrRequestFn,
-  xhrRequestByInvoice as xhrRequestByInvoiceFn,
-} from "./scraper-xhr";
+  startScraping,
+  startPdfDownload,
+  scrapeByInvoices,
+  type ScraperContext,
+} from "./scraper-actions";
 
 (() => {
   const TIMEOUT = 30000;
@@ -42,7 +54,26 @@ import {
   let isRunning = false;
   let stopRequested = false;
 
-  // ── Listen for messages from content.js ─────────────
+  // ── Shared scraper context ─────────────────────────
+  // Passed to action functions so they don't need to close over
+  // this IIFE's mutable variables directly.
+
+  const ctx: ScraperContext = {
+    isStopRequested: () => stopRequested,
+    sendToContent,
+    postMessage: (msg) => {
+      try {
+        window.postMessage({ ...msg, token: bridgeToken }, window.location.origin);
+      } catch {
+        // never let messaging errors stop the scraping loop
+      }
+    },
+    getMasaPajakFromDOM,
+    timeout: TIMEOUT,
+    maxErrors: MAX_ERRORS,
+  };
+
+  // ── Message listener: content script → scraper ─────
 
   window.addEventListener("message", (event: MessageEvent) => {
     if (event.source !== window) return;
@@ -56,7 +87,11 @@ import {
     if (msg.type === "START_SCRAPE") {
       if (isRunning) return;
       stopRequested = false;
-      startScraping();
+      isRunning = true;
+      startScraping(interceptRequest, ctx).finally(() => {
+        isRunning = false;
+        debugLog("⏹ Scraping finished. isRunning=false");
+      });
     }
 
     if (msg.type === "STOP_SCRAPE") {
@@ -65,8 +100,18 @@ import {
 
     if (msg.type === "START_PDF_DOWNLOAD") {
       if (isRunning) return;
+      if (!lastCaptured) {
+        sendToContent({
+          type: "SCRAPE_ERROR",
+          message: "Tidak ada data request yang tersimpan. Silakan jalankan ekspor terlebih dahulu.",
+        });
+        return;
+      }
       stopRequested = false;
-      startPdfDownload(msg.data as Record<string, unknown>[]);
+      isRunning = true;
+      startPdfDownload(msg.data as Record<string, unknown>[], lastCaptured, ctx).finally(() => {
+        isRunning = false;
+      });
     }
 
     if (msg.type === "SCRAPE_BY_INVOICES") {
@@ -75,12 +120,34 @@ import {
         debugLog("SCRAPE_BY_INVOICES blocked: already running");
         return;
       }
+      if (!lastCaptured) {
+        sendToContent({
+          type: "SCRAPE_ERROR",
+          message: "Tidak ada request tersimpan.",
+        });
+        return;
+      }
       stopRequested = false;
-      scrapeByInvoices(msg.invoiceNumbers as string[]);
+      isRunning = true;
+      scrapeByInvoices(msg.invoiceNumbers as string[], lastCaptured, ctx).finally(() => {
+        isRunning = false;
+      });
     }
   });
 
-  // ── Send message to content.js ──────────────────────
+  // ── sendToContent helper ───────────────────────────
+
+  function sendToContent(msg: ScrapeMessage): void {
+    try {
+      window.postMessage({ ...msg, direction: "FROM_PAGE", token: bridgeToken }, window.location.origin);
+    } catch {
+      // Never let messaging errors stop the scraping loop
+    }
+  }
+
+  (window as any).__scraperSendToContent = sendToContent;
+
+  // ── DOM helpers ────────────────────────────────────
 
   function getVisibleGridSource(): ExportSource | null {
     const grids: { tag: string; source: ExportSource }[] = [
@@ -109,16 +176,13 @@ import {
     if (masaLabel) {
       const container = masaLabel.closest(".form-group.row") || masaLabel.parentElement;
       if (container) {
-        // 1. Try input first
         const input = container.querySelector("input") as HTMLInputElement;
         if (input && input.value) return input.value.trim();
 
-        // 2. Try any component with text content that looks like MM-YYYY or MM/YYYY
         const text = container.textContent || "";
         const match = text.match(/(\d{2}[-/]\d{4})/);
         if (match) return match[1];
 
-        // 3. Fallback to last child text
         const lastChild = container.lastElementChild;
         if (lastChild && lastChild.textContent) return lastChild.textContent.trim();
       }
@@ -126,25 +190,10 @@ import {
     return "";
   }
 
-  function sendToContent(msg: ScrapeMessage): void {
-    try {
-      window.postMessage({ ...msg, direction: "FROM_PAGE", token: bridgeToken }, window.location.origin);
-    } catch {
-      // Never let messaging errors stop the scraping loop
-    }
-  }
+  // ── Global Download Interceptor ────────────────────
+  // Prevents the portal from triggering a duplicate native download
+  // while Better Coretax is handling the PDF.
 
-  (window as any).__scraperSendToContent = sendToContent;
-
-  // ── Intercept XHR to capture Angular's request ──────
-
-  // ── Global XHR Interception Layer ──────────────────
-
-  const origOpen = XMLHttpRequest.prototype.open;
-  const origSend = XMLHttpRequest.prototype.send;
-  const origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
-
-  // ── Global Download Interceptor (to prevent double download) ──
   let isProcessingBetterDownload = false;
   let processingResetTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -168,6 +217,10 @@ import {
     }
   }
 
+  const origOpen = XMLHttpRequest.prototype.open;
+  const origSend = XMLHttpRequest.prototype.send;
+  const origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
+
   const origAnchorClick = HTMLAnchorElement.prototype.click;
   HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
     if (isProcessingBetterDownload && (this.download || this.href.startsWith("blob:"))) {
@@ -179,13 +232,12 @@ import {
   };
 
   const origCreateObjectURL = window.URL.createObjectURL;
-  window.URL.createObjectURL = function (obj: any) {
+  window.URL.createObjectURL = function (obj: Blob | MediaSource) {
     if (isProcessingBetterDownload && obj instanceof Blob && obj.type === "application/pdf") {
       debugLog("[Better Coretax] Memblokir pembuatan blob URL bawaan.");
-      // isProcessingBetterDownload = false; // Don't reset yet, might be multiple calls
       return "javascript:void(0)";
     }
-    return origCreateObjectURL(obj);
+    return origCreateObjectURL.call(window.URL, obj);
   };
 
   const origWindowOpen = window.open;
@@ -197,16 +249,19 @@ import {
     return origWindowOpen.call(window, url, target, features);
   };
 
-  // ── Fetch Interceptor — sole mechanism for DownloadInvoice/download-invoice-document ──
-  // SECURITY: Only intercepts URLs matching the specific Coretax download endpoint.
-  // All other fetch requests pass through unchanged.
+  // ── Fetch Interceptor ──────────────────────────────
+  // Sole mechanism for DownloadInvoice/download-invoice-document.
+  // SECURITY: Only intercepts URLs matching the specific Coretax
+  // download endpoint. All other fetch requests pass through unchanged.
+
   const origFetch = window.fetch;
-  window.fetch = async function (...args: any[]) {
-    const url = typeof args[0] === "string" ? args[0] : (args[0] as Request)?.url;
+  window.fetch = async function (...args: unknown[]) {
+    const url =
+      typeof args[0] === "string" ? args[0] : (args[0] as Request)?.url;
     if (url?.includes("DownloadInvoice/download-invoice-document")) {
       setProcessingFlag();
       try {
-        const resp = await origFetch.apply(window, args as any);
+        const resp = await origFetch.apply(window, args as Parameters<typeof fetch>);
         const json = await resp.clone().json();
         const pdfData = json.Content ?? json.Payload?.Content ?? json.Payload?.Message?.Data;
         if (pdfData) {
@@ -220,18 +275,13 @@ import {
             },
             window.location.origin,
           );
-          // NOTE: intentionally do NOT clear the processing flag here. The flag
-          // stays set (auto-reset by setProcessingFlag's 5s timeout) so the
-          // portal's own download/anchor is blocked until this PDF is handled,
-          // preventing a duplicate native download.
-          // Return a sanitised response to prevent the page from triggering
-          // a secondary download or showing an error to the user.
+          // NOTE: intentionally do NOT clear the processing flag here — the 5s
+          // timeout keeps the native download blocked until we've handled the PDF.
           return new Response(JSON.stringify({ IsSuccessful: true, Content: "" }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
         }
-        // PDF data not found in expected location — log warning and pass through
         debugWarn(
           "[Better Coretax] Fetch interceptor: PDF data not found in response.",
           "Response keys:",
@@ -242,18 +292,16 @@ import {
       } catch (err) {
         debugError("[Better Coretax] Fetch interceptor error:", err);
         clearProcessingFlag();
-        // Fall through to original fetch on error to avoid breaking the page
-        return origFetch.apply(window, args as any);
+        return origFetch.apply(window, args as Parameters<typeof fetch>);
       }
     }
-    return origFetch.apply(window, args as any);
+    return origFetch.apply(window, args as Parameters<typeof fetch>);
   };
 
-  // ── Teardown: restore original prototypes ───────────
-  // Restores all monkey-patched globals. Called on full page unload so the
-  // portal is not left intercepted if the extension is disabled without a
-  // hard reload. (On SPA navigations the patch must stay active, so we only
-  // tear down on a real document unload.)
+  // ── Teardown ───────────────────────────────────────
+  // Restore all monkey-patched globals on full page unload.
+  // (SPA navigations keep the patch active intentionally.)
+
   function teardownInterceptors(): void {
     try {
       XMLHttpRequest.prototype.open = origOpen;
@@ -270,26 +318,27 @@ import {
 
   window.addEventListener("pagehide", teardownInterceptors, { once: true });
 
-  const filterState: Record<string, any> = {};
+  // ── Filter state & request cache ──────────────────
+
+  const filterState: Record<string, { value: unknown; matchMode: string }> = {};
   const captureSubscribers: ((req: CapturedRequest) => void)[] = [];
   let lastCaptured: CapturedRequest | null = null;
   let lastCapturedTime = 0;
 
-  // ── Message Listener for Filters ───────────────────
+  // ── Message listener: filter updates ──────────────
 
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
     if (event.origin !== window.location.origin) return;
     if (event.data.direction !== "FROM_CONTENT") return;
-    // Anti-spoofing: reject filter messages without the correct bridge token.
     if (event.data.token !== bridgeToken) return;
+
     if (event.data.type === "SET_SERVER_FILTER") {
       const { field, value } = event.data;
       if (value) {
-        // Invalidate cache when filter changes to ensure fresh request
+        // Invalidate cache when filter changes to ensure a fresh request
         lastCaptured = null;
         lastCapturedTime = 0;
-        // Support array values for multi-invoice filtering
         filterState[field] = {
           value,
           matchMode: Array.isArray(value) ? "equals" : "contains",
@@ -307,7 +356,7 @@ import {
     }
   });
 
-  // ── Prototype Overrides ────────────────────────────
+  // ── XHR prototype overrides ────────────────────────
 
   XMLHttpRequest.prototype.open = function (
     this: InterceptedXHR,
@@ -344,7 +393,7 @@ import {
 
     const isTargetApi = isKnownSource || (!!pageSource && isPaginatedGridRequest);
 
-    // 1. Inject Filter (Strategi B)
+    // 1. Inject active filters into the request body
     if (isTargetApi && typeof body === "string") {
       try {
         const parsed = JSON.parse(body);
@@ -352,27 +401,23 @@ import {
         if (!parsed[filterKey]) parsed[filterKey] = [];
 
         if (Array.isArray(parsed[filterKey])) {
-          // Remove existing extension-injected filters to prevent duplicates
+          // Remove previously-injected extension filters to prevent duplicates
           const extFields = ["Reference", "TaxInvoiceNumber"];
           parsed[filterKey] = parsed[filterKey].filter(
             (f: { PropertyName?: string }) => !extFields.includes(f.PropertyName || ""),
           );
 
-          // Inject active filters
           for (const [field, config] of Object.entries(filterState)) {
-            const cfg = config as { value: unknown; matchMode?: string };
-            const values = Array.isArray(cfg.value) ? cfg.value : [cfg.value];
-            const matchMode = cfg.matchMode || "contains";
+            const values = Array.isArray(config.value) ? config.value : [config.value];
             values.forEach((val: unknown, idx: number) => {
               const filterEntry: Record<string, unknown> = {
                 PropertyName: field,
                 Value: val,
-                MatchMode: matchMode,
+                MatchMode: config.matchMode,
                 CaseSensitive: false,
                 AsString: false,
               };
-              // Add LogicalOperator OR for multi-value filters (except first)
-              if (Array.isArray(cfg.value) && idx > 0) {
+              if (Array.isArray(config.value) && idx > 0) {
                 filterEntry.LogicalOperator = "OR";
               }
               parsed[filterKey].push(filterEntry);
@@ -385,7 +430,7 @@ import {
       }
     }
 
-    // 2. Data Inspection & Capture
+    // 2. Capture the request for later scraping use
     if (isTargetApi) {
       const currentFinalBody = finalBody;
       const capturedUrl = this.__url;
@@ -396,24 +441,21 @@ import {
           respData = JSON.parse((this as XMLHttpRequest).responseText);
         } catch {}
 
+        if (!Array.isArray((respData as { Payload?: { Data?: unknown[] } })?.Payload?.Data)) {
+          return;
+        }
+
         const captured: CapturedRequest = {
           url: capturedUrl || "",
           headers: { ...(capturedHeaders || {}) },
           body: null,
           rawBody: typeof currentFinalBody === "string" ? currentFinalBody : "",
           response: respData,
-          initialData: Array.isArray((respData as { Payload?: { Data?: unknown[] } })?.Payload?.Data)
-            ? (respData as { Payload: { Data: Record<string, unknown>[] } }).Payload.Data
-            : [],
+          initialData: (respData as { Payload: { Data: Record<string, unknown>[] } }).Payload.Data,
           initialFirst: 0,
           source: inferredSource || pageSource || "OUTPUT_TAX",
         };
 
-        if (!Array.isArray((respData as { Payload?: { Data?: unknown[] } })?.Payload?.Data)) {
-          return;
-        }
-
-        // Update global cache
         lastCaptured = captured;
         lastCapturedTime = Date.now();
 
@@ -426,7 +468,7 @@ import {
     return origSend.call(this, finalBody);
   };
 
-  // ── Intercept XHR to capture Angular's request ──────
+  // ── Request interceptor ────────────────────────────
 
   function interceptRequest(): Promise<CapturedRequest> {
     return new Promise<CapturedRequest>((resolve, reject) => {
@@ -436,12 +478,10 @@ import {
       const canReuseCachedRequest =
         lastCaptured &&
         Date.now() - lastCapturedTime < 300000 &&
-        // Ensure we only reuse if the source matches EXACTLY what is currently on screen
         ((visibleSource !== null && lastCaptured.source === visibleSource) ||
           (currentPageSource !== null && lastCaptured.source === currentPageSource) ||
           (isWithholdingPage() && lastCaptured.source === "WITHHOLDING_SLIPS"));
 
-      // 1. Check if we have a "warm" cache from the same portal context
       if (canReuseCachedRequest) {
         debugLog("Using cached request from history.");
         resolved = true;
@@ -455,14 +495,13 @@ import {
       };
       captureSubscribers.push(sub);
 
-      // 2. Strategy: Try clicking "Next Page" first
+      // Try clicking "Next Page" to trigger an XHR, then fall back to search/refresh
       setTimeout(() => {
         const nextBtn = document.querySelector("button.p-paginator-next:not(.p-disabled)") as HTMLButtonElement;
         if (nextBtn) {
           debugLog("Triggering Next Page...");
           nextBtn.click();
         } else {
-          // 3. Fallback Strategy: Try clicking "Refresh" or "Cari" if Next is not available
           debugLog("Next button not available/disabled. Trying fallback trigger...");
           const fallbackBtn = Array.from(document.querySelectorAll("button")).find((b) => {
             const t = b.textContent?.toLowerCase() || "";
@@ -485,10 +524,8 @@ import {
         }
       }, 500);
 
-      // Timeout
       setTimeout(() => {
         if (!resolved) {
-          // Remove subscriber if still there
           const idx = captureSubscribers.indexOf(sub);
           if (idx > -1) captureSubscribers.splice(idx, 1);
           reject(
@@ -501,459 +538,6 @@ import {
     });
   }
 
-  // ── XHR request wrappers ─────────────────────────────────
-  // Delegate to scraper-xhr.ts with the closure's TIMEOUT.
-
-  function xhrRequest(captured: CapturedRequest, first: number, rows: number): Promise<Record<string, unknown>[]> {
-    return xhrRequestFn(captured, first, rows, TIMEOUT);
-  }
-
-  function xhrRequestByInvoice(captured: CapturedRequest, invoiceNumber: string): Promise<Record<string, unknown>[]> {
-    return xhrRequestByInvoiceFn(captured, invoiceNumber, TIMEOUT);
-  }
-
-  /** Scrape by individual invoice numbers — much faster than full scrape. */
-  async function scrapeByInvoices(invoiceNumbers: string[]): Promise<void> {
-    if (!lastCaptured) {
-      sendToContent({
-        type: "SCRAPE_ERROR",
-        message: "Tidak ada request tersimpan.",
-      });
-      return;
-    }
-    isRunning = true;
-    const startTime = Date.now();
-    const allData: Record<string, unknown>[] = [];
-    const seen = new Set<string>();
-    for (let i = 0; i < invoiceNumbers.length; i++) {
-      if (stopRequested) break;
-      const num = invoiceNumbers[i];
-      const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
-      sendToContent({
-        type: "SCRAPE_PROGRESS",
-        total: i + 1,
-        page: i + 1,
-        elapsed,
-        status: `Mencari: ${num} (${i + 1}/${invoiceNumbers.length})`,
-      });
-      try {
-        const rows = await xhrRequestByInvoice(lastCaptured, num);
-        mergeRows(allData, seen, rows);
-        await delay(50);
-      } catch (err) {
-        debugError(`Gagal mencari ${num}:`, err);
-      }
-    }
-    const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
-    const fieldSet = collectFields(allData);
-    sendToContent({
-      type: "SCRAPE_COMPLETE",
-      data: allData,
-      fields: [...fieldSet],
-      total: allData.length,
-      pages: invoiceNumbers.length,
-      elapsed: totalElapsed,
-      source: lastCaptured.source,
-    });
-    isRunning = false;
-  }
-
-  /**
-   * Fetch PDF document from DJP API
-   */
-  function xhrDownloadPdf(captured: CapturedRequest, row: any): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      const url = captured.url.replace("GetMyWithholdingSlip", "DownloadWithholdingSlips/download-pdf-document");
-      xhr.open("POST", url, true);
-
-      for (const [k, v] of Object.entries(captured.headers)) {
-        xhr.setRequestHeader(k, v);
-      }
-
-      xhr.timeout = TIMEOUT;
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const res = JSON.parse(xhr.responseText);
-            if (res.IsSuccessful && res.Payload && res.Payload.Message && res.Payload.Message.Data) {
-              resolve(res.Payload.Message.Data);
-            } else {
-              reject(
-                new Error(
-                  res.Message ||
-                    (res.Payload && res.Payload.Message && res.Payload.Message.ErrorMessage) ||
-                    "Gagal mengambil konten PDF",
-                ),
-              );
-            }
-          } catch {
-            reject(new Error("Parse error saat download PDF"));
-          }
-        } else {
-          reject(new Error(`HTTP ${xhr.status} saat download PDF`));
-        }
-      };
-      xhr.onerror = () => reject(new Error("Network error saat download PDF"));
-      xhr.ontimeout = () => reject(new Error("Timeout saat download PDF"));
-
-      // Map identifiers from row to expected request body
-      const capturedBody = captured.rawBody ? JSON.parse(captured.rawBody) : {};
-      const body = {
-        WithholdingSlipsAggregateIdentifier: row.WithholdingslipsAggregateIdentifier,
-        WithholdingSlipsRecordIdentifier: row.RecordId,
-        DocumentAggregateIdentifier: row.DocumentFormAggregateIdentifier,
-        TaxpayerAggregateIdentifier: row.TaxpayerAggregateIdentifier,
-        EbupotType: capturedBody.WithholdingType || "EBUPOTBPU",
-        DocumentDate: row.WithholdingSlipsDate,
-        TaxIdentificationNumber: row.TaxIdentificationNumber,
-      };
-
-      debugLog("Mengirim request PDF dengan payload:", body);
-      xhr.send(JSON.stringify(body));
-    });
-  }
-
-  /**
-   * Fetch PDF document from DJP API for efaktur pages
-   * (Pajak Masukan, Pajak Keluaran, Retur)
-   */
-  function xhrDownloadEfakturPdf(captured: CapturedRequest, row: any, source: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      const url = buildEfakturDownloadUrl(captured.url);
-      xhr.open("POST", url, true);
-
-      for (const [k, v] of Object.entries(captured.headers)) {
-        xhr.setRequestHeader(k, v);
-      }
-
-      xhr.timeout = TIMEOUT;
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const res = JSON.parse(xhr.responseText);
-            // PDF data: res.Content (top-level) or res.Payload.Message.Data
-            const pdfData =
-              res.Content || (res.IsSuccessful && res.Payload?.Message?.Data) || res.Payload?.Data || res.Data;
-            if (pdfData && typeof pdfData === "string" && pdfData.length > 100) {
-              resolve(pdfData);
-            } else {
-              reject(
-                new Error(
-                  res.Message || res.Payload?.Message?.ErrorMessage || "Gagal mengambil konten PDF (data kosong)",
-                ),
-              );
-            }
-          } catch {
-            reject(new Error("Parse error saat download PDF"));
-          }
-        } else {
-          reject(new Error(`HTTP ${xhr.status} saat download PDF`));
-        }
-      };
-      xhr.onerror = () => reject(new Error("Network error saat download PDF"));
-      xhr.ontimeout = () => reject(new Error("Timeout saat download PDF"));
-
-      const capturedBody = captured.rawBody ? JSON.parse(captured.rawBody) : {};
-      const body = buildEfakturPdfBody(row, source, capturedBody);
-
-      debugLog("Mengirim request PDF efaktur:", { url, body });
-      xhr.send(JSON.stringify(body));
-    });
-  }
-
-  function delay(ms: number): Promise<void> {
-    return new Promise((r) => setTimeout(r, ms));
-  }
-
-  // ── Paginated scraping loop ────────────────────────
-
-  async function scrapePaginated(
-    captured: CapturedRequest,
-    step: number,
-    delayMs: number,
-  ): Promise<{ allData: Record<string, unknown>[]; page: number }> {
-    const allData: Record<string, unknown>[] = [];
-    const seen = new Set<string>();
-    let page = 0;
-    let first = 0;
-    let keepGoing = true;
-    let errorCount = 0;
-    const startTime = Date.now();
-
-    while (keepGoing && !stopRequested) {
-      page++;
-      try {
-        const rows = await xhrRequest(captured, first, step);
-        const newRows = mergeRows(allData, seen, rows);
-
-        const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
-
-        debugLog(`Page ${page}: ${rows.length} rows, ${newRows.length} new, total=${allData.length}, ${elapsed}`);
-
-        sendToContent({
-          type: "SCRAPE_PROGRESS",
-          total: allData.length,
-          page,
-          elapsed,
-          status: `Page ${page}: ${rows.length} baris, ${newRows.length} baru`,
-        });
-
-        if (rows.length < step) {
-          keepGoing = false;
-        } else {
-          first += step;
-          errorCount = 0;
-          await delay(delayMs);
-        }
-      } catch (err) {
-        errorCount++;
-        const errMsg = err instanceof Error ? err.message : String(err);
-        if (errorCount >= MAX_ERRORS) {
-          keepGoing = false;
-          sendToContent({
-            type: "SCRAPE_ERROR",
-            message: `${MAX_ERRORS} error berturut-turut: ${errMsg}`,
-          });
-        } else {
-          await delay(2000);
-        }
-      }
-    }
-
-    return { allData, page };
-  }
-
-  // ── Bulk PDF download for withholding slips ─────────
-
-  async function downloadBulkWithholdingPdf(
-    captured: CapturedRequest,
-    allData: Record<string, unknown>[],
-    page: number,
-    totalElapsed: string,
-  ): Promise<number> {
-    let failureCount = 0;
-    const total = allData.length;
-    debugLog(`Starting Bulk PDF download for ${total} items...`);
-
-    for (let i = 0; i < total; i++) {
-      if (stopRequested) break;
-
-      const row = allData[i];
-      const status = `Mengunduh PDF ${i + 1}/${total}: ${row.WithholdingSlipNumber || "..."}`;
-
-      sendToContent({
-        type: "SCRAPE_PROGRESS",
-        total: i + 1,
-        page,
-        elapsed: totalElapsed,
-        status: status,
-        currentIndex: i + 1,
-        totalCount: total,
-        failureCount: failureCount,
-      });
-
-      try {
-        const base64 = await xhrDownloadPdf(captured, row);
-        // Send the individual PDF to content script to trigger browser download
-        window.postMessage(
-          {
-            type: "DOWNLOAD_PDF_ITEM",
-            base64: base64,
-            item: row,
-            direction: "FROM_PAGE",
-          },
-          window.location.origin,
-        );
-
-        // Wait a bit between downloads to be safe
-        await delay(800);
-      } catch (err) {
-        failureCount++;
-        debugError(`Gagal unduh PDF idx ${i}:`, err);
-        // Continue to next file even if one fails
-      }
-    }
-
-    return failureCount;
-  }
-
-  // ── Main scraping function ──────────────────────────
-
-  async function startScraping(): Promise<void> {
-    isRunning = true;
-    debugLog("▶ Starting scrape...");
-
-    try {
-      sendToContent({
-        type: "SCRAPE_PROGRESS",
-        total: 0,
-        page: 0,
-        elapsed: "0s",
-        status: "Menangkap request dari Angular...",
-      });
-
-      const captured = await interceptRequest();
-      const startTime = Date.now();
-
-      const isSpt =
-        captured.source === "SPT_A2" || captured.source === "SPT_B2" || captured.source.startsWith("PPH_21_");
-      // Boost OutputTax (e-faktur) step to 500 per page and reduce delay to 100ms
-      const step = isSpt ? 1000 : 500;
-      const delayMs = isSpt ? 150 : 100;
-
-      const { allData, page } = await scrapePaginated(captured, step, delayMs);
-
-      if (stopRequested) {
-        debugLog("⏹ Stopped by user.");
-        isRunning = false;
-        return;
-      }
-
-      // Collect all fields
-      const fieldSet = collectFields(allData);
-
-      const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
-
-      debugLog(`✅ Complete: ${allData.length} records in ${totalElapsed}`);
-
-      let filenameHint = extractFilenameHintFromBody(captured.rawBody, captured.source) || "";
-
-      // If body doesn't have it (PPh 21/26), try DOM header
-      if (!filenameHint && captured.source.startsWith("PPH_21_")) {
-        filenameHint = getMasaPajakFromDOM();
-        debugLog("Filename hint from DOM:", filenameHint);
-      }
-
-      let failureCount = 0;
-      if (captured.source === "WITHHOLDING_SLIPS") {
-        failureCount = await downloadBulkWithholdingPdf(captured, allData, page, totalElapsed);
-      }
-
-      sendToContent({
-        type: "SCRAPE_COMPLETE",
-        data: allData,
-        fields: [...fieldSet],
-        total: allData.length,
-        pages: page,
-        elapsed: totalElapsed,
-        filenameHint: filenameHint || undefined,
-        source: captured.source,
-        failureCount: failureCount,
-      });
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      debugError("❌ Error:", errMsg);
-
-      sendToContent({
-        type: "SCRAPE_ERROR",
-        message: errMsg,
-      });
-    }
-
-    debugLog("⏹ Scraping finished. isRunning=false");
-    isRunning = false;
-  }
-
-  /**
-   * Start bulk PDF download for efaktur pages using cached request data.
-   * Called from main.ts after scrape completes or when data is already available.
-   */
-  async function startPdfDownload(data: Record<string, unknown>[]): Promise<void> {
-    if (!lastCaptured) {
-      sendToContent({
-        type: "SCRAPE_ERROR",
-        message: "Tidak ada data request yang tersimpan. Silakan jalankan ekspor terlebih dahulu.",
-      });
-      return;
-    }
-
-    isRunning = true;
-    const source = lastCaptured.source;
-    const startTime = Date.now();
-    let failureCount = 0;
-    const total = data.length;
-
-    debugLog(`▶ Starting Bulk PDF download for ${total} efaktur items (source: ${source})...`);
-
-    sendToContent({
-      type: "SCRAPE_PROGRESS",
-      total: 0,
-      page: 0,
-      elapsed: "0s",
-      status: `Memulai unduh ${total} PDF...`,
-      currentIndex: 0,
-      totalCount: total,
-      failureCount: 0,
-    });
-
-    for (let i = 0; i < total; i++) {
-      if (stopRequested) {
-        debugLog("⏹ PDF download stopped by user.");
-        break;
-      }
-
-      const row = data[i];
-      const ref = (row.Reference as string) || (row.TaxInvoiceNumber as string) || "...";
-      const status = `Mengunduh PDF ${i + 1}/${total}: ${ref}`;
-
-      const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
-      sendToContent({
-        type: "SCRAPE_PROGRESS",
-        total: i + 1,
-        page: 0,
-        elapsed,
-        status,
-        currentIndex: i + 1,
-        totalCount: total,
-        failureCount,
-      });
-
-      try {
-        const base64 = await xhrDownloadEfakturPdf(lastCaptured, row, source);
-        // Send the individual PDF to content script to trigger browser download
-        window.postMessage(
-          {
-            type: "DOWNLOAD_PDF_ITEM",
-            base64,
-            item: row,
-            source,
-            direction: "FROM_PAGE",
-          },
-          window.location.origin,
-        );
-
-        // Wait between downloads to avoid rate limiting
-        await delay(800);
-      } catch (err) {
-        failureCount++;
-        debugError(`Gagal unduh PDF efaktur idx ${i} (${ref}):`, err);
-        // Continue to next file even if one fails
-      }
-    }
-
-    const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
-    debugLog(
-      `✅ PDF download complete: ${total - failureCount}/${total} succeeded, ${failureCount} failed in ${totalElapsed}`,
-    );
-
-    sendToContent({
-      type: "SCRAPE_COMPLETE",
-      data,
-      fields: [],
-      total,
-      pages: 0,
-      elapsed: totalElapsed,
-      source,
-      failureCount,
-    });
-
-    isRunning = false;
-  }
-
-  // Signal that injected script is ready
+  // Signal that the injected script is ready
   sendToContent({ type: "INJECTED_READY" });
 })();

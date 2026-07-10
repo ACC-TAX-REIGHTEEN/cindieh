@@ -5,6 +5,7 @@
 // Depends on XMLHttpRequest (browser global).
 // ============================================================
 
+import { buildEfakturDownloadUrl, buildEfakturPdfBody } from "./scraper-helpers";
 import type { CapturedRequest } from "./scraper-types";
 
 /**
@@ -72,7 +73,7 @@ export function xhrRequestByInvoice(
     captured,
     {
       First: 0,
-      Rows: 1,
+      Rows: 10,
       [fk]: [
         {
           PropertyName: "TaxInvoiceNumber",
@@ -85,4 +86,118 @@ export function xhrRequestByInvoice(
     },
     timeout,
   );
+}
+
+/**
+ * Download a withholding slip PDF from the DJP API.
+ * Returns the base64-encoded PDF content.
+ */
+export function xhrDownloadWithholdingPdf(
+  captured: CapturedRequest,
+  row: Record<string, unknown>,
+  timeout: number,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const url = captured.url.replace("GetMyWithholdingSlip", "DownloadWithholdingSlips/download-pdf-document");
+    xhr.open("POST", url, true);
+
+    for (const [k, v] of Object.entries(captured.headers)) {
+      xhr.setRequestHeader(k, v);
+    }
+
+    xhr.timeout = timeout;
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const res = JSON.parse(xhr.responseText);
+          if (res.IsSuccessful && res.Payload?.Message?.Data) {
+            resolve(res.Payload.Message.Data);
+          } else {
+            reject(
+              new Error(
+                res.Message ||
+                  res.Payload?.Message?.ErrorMessage ||
+                  "Gagal mengambil konten PDF",
+              ),
+            );
+          }
+        } catch {
+          reject(new Error("Parse error saat download PDF"));
+        }
+      } else {
+        reject(new Error(`HTTP ${xhr.status} saat download PDF`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Network error saat download PDF"));
+    xhr.ontimeout = () => reject(new Error("Timeout saat download PDF"));
+
+    const capturedBody = captured.rawBody ? JSON.parse(captured.rawBody) : {};
+    const body = {
+      WithholdingSlipsAggregateIdentifier: row.WithholdingslipsAggregateIdentifier,
+      WithholdingSlipsRecordIdentifier: row.RecordId,
+      DocumentAggregateIdentifier: row.DocumentFormAggregateIdentifier,
+      TaxpayerAggregateIdentifier: row.TaxpayerAggregateIdentifier,
+      EbupotType: capturedBody.WithholdingType || "EBUPOTBPU",
+      DocumentDate: row.WithholdingSlipsDate,
+      TaxIdentificationNumber: row.TaxIdentificationNumber,
+    };
+
+    xhr.send(JSON.stringify(body));
+  });
+}
+
+/**
+ * Download an efaktur PDF (Pajak Keluaran, Masukan, or Retur) from the DJP API.
+ * Returns the base64-encoded PDF content.
+ */
+export function xhrDownloadEfakturPdf(
+  captured: CapturedRequest,
+  row: Record<string, unknown>,
+  source: string,
+  timeout: number,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const url = buildEfakturDownloadUrl(captured.url);
+    xhr.open("POST", url, true);
+
+    for (const [k, v] of Object.entries(captured.headers)) {
+      xhr.setRequestHeader(k, v);
+    }
+
+    xhr.timeout = timeout;
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const res = JSON.parse(xhr.responseText);
+          // PDF data: res.Content (top-level) or res.Payload.Message.Data
+          const pdfData =
+            res.Content || (res.IsSuccessful && res.Payload?.Message?.Data) || res.Payload?.Data || res.Data;
+          if (pdfData && typeof pdfData === "string" && pdfData.length > 100) {
+            resolve(pdfData);
+          } else {
+            reject(
+              new Error(
+                res.Message || res.Payload?.Message?.ErrorMessage || "Gagal mengambil konten PDF (data kosong)",
+              ),
+            );
+          }
+        } catch {
+          reject(new Error("Parse error saat download PDF"));
+        }
+      } else {
+        reject(new Error(`HTTP ${xhr.status} saat download PDF`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Network error saat download PDF"));
+    xhr.ontimeout = () => reject(new Error("Timeout saat download PDF"));
+
+    const capturedBody = captured.rawBody ? JSON.parse(captured.rawBody) : {};
+    const body = buildEfakturPdfBody(row, source, capturedBody);
+
+    xhr.send(JSON.stringify(body));
+  });
 }
