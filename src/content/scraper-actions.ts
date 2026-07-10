@@ -331,36 +331,83 @@ export async function startPdfDownload(
  * targeted requests. Much faster than a full paginated scrape when
  * the user only needs a small subset of invoices.
  * Caller is responsible for `isRunning` state.
+ *
+ * Each invoice number is retried up to MAX_INVOICE_RETRIES times with
+ * exponential backoff before being skipped. If consecutive failures
+ * exceed ctx.maxErrors the entire operation is aborted.
  */
 export async function scrapeByInvoices(
   invoiceNumbers: string[],
   lastCaptured: CapturedRequest,
   ctx: ScraperContext,
 ): Promise<void> {
+  const MAX_INVOICE_RETRIES = 2;
+  const BACKOFF_BASE_MS = 1000;
+
   const startTime = Date.now();
   const allData: Record<string, unknown>[] = [];
   const seen = new Set<string>();
+  let consecutiveFailures = 0;
 
   for (let i = 0; i < invoiceNumbers.length; i++) {
     if (ctx.isStopRequested()) break;
 
     const num = invoiceNumbers[i];
-    const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
+    let success = false;
 
-    ctx.sendToContent({
-      type: "SCRAPE_PROGRESS",
-      total: i + 1,
-      page: i + 1,
-      elapsed,
-      status: `Mencari: ${num} (${i + 1}/${invoiceNumbers.length})`,
-    });
+    for (let attempt = 0; attempt <= MAX_INVOICE_RETRIES; attempt++) {
+      if (ctx.isStopRequested()) break;
 
-    try {
-      const rows = await xhrRequestByInvoiceFn(lastCaptured, num, ctx.timeout);
-      mergeRows(allData, seen, rows);
-      await delay(50);
-    } catch (err) {
-      debugError(`Gagal mencari ${num}:`, err);
+      if (attempt > 0) {
+        const backoffMs = BACKOFF_BASE_MS * attempt;
+        const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
+        ctx.sendToContent({
+          type: "SCRAPE_PROGRESS",
+          total: allData.length,
+          page: i + 1,
+          elapsed,
+          status: `Mencoba ulang: ${num} (percobaan ${attempt + 1}/${MAX_INVOICE_RETRIES + 1})`,
+        });
+        await delay(backoffMs);
+      } else {
+        const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
+        ctx.sendToContent({
+          type: "SCRAPE_PROGRESS",
+          total: allData.length,
+          page: i + 1,
+          elapsed,
+          status: `Mencari: ${num} (${i + 1}/${invoiceNumbers.length})`,
+        });
+      }
+
+      try {
+        const rows = await xhrRequestByInvoiceFn(lastCaptured, num, ctx.timeout);
+        mergeRows(allData, seen, rows);
+        consecutiveFailures = 0;
+        success = true;
+        await delay(50);
+        break;
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (attempt < MAX_INVOICE_RETRIES) {
+          debugLog(`Gagal mencari ${num} (percobaan ${attempt + 1}), akan dicoba ulang: ${errMsg}`);
+        } else {
+          debugError(`Gagal mencari ${num} setelah ${MAX_INVOICE_RETRIES + 1} percobaan:`, err);
+        }
+      }
+    }
+
+    if (!success) {
+      consecutiveFailures++;
+      if (consecutiveFailures >= ctx.maxErrors) {
+        const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
+        ctx.sendToContent({
+          type: "SCRAPE_ERROR",
+          message: `${ctx.maxErrors} kegagalan berturut-turut saat mencari faktur. Proses dihentikan.`,
+        });
+        debugError(`scrapeByInvoices: aborted after ${ctx.maxErrors} consecutive failures`);
+        return;
+      }
     }
   }
 
