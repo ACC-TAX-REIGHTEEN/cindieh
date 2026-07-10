@@ -6,7 +6,7 @@
 // ============================================================
 
 import { isWithholdingPage } from "./page-context";
-import { exportBtnEl, xlsxBtnEl, csvBtnEl } from "./button-state";
+import { getExportBtnEl, getXlsxBtnEl, getCsvBtnEl } from "./button-state";
 
 // ── Floating Info State ──────────────────────────────
 
@@ -173,12 +173,10 @@ export function updatePanelProgress(total: number, page: number, elapsed: string
 
   // Update button state based on page type
   if (isWithholdingPage()) {
-    // Withholding page: update single export button
-    setExportButtonState(exportBtnEl, "pdf", true);
+    setExportButtonState(getExportBtnEl(), "pdf", true);
   } else {
-    // Non-withholding page: update XLSX and CSV buttons
-    setExportButtonState(xlsxBtnEl, "xlsx", true);
-    setExportButtonState(csvBtnEl, "csv", true);
+    setExportButtonState(getXlsxBtnEl(), "xlsx", true);
+    setExportButtonState(getCsvBtnEl(), "csv", true);
   }
 
   els.progressBar.style.width = `${Math.min(95, page * 10 || 5)}%`;
@@ -203,11 +201,11 @@ export function updatePanelComplete(total: number, pages: number, elapsed: strin
 
   if (isWithholdingPage()) {
     // Restore single export button
-    setExportButtonState(exportBtnEl, "pdf", false);
+    setExportButtonState(getExportBtnEl(), "pdf", false);
   } else {
     // Restore XLSX and CSV buttons
-    setExportButtonState(xlsxBtnEl, "xlsx", false);
-    setExportButtonState(csvBtnEl, "csv", false);
+    setExportButtonState(getXlsxBtnEl(), "xlsx", false);
+    setExportButtonState(getCsvBtnEl(), "csv", false);
   }
 
   els.progressBar.style.width = "100%";
@@ -220,12 +218,10 @@ export function updatePanelError(message: string): void {
   els.statusText.textContent = `❌ ${message}`;
 
   if (isWithholdingPage()) {
-    // Restore single export button
-    setExportButtonState(exportBtnEl, "pdf", false);
+    setExportButtonState(getExportBtnEl(), "pdf", false);
   } else {
-    // Restore XLSX and CSV buttons
-    setExportButtonState(xlsxBtnEl, "xlsx", false);
-    setExportButtonState(csvBtnEl, "csv", false);
+    setExportButtonState(getXlsxBtnEl(), "xlsx", false);
+    setExportButtonState(getCsvBtnEl(), "csv", false);
   }
 }
 
@@ -236,12 +232,10 @@ export function updatePanelIdle(): void {
   statsEl.classList.add("ch-hidden");
 
   if (isWithholdingPage()) {
-    // Restore single export button
-    setExportButtonState(exportBtnEl, "pdf", false);
+    setExportButtonState(getExportBtnEl(), "pdf", false);
   } else {
-    // Restore XLSX and CSV buttons
-    setExportButtonState(xlsxBtnEl, "xlsx", false);
-    setExportButtonState(csvBtnEl, "csv", false);
+    setExportButtonState(getXlsxBtnEl(), "xlsx", false);
+    setExportButtonState(getCsvBtnEl(), "csv", false);
   }
 }
 

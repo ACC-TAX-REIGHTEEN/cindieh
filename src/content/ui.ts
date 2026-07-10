@@ -36,10 +36,10 @@ import {
   setCsvBtnEl,
   setPdfBtnEl,
   resetAllButtonRefs,
-  exportBtnEl,
-  xlsxBtnEl,
-  csvBtnEl,
-  pdfBtnEl,
+  getExportBtnEl,
+  getXlsxBtnEl,
+  getCsvBtnEl,
+  getPdfBtnEl,
 } from "./button-state";
 
 // ── Re-export page-context functions ──────────────────
@@ -162,8 +162,9 @@ export function injectExportButton(retries = MAX_RETRIES): void {
         isInjected = false;
         if (xlsxBtn) xlsxBtn.remove();
         if (csvBtn) csvBtn.remove();
-        if (pdfBtnEl) {
-          pdfBtnEl.remove();
+        const pdfBtn = getPdfBtnEl();
+        if (pdfBtn) {
+          pdfBtn.remove();
           setPdfBtnEl(null);
         }
       } else if (!isButtonPlacedCorrectly(xlsxBtn)) {
@@ -174,8 +175,9 @@ export function injectExportButton(retries = MAX_RETRIES): void {
         isInjected = false;
         xlsxBtn.remove();
         if (csvBtn) csvBtn.remove();
-        if (pdfBtnEl) {
-          pdfBtnEl.remove();
+        const pdfBtn = getPdfBtnEl();
+        if (pdfBtn) {
+          pdfBtn.remove();
           setPdfBtnEl(null);
         }
       } else {
@@ -253,9 +255,10 @@ export function injectExportButton(retries = MAX_RETRIES): void {
   // For withholding pages: single "Download PDF" button
   if (isWithholding) {
     setExportBtnEl(document.createElement("button"));
-    exportBtnEl!.id = "ch-export-btn";
-    exportBtnEl!.type = "button";
-    exportBtnEl!.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
+    const exportBtn = getExportBtnEl()!;
+    exportBtn.id = "ch-export-btn";
+    exportBtn.type = "button";
+    exportBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
 
     const icon = document.createElement("span");
     icon.className = "p-button-icon p-button-icon-left pi pi-download";
@@ -265,26 +268,26 @@ export function injectExportButton(retries = MAX_RETRIES): void {
     label.className = "p-button-label";
     label.textContent = getExportButtonLabel("pdf", false);
 
-    exportBtnEl!.appendChild(icon);
-    exportBtnEl!.appendChild(label);
+    exportBtn.appendChild(icon);
+    exportBtn.appendChild(label);
 
     if (insertMode === "before") {
-      containerNode.insertBefore(exportBtnEl!, anchorEl);
+      containerNode.insertBefore(exportBtn, anchorEl);
     } else {
-      containerNode.appendChild(exportBtnEl!);
+      containerNode.appendChild(exportBtn);
     }
 
-    // Dispatch ch:scrape-toggle for withholding page
-    exportBtnEl!.addEventListener("click", (e: MouseEvent) => {
+    exportBtn.addEventListener("click", (e: MouseEvent) => {
       e.stopPropagation();
       document.dispatchEvent(new CustomEvent("ch:scrape-toggle"));
     });
   } else {
     // For non-withholding pages: two buttons (XLSX + CSV)
     setXlsxBtnEl(document.createElement("button"));
-    xlsxBtnEl!.id = "ch-export-xlsx-btn";
-    xlsxBtnEl!.type = "button";
-    xlsxBtnEl!.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
+    const xlsxBtn = getXlsxBtnEl()!;
+    xlsxBtn.id = "ch-export-xlsx-btn";
+    xlsxBtn.type = "button";
+    xlsxBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
 
     const xlsxIcon = document.createElement("span");
     xlsxIcon.className = "p-button-icon p-button-icon-left pi pi-file-excel";
@@ -294,13 +297,14 @@ export function injectExportButton(retries = MAX_RETRIES): void {
     xlsxLabel.className = "p-button-label";
     xlsxLabel.textContent = getExportButtonLabel("xlsx", false);
 
-    xlsxBtnEl!.appendChild(xlsxIcon);
-    xlsxBtnEl!.appendChild(xlsxLabel);
+    xlsxBtn.appendChild(xlsxIcon);
+    xlsxBtn.appendChild(xlsxLabel);
 
     setCsvBtnEl(document.createElement("button"));
-    csvBtnEl!.id = "ch-export-csv-btn";
-    csvBtnEl!.type = "button";
-    csvBtnEl!.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
+    const csvBtn = getCsvBtnEl()!;
+    csvBtn.id = "ch-export-csv-btn";
+    csvBtn.type = "button";
+    csvBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
 
     const csvIcon = document.createElement("span");
     csvIcon.className = "p-button-icon p-button-icon-left pi pi-file";
@@ -310,25 +314,25 @@ export function injectExportButton(retries = MAX_RETRIES): void {
     csvLabel.className = "p-button-label";
     csvLabel.textContent = getExportButtonLabel("csv", false);
 
-    csvBtnEl!.appendChild(csvIcon);
-    csvBtnEl!.appendChild(csvLabel);
+    csvBtn.appendChild(csvIcon);
+    csvBtn.appendChild(csvLabel);
 
     // Insert both buttons
     if (insertMode === "before") {
-      containerNode.insertBefore(xlsxBtnEl!, anchorEl);
-      containerNode.insertBefore(csvBtnEl!, anchorEl);
+      containerNode.insertBefore(xlsxBtn, anchorEl);
+      containerNode.insertBefore(csvBtn, anchorEl);
     } else {
-      containerNode.appendChild(xlsxBtnEl!);
-      containerNode.appendChild(csvBtnEl!);
+      containerNode.appendChild(xlsxBtn);
+      containerNode.appendChild(csvBtn);
     }
 
     // Wire up event handlers
-    xlsxBtnEl!.addEventListener("click", (e: MouseEvent) => {
+    xlsxBtn.addEventListener("click", (e: MouseEvent) => {
       e.stopPropagation();
       document.dispatchEvent(new CustomEvent("ch:export-xlsx"));
     });
 
-    csvBtnEl!.addEventListener("click", (e: MouseEvent) => {
+    csvBtn.addEventListener("click", (e: MouseEvent) => {
       e.stopPropagation();
       document.dispatchEvent(new CustomEvent("ch:export-csv"));
     });
@@ -337,9 +341,10 @@ export function injectExportButton(retries = MAX_RETRIES): void {
     const isEfaktur = isOutputTax || isInputTax || isOutputReturn || isInputReturn;
     if (isEfaktur) {
       setPdfBtnEl(document.createElement("button"));
-      pdfBtnEl!.id = "ch-export-pdf-btn";
-      pdfBtnEl!.type = "button";
-      pdfBtnEl!.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
+      const pdfBtn = getPdfBtnEl()!;
+      pdfBtn.id = "ch-export-pdf-btn";
+      pdfBtn.type = "button";
+      pdfBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
 
       const pdfIcon = document.createElement("span");
       pdfIcon.className = "p-button-icon p-button-icon-left pi pi-file-pdf";
@@ -349,17 +354,17 @@ export function injectExportButton(retries = MAX_RETRIES): void {
       pdfLabel.className = "p-button-label";
       pdfLabel.textContent = getExportButtonLabel("pdf", false);
 
-      pdfBtnEl!.appendChild(pdfIcon);
-      pdfBtnEl!.appendChild(pdfLabel);
+      pdfBtn.appendChild(pdfIcon);
+      pdfBtn.appendChild(pdfLabel);
 
       // Insert PDF button
       if (insertMode === "before") {
-        containerNode.insertBefore(pdfBtnEl!, anchorEl);
+        containerNode.insertBefore(pdfBtn, anchorEl);
       } else {
-        containerNode.appendChild(pdfBtnEl!);
+        containerNode.appendChild(pdfBtn);
       }
 
-      pdfBtnEl!.addEventListener("click", (e: MouseEvent) => {
+      pdfBtn.addEventListener("click", (e: MouseEvent) => {
         e.stopPropagation();
         document.dispatchEvent(new CustomEvent("ch:export-pdf"));
       });
@@ -372,18 +377,14 @@ export function injectExportButton(retries = MAX_RETRIES): void {
 /** Remove elements on navigation */
 export function removeExportButton(): void {
   clearFilterTimers();
-  if (exportBtnEl) {
-    exportBtnEl.remove();
-  }
-  if (xlsxBtnEl) {
-    xlsxBtnEl.remove();
-  }
-  if (csvBtnEl) {
-    csvBtnEl.remove();
-  }
-  if (pdfBtnEl) {
-    pdfBtnEl.remove();
-  }
+  const exportBtn = getExportBtnEl();
+  const xlsxBtn = getXlsxBtnEl();
+  const csvBtn = getCsvBtnEl();
+  const pdfBtn = getPdfBtnEl();
+  if (exportBtn) exportBtn.remove();
+  if (xlsxBtn) xlsxBtn.remove();
+  if (csvBtn) csvBtn.remove();
+  if (pdfBtn) pdfBtn.remove();
   resetAllButtonRefs();
   destroyBadge();
 }
