@@ -233,7 +233,16 @@ export function injectMultiInvoiceFilter(retries = MAX_RETRIES): void {
     e.stopPropagation();
     if (!multiInvoicePanel) return;
     const isVisible = multiInvoicePanel.style.display !== "none";
-    multiInvoicePanel.style.display = isVisible ? "none" : "block";
+    if (isVisible) {
+      multiInvoicePanel.style.display = "none";
+    } else {
+      // Position panel below the toggle button using fixed coordinates
+      // so we never need to mutate the parent element's CSS position.
+      const rect = toggleBtn.getBoundingClientRect();
+      multiInvoicePanel.style.top = `${rect.bottom + window.scrollY + 4}px`;
+      multiInvoicePanel.style.left = `${rect.left + window.scrollX}px`;
+      multiInvoicePanel.style.display = "block";
+    }
   });
 
   document.addEventListener("click", (e: MouseEvent) => {
@@ -248,11 +257,27 @@ export function injectMultiInvoiceFilter(retries = MAX_RETRIES): void {
     }
   });
 
+  // Reposition on scroll/resize so panel tracks the button
+  window.addEventListener("scroll", () => {
+    if (!multiInvoicePanel || multiInvoicePanel.style.display === "none") return;
+    const rect = toggleBtn.getBoundingClientRect();
+    multiInvoicePanel.style.top = `${rect.bottom + window.scrollY + 4}px`;
+    multiInvoicePanel.style.left = `${rect.left + window.scrollX}px`;
+  }, { passive: true });
+
+  window.addEventListener("resize", () => {
+    if (!multiInvoicePanel || multiInvoicePanel.style.display === "none") return;
+    const rect = toggleBtn.getBoundingClientRect();
+    multiInvoicePanel.style.top = `${rect.bottom + window.scrollY + 4}px`;
+    multiInvoicePanel.style.left = `${rect.left + window.scrollX}px`;
+  }, { passive: true });
+
   const parent = anchor.parentElement;
   if (!parent) return;
-  if (getComputedStyle(parent).position === "static") {
-    parent.style.position = "relative";
-  }
+
+  // Insert the toggle button next to the anchor
   parent.insertBefore(toggleBtn, anchor.nextSibling);
-  parent.insertBefore(multiInvoicePanel, toggleBtn.nextSibling);
+
+  // Append the panel directly to body — no position mutation on Coretax elements
+  document.body.appendChild(multiInvoicePanel);
 }

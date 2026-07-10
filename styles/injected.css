@@ -198,17 +198,16 @@
     outline: none;
 }
 
-/* Multi-Invoice Panel */
+/* Multi-Invoice Panel — appended to body, positioned via JS */
 .ch-multi-invoice-panel {
     display: none;
     position: absolute;
-    z-index: 1000;
+    z-index: 9998;
     background: var(--ch-white);
     border: 1px solid var(--ch-border-light);
     border-radius: 6px;
     padding: 10px;
     min-width: 300px;
-    margin-top: 4px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
