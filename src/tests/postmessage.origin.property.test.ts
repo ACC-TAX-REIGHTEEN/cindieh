@@ -1,6 +1,7 @@
 // Feature: better-coretax-improvements, Property 9: PostMessage origin guard
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
+import { shouldProcessPageMessage } from "../content/postmessage-guard";
 
 /**
  * Pure function that replicates the origin guard logic used in scraper.ts
@@ -8,45 +9,25 @@ import * as fc from "fast-check";
  *
  * Returns true if the message should be processed, false if it should be
  * silently discarded.
- *
- * Source: scraper.ts window.addEventListener("message", ...)
- *   if (event.source !== window) return;
- *   if (event.origin !== window.location.origin) return;
- *   if (!event.data || event.data.direction !== "FROM_CONTENT") return;
  */
 function scraperGuard(opts: { sourceMatches: boolean; directionMatches: boolean; originMatches: boolean }): boolean {
-  // Guard 1: source must be window
   if (!opts.sourceMatches) return false;
-  // Guard 2: origin must match window.location.origin
   if (!opts.originMatches) return false;
-  // Guard 3: direction must be "FROM_CONTENT"
   if (!opts.directionMatches) return false;
   return true;
 }
+
+const FAKE_ORIGIN = "https://coretaxdjp.pajak.go.id";
+const fakeWindow = { location: { origin: FAKE_ORIGIN } } as Window & typeof globalThis;
 
 describe("PostMessage origin guard — Property 9", () => {
   /**
    * Validates: Requirements 7.3, 7.4, 7.5
    *
    * For any combination of the three guard flags, a message is processed
-   * if and only if ALL THREE conditions hold simultaneously:
-   *   1. event.source === window          (sourceMatches)
-   *   2. direction field matches expected  (directionMatches)
-   *   3. event.origin === window.location.origin (originMatches)
-   *
-   * Any event where one or more conditions fail SHALL be silently discarded.
+   * if and only if ALL THREE conditions hold simultaneously.
    */
-  it("Content_Script guard: processes message iff sourceMatches && directionMatches && originMatches", async () => {
-    // Stub browser globals before dynamic import.
-    // `window` is used both for identity comparison (event.source === window)
-    // and for accessing window.location.origin.
-    const fakeOrigin = "https://example.com";
-    const fakeWindow = { location: { origin: fakeOrigin } };
-    (globalThis as any).window = fakeWindow;
-    (globalThis as any).location = fakeWindow.location;
-
-    const { shouldProcessPageMessage } = await import("../content/postmessage-guard");
-
+  it("Content_Script guard: processes message iff sourceMatches && directionMatches && originMatches", () => {
     fc.assert(
       fc.property(
         fc.record({
@@ -55,17 +36,76 @@ describe("PostMessage origin guard — Property 9", () => {
           originMatches: fc.boolean(),
         }),
         (flags) => {
-          const result = shouldProcessPageMessage({
-            source: flags.sourceMatches ? fakeWindow : null,
-            origin: flags.originMatches ? fakeOrigin : "https://other.com",
-            data: flags.directionMatches ? { direction: "FROM_PAGE" } : { direction: "OTHER" },
-          });
+          const result = shouldProcessPageMessage(
+            {
+              source: flags.sourceMatches ? fakeWindow : null,
+              origin: flags.originMatches ? FAKE_ORIGIN : "https://other.com",
+              data: flags.directionMatches ? { direction: "FROM_PAGE" } : { direction: "OTHER" },
+            },
+            undefined,
+            fakeWindow,
+          );
 
           const expected = flags.sourceMatches && flags.originMatches && flags.directionMatches;
           expect(result).toBe(expected);
         },
       ),
     );
+  });
+
+  it("token validation: rejects when token does not match", () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 36 }),
+        fc.string({ minLength: 1, maxLength: 36 }),
+        (correctToken, wrongToken) => {
+          fc.pre(correctToken !== wrongToken);
+          const result = shouldProcessPageMessage(
+            {
+              source: fakeWindow,
+              origin: FAKE_ORIGIN,
+              data: { direction: "FROM_PAGE", token: wrongToken },
+            },
+            correctToken,
+            fakeWindow,
+          );
+          expect(result).toBe(false);
+        },
+      ),
+    );
+  });
+
+  it("token validation: accepts when token matches", () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 36 }),
+        (token) => {
+          const result = shouldProcessPageMessage(
+            {
+              source: fakeWindow,
+              origin: FAKE_ORIGIN,
+              data: { direction: "FROM_PAGE", token },
+            },
+            token,
+            fakeWindow,
+          );
+          expect(result).toBe(true);
+        },
+      ),
+    );
+  });
+
+  it("token validation: accepts when no expectedToken is provided (undefined)", () => {
+    const result = shouldProcessPageMessage(
+      {
+        source: fakeWindow,
+        origin: FAKE_ORIGIN,
+        data: { direction: "FROM_PAGE" },
+      },
+      undefined,
+      fakeWindow,
+    );
+    expect(result).toBe(true);
   });
 
   it("Scraper guard: processes message iff sourceMatches && directionMatches && originMatches", () => {
@@ -77,11 +117,8 @@ describe("PostMessage origin guard — Property 9", () => {
           originMatches: fc.boolean(),
         }),
         (flags) => {
-          const shouldProcess = flags.sourceMatches && flags.directionMatches && flags.originMatches;
-
           const result = scraperGuard(flags);
-
-          expect(result).toBe(shouldProcess);
+          expect(result).toBe(flags.sourceMatches && flags.directionMatches && flags.originMatches);
         },
       ),
     );
@@ -97,7 +134,6 @@ describe("PostMessage origin guard — Property 9", () => {
         }),
         (flags) => {
           if (!flags.sourceMatches) {
-            // Source guard fails → must discard regardless of other flags
             expect(scraperGuard(flags)).toBe(false);
           }
         },
@@ -115,7 +151,6 @@ describe("PostMessage origin guard — Property 9", () => {
         }),
         (flags) => {
           if (!flags.originMatches) {
-            // Origin guard fails → must discard regardless of other flags
             expect(scraperGuard(flags)).toBe(false);
           }
         },
@@ -133,7 +168,6 @@ describe("PostMessage origin guard — Property 9", () => {
         }),
         (flags) => {
           if (!flags.directionMatches) {
-            // Direction guard fails → must discard regardless of other flags
             expect(scraperGuard(flags)).toBe(false);
           }
         },
@@ -142,7 +176,6 @@ describe("PostMessage origin guard — Property 9", () => {
   });
 
   it("guard processes message only when all three flags are true", () => {
-    // Exhaustive check over all 8 combinations
     const allCombinations = [
       { sourceMatches: false, directionMatches: false, originMatches: false },
       { sourceMatches: false, directionMatches: false, originMatches: true },

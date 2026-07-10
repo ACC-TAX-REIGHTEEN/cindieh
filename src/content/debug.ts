@@ -1,8 +1,9 @@
 // ============================================================
 // DEBUG.TS — Conditional debug logging
 // ============================================================
-// Wraps console.log with a toggleable flag. In production builds
-// (NODE_ENV=production), logs are suppressed unless explicitly enabled.
+// Wraps console methods with a toggleable flag. In production builds
+// (NODE_ENV=production), all logs including errors are suppressed
+// unless explicitly enabled via enableDebug().
 // ============================================================
 
 const IS_DEV = typeof process !== "undefined" && process.env?.NODE_ENV === "development";
@@ -30,6 +31,7 @@ export function debugWarn(...args: unknown[]): void {
 }
 
 export function debugError(...args: unknown[]): void {
-  // Errors are always logged
-  console.error("[Better Coretax]", ...args);
+  if (debugEnabled) {
+    console.error("[Better Coretax]", ...args);
+  }
 }
