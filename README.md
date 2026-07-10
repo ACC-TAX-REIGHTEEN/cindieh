@@ -12,17 +12,12 @@
 - **Auto-Formatting Excel:** Automatically converts system date formats (ISO Strings) into standard Indonesian date formats (`DD/MM/YYYY`) in the generated `.xlsx` sets.
 - **Lean UI Integration:** Features a fully integrated in-page UI (floating info bar and custom toolbar buttons) designed to feel like part of the native Coretax experience.
 
-## Prerequisites
-
-- **Node.js** (v18 or later)
-- **npm** (v9 or later)
-
 ## Installation & Build
 
 ### 1. Setup
 Clone the repository and install dependencies:
 ```bash
-npm install
+pnpm install
 ```
 
 ### 2. Build for Production
@@ -30,9 +25,9 @@ Generate the production-ready extension for your preferred browser:
 
 | Command | Output Directory | Result |
 |---------|------------------|--------|
-| `npm run build:chrome` | `dist/chrome/` | Unpacked Chrome extension |
-| `npm run build:firefox`| `dist/firefox/`| Unpacked Firefox extension |
-| `npm run package`      | `/` (root)     | `.zip` (Chrome) & `.xpi` (Firefox) |
+| `pnpm run build:chrome` | `dist/chrome/` | Unpacked Chrome extension |
+| `pnpm run build:firefox`| `dist/firefox/`| Unpacked Firefox extension |
+| `pnpm run package`      | `/` (root)     | `.zip` (Chrome) & `.xpi` (Firefox) |
 
 ### 3. Loading the Extension
 
@@ -57,8 +52,3 @@ Generate the production-ready extension for your preferred browser:
 
 ## License
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
----
-
-## Information for Mozilla Reviewers
-This extension is built using TypeScript and bundled using `esbuild`. The original logic is fully documented in the provided source ZIP. To reproduce the build, use `npm install` followed by `npm run build:firefox`.

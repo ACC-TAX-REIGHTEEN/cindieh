@@ -11,7 +11,7 @@
     "watch": "node build.js --watch",
     "package:chrome": "node build.js --browser=chrome && node package.js --browser=chrome",
     "package:firefox": "node build.js --browser=firefox && node package.js --browser=firefox",
-    "package": "npm run package:chrome && npm run package:firefox && npm run package:source",
+    "package": "pnpm run package:chrome && pnpm run package:firefox && pnpm run package:source",
     "package:source": "node package-source.js",
     "version": "node sync-manifest.js",
     "release": "standard-version",
