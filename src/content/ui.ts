@@ -74,7 +74,7 @@ export {
 
 // ── Constants ─────────────────────────────────────────
 
-const MAX_RETRIES = 15;
+const MAX_RETRIES = 8;
 
 let isInjected = false;
 

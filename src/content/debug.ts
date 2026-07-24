@@ -6,7 +6,10 @@
 // unless explicitly enabled via enableDebug().
 // ============================================================
 
-const IS_DEV = typeof process !== "undefined" && process.env?.NODE_ENV === "development";
+// esbuild defines process.env.NODE_ENV as a string literal at build time
+// ("development" in watch mode, "production" in build mode).
+// No typeof guard needed — the define replaces the entire expression textually.
+const IS_DEV = process.env.NODE_ENV === "development";
 
 let debugEnabled = IS_DEV;
 

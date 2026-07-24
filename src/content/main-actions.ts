@@ -97,6 +97,16 @@ export function setLastState(v: ScrapeState | null): void {
   lastState = v;
 }
 
+/** Reset all module-level state — call on SPA navigation. */
+export function resetState(): void {
+  isRunning = false;
+  scrapedData = null;
+  scrapedFields = null;
+  lastExportMeta = null;
+  pendingExportFormat = null;
+  lastState = null;
+}
+
 // ── Functions ────────────────────────────────────────
 
 /** Helper: find and click the search/refresh button */

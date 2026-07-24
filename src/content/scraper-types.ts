@@ -42,7 +42,7 @@ export interface ScrapeError {
   message: string;
 }
 
-export type ScrapeMessage = ScrapeProgress | ScrapeComplete | ScrapeError | { type: "INJECTED_READY" };
+export type ScrapeMessage = ScrapeProgress | ScrapeComplete | ScrapeError | { type: "INJECTED_READY" } | { type: "RESET_SCRAPER" };
 
 // Extend XHR for intercepted properties
 export interface InterceptedXHR extends XMLHttpRequest {

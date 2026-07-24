@@ -97,6 +97,22 @@ import {
       stopRequested = true;
     }
 
+    if (msg.type === "RESET_SCRAPER") {
+      // Called on SPA navigation to prevent stale state from leaking
+      // into the new page. Resets running flags, captured request cache,
+      // filter state, and pending capture subscribers.
+      stopRequested = true;
+      isRunning = false;
+      lastCaptured = null;
+      lastCapturedTime = 0;
+      captureSubscribers.length = 0;
+      invoiceRowMap.clear();
+      for (const key of Object.keys(filterState)) {
+        delete filterState[key];
+      }
+      debugLog("Scraper state reset via RESET_SCRAPER");
+    }
+
     if (msg.type === "START_PDF_DOWNLOAD") {
       if (isRunning) return;
       if (!lastCaptured) {
@@ -144,8 +160,13 @@ import {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).__scraperSendToContent = sendToContent;
+  // Expose for debugging convenience in development builds only.
+  // esbuild textually replaces process.env.NODE_ENV so the minifier
+  // eliminates this block entirely in production builds.
+  if (process.env.NODE_ENV === "development") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__scraperSendToContent = sendToContent;
+  }
 
   // ── DOM helpers ────────────────────────────────────
 
@@ -267,17 +288,41 @@ import {
         if (pdfData) {
           // Determine source from current page URL so the correct filename
           // generator is selected (OUTPUT_TAX, INPUT_TAX, etc.).
-          // item is unavailable here: the DownloadInvoice endpoint only returns
-          // the PDF binary (base64), not invoice metadata. As a result the
-          // filename will fall back to "TANPA_REFERENSI - 000.pdf". A proper
-          // fix would require passing invoice row data from lastCaptured to
-          // this fetch interceptor — left as a future improvement.
           const fetchSource = getPageExportSource() || "OUTPUT_TAX";
+
+          // Resolve invoice metadata from the cached row map.
+          // The DownloadInvoice endpoint only returns the PDF binary (base64),
+          // not invoice metadata, so we extract the invoice identifier from
+          // the request body and look it up in the map built earlier from the
+          // grid data response.
+          let resolvedItem: Record<string, unknown> = {};
+          try {
+            const reqBody =
+              typeof args[0] === "object" && args[0] !== null && "body" in args[0]
+                ? await (args[0] as Request).clone().text()
+                : typeof args[1] === "string"
+                  ? args[1]
+                  : null;
+            if (reqBody) {
+              const parsed = JSON.parse(reqBody) as Record<string, unknown>;
+              // Try TaxInvoiceNumber first, then LetterNumber as fallback.
+              // Both keys are indexed in invoiceRowMap during XHR capture.
+              const lookupKey = String(
+                parsed.TaxInvoiceNumber || parsed.taxInvoiceNumber || parsed.LetterNumber || parsed.letterNumber || "",
+              ).trim().toLowerCase();
+              if (lookupKey && invoiceRowMap.has(lookupKey)) {
+                resolvedItem = invoiceRowMap.get(lookupKey)!;
+              }
+            }
+          } catch {
+            // Best-effort: fall back to empty item if resolution fails.
+          }
+
           window.postMessage(
             {
               type: "DOWNLOAD_PDF_ITEM",
               base64: pdfData,
-              item: {},
+              item: resolvedItem,
               source: fetchSource,
               direction: "FROM_PAGE",
             },
@@ -332,6 +377,10 @@ import {
   const captureSubscribers: ((req: CapturedRequest) => void)[] = [];
   let lastCaptured: CapturedRequest | null = null;
   let lastCapturedTime = 0;
+
+  // Maps invoice identifiers (TaxInvoiceNumber, LetterNumber) to row data
+  // so the fetch interceptor can resolve item metadata for PDF filenames.
+  const invoiceRowMap = new Map<string, Record<string, unknown>>();
 
   // ── Message listener: filter updates ──────────────
 
@@ -466,6 +515,16 @@ import {
 
         lastCaptured = captured;
         lastCapturedTime = Date.now();
+
+        // Build invoice → row mapping so the fetch interceptor can
+        // resolve item metadata for PDF filenames.
+        invoiceRowMap.clear();
+        for (const row of captured.initialData) {
+          const taxNum = String(row.TaxInvoiceNumber || "").trim().toLowerCase();
+          const letterNum = String(row.LetterNumber || "").trim().toLowerCase();
+          if (taxNum) invoiceRowMap.set(taxNum, row);
+          if (letterNum && letterNum !== taxNum) invoiceRowMap.set(letterNum, row);
+        }
 
         const subs = [...captureSubscribers];
         captureSubscribers.length = 0;

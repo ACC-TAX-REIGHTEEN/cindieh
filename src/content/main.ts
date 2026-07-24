@@ -48,6 +48,7 @@ import {
   setPendingExportFormat,
   getLastState,
   setLastState,
+  resetState,
   type ScrapeState,
 } from "./main-actions";
 
@@ -268,9 +269,9 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
       const raw = target.value.trim();
       const numbers = raw
         ? raw
-            .split(/[\n;,]+|\s{2,}/)
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0)
+          .split(/[\n;,]+|\s{2,}/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
         : [];
 
       // Just update hint — no API filter, no search. Targeted scrape runs on Download PDF click.
@@ -285,14 +286,14 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
 // ── In-page button events ───────────────────────────
 
 document.addEventListener("ch:scrape-toggle", () => {
-if (getIsRunning()) {
-  postToScraper({ type: "STOP_SCRAPE" });
-  setIsRunning(false);
-  setPendingExportFormat(null);
-  updatePanelIdle();
-} else {
-  startScrape();
-}
+  if (getIsRunning()) {
+    postToScraper({ type: "STOP_SCRAPE" });
+    setIsRunning(false);
+    setPendingExportFormat(null);
+    updatePanelIdle();
+  } else {
+    startScrape();
+  }
 });
 
 // Export XLSX
@@ -322,6 +323,15 @@ document.addEventListener("ch:scrape-start", () => {
 
 function onNavigate(): void {
   debugLog("Navigate event triggered. Current URL:", window.location.href);
+
+  // Reset content-script state so stale data from the previous page
+  // cannot leak into exports on the new page.
+  resetState();
+
+  // Ask the scraper (MAIN world) to reset its own state too:
+  // captured request cache, filter state, running flags, etc.
+  postToScraper({ type: "RESET_SCRAPER" });
+
   if (isSupportedExportPage()) {
     debugLog("Supported page detected, ensuring injection...");
     injectBadge();

@@ -12,7 +12,7 @@ import { isOutputTaxPage } from "./page-context";
 // Both RETRY_DELAY_MS and MAX_RETRIES are used by
 // injectToolbarFilter and injectMultiInvoiceFilter.
 const RETRY_DELAY_MS = 1000;
-const MAX_RETRIES = 15;
+const MAX_RETRIES = 8;
 const TOOLBAR_FILTER_WIDTH = "180px";
 
 // Track pending retry timers so they can be cancelled on navigation.
