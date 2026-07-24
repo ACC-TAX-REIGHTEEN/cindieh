@@ -130,6 +130,7 @@ function handlePdfExport(data: Record<string, unknown>[]): boolean {
 // is already authenticated by the extension's own message channel.
 
 browserAPI.runtime.onMessage.addListener(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (msg: Record<string, unknown>, _sender: unknown, sendResponse: (response?: any) => void) => {
     if (msg.type === "START_SCRAPE" || msg.type === "STOP_SCRAPE") {
       postToScraper(msg);
