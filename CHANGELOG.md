@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.2.0](https://github.com/allababbot/better-coretax/compare/v1.1.1...v1.2.0) (2026-07-24)
+
+
+### Features
+
+* add SPA navigation state reset and fetch interceptor PDF metadata resolution ([e360d42](https://github.com/allababbot/better-coretax/commit/e360d425dc807fac0ae94aba84ebd81ffeaa9c2c))
+
 ### [1.1.1](https://github.com/allababbot/better-coretax/compare/v1.1.0...v1.1.1) (2026-06-04)
 
 
