@@ -400,7 +400,6 @@ export async function scrapeByInvoices(
     if (!success) {
       consecutiveFailures++;
       if (consecutiveFailures >= ctx.maxErrors) {
-        const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
         ctx.sendToContent({
           type: "SCRAPE_ERROR",
           message: `${ctx.maxErrors} kegagalan berturut-turut saat mencari faktur. Proses dihentikan.`,

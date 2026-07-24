@@ -24,7 +24,6 @@ import {
 } from "./page-context";
 import { debugLog, debugWarn, debugError } from "./debug";
 import type { CapturedRequest, ScrapeMessage, InterceptedXHR } from "./scraper-types";
-import { buildEfakturDownloadUrl, mergeRows, collectFields } from "./scraper-helpers";
 import {
   startScraping,
   startPdfDownload,
@@ -145,6 +144,7 @@ import {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).__scraperSendToContent = sendToContent;
 
   // ── DOM helpers ────────────────────────────────────
