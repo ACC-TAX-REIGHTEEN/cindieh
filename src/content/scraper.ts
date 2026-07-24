@@ -265,12 +265,20 @@ import {
         const json = await resp.clone().json();
         const pdfData = json.Content ?? json.Payload?.Content ?? json.Payload?.Message?.Data;
         if (pdfData) {
+          // Determine source from current page URL so the correct filename
+          // generator is selected (OUTPUT_TAX, INPUT_TAX, etc.).
+          // item is unavailable here: the DownloadInvoice endpoint only returns
+          // the PDF binary (base64), not invoice metadata. As a result the
+          // filename will fall back to "TANPA_REFERENSI - 000.pdf". A proper
+          // fix would require passing invoice row data from lastCaptured to
+          // this fetch interceptor — left as a future improvement.
+          const fetchSource = getPageExportSource() || "OUTPUT_TAX";
           window.postMessage(
             {
               type: "DOWNLOAD_PDF_ITEM",
               base64: pdfData,
               item: {},
-              source: "OUTPUT_TAX",
+              source: fetchSource,
               direction: "FROM_PAGE",
             },
             window.location.origin,

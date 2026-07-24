@@ -5,6 +5,38 @@ import * as XLSX from "xlsx";
 import type { ExportSource } from "./page-context";
 import { debugWarn } from "./debug";
 
+/**
+ * Extract a 4-digit year from a raw period value that may contain
+ * non-digit prefixes (e.g. "TD007-2026-04" → "2026").
+ * Returns empty string when no valid year is found.
+ */
+function extractYearFromPeriod(raw: unknown): string {
+  if (!raw) return "";
+  const s = String(raw).replace(/\D/g, "");
+  const match = s.match(/(20\d{2}|19\d{2})/);
+  return match ? match[1] : "";
+}
+
+/**
+ * Extract a 2-digit month from a raw period value that may contain
+ * non-digit prefixes (e.g. "TD007-2026-04" → "04").
+ * Returns empty string when no valid month is found.
+ */
+function extractMonthFromPeriod(raw: unknown): string {
+  if (!raw) return "";
+  const s = String(raw).replace(/\D/g, "");
+  // Try YYYYMM suffix (last 6 digits)
+  const yyyymm = s.match(/(20\d{2}|19\d{2})(0[1-9]|1[0-2])$/);
+  if (yyyymm) return yyyymm[2];
+  // Try MMYYYY suffix (last 6 digits)
+  const mmyyyy = s.match(/(0[1-9]|1[0-2])(20\d{2}|19\d{2})$/);
+  if (mmyyyy) return mmyyyy[1];
+  // Bare month (e.g. "04" or "4") — only valid when year is provided separately
+  const bare = s.match(/^(0?[1-9]|1[0-2])$/);
+  if (bare) return bare[1].padStart(2, "0");
+  return "";
+}
+
 export interface ExportData {
   data: Record<string, unknown>[];
   fields: string[];
@@ -152,22 +184,13 @@ function processData(exportData: ExportData): ExportData {
     let masa = "";
     const rawMonth = row["TaxInvoicePeriod"] || row["TaxPeriodMonth"] || row["TaxPeriod"] || "";
     if (rawMonth) {
-      const sMonth = String(rawMonth);
-      masa = sMonth.slice(-2).replace(/^0/, ""); // Take last 2 digits, remove leading zero
+      masa = extractMonthFromPeriod(rawMonth).replace(/^0/, ""); // Remove leading zero for display
     }
 
-    // Extract Tahun (Year)
-    let tahun = "";
-    const rawYear = row["TaxInvoiceYear"] || row["TaxPeriodYear"] || row["TaxPeriod"] || "";
-    if (rawYear) {
-      const sYear = String(rawYear);
-      // If it's a 6-digit period like 202604, year is the first 4 digits
-      if (sYear.length >= 6 && /^\d+$/.test(sYear)) {
-        tahun = sYear.slice(0, 4);
-      } else if (sYear.length === 4) {
-        tahun = sYear;
-      }
-    }
+    // Extract Tahun (Year) - handle TD007 prefix or use separate field
+    let tahun = extractYearFromPeriod(
+      row["TaxInvoiceYear"] || row["TaxPeriodYear"] || row["TaxPeriod"] || "",
+    );
 
     for (const f of hardcodedFields) {
       if (f === "TaxInvoicePeriod") {
@@ -290,16 +313,14 @@ export function generateDynamicFilename(exportData: ExportData): string {
       if (rawY && rawM) {
         const sY = String(rawY);
         const sM = String(rawM);
-        // If sY is YYYYMM, take first 4.
-        y = sY.length >= 6 ? sY.slice(0, 4) : sY;
-        // Take last 2 digits for month
-        m = sM.slice(-2).padStart(2, "0");
+        y = extractYearFromPeriod(sY);
+        m = extractMonthFromPeriod(sM).padStart(2, "0");
       }
-      // Priority 2: Consolidated TaxPeriod (usually YYYYMM)
-      else if (row["TaxPeriod"] && String(row["TaxPeriod"]).length >= 6) {
+      // Priority 2: Consolidated TaxPeriod (usually YYYYMM or TD007-YYYY-MM)
+      else if (row["TaxPeriod"]) {
         const sP = String(row["TaxPeriod"]);
-        y = sP.slice(0, 4);
-        m = sP.slice(4, 6);
+        y = extractYearFromPeriod(sP);
+        m = extractMonthFromPeriod(sP).padStart(2, "0");
       }
       // Fallback: Date fields (Last Resort - only if no period fields found)
       else {
