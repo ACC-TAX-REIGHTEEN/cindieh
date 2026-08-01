@@ -571,6 +571,8 @@ import {
         } else {
           debugLog("Next button not available/disabled. Trying fallback trigger...");
           const fallbackBtn = Array.from(document.querySelectorAll("button")).find((b) => {
+            // Ignore Better Coretax's own injected buttons
+            if ((b as HTMLButtonElement).id?.startsWith("ch-")) return false;
             const t = b.textContent?.toLowerCase() || "";
             return (
               t.includes("cari") ||

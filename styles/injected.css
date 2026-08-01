@@ -254,6 +254,394 @@
     display: none !important;
 }
 
+/* ── Export Dropdown ───────────────────────────────── */
+
+.ch-export-dropdown {
+    position: relative;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.ch-export-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 9999;
+    min-width: 160px;
+    background: var(--ch-white);
+    border: 1px solid var(--ch-border-light);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 4px 0;
+}
+
+.ch-export-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 14px;
+    border: none;
+    background: none;
+    color: var(--ch-text-dark);
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.ch-export-dropdown-item:hover {
+    background: var(--ch-bg-hover);
+}
+
+.ch-export-dropdown-item .pi {
+    color: var(--ch-primary);
+    font-size: 14px;
+}
+
+/* Icon-only buttons (Scrape & Bandingkan) */
+.ch-icon-btn {
+    width: 36px;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ch-icon-btn .p-button-icon {
+    margin: 0 !important;
+}
+
+/* ── Comparer Modal ────────────────────────────────── */
+
+.ch-comparer-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+}
+
+.ch-comparer-modal {
+    background: var(--ch-white);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    width: 95%;
+    max-width: 1200px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 16px;
+    color: var(--ch-text-dark);
+}
+
+.ch-comparer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--ch-border-light);
+    background: #f8f9fa;
+}
+
+.ch-comparer-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--ch-text-dark);
+}
+
+.ch-comparer-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #6c757d;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.ch-comparer-close:hover {
+    color: var(--ch-text-dark);
+}
+
+.ch-comparer-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.ch-comparer-instructions {
+    font-size: 14px;
+    color: #6c757d;
+    margin: 0 0 12px 0;
+    line-height: 1.5;
+}
+
+.ch-comparer-paste-section {
+    margin-bottom: 12px;
+}
+
+.ch-comparer-paste-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--ch-text-dark);
+}
+
+.ch-comparer-toggle-btn {
+    background: none;
+    border: 1px solid var(--ch-border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    color: var(--ch-text-dark);
+    display: inline-flex;
+    align-items: center;
+}
+
+.ch-comparer-toggle-btn:hover {
+    background: var(--ch-bg-hover);
+}
+
+.ch-comparer-textarea {
+    width: 100%;
+    min-height: 160px;
+    background: var(--ch-white);
+    color: var(--ch-text-dark);
+    border: 1px solid var(--ch-border);
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 16px;
+    font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+    resize: vertical;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.ch-comparer-textarea:focus {
+    border-color: var(--ch-blue-border);
+    box-shadow: 0 0 0 0.2rem rgba(33, 150, 243, 0.25);
+}
+
+.ch-comparer-textarea::placeholder {
+    color: #adb5bd;
+}
+
+.ch-comparer-btn-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.ch-comparer-btn-left {
+    display: flex;
+    gap: 8px;
+}
+
+.ch-comparer-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.2s, box-shadow 0.2s;
+}
+
+.ch-comparer-btn-primary {
+    background: var(--ch-primary);
+    color: #fff;
+    border-color: var(--ch-primary);
+}
+
+.ch-comparer-btn-primary:hover {
+    background: var(--ch-primary-hover);
+    box-shadow: 0 2px 8px rgba(255, 87, 34, 0.3);
+}
+
+.ch-comparer-btn-secondary {
+    background: #f8f9fa;
+    color: var(--ch-text-dark);
+    border-color: var(--ch-border);
+}
+
+.ch-comparer-btn-secondary:hover {
+    background: var(--ch-bg-hover);
+}
+
+.ch-comparer-status {
+    margin-top: 12px;
+    font-size: 16px;
+    padding: 8px 12px;
+    border-radius: 6px;
+}
+
+.ch-comparer-status-error {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.ch-comparer-status-info {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+}
+
+.ch-comparer-results {
+    margin-top: 16px;
+    overflow-x: auto;
+}
+
+.ch-comparer-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 16px;
+}
+
+.ch-comparer-table th {
+    background: #ffffff;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid var(--ch-border-light);
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.ch-comparer-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--ch-border-light);
+    vertical-align: middle;
+}
+
+.ch-comparer-table th.ch-comparer-num,
+.ch-comparer-table td.ch-comparer-num {
+    text-align: right;
+}
+
+/* Search action button column */
+.ch-comparer-action {
+    text-align: center;
+    white-space: nowrap;
+}
+
+.ch-comparer-search-btn {
+    background: var(--ch-primary);
+    color: #fff;
+    border: 1px solid var(--ch-primary);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+
+.ch-comparer-search-btn:hover {
+    background: var(--ch-primary-hover);
+}
+
+.ch-comparer-table tbody tr:hover {
+    background: #f8f9fa;
+}
+
+.ch-comparer-row-cocok td:last-child {
+    color: #16a34a;
+}
+
+.ch-comparer-row-berbeda {
+    background: #fef2f2;
+}
+
+.ch-comparer-row-berbeda td:last-child {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.ch-comparer-row-tidak_ditemukan {
+    background: #fffbeb;
+}
+
+.ch-comparer-row-tidak_ditemukan td:last-child {
+    color: #d97706;
+    font-weight: 600;
+}
+
+.ch-comparer-summary {
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.ch-comparer-summary-ok {
+    background: #f0fdf4;
+    color: #16a34a;
+    border: 1px solid #bbf7d0;
+}
+
+.ch-comparer-summary-warn {
+    background: #fffbeb;
+    color: #d97706;
+    border: 1px solid #fde68a;
+}
+
+/* Pagination */
+.ch-comparer-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 16px;
+    padding: 8px 0;
+}
+
+.ch-comparer-page-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--ch-border);
+    border-radius: 6px;
+    background: var(--ch-white);
+    color: var(--ch-text-dark);
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.ch-comparer-page-btn:hover:not(:disabled) {
+    background: var(--ch-bg-hover);
+}
+
+.ch-comparer-page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.ch-comparer-page-info {
+    font-size: 16px;
+    color: var(--ch-text-dark);
+}
+
 /* Angular/PrimeNG icons spin if needed */
 .pi-spin {
     display: inline-block;

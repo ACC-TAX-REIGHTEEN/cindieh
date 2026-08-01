@@ -6,7 +6,7 @@
 // ============================================================
 
 import { isWithholdingPage } from "./page-context";
-import { getExportBtnEl, getXlsxBtnEl, getCsvBtnEl } from "./button-state";
+import { getExportBtnEl, getExportDropdownBtnEl, getScrapeBtnEl } from "./button-state";
 
 // ── Floating Info State ──────────────────────────────
 
@@ -14,7 +14,7 @@ let badgeEl: HTMLDivElement | null = null;
 let statsEl: HTMLDivElement | null = null;
 let isPanelRunning = false;
 
-type ExportButtonKind = "xlsx" | "csv" | "pdf";
+type ExportButtonKind = "xlsx" | "csv" | "pdf" | "dropdown";
 
 export function getIdlePanelStatus(): string {
   return "Tidak ada proses berjalan. Mulai ekspor dari tombol Better Export.";
@@ -28,6 +28,7 @@ export function getExportButtonLabel(kind: ExportButtonKind, isRunning: boolean)
   if (isRunning) return "Berhenti";
   if (kind === "xlsx") return "Ekspor XLSX";
   if (kind === "csv") return "Ekspor CSV";
+  if (kind === "dropdown") return "Ekspor";
   return "Unduh PDF";
 }
 
@@ -135,7 +136,6 @@ function setIdlePanelContent(): void {
 }
 
 function getExportButtonIcon(kind: ExportButtonKind, isRunning: boolean): string {
-  if (isRunning) return "pi pi-spin pi-spinner";
   if (kind === "xlsx") return "pi pi-file-excel";
   if (kind === "csv") return "pi pi-file";
   return "pi pi-download";
@@ -150,6 +150,17 @@ function setExportButtonState(btn: HTMLButtonElement | null, kind: ExportButtonK
   if (label) label.textContent = getExportButtonLabel(kind, isRunning);
 
   btn.classList.toggle("ch-btn-danger", isRunning);
+}
+
+function setScrapeButtonState(isRunning: boolean): void {
+  const btn = getScrapeBtnEl();
+  if (!btn) return;
+  const icon = btn.querySelector(".p-button-icon") as HTMLElement | null;
+  if (icon) {
+    icon.className = `p-button-icon p-button-icon-left ${isRunning ? "pi pi-spin pi-spinner" : "pi pi-refresh"} mr-1`;
+  }
+  btn.classList.toggle("ch-btn-danger", isRunning);
+  btn.title = isRunning ? "Menghentikan scrape..." : "Scrape data dari sistem";
 }
 
 /**
@@ -175,8 +186,8 @@ export function updatePanelProgress(total: number, page: number, elapsed: string
   if (isWithholdingPage()) {
     setExportButtonState(getExportBtnEl(), "pdf", true);
   } else {
-    setExportButtonState(getXlsxBtnEl(), "xlsx", true);
-    setExportButtonState(getCsvBtnEl(), "csv", true);
+    setExportButtonState(getExportDropdownBtnEl(), "dropdown", true);
+    setScrapeButtonState(true);
   }
 
   els.progressBar.style.width = `${Math.min(95, page * 10 || 5)}%`;
@@ -203,9 +214,9 @@ export function updatePanelComplete(total: number, pages: number, elapsed: strin
     // Restore single export button
     setExportButtonState(getExportBtnEl(), "pdf", false);
   } else {
-    // Restore XLSX and CSV buttons
-    setExportButtonState(getXlsxBtnEl(), "xlsx", false);
-    setExportButtonState(getCsvBtnEl(), "csv", false);
+    // Restore export dropdown button
+    setExportButtonState(getExportDropdownBtnEl(), "dropdown", false);
+    setScrapeButtonState(false);
   }
 
   els.progressBar.style.width = "100%";
@@ -220,8 +231,8 @@ export function updatePanelError(message: string): void {
   if (isWithholdingPage()) {
     setExportButtonState(getExportBtnEl(), "pdf", false);
   } else {
-    setExportButtonState(getXlsxBtnEl(), "xlsx", false);
-    setExportButtonState(getCsvBtnEl(), "csv", false);
+    setExportButtonState(getExportDropdownBtnEl(), "dropdown", false);
+    setScrapeButtonState(false);
   }
 }
 
@@ -234,8 +245,8 @@ export function updatePanelIdle(): void {
   if (isWithholdingPage()) {
     setExportButtonState(getExportBtnEl(), "pdf", false);
   } else {
-    setExportButtonState(getXlsxBtnEl(), "xlsx", false);
-    setExportButtonState(getCsvBtnEl(), "csv", false);
+    setExportButtonState(getExportDropdownBtnEl(), "dropdown", false);
+    setScrapeButtonState(false);
   }
 }
 

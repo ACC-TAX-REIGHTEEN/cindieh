@@ -27,6 +27,9 @@ import {
   updatePanelIdle,
   updatePanelProgress,
   injectToolbarFilter,
+  injectComparerModal,
+  openComparerModal,
+  runPendingCompare,
 } from "./ui";
 import { handlePdfDownload } from "./downloader";
 import { registerShortcuts } from "./shortcuts";
@@ -46,6 +49,8 @@ import {
   setLastExportMeta,
   getPendingExportFormat,
   setPendingExportFormat,
+  getPendingCompare,
+  setPendingCompare,
   getLastState,
   setLastState,
   resetState,
@@ -199,6 +204,13 @@ window.addEventListener("message", (event: MessageEvent) => {
     });
     updatePanelComplete(cleanMsg.total || 0, cleanMsg.pages || 0, cleanMsg.elapsed || "0s", cleanMsg.failureCount);
 
+    // If the user clicked "Periksa" before any data was scraped, run the
+    // comparison automatically now that scraping is complete.
+    if (getPendingCompare()) {
+      setPendingCompare(false);
+      runPendingCompare();
+    }
+
     // Auto-export if a pending format was requested before scrape started
     const pendingFormat = getPendingExportFormat();
     const data = getScrapedData();
@@ -253,11 +265,16 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
     if (e.key === "Enter") {
       debugLog("Reference filter triggered via Enter");
       const value = target.value.trim();
+      // Send the filter value (empty string clears the server filter) and
+      // always trigger search so clearing the input restores all data.
       postToScraper({
         type: "SET_SERVER_FILTER",
         field: "Reference",
         value: value.toUpperCase(),
       });
+
+      // Reference search is independent of scraping: just set the filter and
+      // click the Coretax search button so the table renders the result.
       triggerSearch();
     }
   }
@@ -319,6 +336,29 @@ document.addEventListener("ch:scrape-start", () => {
   startScrape();
 });
 
+// Open compare modal
+document.addEventListener("ch:compare-open", () => {
+  openComparerModal();
+});
+
+// Search a reference in Coretax (from the comparer table)
+document.addEventListener("ch:search-reference", (e: Event) => {
+  const detail = (e as CustomEvent).detail as { reference?: string } | undefined;
+  const reference = detail?.reference;
+  if (!reference) return;
+
+  debugLog("Searching reference:", reference);
+  postToScraper({
+    type: "SET_SERVER_FILTER",
+    field: "Reference",
+    value: reference.toUpperCase(),
+  });
+
+  // Reference search is independent of scraping: just set the filter and
+  // click the Coretax search button so the table renders the result.
+  triggerSearch();
+});
+
 // ── Init & Navigation ───────────────────────────────
 
 function onNavigate(): void {
@@ -338,6 +378,7 @@ function onNavigate(): void {
     injectScraper();
     injectExportButton();
     injectMultiInvoiceFilter();
+    injectComparerModal();
     if (isOutputTaxPage()) {
       injectToolbarFilter();
       setTimeout(() => {
@@ -360,6 +401,7 @@ function init(): void {
     debugLog("Page match found on init.");
     injectExportButton();
     injectMultiInvoiceFilter();
+    injectComparerModal();
     if (isOutputTaxPage()) {
       injectToolbarFilter();
       setTimeout(() => {

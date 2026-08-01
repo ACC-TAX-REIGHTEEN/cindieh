@@ -29,17 +29,20 @@ import {
 } from "./ui-badge";
 
 import { injectGridFilters, injectToolbarFilter, injectMultiInvoiceFilter, getMultiInvoiceNumbers, clearFilterTimers, scheduleRetry } from "./ui-filters";
+import { injectComparerModal, openComparerModal, runPendingCompare } from "./ui-comparer";
 
 import {
   setExportBtnEl,
-  setXlsxBtnEl,
-  setCsvBtnEl,
+  setExportDropdownBtnEl,
   setPdfBtnEl,
+  setScrapeBtnEl,
+  setCompareBtnEl,
   resetAllButtonRefs,
   getExportBtnEl,
-  getXlsxBtnEl,
-  getCsvBtnEl,
+  getExportDropdownBtnEl,
   getPdfBtnEl,
+  getScrapeBtnEl,
+  getCompareBtnEl,
 } from "./button-state";
 
 // ── Re-export page-context functions ──────────────────
@@ -70,6 +73,9 @@ export {
   injectToolbarFilter,
   injectMultiInvoiceFilter,
   getMultiInvoiceNumbers,
+  injectComparerModal,
+  openComparerModal,
+  runPendingCompare,
 };
 
 // ── Constants ─────────────────────────────────────────
@@ -152,29 +158,26 @@ function moveButtonNextToAnchor(btn: HTMLElement, anchor: HTMLElement): boolean 
 export function injectExportButton(retries = MAX_RETRIES): void {
   // Check if buttons are already injected
   if (isInjected) {
-    const xlsxBtn = document.getElementById("ch-export-xlsx-btn");
-    const csvBtn = document.getElementById("ch-export-csv-btn");
+    const exportDropdownBtn = document.getElementById("ch-export-dropdown-btn");
     const singleBtn = document.getElementById("ch-export-btn");
 
-    // For non-withholding pages, check both XLSX and CSV buttons
+    // For non-withholding pages, check the export dropdown button
     if (!isWithholdingPage()) {
-      if (!xlsxBtn || xlsxBtn.offsetParent === null || !csvBtn || csvBtn.offsetParent === null) {
+      if (!exportDropdownBtn || exportDropdownBtn.offsetParent === null) {
         isInjected = false;
-        if (xlsxBtn) xlsxBtn.remove();
-        if (csvBtn) csvBtn.remove();
+        exportDropdownBtn?.remove();
         const pdfBtn = getPdfBtnEl();
         if (pdfBtn) {
           pdfBtn.remove();
           setPdfBtnEl(null);
         }
-      } else if (!isButtonPlacedCorrectly(xlsxBtn)) {
+      } else if (!isButtonPlacedCorrectly(exportDropdownBtn)) {
         const inputTaxAnchor = isInputTaxPage() ? document.getElementById("CreditInvoiceButtonButton") : null;
-        if (inputTaxAnchor && inputTaxAnchor.offsetParent !== null && moveButtonNextToAnchor(xlsxBtn, inputTaxAnchor)) {
+        if (inputTaxAnchor && inputTaxAnchor.offsetParent !== null && moveButtonNextToAnchor(exportDropdownBtn, inputTaxAnchor)) {
           return;
         }
         isInjected = false;
-        xlsxBtn.remove();
-        if (csvBtn) csvBtn.remove();
+        exportDropdownBtn.remove();
         const pdfBtn = getPdfBtnEl();
         if (pdfBtn) {
           pdfBtn.remove();
@@ -282,59 +285,94 @@ export function injectExportButton(retries = MAX_RETRIES): void {
       document.dispatchEvent(new CustomEvent("ch:scrape-toggle"));
     });
   } else {
-    // For non-withholding pages: two buttons (XLSX + CSV)
-    setXlsxBtnEl(document.createElement("button"));
-    const xlsxBtn = getXlsxBtnEl()!;
-    xlsxBtn.id = "ch-export-xlsx-btn";
-    xlsxBtn.type = "button";
-    xlsxBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
+    // For non-withholding pages: a single export dropdown (XLSX + CSV)
+    const exportDropdown = document.createElement("div");
+    exportDropdown.id = "ch-export-dropdown";
+    exportDropdown.className = "ch-export-dropdown";
 
-    const xlsxIcon = document.createElement("span");
-    xlsxIcon.className = "p-button-icon p-button-icon-left pi pi-file-excel";
-    xlsxIcon.setAttribute("aria-hidden", "true");
+    setExportDropdownBtnEl(document.createElement("button"));
+    const exportBtn = getExportDropdownBtnEl()!;
+    exportBtn.id = "ch-export-dropdown-btn";
+    exportBtn.type = "button";
+    exportBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
 
-    const xlsxLabel = document.createElement("span");
-    xlsxLabel.className = "p-button-label";
-    xlsxLabel.textContent = getExportButtonLabel("xlsx", false);
+    const exportIcon = document.createElement("span");
+    exportIcon.className = "p-button-icon p-button-icon-left pi pi-download";
+    exportIcon.setAttribute("aria-hidden", "true");
 
-    xlsxBtn.appendChild(xlsxIcon);
-    xlsxBtn.appendChild(xlsxLabel);
+    const exportLabel = document.createElement("span");
+    exportLabel.className = "p-button-label";
+    exportLabel.textContent = getExportButtonLabel("dropdown", false);
 
-    setCsvBtnEl(document.createElement("button"));
-    const csvBtn = getCsvBtnEl()!;
-    csvBtn.id = "ch-export-csv-btn";
-    csvBtn.type = "button";
-    csvBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
+    const caret = document.createElement("span");
+    caret.className = "p-button-icon p-button-icon-right pi pi-chevron-down";
+    caret.setAttribute("aria-hidden", "true");
 
-    const csvIcon = document.createElement("span");
-    csvIcon.className = "p-button-icon p-button-icon-left pi pi-file";
-    csvIcon.setAttribute("aria-hidden", "true");
+    exportBtn.appendChild(exportIcon);
+    exportBtn.appendChild(exportLabel);
+    exportBtn.appendChild(caret);
+    exportDropdown.appendChild(exportBtn);
 
-    const csvLabel = document.createElement("span");
-    csvLabel.className = "p-button-label";
-    csvLabel.textContent = getExportButtonLabel("csv", false);
+    // Dropdown menu
+    const menu = document.createElement("div");
+    menu.id = "ch-export-dropdown-menu";
+    menu.className = "ch-export-dropdown-menu ch-hidden";
 
-    csvBtn.appendChild(csvIcon);
-    csvBtn.appendChild(csvLabel);
+    const xlsxItem = document.createElement("button");
+    xlsxItem.type = "button";
+    xlsxItem.className = "ch-export-dropdown-item";
+    xlsxItem.id = "ch-export-xlsx-item";
+    const xlsxItemIcon = document.createElement("span");
+    xlsxItemIcon.className = "pi pi-file-excel";
+    xlsxItemIcon.setAttribute("aria-hidden", "true");
+    xlsxItem.appendChild(xlsxItemIcon);
+    xlsxItem.appendChild(document.createTextNode("Ekspor XLSX"));
 
-    // Insert both buttons
+    const csvItem = document.createElement("button");
+    csvItem.type = "button";
+    csvItem.className = "ch-export-dropdown-item";
+    csvItem.id = "ch-export-csv-item";
+    const csvItemIcon = document.createElement("span");
+    csvItemIcon.className = "pi pi-file";
+    csvItemIcon.setAttribute("aria-hidden", "true");
+    csvItem.appendChild(csvItemIcon);
+    csvItem.appendChild(document.createTextNode("Ekspor CSV"));
+
+    menu.appendChild(xlsxItem);
+    menu.appendChild(csvItem);
+    exportDropdown.appendChild(menu);
+
+    // Insert the export dropdown
     if (insertMode === "before") {
-      containerNode.insertBefore(xlsxBtn, anchorEl);
-      containerNode.insertBefore(csvBtn, anchorEl);
+      containerNode.insertBefore(exportDropdown, anchorEl);
     } else {
-      containerNode.appendChild(xlsxBtn);
-      containerNode.appendChild(csvBtn);
+      containerNode.appendChild(exportDropdown);
     }
 
-    // Wire up event handlers
-    xlsxBtn.addEventListener("click", (e: MouseEvent) => {
+    // Toggle dropdown menu on button click
+    exportBtn.addEventListener("click", (e: MouseEvent) => {
       e.stopPropagation();
+      menu.classList.toggle("ch-hidden");
+    });
+
+    // Menu item handlers
+    xlsxItem.addEventListener("click", (e: MouseEvent) => {
+      e.stopPropagation();
+      menu.classList.add("ch-hidden");
       document.dispatchEvent(new CustomEvent("ch:export-xlsx"));
     });
 
-    csvBtn.addEventListener("click", (e: MouseEvent) => {
+    csvItem.addEventListener("click", (e: MouseEvent) => {
       e.stopPropagation();
+      menu.classList.add("ch-hidden");
       document.dispatchEvent(new CustomEvent("ch:export-csv"));
+    });
+
+    // Close menu when clicking outside
+    document.addEventListener("click", (e: MouseEvent) => {
+      if (!exportDropdown.contains(e.target as Node)) {
+        menu.classList.add("ch-hidden");
+      }
     });
 
     // Add PDF Download button for efaktur pages
@@ -368,6 +406,59 @@ export function injectExportButton(retries = MAX_RETRIES): void {
         e.stopPropagation();
         document.dispatchEvent(new CustomEvent("ch:export-pdf"));
       });
+
+      // ── Add Scrape Data icon button ──────────────────
+      setScrapeBtnEl(document.createElement("button"));
+      const scrapeBtn = getScrapeBtnEl()!;
+      scrapeBtn.id = "ch-scrape-btn";
+      scrapeBtn.type = "button";
+      scrapeBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight ch-icon-btn";
+      scrapeBtn.title = "Scrape data dari sistem";
+
+      const scrapeIcon = document.createElement("span");
+      scrapeIcon.className = "p-button-icon p-button-icon-left pi pi-refresh";
+      scrapeIcon.setAttribute("aria-hidden", "true");
+
+      scrapeBtn.appendChild(scrapeIcon);
+
+      if (insertMode === "before") {
+        containerNode.insertBefore(scrapeBtn, anchorEl);
+      } else {
+        containerNode.appendChild(scrapeBtn);
+      }
+
+      scrapeBtn.addEventListener("click", (e: MouseEvent) => {
+        e.stopPropagation();
+        document.dispatchEvent(new CustomEvent("ch:scrape-start"));
+      });
+
+      // ── Add Bandingkan icon button ───────────────────
+      setCompareBtnEl(document.createElement("button"));
+      const compareBtn = getCompareBtnEl()!;
+      compareBtn.id = "ch-compare-btn";
+      compareBtn.type = "button";
+      compareBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight ch-icon-btn";
+      compareBtn.title = "Bandingkan data penjualan";
+
+      const compareIcon = document.createElement("span");
+      compareIcon.className = "p-button-icon p-button-icon-left pi pi-list";
+      compareIcon.setAttribute("aria-hidden", "true");
+
+      compareBtn.appendChild(compareIcon);
+
+      if (insertMode === "before") {
+        containerNode.insertBefore(compareBtn, anchorEl);
+      } else {
+        containerNode.appendChild(compareBtn);
+      }
+
+      compareBtn.addEventListener("click", (e: MouseEvent) => {
+        e.stopPropagation();
+        document.dispatchEvent(new CustomEvent("ch:compare-open"));
+      });
+
+      // Inject the comparer modal
+      injectComparerModal();
     }
   }
 }
@@ -378,13 +469,15 @@ export function injectExportButton(retries = MAX_RETRIES): void {
 export function removeExportButton(): void {
   clearFilterTimers();
   const exportBtn = getExportBtnEl();
-  const xlsxBtn = getXlsxBtnEl();
-  const csvBtn = getCsvBtnEl();
+  const exportDropdown = document.getElementById("ch-export-dropdown");
   const pdfBtn = getPdfBtnEl();
+  const scrapeBtn = getScrapeBtnEl();
+  const compareBtn = getCompareBtnEl();
   if (exportBtn) exportBtn.remove();
-  if (xlsxBtn) xlsxBtn.remove();
-  if (csvBtn) csvBtn.remove();
+  if (exportDropdown) exportDropdown.remove();
   if (pdfBtn) pdfBtn.remove();
+  if (scrapeBtn) scrapeBtn.remove();
+  if (compareBtn) compareBtn.remove();
   resetAllButtonRefs();
   destroyBadge();
 }

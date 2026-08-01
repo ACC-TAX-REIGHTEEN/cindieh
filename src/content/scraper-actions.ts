@@ -194,7 +194,7 @@ export async function startScraping(
 
     const isSpt =
       captured.source === "SPT_A2" || captured.source === "SPT_B2" || captured.source.startsWith("PPH_21_");
-    const step = isSpt ? 1000 : 500;
+    const step = 1000;
     const delayMs = isSpt ? 150 : 100;
 
     const { allData, page } = await scrapePaginated(captured, step, delayMs, ctx);

@@ -9,10 +9,11 @@
 // getters and setters to prevent accidental mutation from outside.
 // ============================================================
 
-let _exportBtnEl: HTMLButtonElement | null = null; // withholding page: single "Download PDF" button
-let _xlsxBtnEl: HTMLButtonElement | null = null;   // non-withholding: "Export XLSX" button
-let _csvBtnEl: HTMLButtonElement | null = null;    // non-withholding: "Export CSV" button
-let _pdfBtnEl: HTMLButtonElement | null = null;    // efaktur: "Download PDF" button
+let _exportBtnEl: HTMLButtonElement | null = null;        // withholding page: single "Download PDF" button
+let _exportDropdownBtnEl: HTMLButtonElement | null = null; // non-withholding: export dropdown main button
+let _pdfBtnEl: HTMLButtonElement | null = null;            // efaktur: "Download PDF" button
+let _scrapeBtnEl: HTMLButtonElement | null = null;         // efaktur: "Scrape Data" icon button
+let _compareBtnEl: HTMLButtonElement | null = null;        // efaktur: "Bandingkan" icon button
 
 // ── Getters ───────────────────────────────────────────
 
@@ -20,16 +21,20 @@ export function getExportBtnEl(): HTMLButtonElement | null {
   return _exportBtnEl;
 }
 
-export function getXlsxBtnEl(): HTMLButtonElement | null {
-  return _xlsxBtnEl;
-}
-
-export function getCsvBtnEl(): HTMLButtonElement | null {
-  return _csvBtnEl;
+export function getExportDropdownBtnEl(): HTMLButtonElement | null {
+  return _exportDropdownBtnEl;
 }
 
 export function getPdfBtnEl(): HTMLButtonElement | null {
   return _pdfBtnEl;
+}
+
+export function getScrapeBtnEl(): HTMLButtonElement | null {
+  return _scrapeBtnEl;
+}
+
+export function getCompareBtnEl(): HTMLButtonElement | null {
+  return _compareBtnEl;
 }
 
 // ── Setters ───────────────────────────────────────────
@@ -38,21 +43,26 @@ export function setExportBtnEl(el: HTMLButtonElement | null): void {
   _exportBtnEl = el;
 }
 
-export function setXlsxBtnEl(el: HTMLButtonElement | null): void {
-  _xlsxBtnEl = el;
-}
-
-export function setCsvBtnEl(el: HTMLButtonElement | null): void {
-  _csvBtnEl = el;
+export function setExportDropdownBtnEl(el: HTMLButtonElement | null): void {
+  _exportDropdownBtnEl = el;
 }
 
 export function setPdfBtnEl(el: HTMLButtonElement | null): void {
   _pdfBtnEl = el;
 }
 
+export function setScrapeBtnEl(el: HTMLButtonElement | null): void {
+  _scrapeBtnEl = el;
+}
+
+export function setCompareBtnEl(el: HTMLButtonElement | null): void {
+  _compareBtnEl = el;
+}
+
 export function resetAllButtonRefs(): void {
   _exportBtnEl = null;
-  _xlsxBtnEl = null;
-  _csvBtnEl = null;
+  _exportDropdownBtnEl = null;
   _pdfBtnEl = null;
+  _scrapeBtnEl = null;
+  _compareBtnEl = null;
 }

@@ -41,6 +41,7 @@ let scrapedData: Record<string, unknown>[] | null = null;
 let scrapedFields: string[] | null = null;
 let lastExportMeta: LastExportMeta | null = null;
 let pendingExportFormat: "xlsx" | "csv" | "pdf" | null = null;
+let pendingCompare = false;
 let lastState: ScrapeState | null = null;
 
 // ── State Getters / Setters ──────────────────────────
@@ -89,6 +90,14 @@ export function clearPendingExportFormat(): void {
   pendingExportFormat = null;
 }
 
+export function getPendingCompare(): boolean {
+  return pendingCompare;
+}
+
+export function setPendingCompare(v: boolean): void {
+  pendingCompare = v;
+}
+
 export function getLastState(): ScrapeState | null {
   return lastState;
 }
@@ -104,6 +113,7 @@ export function resetState(): void {
   scrapedFields = null;
   lastExportMeta = null;
   pendingExportFormat = null;
+  pendingCompare = false;
   lastState = null;
 }
 
@@ -112,6 +122,8 @@ export function resetState(): void {
 /** Helper: find and click the search/refresh button */
 export function triggerSearch(): void {
   const searchBtn = Array.from(document.querySelectorAll("button")).find((btn) => {
+    // Ignore Better Coretax's own injected buttons (they use pi-search/pi-refresh icons)
+    if (btn.id?.startsWith("ch-")) return false;
     const text = btn.textContent?.toLowerCase() || "";
     const hasIcon = !!btn.querySelector(".pi-search, .pi-refresh, .pi-filter");
     return text.includes("cari") || text.includes("refresh") || hasIcon;
