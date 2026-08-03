@@ -17,6 +17,21 @@ let comparerTextarea: HTMLElement | null = null;
 let comparerResults: HTMLElement | null = null;
 let currentResults: ComparisonResult[] = [];
 let currentPage = 1;
+let tolerance = 0;
+let statusFilter: string[] = [];
+let viewedRefs = new Set<string>();
+let dailyEnabled = true;
+let dailyDates: number[] = [];
+
+/** Parse daily dates (1-31, comma/space separated) from a raw string. */
+function parseDailyDates(raw: string): number[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  return trimmed
+    .split(/[,;\s]+/)
+    .map((s) => parseInt(s, 10))
+    .filter((n) => !isNaN(n) && n >= 1 && n <= 31);
+}
 
 // ── Inject the comparer modal ──────────────────────────
 
@@ -99,10 +114,48 @@ export function injectComparerModal(): void {
   clearBtn.className = "ch-comparer-btn ch-comparer-btn-secondary";
   clearBtn.textContent = "Hapus";
 
+  // Tolerance input (next to Hapus)
+  const toleranceInput = document.createElement("input");
+  toleranceInput.id = "ch-comparer-tolerance";
+  toleranceInput.type = "number";
+  toleranceInput.min = "0";
+  toleranceInput.step = "1";
+  toleranceInput.placeholder = "Toleransi";
+  toleranceInput.className = "ch-comparer-tolerance-input";
+  toleranceInput.title = "Toleransi selisih DPP/PPN (default 0)";
+
   const leftGroup = document.createElement("div");
   leftGroup.className = "ch-comparer-btn-left";
   leftGroup.appendChild(checkBtn);
   leftGroup.appendChild(clearBtn);
+  leftGroup.appendChild(toleranceInput);
+
+  // Daily checkbox + date input
+  const dailyWrap = document.createElement("div");
+  dailyWrap.className = "ch-comparer-daily-wrap";
+
+  const dailyCheckbox = document.createElement("input");
+  dailyCheckbox.id = "ch-comparer-daily";
+  dailyCheckbox.type = "checkbox";
+  dailyCheckbox.checked = true;
+  dailyCheckbox.className = "ch-comparer-daily-checkbox";
+
+  const dailyLabel = document.createElement("label");
+  dailyLabel.className = "ch-comparer-daily-label";
+  dailyLabel.htmlFor = "ch-comparer-daily";
+  dailyLabel.textContent = "Hari";
+
+  dailyWrap.appendChild(dailyCheckbox);
+  dailyWrap.appendChild(dailyLabel);
+
+  const dailyDatesInput = document.createElement("input");
+  dailyDatesInput.id = "ch-comparer-daily-dates";
+  dailyDatesInput.type = "text";
+  dailyDatesInput.className = "ch-comparer-daily-dates";
+  dailyDatesInput.title = "Tanggal (1-31), pisahkan dengan koma";
+
+  leftGroup.appendChild(dailyWrap);
+  leftGroup.appendChild(dailyDatesInput);
 
   const exportBtn = document.createElement("button");
   exportBtn.id = "ch-comparer-export-btn";
@@ -110,8 +163,73 @@ export function injectComparerModal(): void {
   exportBtn.textContent = "Export XLSX";
   exportBtn.title = "Ekspor hasil perbandingan ke file Excel";
 
+  // Status filter dropdown (next to Export) — custom dropdown with checkboxes
+  const filterOptions: { value: string; label: string }[] = [
+    { value: "ALL", label: "Semua Status" },
+    { value: "COCOK", label: "Cocok" },
+    { value: "DPP_BERBEDA", label: "DPP Berbeda" },
+    { value: "PPN_BERBEDA", label: "PPN Berbeda" },
+    { value: "BERBEDA", label: "Berbeda" },
+    { value: "TIDAK_DITEMUKAN", label: "Tidak ditemukan" },
+    { value: "HANYA_CORETAX", label: "Hanya di Coretax" },
+  ];
+
+  const filterWrap = document.createElement("div");
+  filterWrap.id = "ch-comparer-filter-wrap";
+  filterWrap.className = "ch-comparer-filter-wrap";
+
+  const filterToggle = document.createElement("button");
+  filterToggle.type = "button";
+  filterToggle.id = "ch-comparer-filter-toggle";
+  filterToggle.className = "ch-comparer-filter-toggle";
+  filterToggle.title = "Filter berdasarkan status";
+
+  const filterToggleLabel = document.createElement("span");
+  filterToggleLabel.className = "ch-comparer-filter-toggle-label";
+  filterToggleLabel.textContent = "Semua Status";
+
+  const filterToggleIcon = document.createElement("span");
+  filterToggleIcon.className = "pi pi-chevron-down";
+  filterToggleIcon.setAttribute("aria-hidden", "true");
+
+  filterToggle.appendChild(filterToggleLabel);
+  filterToggle.appendChild(filterToggleIcon);
+
+  const filterMenu = document.createElement("div");
+  filterMenu.id = "ch-comparer-filter-menu";
+  filterMenu.className = "ch-comparer-filter-menu ch-hidden";
+
+  const filterCheckboxes: HTMLInputElement[] = [];
+  for (const opt of filterOptions) {
+    const item = document.createElement("label");
+    item.className = "ch-comparer-filter-item";
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = opt.value;
+    if (opt.value === "ALL") cb.checked = true;
+    filterCheckboxes.push(cb);
+
+    const span = document.createElement("span");
+    span.textContent = opt.label;
+
+    item.appendChild(cb);
+    item.appendChild(span);
+    filterMenu.appendChild(item);
+  }
+
+  filterWrap.appendChild(filterToggle);
+  filterWrap.appendChild(filterMenu);
+  // Hidden until the results table is rendered
+  filterWrap.classList.add("ch-hidden");
+
+  const rightGroup = document.createElement("div");
+  rightGroup.className = "ch-comparer-btn-right";
+  rightGroup.appendChild(filterWrap);
+  rightGroup.appendChild(exportBtn);
+
   btnRow.appendChild(leftGroup);
-  btnRow.appendChild(exportBtn);
+  btnRow.appendChild(rightGroup);
 
   const statusMsg = document.createElement("div");
   statusMsg.id = "ch-comparer-status";
@@ -155,9 +273,98 @@ export function injectComparerModal(): void {
     results.innerHTML = "";
     statusMsg.textContent = "";
     statusMsg.className = "ch-comparer-status";
+    // Hide the status filter again until results are shown
+    const filterWrap = document.getElementById("ch-comparer-filter-wrap");
+    if (filterWrap) filterWrap.classList.add("ch-hidden");
   });
 
   exportBtn.addEventListener("click", handleExportResults);
+
+  // Tolerance input: update tolerance and re-run comparison if results exist
+  toleranceInput.addEventListener("change", () => {
+    const val = parseInt(toleranceInput.value, 10);
+    tolerance = isNaN(val) || val < 0 ? 0 : val;
+    if (currentResults.length > 0) {
+      const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
+      const scrapedData = getScrapedData();
+      if (textarea && textarea.value.trim() && scrapedData && scrapedData.length > 0) {
+        const pastedRows = parsePastedData(textarea.value);
+        if (pastedRows.length > 0) runComparison(pastedRows, scrapedData);
+      }
+    }
+  });
+
+  // Daily checkbox: toggle daily mode and show/hide the date input
+  dailyCheckbox.addEventListener("change", () => {
+    dailyEnabled = dailyCheckbox.checked;
+    dailyDatesInput.classList.toggle("ch-hidden", !dailyEnabled);
+    if (currentResults.length > 0) {
+      const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
+      const scrapedData = getScrapedData();
+      if (textarea && textarea.value.trim() && scrapedData && scrapedData.length > 0) {
+        const pastedRows = parsePastedData(textarea.value);
+        if (pastedRows.length > 0) runComparison(pastedRows, scrapedData);
+      }
+    }
+  });
+
+  // Daily dates input: parse dates (1-31, comma separated)
+  dailyDatesInput.addEventListener("change", () => {
+    dailyDates = parseDailyDates(dailyDatesInput.value);
+    if (currentResults.length > 0) {
+      const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
+      const scrapedData = getScrapedData();
+      if (textarea && textarea.value.trim() && scrapedData && scrapedData.length > 0) {
+        const pastedRows = parsePastedData(textarea.value);
+        if (pastedRows.length > 0) runComparison(pastedRows, scrapedData);
+      }
+    }
+  });
+
+  // Status filter dropdown: custom dropdown with checkboxes
+  const applyFilter = () => {
+    const checked = filterCheckboxes.filter((cb) => cb.checked).map((cb) => cb.value);
+    if (checked.includes("ALL")) {
+      statusFilter = [];
+      filterToggleLabel.textContent = "Semua Status";
+    } else if (checked.length === 0) {
+      statusFilter = [];
+      filterToggleLabel.textContent = "Semua Status";
+    } else {
+      statusFilter = checked;
+      filterToggleLabel.textContent = `${checked.length} status`;
+    }
+    currentPage = 1;
+    renderResults();
+  };
+
+  filterToggle.addEventListener("click", (e: MouseEvent) => {
+    e.stopPropagation();
+    filterMenu.classList.toggle("ch-hidden");
+  });
+
+  filterCheckboxes.forEach((cb) => {
+    cb.addEventListener("change", () => {
+      if (cb.value === "ALL" && cb.checked) {
+        // Selecting "Semua Status" unchecks the others
+        filterCheckboxes.forEach((other) => {
+          if (other.value !== "ALL") other.checked = false;
+        });
+      } else if (cb.value !== "ALL" && cb.checked) {
+        // Selecting a specific status unchecks "Semua Status"
+        const allCb = filterCheckboxes.find((c) => c.value === "ALL");
+        if (allCb) allCb.checked = false;
+      }
+      applyFilter();
+    });
+  });
+
+  // Close the filter menu when clicking outside
+  document.addEventListener("click", (e: MouseEvent) => {
+    if (!filterWrap.contains(e.target as Node)) {
+      filterMenu.classList.add("ch-hidden");
+    }
+  });
 
   // Toggle paste section visibility
   toggleBtn.addEventListener("click", () => {
@@ -211,6 +418,38 @@ function handleCheck(): void {
   const statusMsg = document.getElementById("ch-comparer-status");
   if (!statusMsg) return;
 
+  // Validate daily dates before anything else (including before scraping).
+  if (dailyEnabled) {
+    const datesInput = document.getElementById("ch-comparer-daily-dates") as HTMLInputElement;
+    const raw = datesInput ? datesInput.value.trim() : "";
+    if (!raw) {
+      statusMsg.textContent = "Silakan masukkan tanggal (1-31) terlebih dahulu.";
+      statusMsg.className = "ch-comparer-status ch-comparer-status-error";
+      return;
+    }
+    const parsed = parseDailyDates(raw);
+    if (parsed.length === 0) {
+      statusMsg.textContent = "Format tanggal tidak valid. Gunakan angka 1-31, pisahkan dengan koma.";
+      statusMsg.className = "ch-comparer-status ch-comparer-status-error";
+      return;
+    }
+    dailyDates = parsed;
+  }
+
+  // If results already exist, re-run the comparison with the current
+  // tolerance (the textarea may be hidden after the first check).
+  if (currentResults.length > 0) {
+    const scrapedData = getScrapedData();
+    const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
+    if (scrapedData && scrapedData.length > 0 && textarea && textarea.value.trim()) {
+      const pastedRows = parsePastedData(textarea.value);
+      if (pastedRows.length > 0) {
+        runComparison(pastedRows, scrapedData);
+        return;
+      }
+    }
+  }
+
   const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
   if (!textarea || !textarea.value.trim()) {
     statusMsg.textContent = "Silakan paste data dari Excel terlebih dahulu.";
@@ -244,16 +483,21 @@ function runComparison(
 ): void {
   const statusMsg = document.getElementById("ch-comparer-status");
 
-  currentResults = compareData(pastedRows, scrapedData);
+  // Daily mode: pass the selected dates so coretax-only rows on those dates
+  // are also included in the results.
+  const dailyDatesArg = dailyEnabled && dailyDates.length > 0 ? dailyDates : null;
+  currentResults = compareData(pastedRows, scrapedData, tolerance, dailyDatesArg);
   currentPage = 1;
+  viewedRefs.clear();
   renderResults();
 
   const cocok = currentResults.filter((r) => r.status === "COCOK").length;
   const berbeda = currentResults.filter((r) => r.status === "BERBEDA").length;
   const tidakDitemukan = currentResults.filter((r) => r.status === "TIDAK_DITEMUKAN").length;
+  const hanyaCoretax = currentResults.filter((r) => r.status === "HANYA_CORETAX").length;
 
   if (statusMsg) {
-    statusMsg.textContent = `${currentResults.length} data diperiksa: ${cocok} cocok, ${berbeda} berbeda, ${tidakDitemukan} tidak ditemukan.`;
+    statusMsg.textContent = `${currentResults.length} data diperiksa: ${cocok} cocok, ${berbeda} berbeda, ${tidakDitemukan} tidak ditemukan${hanyaCoretax > 0 ? `, ${hanyaCoretax} hanya di coretax` : ""}.`;
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
   }
 
@@ -289,6 +533,10 @@ function renderResults(): void {
   container.classList.remove("ch-hidden");
   container.innerHTML = "";
 
+  // Show the status filter once results are displayed
+  const filterWrap = document.getElementById("ch-comparer-filter-wrap");
+  if (filterWrap) filterWrap.classList.remove("ch-hidden");
+
   if (currentResults.length === 0) {
     container.textContent = "Tidak ada data untuk ditampilkan.";
     return;
@@ -298,6 +546,14 @@ function renderResults(): void {
   if (currentPage > totalPages) currentPage = totalPages;
   const start = (currentPage - 1) * PAGE_SIZE;
   const pageRows = currentResults.slice(start, start + PAGE_SIZE);
+
+  // Apply status filter (multi-select)
+  const filtered =
+    statusFilter.length === 0 ? currentResults : currentResults.filter((r) => statusFilter.includes(r.status));
+  const filteredTotalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  if (currentPage > filteredTotalPages) currentPage = filteredTotalPages;
+  const filteredStart = (currentPage - 1) * PAGE_SIZE;
+  const filteredPageRows = filtered.slice(filteredStart, filteredStart + PAGE_SIZE);
 
   const table = document.createElement("table");
   table.className = "ch-comparer-table";
@@ -313,8 +569,8 @@ function renderResults(): void {
     "DPP Baru",
     "PPN Coretax",
     "PPN Baru",
+    "Selisih PPN",
     "Status",
-    "",
   ];
   for (const h of headers) {
     const th = document.createElement("th");
@@ -326,9 +582,18 @@ function renderResults(): void {
 
   // Body
   const tbody = document.createElement("tbody");
-  pageRows.forEach((r, idx) => {
+  filteredPageRows.forEach((r, idx) => {
     const tr = document.createElement("tr");
-    tr.className = `ch-comparer-row-${r.status.toLowerCase()}`;
+    // Highlight rows that have been viewed (double-clicked); no status colors.
+    if (viewedRefs.has(r.reference)) {
+      tr.classList.add("ch-comparer-row-viewed");
+    }
+
+    const isNotFound = r.status === "TIDAK_DITEMUKAN";
+    if (!isNotFound) {
+      tr.style.cursor = "pointer";
+      tr.title = "Klik dua kali untuk mencari referensi ini di Coretax";
+    }
 
     const formatNum = (n: number | null): string => {
       if (n === null) return "-";
@@ -338,56 +603,53 @@ function renderResults(): void {
     const statusLabel = (() => {
       switch (r.status) {
         case "COCOK": return "Cocok";
+        case "DPP_BERBEDA": return "DPP Berbeda";
+        case "PPN_BERBEDA": return "PPN Berbeda";
         case "BERBEDA": return "Berbeda";
         case "TIDAK_DITEMUKAN": return "Tidak ditemukan";
+        case "HANYA_CORETAX": return "Hanya di Coretax";
       }
     })();
 
     const cells = [
-      String(start + idx + 1),
+      String(filteredStart + idx + 1),
       r.reference,
       r.buyerName,
       formatNum(r.dppSistem),
       formatNum(r.dppExcel),
       formatNum(r.ppnSistem),
       formatNum(r.ppnExcel),
+      formatNum(r.ppnSelisih),
       statusLabel,
     ];
 
     cells.forEach((c, i) => {
       const td = document.createElement("td");
       td.textContent = c;
-      // Right-align numeric columns (DPP/PPN) and the No column
-      if (i === 0 || i === 3 || i === 4 || i === 5 || i === 6) {
+      // Right-align numeric columns (DPP/PPN/Selisih) and the No column
+      if (i === 0 || i === 3 || i === 4 || i === 5 || i === 6 || i === 7) {
         td.classList.add("ch-comparer-num");
       }
       tr.appendChild(td);
     });
 
-    // Search button (far right)
-    const actionTd = document.createElement("td");
-    actionTd.className = "ch-comparer-action";
-    const searchBtn = document.createElement("button");
-    searchBtn.type = "button";
-    searchBtn.className = "ch-comparer-search-btn";
-    searchBtn.title = "Cari referensi ini di Coretax";
-    const searchIcon = document.createElement("span");
-    searchIcon.className = "pi pi-search";
-    searchIcon.setAttribute("aria-hidden", "true");
-    searchBtn.appendChild(searchIcon);
-    searchBtn.addEventListener("click", () => {
-      searchReference(r.reference);
-    });
-    actionTd.appendChild(searchBtn);
-    tr.appendChild(actionTd);
+    // Double-click a row to search the reference in Coretax
+    // (disabled for "Tidak ditemukan" rows since there is nothing to search)
+    if (!isNotFound) {
+      tr.addEventListener("dblclick", () => {
+        viewedRefs.add(r.reference);
+        renderResults();
+        searchReference(r.reference);
+      });
+    }
 
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
   container.appendChild(table);
 
-  // Pagination
-  if (totalPages > 1) {
+  // Pagination (based on filtered results)
+  if (filteredTotalPages > 1) {
     const pagination = document.createElement("div");
     pagination.className = "ch-comparer-pagination";
 
@@ -405,15 +667,15 @@ function renderResults(): void {
 
     const pageInfo = document.createElement("span");
     pageInfo.className = "ch-comparer-page-info";
-    pageInfo.textContent = `Halaman ${currentPage} dari ${totalPages}`;
+    pageInfo.textContent = `Halaman ${currentPage} dari ${filteredTotalPages}`;
 
     const nextBtn = document.createElement("button");
     nextBtn.type = "button";
     nextBtn.className = "ch-comparer-page-btn";
     nextBtn.textContent = "Berikutnya";
-    nextBtn.disabled = currentPage === totalPages;
+    nextBtn.disabled = currentPage === filteredTotalPages;
     nextBtn.addEventListener("click", () => {
-      if (currentPage < totalPages) {
+      if (currentPage < filteredTotalPages) {
         currentPage++;
         renderResults();
       }
@@ -445,6 +707,7 @@ function handleExportResults(): void {
     "DPP Baru",
     "PPN Coretax",
     "PPN Baru",
+    "Selisih PPN",
     "Status",
   ];
 
@@ -466,6 +729,7 @@ function handleExportResults(): void {
       formatNum(r.dppExcel),
       formatNum(r.ppnSistem),
       formatNum(r.ppnExcel),
+      formatNum(r.ppnSelisih),
       r.status,
     ]);
   });

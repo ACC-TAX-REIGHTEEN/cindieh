@@ -565,26 +565,151 @@
     background: #f8f9fa;
 }
 
-.ch-comparer-row-cocok td:last-child {
-    color: #16a34a;
+/* Highlight rows that have been viewed (double-clicked) */
+.ch-comparer-row-viewed {
+    background: #e0f2fe !important;
 }
 
-.ch-comparer-row-berbeda {
-    background: #fef2f2;
+.ch-comparer-row-viewed:hover {
+    background: #bae6fd !important;
 }
 
-.ch-comparer-row-berbeda td:last-child {
-    color: #dc2626;
-    font-weight: 600;
+/* Tolerance input & status filter */
+.ch-comparer-tolerance-input {
+    width: 90px;
+    padding: 8px;
+    border: 1px solid var(--ch-border);
+    border-radius: 6px;
+    font-size: 16px;
+    color: var(--ch-text-dark);
+    background: var(--ch-white);
+    text-align: center;
 }
 
-.ch-comparer-row-tidak_ditemukan {
-    background: #fffbeb;
+/* Hide the native number input spinners (up/down arrows) */
+.ch-comparer-tolerance-input::-webkit-outer-spin-button,
+.ch-comparer-tolerance-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
-.ch-comparer-row-tidak_ditemukan td:last-child {
-    color: #d97706;
-    font-weight: 600;
+.ch-comparer-tolerance-input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.ch-comparer-tolerance-input::placeholder {
+    color: #adb5bd;
+}
+
+/* Daily checkbox & date input */
+.ch-comparer-daily-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 12px;
+}
+
+.ch-comparer-daily-checkbox {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.ch-comparer-daily-label {
+    font-size: 16px;
+    color: var(--ch-text-dark);
+    cursor: pointer;
+}
+
+.ch-comparer-daily-dates {
+    width: 120px;
+    padding: 8px;
+    border: 1px solid var(--ch-border);
+    border-radius: 6px;
+    font-size: 16px;
+    color: var(--ch-text-dark);
+    background: var(--ch-white);
+    text-align: center;
+}
+
+.ch-comparer-daily-dates:focus {
+    border-color: var(--ch-blue-border);
+    box-shadow: 0 0 0 0.2rem rgba(33, 150, 243, 0.25);
+    outline: none;
+}
+
+.ch-comparer-tolerance-input:focus {
+    border-color: var(--ch-blue-border);
+    box-shadow: 0 0 0 0.2rem rgba(33, 150, 243, 0.25);
+    outline: none;
+}
+
+.ch-comparer-btn-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Custom status filter dropdown with checkboxes */
+.ch-comparer-filter-wrap {
+    position: relative;
+    display: inline-block;
+}
+
+.ch-comparer-filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--ch-border);
+    border-radius: 6px;
+    font-size: 16px;
+    color: var(--ch-text-dark);
+    background: var(--ch-white);
+    cursor: pointer;
+}
+
+.ch-comparer-filter-toggle:hover {
+    background: var(--ch-bg-hover);
+}
+
+.ch-comparer-filter-toggle-label {
+    white-space: nowrap;
+}
+
+.ch-comparer-filter-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 9999;
+    min-width: 200px;
+    background: var(--ch-white);
+    border: 1px solid var(--ch-border-light);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 6px 0;
+}
+
+.ch-comparer-filter-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 16px;
+    color: var(--ch-text-dark);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.ch-comparer-filter-item:hover {
+    background: var(--ch-bg-hover);
+}
+
+.ch-comparer-filter-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
 }
 
 .ch-comparer-summary {

@@ -105,6 +105,24 @@ describe("compareData", () => {
     expect(results[0].status).toBe("COCOK");
   });
 
+  it("computes PPN difference (selisih)", () => {
+    const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
+    const results = compareData(pasted, scrapedData);
+    expect(results[0].ppnSelisih).toBe(0);
+  });
+
+  it("computes PPN difference when values differ", () => {
+    const pasted = parsePastedData("SZ-0447/07/26\t568.000\t70.000");
+    const results = compareData(pasted, scrapedData);
+    expect(results[0].ppnSelisih).toBe(62480 - 70000);
+  });
+
+  it("returns null PPN difference for unmatched reference", () => {
+    const pasted = parsePastedData("ZZ-9999/07/26\t568.000\t62.480");
+    const results = compareData(pasted, scrapedData);
+    expect(results[0].ppnSelisih).toBeNull();
+  });
+
   it("includes buyer name from scraped row", () => {
     const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
     const results = compareData(pasted, scrapedData);
@@ -133,14 +151,20 @@ describe("compareData", () => {
     expect(results[0].buyerName).toBe("");
   });
 
-  it("marks differing DPP as BERBEDA", () => {
+  it("marks differing DPP only as DPP_BERBEDA", () => {
     const pasted = parsePastedData("SZ-0447/07/26\t600.000\t62.480");
     const results = compareData(pasted, scrapedData);
-    expect(results[0].status).toBe("BERBEDA");
+    expect(results[0].status).toBe("DPP_BERBEDA");
   });
 
-  it("marks differing PPN as BERBEDA", () => {
+  it("marks differing PPN only as PPN_BERBEDA", () => {
     const pasted = parsePastedData("SZ-0447/07/26\t568.000\t70.000");
+    const results = compareData(pasted, scrapedData);
+    expect(results[0].status).toBe("PPN_BERBEDA");
+  });
+
+  it("marks both DPP and PPN differing as BERBEDA", () => {
+    const pasted = parsePastedData("SZ-0447/07/26\t600.000\t70.000");
     const results = compareData(pasted, scrapedData);
     expect(results[0].status).toBe("BERBEDA");
   });
@@ -159,9 +183,53 @@ describe("compareData", () => {
     expect(results[0].status).toBe("COCOK");
   });
 
-  it("allows small rounding tolerance", () => {
+  it("allows difference within tolerance", () => {
     const pasted = parsePastedData("SZ-0447/07/26\t568.000,5\t62.480");
-    const results = compareData(pasted, scrapedData);
+    const results = compareData(pasted, scrapedData, 1);
     expect(results[0].status).toBe("COCOK");
+  });
+
+  it("marks difference beyond tolerance as differing", () => {
+    const pasted = parsePastedData("SZ-0447/07/26\t568.000,5\t62.480");
+    const results = compareData(pasted, scrapedData, 0);
+    expect(results[0].status).toBe("DPP_BERBEDA");
+  });
+
+  it("includes coretax-only rows on given dates in daily mode", () => {
+    const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
+    // Only SZ is pasted; HH (day 2) and SP (day 3) are in coretax.
+    const results = compareData(pasted, scrapedData, 0, [2, 3]);
+    const statuses = results.map((r) => r.status);
+    expect(statuses).toContain("HANYA_CORETAX");
+    const onlyCoretax = results.filter((r) => r.status === "HANYA_CORETAX");
+    expect(onlyCoretax.length).toBe(2);
+    expect(onlyCoretax.some((r) => r.reference === "HH-0357/07/26")).toBe(true);
+    expect(onlyCoretax.some((r) => r.reference === "SP-0169/07/26")).toBe(true);
+    // Excel-only fields are null for coretax-only rows
+    expect(onlyCoretax[0].dppExcel).toBeNull();
+    expect(onlyCoretax[0].ppnExcel).toBeNull();
+  });
+
+  it("does not include coretax-only rows when daily mode is disabled", () => {
+    const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
+    const results = compareData(pasted, scrapedData, 0, null);
+    const statuses = results.map((r) => r.status);
+    expect(statuses).not.toContain("HANYA_CORETAX");
+    expect(results.length).toBe(1);
+  });
+
+  it("does not include coretax-only rows outside the selected dates", () => {
+    const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
+    // Only day 1 selected; HH (day 2) and SP (day 3) excluded.
+    const results = compareData(pasted, scrapedData, 0, [1]);
+    const statuses = results.map((r) => r.status);
+    expect(statuses).not.toContain("HANYA_CORETAX");
+  });
+
+  it("does not duplicate pasted rows that also exist in coretax", () => {
+    const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
+    const results = compareData(pasted, scrapedData, 0, [1, 2, 3]);
+    const szCount = results.filter((r) => r.reference === "SZ-0447/07/26").length;
+    expect(szCount).toBe(1);
   });
 });

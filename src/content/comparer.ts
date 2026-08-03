@@ -11,7 +11,13 @@ export interface PastedRow {
   ppn: number;
 }
 
-export type ComparisonStatus = "COCOK" | "BERBEDA" | "TIDAK_DITEMUKAN";
+export type ComparisonStatus =
+  | "COCOK"
+  | "DPP_BERBEDA"
+  | "PPN_BERBEDA"
+  | "BERBEDA"
+  | "TIDAK_DITEMUKAN"
+  | "HANYA_CORETAX";
 
 export interface ComparisonResult {
   reference: string;
@@ -20,9 +26,10 @@ export interface ComparisonResult {
   buyerTIN: string;
   taxInvoiceNumber: string;
   dppSistem: number | null;
-  dppExcel: number;
+  dppExcel: number | null;
   ppnSistem: number | null;
-  ppnExcel: number;
+  ppnExcel: number | null;
+  ppnSelisih: number | null;
   status: ComparisonStatus;
 }
 
@@ -89,18 +96,48 @@ export function parseNumericField(value: unknown): number | null {
 }
 
 /**
+ * Extract the day-of-month (1-31) from a date value (e.g. "2026-07-01T...").
+ * Returns null when no valid day is found.
+ */
+export function extractDayFromDate(value: unknown): number | null {
+  if (value == null) return null;
+  const s = String(value);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    const day = parseInt(m[3], 10);
+    return day >= 1 && day <= 31 ? day : null;
+  }
+  return null;
+}
+
+/**
  * Compare pasted data rows against scraped efaktur data.
  * Matches by the "Reference" field (case-insensitive).
  *
+ * Status logic:
+ * - COCOK: both DPP and PPN match within tolerance
+ * - DPP_BERBEDA: only DPP differs, PPN matches
+ * - PPN_BERBEDA: only PPN differs, DPP matches
+ * - BERBEDA: both DPP and PPN differ
+ * - TIDAK_DITEMUKAN: reference not found in scraped data
+ * - HANYA_CORETAX: (daily mode) exists in coretax on the given dates but
+ *   was not pasted by the user
+ *
  * @param pastedRows  - Data parsed from user's Excel paste
  * @param scrapedData - Data from the scraped API response
+ * @param tolerance   - Allowed absolute difference (default 0)
+ * @param dailyDates  - Day-of-month numbers (1-31) to also check in reverse
+ *                      (coretax rows on these dates not in excel). Null disables.
  * @returns Array of comparison results
  */
 export function compareData(
   pastedRows: PastedRow[],
   scrapedData: Record<string, unknown>[],
+  tolerance = 0,
+  dailyDates: number[] | null = null,
 ): ComparisonResult[] {
   const results: ComparisonResult[] = [];
+  const pastedRefs = new Set(pastedRows.map((r) => r.reference.toLowerCase()));
 
   for (const row of pastedRows) {
     const refLower = row.reference.toLowerCase();
@@ -120,6 +157,7 @@ export function compareData(
         dppExcel: row.dpp,
         ppnSistem: null,
         ppnExcel: row.ppn,
+        ppnSelisih: null,
         status: "TIDAK_DITEMUKAN",
       });
       continue;
@@ -128,9 +166,19 @@ export function compareData(
     const dppSistem = parseNumericField(scrapedRow.SellingPrice);
     const ppnSistem = parseNumericField(scrapedRow.VAT);
 
-    // Allow 1-unit tolerance for rounding differences
-    const dppMatch = dppSistem !== null && Math.abs(dppSistem - row.dpp) < 1;
-    const ppnMatch = ppnSistem !== null && Math.abs(ppnSistem - row.ppn) < 1;
+    const dppMatch = dppSistem !== null && Math.abs(dppSistem - row.dpp) <= tolerance;
+    const ppnMatch = ppnSistem !== null && Math.abs(ppnSistem - row.ppn) <= tolerance;
+
+    let status: ComparisonStatus;
+    if (dppMatch && ppnMatch) {
+      status = "COCOK";
+    } else if (!dppMatch && !ppnMatch) {
+      status = "BERBEDA";
+    } else if (!dppMatch) {
+      status = "DPP_BERBEDA";
+    } else {
+      status = "PPN_BERBEDA";
+    }
 
     results.push({
       reference: row.reference,
@@ -142,8 +190,36 @@ export function compareData(
       dppExcel: row.dpp,
       ppnSistem,
       ppnExcel: row.ppn,
-      status: dppMatch && ppnMatch ? "COCOK" : "BERBEDA",
+      ppnSelisih: ppnSistem !== null ? ppnSistem - row.ppn : null,
+      status,
     });
+  }
+
+  // Daily mode: include coretax rows on the given dates that were not pasted.
+  if (dailyDates && dailyDates.length > 0) {
+    const dateSet = new Set(dailyDates);
+    for (const s of scrapedData) {
+      const ref = String(s.Reference || "").trim();
+      if (!ref) continue;
+      if (pastedRefs.has(ref.toLowerCase())) continue;
+
+      const day = extractDayFromDate(s.TaxInvoiceDate);
+      if (day !== null && dateSet.has(day)) {
+        results.push({
+          reference: ref,
+          buyerName: String(s.BuyerName || ""),
+          invoiceDate: String(s.TaxInvoiceDate || ""),
+          buyerTIN: String(s.BuyerTIN || ""),
+          taxInvoiceNumber: String(s.TaxInvoiceNumber || ""),
+          dppSistem: parseNumericField(s.SellingPrice),
+          dppExcel: null,
+          ppnSistem: parseNumericField(s.VAT),
+          ppnExcel: null,
+          ppnSelisih: null,
+          status: "HANYA_CORETAX",
+        });
+      }
+    }
   }
 
   return results;
