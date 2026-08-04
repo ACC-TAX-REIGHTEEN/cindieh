@@ -27,12 +27,12 @@ describe("parseIndonesianNumber", () => {
 });
 
 describe("parsePastedData", () => {
-  it("parses tab-separated rows", () => {
+  it("parses tab-separated rows (3 columns, refLain disabled)", () => {
     const text = "SZ-0447/07/26\t568.000\t62.480\nHH-0357/07/26\t1.481.203\t162.932";
     const rows = parsePastedData(text);
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toEqual({ reference: "SZ-0447/07/26", dpp: 568000, ppn: 62480 });
-    expect(rows[1]).toEqual({ reference: "HH-0357/07/26", dpp: 1481203, ppn: 162932 });
+    expect(rows[0]).toEqual({ reference: "SZ-0447/07/26", refLain: "", dpp: 568000, ppn: 62480 });
+    expect(rows[1]).toEqual({ reference: "HH-0357/07/26", refLain: "", dpp: 1481203, ppn: 162932 });
   });
 
   it("parses rows separated by 2+ spaces", () => {
@@ -49,9 +49,9 @@ describe("parsePastedData", () => {
       " SP-0169/07/26  \t 1.132.023 \t 124.523 ";
     const rows = parsePastedData(text);
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toEqual({ reference: "SZ-0447/07/26", dpp: 568000, ppn: 62480 });
-    expect(rows[1]).toEqual({ reference: "HH-0357/07/26", dpp: 1481203, ppn: 162932 });
-    expect(rows[2]).toEqual({ reference: "SP-0169/07/26", dpp: 1132023, ppn: 124523 });
+    expect(rows[0]).toEqual({ reference: "SZ-0447/07/26", refLain: "", dpp: 568000, ppn: 62480 });
+    expect(rows[1]).toEqual({ reference: "HH-0357/07/26", refLain: "", dpp: 1481203, ppn: 162932 });
+    expect(rows[2]).toEqual({ reference: "SP-0169/07/26", refLain: "", dpp: 1132023, ppn: 124523 });
   });
 
   it("skips empty lines and invalid rows", () => {
@@ -69,6 +69,26 @@ describe("parsePastedData", () => {
   it("skips rows with non-numeric values", () => {
     const text = "SZ-0447/07/26\tabc\t62.480";
     const rows = parsePastedData(text);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("parses 4-column rows when refLainMode is enabled", () => {
+    const text = "SZ-0447/07/26\tREF-001\t568.000\t62.480\nHH-0357/07/26\tREF-002\t1.481.203\t162.932";
+    const rows = parsePastedData(text, true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual({ reference: "SZ-0447/07/26", refLain: "REF-001", dpp: 568000, ppn: 62480 });
+    expect(rows[1]).toEqual({ reference: "HH-0357/07/26", refLain: "REF-002", dpp: 1481203, ppn: 162932 });
+  });
+
+  it("skips 4-column rows with fewer than 4 columns", () => {
+    const text = "SZ-0447/07/26\t568.000\t62.480";
+    const rows = parsePastedData(text, true);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("passes refLain empty string in 3-column mode even when refLainMode is true", () => {
+    const text = "SZ-0447/07/26\t568.000\t62.480";
+    const rows = parsePastedData(text, true);
     expect(rows).toHaveLength(0);
   });
 });
@@ -231,5 +251,24 @@ describe("compareData", () => {
     const results = compareData(pasted, scrapedData, 0, [1, 2, 3]);
     const szCount = results.filter((r) => r.reference === "SZ-0447/07/26").length;
     expect(szCount).toBe(1);
+  });
+
+  it("preserves refLain in comparison results", () => {
+    const pasted = parsePastedData("SZ-0447/07/26\tREF-001\t568.000\t62.480", true);
+    const results = compareData(pasted, scrapedData);
+    expect(results[0].refLain).toBe("REF-001");
+  });
+
+  it("has empty refLain when refLain mode is disabled", () => {
+    const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
+    const results = compareData(pasted, scrapedData);
+    expect(results[0].refLain).toBe("");
+  });
+
+  it("has empty refLain for coretax-only rows", () => {
+    const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
+    const results = compareData(pasted, scrapedData, 0, [2]);
+    const coretaxOnly = results.filter((r) => r.status === "HANYA_CORETAX");
+    expect(coretaxOnly[0].refLain).toBe("");
   });
 });

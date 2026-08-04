@@ -7,6 +7,7 @@
 
 export interface PastedRow {
   reference: string;
+  refLain: string;
   dpp: number;
   ppn: number;
 }
@@ -21,6 +22,7 @@ export type ComparisonStatus =
 
 export interface ComparisonResult {
   reference: string;
+  refLain: string;
   buyerName: string;
   invoiceDate: string;
   buyerTIN: string;
@@ -49,11 +51,18 @@ export function parseIndonesianNumber(value: string): number {
 }
 
 /**
- * Parse pasted text from Excel (tab-separated: Reference, DPP, PPN).
+ * Parse pasted text from Excel.
+ *
+ * When refLain mode is enabled (4 columns):
+ *   Reference, Referensi Lain, DPP, PPN
+ *
+ * When refLain mode is disabled (3 columns):
+ *   Reference, DPP, PPN
+ *
  * Supports tabs or 2+ spaces as delimiters.
  * Skips empty lines and invalid rows.
  */
-export function parsePastedData(text: string): PastedRow[] {
+export function parsePastedData(text: string, refLainMode = false): PastedRow[] {
   const lines = text.trim().split(/\n/);
   const results: PastedRow[] = [];
 
@@ -65,17 +74,24 @@ export function parsePastedData(text: string): PastedRow[] {
     // Excel copy-paste can produce mixed delimiters like "  \t" (spaces + tab),
     // so we treat any whitespace run as a single separator to avoid empty tokens.
     const parts = trimmed.split(/\s+/);
-    if (parts.length < 3) continue;
-
-    const reference = parts[0].trim();
-    if (!reference) continue;
-
-    const dpp = parseIndonesianNumber(parts[1]);
-    const ppn = parseIndonesianNumber(parts[2]);
-
-    if (isNaN(dpp) || isNaN(ppn)) continue;
-
-    results.push({ reference, dpp, ppn });
+    if (refLainMode) {
+      if (parts.length < 4) continue;
+      const reference = parts[0].trim();
+      if (!reference) continue;
+      const refLain = parts[1].trim();
+      const dpp = parseIndonesianNumber(parts[2]);
+      const ppn = parseIndonesianNumber(parts[3]);
+      if (isNaN(dpp) || isNaN(ppn)) continue;
+      results.push({ reference, refLain, dpp, ppn });
+    } else {
+      if (parts.length < 3) continue;
+      const reference = parts[0].trim();
+      if (!reference) continue;
+      const dpp = parseIndonesianNumber(parts[1]);
+      const ppn = parseIndonesianNumber(parts[2]);
+      if (isNaN(dpp) || isNaN(ppn)) continue;
+      results.push({ reference, refLain: "", dpp, ppn });
+    }
   }
 
   return results;
@@ -149,6 +165,7 @@ export function compareData(
     if (!scrapedRow) {
       results.push({
         reference: row.reference,
+        refLain: row.refLain,
         buyerName: "",
         invoiceDate: "",
         buyerTIN: "",
@@ -182,6 +199,7 @@ export function compareData(
 
     results.push({
       reference: row.reference,
+      refLain: row.refLain,
       buyerName: String(scrapedRow.BuyerName || ""),
       invoiceDate: String(scrapedRow.TaxInvoiceDate || ""),
       buyerTIN: String(scrapedRow.BuyerTIN || ""),
@@ -207,6 +225,7 @@ export function compareData(
       if (day !== null && dateSet.has(day)) {
         results.push({
           reference: ref,
+          refLain: "",
           buyerName: String(s.BuyerName || ""),
           invoiceDate: String(s.TaxInvoiceDate || ""),
           buyerTIN: String(s.BuyerTIN || ""),

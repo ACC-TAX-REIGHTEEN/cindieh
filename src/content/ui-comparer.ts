@@ -22,6 +22,8 @@ let statusFilter: string[] = [];
 let viewedRefs = new Set<string>();
 let dailyEnabled = true;
 let dailyDates: number[] = [];
+let refLainEnabled = true;
+let refLainColumnIndex = 2; // 0-based column index for ref lain when enabled (col 3 in 1-based)
 
 /** Parse daily dates (1-31, comma/space separated) from a raw string. */
 function parseDailyDates(raw: string): number[] {
@@ -95,7 +97,7 @@ export function injectComparerModal(): void {
   textarea.className = "ch-comparer-textarea";
   textarea.rows = 8;
   textarea.placeholder =
-    "SZ-0447/07/26\t568.000\t62.480\nHH-0357/07/26\t1.481.203\t162.932\nSP-0169/07/26\t1.132.023\t124.523";
+    "SZ-0447/07/26\tREF-001\t568.000\t62.480\nHH-0357/07/26\tREF-002\t1.481.203\t162.932\nSP-0169/07/26\tREF-003\t1.132.023\t124.523";
 
   pasteSection.appendChild(pasteHeader);
   pasteSection.appendChild(textarea);
@@ -129,6 +131,26 @@ export function injectComparerModal(): void {
   leftGroup.appendChild(checkBtn);
   leftGroup.appendChild(clearBtn);
   leftGroup.appendChild(toleranceInput);
+
+  // Ref Lain checkbox
+  const refLainWrap = document.createElement("div");
+  refLainWrap.className = "ch-comparer-daily-wrap";
+
+  const refLainCheckbox = document.createElement("input");
+  refLainCheckbox.id = "ch-comparer-ref-lain";
+  refLainCheckbox.type = "checkbox";
+  refLainCheckbox.checked = true;
+  refLainCheckbox.className = "ch-comparer-daily-checkbox";
+
+  const refLainLabel = document.createElement("label");
+  refLainLabel.className = "ch-comparer-daily-label";
+  refLainLabel.htmlFor = "ch-comparer-ref-lain";
+  refLainLabel.textContent = "Ref Lain";
+
+  refLainWrap.appendChild(refLainCheckbox);
+  refLainWrap.appendChild(refLainLabel);
+
+  leftGroup.appendChild(refLainWrap);
 
   // Daily checkbox + date input
   const dailyWrap = document.createElement("div");
@@ -288,7 +310,20 @@ export function injectComparerModal(): void {
       const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
       const scrapedData = getScrapedData();
       if (textarea && textarea.value.trim() && scrapedData && scrapedData.length > 0) {
-        const pastedRows = parsePastedData(textarea.value);
+        const pastedRows = parsePastedData(textarea.value, refLainEnabled);
+        if (pastedRows.length > 0) runComparison(pastedRows, scrapedData);
+      }
+    }
+  });
+
+  // Ref Lain checkbox
+  refLainCheckbox.addEventListener("change", () => {
+    refLainEnabled = refLainCheckbox.checked;
+    if (currentResults.length > 0) {
+      const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
+      const scrapedData = getScrapedData();
+      if (textarea && textarea.value.trim() && scrapedData && scrapedData.length > 0) {
+        const pastedRows = parsePastedData(textarea.value, refLainEnabled);
         if (pastedRows.length > 0) runComparison(pastedRows, scrapedData);
       }
     }
@@ -302,7 +337,7 @@ export function injectComparerModal(): void {
       const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
       const scrapedData = getScrapedData();
       if (textarea && textarea.value.trim() && scrapedData && scrapedData.length > 0) {
-        const pastedRows = parsePastedData(textarea.value);
+        const pastedRows = parsePastedData(textarea.value, refLainEnabled);
         if (pastedRows.length > 0) runComparison(pastedRows, scrapedData);
       }
     }
@@ -315,7 +350,7 @@ export function injectComparerModal(): void {
       const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
       const scrapedData = getScrapedData();
       if (textarea && textarea.value.trim() && scrapedData && scrapedData.length > 0) {
-        const pastedRows = parsePastedData(textarea.value);
+        const pastedRows = parsePastedData(textarea.value, refLainEnabled);
         if (pastedRows.length > 0) runComparison(pastedRows, scrapedData);
       }
     }
@@ -442,7 +477,7 @@ function handleCheck(): void {
     const scrapedData = getScrapedData();
     const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
     if (scrapedData && scrapedData.length > 0 && textarea && textarea.value.trim()) {
-      const pastedRows = parsePastedData(textarea.value);
+      const pastedRows = parsePastedData(textarea.value, refLainEnabled);
       if (pastedRows.length > 0) {
         runComparison(pastedRows, scrapedData);
         return;
@@ -457,9 +492,11 @@ function handleCheck(): void {
     return;
   }
 
-  const pastedRows = parsePastedData(textarea.value);
+  const pastedRows = parsePastedData(textarea.value, refLainEnabled);
   if (pastedRows.length === 0) {
-    statusMsg.textContent = "Format data tidak dikenali. Pastikan format: Referensi, DPP, PPN (tab-separated).";
+    statusMsg.textContent = refLainEnabled
+      ? "Format data tidak dikenali. Pastikan format: Referensi, Referensi Lain, DPP, PPN (tab-separated)."
+      : "Format data tidak dikenali. Pastikan format: Referensi, DPP, PPN (tab-separated).";
     statusMsg.className = "ch-comparer-status ch-comparer-status-error";
     return;
   }
@@ -518,7 +555,7 @@ export function runPendingCompare(): void {
   const scrapedData = getScrapedData();
   if (!textarea || !textarea.value.trim() || !scrapedData || scrapedData.length === 0) return;
 
-  const pastedRows = parsePastedData(textarea.value);
+  const pastedRows = parsePastedData(textarea.value, refLainEnabled);
   if (pastedRows.length === 0) return;
 
   runComparison(pastedRows, scrapedData);
@@ -564,14 +601,15 @@ function renderResults(): void {
   const headers = [
     "No",
     "Referensi",
-    "Nama Pembeli",
-    "DPP Coretax",
-    "DPP Baru",
-    "PPN Coretax",
-    "PPN Baru",
-    "Selisih PPN",
-    "Status",
-  ];
+    refLainEnabled ? "Referensi Lain" : "Nama Pembeli",
+    refLainEnabled ? "Nama Pembeli" : "DPP Coretax",
+    refLainEnabled ? "DPP Coretax" : "DPP Baru",
+    refLainEnabled ? "DPP Baru" : "PPN Coretax",
+    refLainEnabled ? "PPN Coretax" : "PPN Baru",
+    refLainEnabled ? "PPN Baru" : "Selisih PPN",
+    refLainEnabled ? "Selisih PPN" : "Status",
+    refLainEnabled ? "Status" : "",
+  ].filter((h) => h !== "");
   for (const h of headers) {
     const th = document.createElement("th");
     th.textContent = h;
@@ -611,23 +649,37 @@ function renderResults(): void {
       }
     })();
 
-    const cells = [
-      String(filteredStart + idx + 1),
-      r.reference,
-      r.buyerName,
-      formatNum(r.dppSistem),
-      formatNum(r.dppExcel),
-      formatNum(r.ppnSistem),
-      formatNum(r.ppnExcel),
-      formatNum(r.ppnSelisih),
-      statusLabel,
-    ];
+    const cells = refLainEnabled
+      ? [
+          String(filteredStart + idx + 1),
+          r.reference,
+          r.refLain,
+          r.buyerName,
+          formatNum(r.dppSistem),
+          formatNum(r.dppExcel),
+          formatNum(r.ppnSistem),
+          formatNum(r.ppnExcel),
+          formatNum(r.ppnSelisih),
+          statusLabel,
+        ]
+      : [
+          String(filteredStart + idx + 1),
+          r.reference,
+          r.buyerName,
+          formatNum(r.dppSistem),
+          formatNum(r.dppExcel),
+          formatNum(r.ppnSistem),
+          formatNum(r.ppnExcel),
+          formatNum(r.ppnSelisih),
+          statusLabel,
+        ];
 
     cells.forEach((c, i) => {
       const td = document.createElement("td");
       td.textContent = c;
-      // Right-align numeric columns (DPP/PPN/Selisih) and the No column
-      if (i === 0 || i === 3 || i === 4 || i === 5 || i === 6 || i === 7) {
+      // Right-align numeric columns and the No column
+      const numCols = refLainEnabled ? [0, 4, 5, 6, 7, 8] : [0, 3, 4, 5, 6, 7];
+      if (numCols.includes(i)) {
         td.classList.add("ch-comparer-num");
       }
       tr.appendChild(td);
@@ -696,20 +748,36 @@ function handleExportResults(): void {
 
   if (currentResults.length === 0) return;
 
-  const headers = [
-    "No",
-    "Referensi",
-    "Nama Pembeli",
-    "Tanggal",
-    "NIK/NPWP",
-    "Nomor Faktur Pajak",
-    "DPP Coretax",
-    "DPP Baru",
-    "PPN Coretax",
-    "PPN Baru",
-    "Selisih PPN",
-    "Status",
-  ];
+  const headers = refLainEnabled
+    ? [
+        "No",
+        "Referensi",
+        "Referensi Lain",
+        "Nama Pembeli",
+        "Tanggal",
+        "NIK/NPWP",
+        "Nomor Faktur Pajak",
+        "DPP Coretax",
+        "DPP Baru",
+        "PPN Coretax",
+        "PPN Baru",
+        "Selisih PPN",
+        "Status",
+      ]
+    : [
+        "No",
+        "Referensi",
+        "Nama Pembeli",
+        "Tanggal",
+        "NIK/NPWP",
+        "Nomor Faktur Pajak",
+        "DPP Coretax",
+        "DPP Baru",
+        "PPN Coretax",
+        "PPN Baru",
+        "Selisih PPN",
+        "Status",
+      ];
 
   const formatNum = (n: number | null): string => {
     if (n === null) return "";
@@ -718,20 +786,38 @@ function handleExportResults(): void {
 
   const rows: string[][] = [headers];
   currentResults.forEach((r, idx) => {
-    rows.push([
-      String(idx + 1),
-      r.reference,
-      r.buyerName,
-      r.invoiceDate,
-      r.buyerTIN,
-      r.taxInvoiceNumber,
-      formatNum(r.dppSistem),
-      formatNum(r.dppExcel),
-      formatNum(r.ppnSistem),
-      formatNum(r.ppnExcel),
-      formatNum(r.ppnSelisih),
-      r.status,
-    ]);
+    if (refLainEnabled) {
+      rows.push([
+        String(idx + 1),
+        r.reference,
+        r.refLain,
+        r.buyerName,
+        r.invoiceDate,
+        r.buyerTIN,
+        r.taxInvoiceNumber,
+        formatNum(r.dppSistem),
+        formatNum(r.dppExcel),
+        formatNum(r.ppnSistem),
+        formatNum(r.ppnExcel),
+        formatNum(r.ppnSelisih),
+        r.status,
+      ]);
+    } else {
+      rows.push([
+        String(idx + 1),
+        r.reference,
+        r.buyerName,
+        r.invoiceDate,
+        r.buyerTIN,
+        r.taxInvoiceNumber,
+        formatNum(r.dppSistem),
+        formatNum(r.dppExcel),
+        formatNum(r.ppnSistem),
+        formatNum(r.ppnExcel),
+        formatNum(r.ppnSelisih),
+        r.status,
+      ]);
+    }
   });
 
   // Generate CSV with BOM for Excel compatibility
