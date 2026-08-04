@@ -33,7 +33,16 @@ export function buildEfakturPdfBody(
   source: string,
   capturedBody: Record<string, unknown>,
 ): Record<string, unknown> {
-  const menuType = source === "OUTPUT_TAX" || source === "OUTPUT_RETURN" ? "Outgoing" : "Incoming";
+  const menuType =
+    source === "OUTPUT_TAX"
+      ? "Outgoing"
+      : source === "OUTPUT_RETURN"
+        ? "OutgoingReturn"
+        : source === "INPUT_TAX"
+          ? "Input"
+          : source === "INPUT_RETURN"
+            ? "InputReturn"
+            : "Incoming";
 
   return {
     EInvoiceRecordIdentifier: row.EInvoiceRecordIdentifier || row.RecordId || "",

@@ -45,31 +45,31 @@ describe("buildEfakturPdfBody", () => {
     expect(body.EInvoiceMenuType).toBe("Outgoing");
   });
 
-  it("sets EInvoiceMenuType to Outgoing for OUTPUT_RETURN", () => {
+  it("sets EInvoiceMenuType to OutgoingReturn for OUTPUT_RETURN", () => {
     const body = buildEfakturPdfBody(
       { EInvoiceRecordIdentifier: "rec-1" },
       "OUTPUT_RETURN",
       {}
     );
-    expect(body.EInvoiceMenuType).toBe("Outgoing");
+    expect(body.EInvoiceMenuType).toBe("OutgoingReturn");
   });
 
-  it("sets EInvoiceMenuType to Incoming for INPUT_TAX", () => {
+  it("sets EInvoiceMenuType to Input for INPUT_TAX", () => {
     const body = buildEfakturPdfBody(
       { EInvoiceRecordIdentifier: "rec-1" },
       "INPUT_TAX",
       {}
     );
-    expect(body.EInvoiceMenuType).toBe("Incoming");
+    expect(body.EInvoiceMenuType).toBe("Input");
   });
 
-  it("sets EInvoiceMenuType to Incoming for INPUT_RETURN", () => {
+  it("sets EInvoiceMenuType to InputReturn for INPUT_RETURN", () => {
     const body = buildEfakturPdfBody(
       { EInvoiceRecordIdentifier: "rec-1" },
       "INPUT_RETURN",
       {}
     );
-    expect(body.EInvoiceMenuType).toBe("Incoming");
+    expect(body.EInvoiceMenuType).toBe("InputReturn");
   });
 
   it("falls back to RecordId when EInvoiceRecordIdentifier is missing", () => {
