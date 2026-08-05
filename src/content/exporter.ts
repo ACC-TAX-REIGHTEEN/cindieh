@@ -92,7 +92,7 @@ export function formatDate(dateStr: unknown): string {
   return dateStr;
 }
 
-function processData(exportData: ExportData): ExportData {
+export function processData(exportData: ExportData): ExportData {
   if (
     exportData.source === "INPUT_TAX" ||
     exportData.source === "OUTPUT_RETURN" ||

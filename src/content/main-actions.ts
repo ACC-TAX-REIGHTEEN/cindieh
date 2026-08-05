@@ -3,6 +3,11 @@
 // ============================================================
 // Contains export-related action handlers and shared state
 // accessed by both main.ts (message relay) and the export UI events.
+//
+// State is now managed via ContentState objects created by
+// createContentState(). The module also exports a default singleton
+// instance (used by main.ts and ui-comparer.ts) alongside the
+// factory so tests can create independent, isolated instances.
 // ============================================================
 
 import { type ExportData, exportXLSX, exportCSV } from "./exporter";
@@ -30,91 +35,104 @@ export interface LastExportMeta {
   source?: ExportSource;
 }
 
+// ── State object ─────────────────────────────────────
+// Encapsulates all mutable state that was previously stored as
+// bare module-level `let` variables. Tests create a fresh instance
+// per test case — no shared singleton, no resetState() ceremony.
+
+export interface ContentState {
+  isRunning: boolean;
+  scrapedData: Record<string, unknown>[] | null;
+  scrapedFields: string[] | null;
+  lastExportMeta: LastExportMeta | null;
+  pendingExportFormat: "xlsx" | "csv" | "pdf" | null;
+  pendingCompare: boolean;
+  lastState: ScrapeState | null;
+}
+
+export function createContentState(): ContentState {
+  return {
+    isRunning: false,
+    scrapedData: null,
+    scrapedFields: null,
+    lastExportMeta: null,
+    pendingExportFormat: null,
+    pendingCompare: false,
+    lastState: null,
+  };
+}
+
+// ── Module singleton ──────────────────────────────────
+// main.ts and ui-comparer.ts import this directly.
+// Tests should call createContentState() and use the action
+// functions directly instead of depending on this singleton.
+
+let _state: ContentState = createContentState();
+
+// ── State Getters / Setters (singleton API) ──────────
+// Kept for backward compatibility with main.ts which uses them
+// directly. New code should prefer passing a ContentState object.
+
+export function getIsRunning(): boolean { return _state.isRunning; }
+export function setIsRunning(v: boolean): void { _state.isRunning = v; }
+
+export function getScrapedData(): Record<string, unknown>[] | null { return _state.scrapedData; }
+export function setScrapedData(v: Record<string, unknown>[] | null): void { _state.scrapedData = v; }
+
+export function getScrapedFields(): string[] | null { return _state.scrapedFields; }
+export function setScrapedFields(v: string[] | null): void { _state.scrapedFields = v; }
+
+export function getLastExportMeta(): LastExportMeta | null { return _state.lastExportMeta; }
+export function setLastExportMeta(v: LastExportMeta | null): void { _state.lastExportMeta = v; }
+
+export function getPendingExportFormat(): "xlsx" | "csv" | "pdf" | null { return _state.pendingExportFormat; }
+export function setPendingExportFormat(format: "xlsx" | "csv" | "pdf" | null): void { _state.pendingExportFormat = format; }
+
+export function clearPendingExportFormat(): void { _state.pendingExportFormat = null; }
+
+export function getPendingCompare(): boolean { return _state.pendingCompare; }
+export function setPendingCompare(v: boolean): void { _state.pendingCompare = v; }
+
+export function getLastState(): ScrapeState | null { return _state.lastState; }
+export function setLastState(v: ScrapeState | null): void { _state.lastState = v; }
+
+/** Reset the singleton — call on SPA navigation. */
+export function resetState(): void {
+  _state = createContentState();
+}
+
 // ── Constants ────────────────────────────────────────
 
 const SEARCH_CLICK_DELAY_MS = 100;
 
-// ── Shared State ─────────────────────────────────────
+// ── Dependencies interface ────────────────────────────
+// All browser/DOM dependencies needed by the action functions.
+// Injected so tests can stub them without touching the DOM.
 
-let isRunning = false;
-let scrapedData: Record<string, unknown>[] | null = null;
-let scrapedFields: string[] | null = null;
-let lastExportMeta: LastExportMeta | null = null;
-let pendingExportFormat: "xlsx" | "csv" | "pdf" | null = null;
-let pendingCompare = false;
-let lastState: ScrapeState | null = null;
-
-// ── State Getters / Setters ──────────────────────────
-
-export function getIsRunning(): boolean {
-  return isRunning;
+export interface ActionDeps {
+  postToScraper: (msg: Record<string, unknown>) => void;
+  showPanel: () => void;
+  updatePanelProgress: (total: number, page: number, elapsed: string, status: string) => void;
+  updatePanelIdle: () => void;
+  getMultiInvoiceNumbers: () => string[];
+  exportXLSX: (data: ExportData) => void;
+  exportCSV: (data: ExportData) => void;
+  /** Find and click the Coretax search/refresh button. */
+  triggerSearch: () => void;
 }
 
-export function setIsRunning(v: boolean): void {
-  isRunning = v;
-}
-
-export function getScrapedData(): Record<string, unknown>[] | null {
-  return scrapedData;
-}
-
-export function setScrapedData(v: Record<string, unknown>[] | null): void {
-  scrapedData = v;
-}
-
-export function getScrapedFields(): string[] | null {
-  return scrapedFields;
-}
-
-export function setScrapedFields(v: string[] | null): void {
-  scrapedFields = v;
-}
-
-export function getLastExportMeta(): LastExportMeta | null {
-  return lastExportMeta;
-}
-
-export function setLastExportMeta(v: LastExportMeta | null): void {
-  lastExportMeta = v;
-}
-
-export function getPendingExportFormat(): "xlsx" | "csv" | "pdf" | null {
-  return pendingExportFormat;
-}
-
-export function setPendingExportFormat(format: "xlsx" | "csv" | "pdf" | null): void {
-  pendingExportFormat = format;
-}
-
-export function clearPendingExportFormat(): void {
-  pendingExportFormat = null;
-}
-
-export function getPendingCompare(): boolean {
-  return pendingCompare;
-}
-
-export function setPendingCompare(v: boolean): void {
-  pendingCompare = v;
-}
-
-export function getLastState(): ScrapeState | null {
-  return lastState;
-}
-
-export function setLastState(v: ScrapeState | null): void {
-  lastState = v;
-}
-
-/** Reset all module-level state — call on SPA navigation. */
-export function resetState(): void {
-  isRunning = false;
-  scrapedData = null;
-  scrapedFields = null;
-  lastExportMeta = null;
-  pendingExportFormat = null;
-  pendingCompare = false;
-  lastState = null;
+/** Build a production ActionDeps that calls the real browser globals. */
+export function createActionDeps(): ActionDeps {
+  return {
+    postToScraper,
+    showPanel,
+    updatePanelProgress,
+    updatePanelIdle,
+    getMultiInvoiceNumbers,
+    exportXLSX,
+    exportCSV,
+    triggerSearch: () => triggerSearch(),
+  };
 }
 
 // ── Functions ────────────────────────────────────────
@@ -144,78 +162,93 @@ export function applyMultiInvoiceFilter(d: Record<string, unknown>[]): Record<st
   return d.filter((r) => set.has(String(r.TaxInvoiceNumber || r.LetterNumber || "").toLowerCase()));
 }
 
-export function startScrape(): void {
-  showPanel();
-  setIsRunning(true);
-  setScrapedData(null);
-  setScrapedFields(null);
-  setLastExportMeta(null);
-  setLastState({
+/**
+ * Start a full scrape: show the panel, reset scraped data, and post
+ * START_SCRAPE to the page world.
+ *
+ * Accepts an optional ContentState + ActionDeps for testability.
+ * When omitted, uses the module singleton and production deps.
+ */
+export function startScrape(
+  state: ContentState = _state,
+  deps: ActionDeps = createActionDeps(),
+): void {
+  deps.showPanel();
+  state.isRunning = true;
+  state.scrapedData = null;
+  state.scrapedFields = null;
+  state.lastExportMeta = null;
+  state.lastState = {
     type: "SCRAPE_PROGRESS",
     total: 0,
     page: 0,
     elapsed: "0s",
     status: "Menunggu...",
-  });
-  updatePanelProgress(0, 0, "0s", "Menangkap request dari Angular...");
-  postToScraper({ type: "START_SCRAPE" });
+  };
+  deps.updatePanelProgress(0, 0, "0s", "Menangkap request dari Angular...");
+  deps.postToScraper({ type: "START_SCRAPE" });
 }
 
 /**
  * Common export action handler shared by XLSX, CSV, and PDF.
- * - Stops if already running
- * - Exports immediately if data is available (XLSX/CSV only; PDF returns false for caller to handle)
- * - Checks multi-invoice filter (XLSX/CSV) and starts invoice-targeted scrape if needed
- * - Otherwise sets pendingExportFormat and calls startScrape()
  *
- * Returns false when data is available for PDF (caller must handle filtering/confirmation).
- * Returns true otherwise (action was fully handled).
+ * - If already running: stops scrape, resets pending format, returns true.
+ * - If data is available (XLSX/CSV): exports immediately, returns true.
+ * - If data is available (PDF): returns false — caller handles filtering/confirmation.
+ * - If no data (XLSX/CSV with multi-invoice filter): starts targeted scrape, returns true.
+ * - Otherwise: sets pendingExportFormat and calls startScrape(), returns true.
+ *
+ * Accepts an optional ContentState + ActionDeps for testability.
  */
-export function handleExportAction(format: "xlsx" | "csv" | "pdf"): boolean {
-  if (getIsRunning()) {
-    postToScraper({ type: "STOP_SCRAPE" });
-    setIsRunning(false);
-    setPendingExportFormat(null);
-    updatePanelIdle();
+export function handleExportAction(
+  format: "xlsx" | "csv" | "pdf",
+  state: ContentState = _state,
+  deps: ActionDeps = createActionDeps(),
+): boolean {
+  if (state.isRunning) {
+    deps.postToScraper({ type: "STOP_SCRAPE" });
+    state.isRunning = false;
+    state.pendingExportFormat = null;
+    deps.updatePanelIdle();
     return true;
   }
 
-  if (getScrapedData() && getScrapedFields()) {
+  if (state.scrapedData && state.scrapedFields) {
     // PDF: let caller handle filtering, confirmation, and download
     if (format === "pdf") return false;
 
     // XLSX / CSV: export immediately
     const exportData: ExportData = {
-      data: getScrapedData()!,
-      fields: getScrapedFields()!,
-      filenameHint: getLastExportMeta()?.filenameHint,
-      source: getLastExportMeta()?.source,
+      data: state.scrapedData,
+      fields: state.scrapedFields,
+      filenameHint: state.lastExportMeta?.filenameHint,
+      source: state.lastExportMeta?.source,
     };
     if (format === "xlsx") {
-      exportXLSX(exportData);
+      deps.exportXLSX(exportData);
     } else {
-      exportCSV(exportData);
+      deps.exportCSV(exportData);
     }
     return true;
   }
 
   // No data yet — check multi-invoice filter (XLSX/CSV only)
   if (format !== "pdf") {
-    const nums2 = getMultiInvoiceNumbers();
-    if (nums2.length > 0) {
-      debugLog("[BC] sending SCRAPE_BY_INVOICES", nums2);
-      setIsRunning(true);
-      showPanel();
-      setPendingExportFormat(format);
-      postToScraper({
+    const nums = deps.getMultiInvoiceNumbers();
+    if (nums.length > 0) {
+      debugLog("[BC] sending SCRAPE_BY_INVOICES", nums);
+      state.isRunning = true;
+      deps.showPanel();
+      state.pendingExportFormat = format;
+      deps.postToScraper({
         type: "SCRAPE_BY_INVOICES",
-        invoiceNumbers: nums2,
+        invoiceNumbers: nums,
       });
       return true;
     }
   }
 
-  setPendingExportFormat(format);
-  startScrape();
+  state.pendingExportFormat = format;
+  startScrape(state, deps);
   return true;
 }

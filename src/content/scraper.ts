@@ -30,6 +30,7 @@ import {
   scrapeByInvoices,
   type ScraperContext,
 } from "./scraper-actions";
+import { buildInterceptContext, interceptRequest as makeInterceptRequest } from "./scraper-intercept";
 
 (() => {
   const TIMEOUT = 30000;
@@ -536,75 +537,25 @@ import {
   };
 
   // ── Request interceptor ────────────────────────────
+  // Delegates to the extracted, testable module in scraper-intercept.ts.
+
+  const interceptCtx = buildInterceptContext({
+    getLastCaptured: () => lastCaptured,
+    getLastCapturedTime: () => lastCapturedTime,
+    getVisibleGridSource,
+    getCurrentPageSource: getPageExportSource,
+    isWithholdingPage,
+    subscribeCapture: (fn) => {
+      captureSubscribers.push(fn);
+      return () => {
+        const idx = captureSubscribers.indexOf(fn);
+        if (idx > -1) captureSubscribers.splice(idx, 1);
+      };
+    },
+  });
 
   function interceptRequest(): Promise<CapturedRequest> {
-    return new Promise<CapturedRequest>((resolve, reject) => {
-      let resolved = false;
-      const visibleSource = getVisibleGridSource();
-      const currentPageSource = getPageExportSource();
-      const canReuseCachedRequest =
-        lastCaptured &&
-        Date.now() - lastCapturedTime < 300000 &&
-        ((visibleSource !== null && lastCaptured.source === visibleSource) ||
-          (currentPageSource !== null && lastCaptured.source === currentPageSource) ||
-          (isWithholdingPage() && lastCaptured.source === "WITHHOLDING_SLIPS"));
-
-      if (canReuseCachedRequest) {
-        debugLog("Using cached request from history.");
-        resolved = true;
-        resolve(lastCaptured as CapturedRequest);
-        return;
-      }
-
-      const sub = (req: CapturedRequest) => {
-        resolved = true;
-        resolve(req);
-      };
-      captureSubscribers.push(sub);
-
-      // Try clicking "Next Page" to trigger an XHR, then fall back to search/refresh
-      setTimeout(() => {
-        const nextBtn = document.querySelector("button.p-paginator-next:not(.p-disabled)") as HTMLButtonElement;
-        if (nextBtn) {
-          debugLog("Triggering Next Page...");
-          nextBtn.click();
-        } else {
-          debugLog("Next button not available/disabled. Trying fallback trigger...");
-          const fallbackBtn = Array.from(document.querySelectorAll("button")).find((b) => {
-            // Ignore Better Coretax's own injected buttons
-            if ((b as HTMLButtonElement).id?.startsWith("ch-")) return false;
-            const t = b.textContent?.toLowerCase() || "";
-            return (
-              t.includes("cari") ||
-              t.includes("search") ||
-              t.includes("refresh") ||
-              b.querySelector(".pi-search") ||
-              b.querySelector(".pi-refresh") ||
-              b.querySelector(".pi-filter")
-            );
-          }) as HTMLButtonElement;
-
-          if (fallbackBtn) {
-            debugLog("Triggering fallback button:", fallbackBtn.textContent?.trim());
-            fallbackBtn.click();
-          } else {
-            debugWarn("No trigger buttons found.");
-          }
-        }
-      }, 500);
-
-      setTimeout(() => {
-        if (!resolved) {
-          const idx = captureSubscribers.indexOf(sub);
-          if (idx > -1) captureSubscribers.splice(idx, 1);
-          reject(
-            new Error(
-              "Tidak ada request tertangkap (Timeout). Silakan muat ulang data atau klik tombol filter/cari di halaman.",
-            ),
-          );
-        }
-      }, 15000);
-    });
+    return makeInterceptRequest(interceptCtx);
   }
 
   // Signal that the injected script is ready

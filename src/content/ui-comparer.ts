@@ -7,6 +7,15 @@
 
 import { compareData, parsePastedData, type ComparisonResult } from "./comparer";
 import { getScrapedData, setPendingCompare, startScrape } from "./main-actions";
+import {
+  applyStatusFilter,
+  buildStatusSummary,
+  computePagination,
+  formatStatusSummary,
+  getStatusLabel,
+  parseDailyDates,
+  type ComparerSession,
+} from "./comparer-logic";
 
 const PAGE_SIZE = 10;
 
@@ -18,22 +27,11 @@ let comparerResults: HTMLElement | null = null;
 let currentResults: ComparisonResult[] = [];
 let currentPage = 1;
 let tolerance = 0;
-let statusFilter: string[] = [];
+let statusFilter: ComparisonResult["status"][] = [];
 let viewedRefs = new Set<string>();
 let dailyEnabled = true;
 let dailyDates: number[] = [];
 let refLainEnabled = true;
-let refLainColumnIndex = 2; // 0-based column index for ref lain when enabled (col 3 in 1-based)
-
-/** Parse daily dates (1-31, comma/space separated) from a raw string. */
-function parseDailyDates(raw: string): number[] {
-  const trimmed = raw.trim();
-  if (!trimmed) return [];
-  return trimmed
-    .split(/[,;\s]+/)
-    .map((s) => parseInt(s, 10))
-    .filter((n) => !isNaN(n) && n >= 1 && n <= 31);
-}
 
 // ── Inject the comparer modal ──────────────────────────
 
@@ -366,8 +364,8 @@ export function injectComparerModal(): void {
       statusFilter = [];
       filterToggleLabel.textContent = "Semua Status";
     } else {
-      statusFilter = checked;
-      filterToggleLabel.textContent = `${checked.length} status`;
+      statusFilter = checked.filter((v) => v !== "ALL") as ComparisonResult["status"][];
+      filterToggleLabel.textContent = `${statusFilter.length} status`;
     }
     currentPage = 1;
     renderResults();
@@ -528,13 +526,8 @@ function runComparison(
   viewedRefs.clear();
   renderResults();
 
-  const cocok = currentResults.filter((r) => r.status === "COCOK").length;
-  const berbeda = currentResults.filter((r) => r.status === "BERBEDA").length;
-  const tidakDitemukan = currentResults.filter((r) => r.status === "TIDAK_DITEMUKAN").length;
-  const hanyaCoretax = currentResults.filter((r) => r.status === "HANYA_CORETAX").length;
-
   if (statusMsg) {
-    statusMsg.textContent = `${currentResults.length} data diperiksa: ${cocok} cocok, ${berbeda} berbeda, ${tidakDitemukan} tidak ditemukan${hanyaCoretax > 0 ? `, ${hanyaCoretax} hanya di coretax` : ""}.`;
+    statusMsg.textContent = formatStatusSummary(buildStatusSummary(currentResults));
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
   }
 
@@ -579,18 +572,11 @@ function renderResults(): void {
     return;
   }
 
-  const totalPages = Math.max(1, Math.ceil(currentResults.length / PAGE_SIZE));
-  if (currentPage > totalPages) currentPage = totalPages;
-  const start = (currentPage - 1) * PAGE_SIZE;
-  const pageRows = currentResults.slice(start, start + PAGE_SIZE);
-
-  // Apply status filter (multi-select)
-  const filtered =
-    statusFilter.length === 0 ? currentResults : currentResults.filter((r) => statusFilter.includes(r.status));
-  const filteredTotalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  if (currentPage > filteredTotalPages) currentPage = filteredTotalPages;
-  const filteredStart = (currentPage - 1) * PAGE_SIZE;
-  const filteredPageRows = filtered.slice(filteredStart, filteredStart + PAGE_SIZE);
+  // Apply status filter and compute pagination via extracted pure functions.
+  const filtered = applyStatusFilter(currentResults, statusFilter);
+  const { totalPages: filteredTotalPages, currentPage: clampedPage, startIndex: filteredStart, pageRows: filteredPageRows } =
+    computePagination(filtered, PAGE_SIZE, currentPage);
+  currentPage = clampedPage;
 
   const table = document.createElement("table");
   table.className = "ch-comparer-table";
@@ -638,16 +624,7 @@ function renderResults(): void {
       return n.toLocaleString("id-ID");
     };
 
-    const statusLabel = (() => {
-      switch (r.status) {
-        case "COCOK": return "Cocok";
-        case "DPP_BERBEDA": return "DPP Berbeda";
-        case "PPN_BERBEDA": return "PPN Berbeda";
-        case "BERBEDA": return "Berbeda";
-        case "TIDAK_DITEMUKAN": return "Tidak ditemukan";
-        case "HANYA_CORETAX": return "Hanya di Coretax";
-      }
-    })();
+    const statusLabel = getStatusLabel(r.status);
 
     const cells = refLainEnabled
       ? [
