@@ -171,6 +171,11 @@ export function injectExportButton(retries = MAX_RETRIES): void {
           pdfBtn.remove();
           setPdfBtnEl(null);
         }
+        const scrapeBtn = getScrapeBtnEl();
+        if (scrapeBtn) scrapeBtn.remove();
+        const compareBtn = getCompareBtnEl();
+        if (compareBtn) compareBtn.remove();
+        resetAllButtonRefs();
       } else if (!isButtonPlacedCorrectly(exportDropdownBtn)) {
         const inputTaxAnchor = isInputTaxPage() ? document.getElementById("CreditInvoiceButtonButton") : null;
         if (inputTaxAnchor && inputTaxAnchor.offsetParent !== null && moveButtonNextToAnchor(exportDropdownBtn, inputTaxAnchor)) {
@@ -183,6 +188,11 @@ export function injectExportButton(retries = MAX_RETRIES): void {
           pdfBtn.remove();
           setPdfBtnEl(null);
         }
+        const scrapeBtn = getScrapeBtnEl();
+        if (scrapeBtn) scrapeBtn.remove();
+        const compareBtn = getCompareBtnEl();
+        if (compareBtn) compareBtn.remove();
+        resetAllButtonRefs();
       } else {
         return;
       }

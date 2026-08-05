@@ -123,7 +123,7 @@
 
 /* ── Export Button in Toolbar ────────────────────── */
 
-.ch-btn-highlight {
+button.p-button.ch-btn-highlight {
     background-color: var(--ch-primary) !important;
     border-color: var(--ch-primary) !important;
     color: #fff !important;
@@ -133,21 +133,21 @@
         transform 0.1s;
 }
 
-.ch-btn-highlight:hover {
+button.p-button.ch-btn-highlight:hover {
     background-color: var(--ch-primary-hover) !important;
     box-shadow: 0 2px 8px rgba(255, 87, 34, 0.4);
 }
 
-.ch-btn-highlight:active {
+button.p-button.ch-btn-highlight:active {
     transform: scale(0.95);
 }
 
-.ch-btn-highlight.ch-btn-danger {
+button.p-button.ch-btn-highlight.ch-btn-danger {
     background-color: var(--ch-danger) !important;
     border-color: var(--ch-danger) !important;
 }
 
-.ch-btn-highlight.ch-btn-danger:hover {
+button.p-button.ch-btn-highlight.ch-btn-danger:hover {
     background-color: var(--ch-danger-hover) !important;
     box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
 }
@@ -300,7 +300,7 @@
 }
 
 /* Icon-only buttons (Scrape & Bandingkan) */
-.ch-icon-btn {
+button.p-button.ch-icon-btn {
     width: 36px;
     padding-left: 0 !important;
     padding-right: 0 !important;
@@ -309,7 +309,7 @@
     justify-content: center;
 }
 
-.ch-icon-btn .p-button-icon {
+button.p-button.ch-icon-btn .p-button-icon {
     margin: 0 !important;
 }
 
@@ -623,7 +623,7 @@
 }
 
 .ch-comparer-daily-dates {
-    width: 120px;
+    width: 60px;
     padding: 8px;
     border: 1px solid var(--ch-border);
     border-radius: 6px;
