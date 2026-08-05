@@ -8,7 +8,13 @@ const browser = browserArg ? browserArg.split("=")[1] : "chrome";
 const extension = browser === "firefox" ? "xpi" : "zip";
 
 const outputFilename = `better-coretax-${browser}.${extension}`;
-const outputPath = path.join(__dirname, outputFilename);
+const outputPath = path.join(__dirname, "dist", outputFilename);
+
+// Ensure dist directory exists
+const distDir = path.join(__dirname, "dist");
+if (!fs.existsSync(distDir)) {
+  fs.mkdirSync(distDir, { recursive: true });
+}
 
 // Delete old file first (Windows may hold a lock)
 try {
@@ -34,7 +40,7 @@ archive.on("error", function (err) {
 
 archive.pipe(output);
 
-const distFolder = path.join("dist", browser);
+const distFolder = path.join("dist", `better-coretax-${browser}`);
 if (!fs.existsSync(distFolder)) {
   console.error(`Error: Source directory ${distFolder} not found. Did you run the build first?`);
   process.exit(1);

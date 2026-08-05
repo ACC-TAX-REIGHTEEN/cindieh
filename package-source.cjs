@@ -3,7 +3,14 @@ const path = require("path");
 const archiver = require("archiver");
 
 const outputFilename = "better-coretax-source.zip";
-const output = fs.createWriteStream(path.join(__dirname, outputFilename));
+
+// Ensure dist directory exists
+const distDir = path.join(__dirname, "dist");
+if (!fs.existsSync(distDir)) {
+	fs.mkdirSync(distDir, { recursive: true });
+}
+
+const output = fs.createWriteStream(path.join(__dirname, "dist", outputFilename));
 const archive = archiver("zip", {
 	zlib: { level: 9 }, // Sets the compression level.
 });
@@ -22,7 +29,6 @@ archive.pipe(output);
 // Files and directories to include (everything by default)
 const items = fs.readdirSync(__dirname);
 
-// Items to exclude
 const exclude = [
 	"node_modules",
 	"dist",
