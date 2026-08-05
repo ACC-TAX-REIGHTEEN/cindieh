@@ -98,7 +98,8 @@ export function xhrDownloadWithholdingPdf(
   timeout: number,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
+    const xhr = new XMLHttpRequest() as XMLHttpRequest & { __isBetterCoretaxBulk?: boolean };
+    xhr.__isBetterCoretaxBulk = true;
     const url = captured.url.replace("GetMyWithholdingSlip", "DownloadWithholdingSlips/download-pdf-document");
     xhr.open("POST", url, true);
 
@@ -159,7 +160,8 @@ export function xhrDownloadEfakturPdf(
   timeout: number,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
+    const xhr = new XMLHttpRequest() as XMLHttpRequest & { __isBetterCoretaxBulk?: boolean };
+    xhr.__isBetterCoretaxBulk = true;
     const url = buildEfakturDownloadUrl(captured.url);
     xhr.open("POST", url, true);
 

@@ -326,6 +326,7 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
               item: resolvedItem,
               source: fetchSource,
               direction: "FROM_PAGE",
+              token: bridgeToken,
             },
             window.location.origin,
           );
@@ -434,6 +435,80 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
   };
 
   XMLHttpRequest.prototype.send = function (this: InterceptedXHR, body?: Document | XMLHttpRequestBodyInit | null) {
+    // ── XHR intercept: native 1-click download ─────────────
+    // Coretax triggers invoice PDF downloads via XHR (not fetch).
+    // We intercept here so the rename logic fires for both the
+    // extension's own bulk-download path AND the native UI button.
+    //
+    // Skip XHRs that the extension itself created for bulk download
+    // (__isBetterCoretaxBulk flag). Those are already handled by
+    // ctx.postMessage in scraper-actions.ts; intercepting them here
+    // would send DOWNLOAD_PDF_ITEM twice per file.
+    if (
+      this.__url?.includes("DownloadInvoice/download-invoice-document") &&
+      typeof body === "string" &&
+      !(this as InterceptedXHR & { __isBetterCoretaxBulk?: boolean }).__isBetterCoretaxBulk
+    ) {
+      setProcessingFlag();
+      const xhrDownloadBody = body;
+      const xhrDownloadUrl = this.__url;
+      const xhrDownloadHeaders = { ...(this.__headers || {}) };
+
+      this.addEventListener("load", function (this: XMLHttpRequest) {
+        try {
+          const res = JSON.parse(this.responseText) as Record<string, unknown>;
+          const pdfData =
+            (res.Content as string | undefined) ??
+            (res.Payload as Record<string, unknown> | undefined)?.Content as string | undefined ??
+            ((res.Payload as Record<string, unknown> | undefined)?.Message as Record<string, unknown> | undefined)?.Data as string | undefined;
+
+          if (pdfData && typeof pdfData === "string" && pdfData.length > 100) {
+            const xhrSource = getPageExportSource() || "OUTPUT_TAX";
+
+            let resolvedItem: Record<string, unknown> = {};
+            try {
+              const parsed = JSON.parse(xhrDownloadBody) as Record<string, unknown>;
+              const lookupKey = String(
+                parsed.TaxInvoiceNumber || parsed.taxInvoiceNumber || parsed.LetterNumber || parsed.letterNumber || "",
+              ).trim().toLowerCase();
+              if (lookupKey && invoiceRowMap.has(lookupKey)) {
+                resolvedItem = invoiceRowMap.get(lookupKey)!;
+              }
+            } catch {
+              // Best-effort
+            }
+
+            debugLog("[Better Coretax] XHR download intercepted, posting DOWNLOAD_PDF_ITEM");
+            window.postMessage(
+              {
+                type: "DOWNLOAD_PDF_ITEM",
+                base64: pdfData,
+                item: resolvedItem,
+                source: xhrSource,
+                direction: "FROM_PAGE",
+                token: bridgeToken,
+              },
+              window.location.origin,
+            );
+            // Block the native download: replace response so Coretax
+            // sees a success but with empty Content — same as fetch path.
+            Object.defineProperty(this, "responseText", {
+              get: () => JSON.stringify({ IsSuccessful: true, Content: "" }),
+              configurable: true,
+            });
+          } else {
+            debugWarn("[Better Coretax] XHR download interceptor: PDF data not found in response.");
+            clearProcessingFlag();
+          }
+        } catch (err) {
+          debugError("[Better Coretax] XHR download interceptor error:", err);
+          clearProcessingFlag();
+        }
+      });
+
+      return origSend.call(this, body);
+    }
+
     let finalBody = body;
     const pageSource = getPageExportSource();
     const inferredSource = this.__url ? inferCapturedSource(this.__url) : null;

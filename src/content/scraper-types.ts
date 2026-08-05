@@ -49,4 +49,9 @@ export interface InterceptedXHR extends XMLHttpRequest {
   __url?: string;
   __method?: string;
   __headers?: Record<string, string>;
+  /** Set to true on XHR instances created by the extension's own bulk
+   *  download path (xhrDownloadEfakturPdf / xhrDownloadWithholdingPdf).
+   *  The native-download XHR interceptor in scraper.ts checks this flag
+   *  so it doesn't double-fire DOWNLOAD_PDF_ITEM for extension-owned XHRs. */
+  __isBetterCoretaxBulk?: boolean;
 }
