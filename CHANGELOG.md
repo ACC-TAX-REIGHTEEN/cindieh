@@ -2,7 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-## [1.3.0](https://github.com/allababbot/cindieh/compare/v1.1.1...v1.3.0) (2026-08-01)
+## [2.0.0](https://github.com/allababbot/cindieh/compare/v1.3.0...v2.0.0) (2026-08-06)
+
+
+### Features
+
+* **comparer:** add invoice comparator panel with paste-from-excel workflow ([ui-comparer](https://github.com/allababbot/cindieh/commit/ui-comparer))
+* **comparer:** support 3-column and 4-column (Ref Lain) paste modes
+* **comparer:** add daily mode to detect coretax-only rows by date range
+* **comparer:** add status filter dropdown, tolerance input, and XLSX export
+* **comparer:** double-click row to close panel and trigger reference search in coretax grid
+* **comparer:** auto-scrape when no data is available before comparison
+* rename project from better-coretax to cindieh
 
 
 ### Features
