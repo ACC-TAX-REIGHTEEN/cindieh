@@ -1,54 +1,110 @@
 # Cindieh
 
-**Cindieh** is a powerful browser extension designed to enhance and optimize the DJP Coretax portal. It simplifies the process of parsing, retrieving, and exporting massive volumes of tax data into clean, formatted Excel files and bulk PDF downloads.
+**Cindieh** adalah ekstensi browser yang dirancang untuk meningkatkan pengalaman penggunaan portal DJP Coretax. Ekstensi ini menyederhanakan proses pengambilan dan ekspor data pajak dalam jumlah besar ke file Excel terformat, unduhan PDF massal, pencarian faktur berdasarkan referensi, serta perbandingan data faktur antara catatan internal dan Coretax.
 
-## Key Features
+## Fitur Utama
 
-- **High-Speed e-Faktur Export (Output Tax):** Automatically scrapes hundreds or thousands of output tax invoice rows in seconds (up to 500 rows per request) without network timeouts.
-- **SPT Masa PPN Annex A2 & B2 Export:** Bypasses portal limitations to pull massive amounts of data for Annex A2 (Output Tax) and B2 (Input Tax) directly into Excel (1,000 rows per request).
-- **Bulk Withholding Slip PDF Downloader:** Automatically downloads withholding slip PDFs sequentially with intelligent naming conventions (MM-YYYY-Number-Name.pdf).
-- **Smart Paginator Bypass:** Eliminates the need for manual "Next Page" clicks by automatically traversing server-side paginated data (Lazy Loading).
-- **Integrated Search Filters:** Adds custom "Reference" search filters directly into the Coretax toolbar and grid headers for faster data location.
-- **Auto-Formatting Excel:** Automatically converts system date formats (ISO Strings) into standard Indonesian date formats (`DD/MM/YYYY`) in the generated `.xlsx` sets.
-- **Lean UI Integration:** Features a fully integrated in-page UI (floating info bar and custom toolbar buttons) designed to feel like part of the native Coretax experience.
+### 1. Ekspor Data ke Excel
 
-## Installation & Build
+Coretax bawaan hanya mengunduh data yang sedang ditampilkan di layar. Untuk mengunduh semua data, pengguna harus mengatur tampilan ke jumlah baris maksimal (500–1.000 per halaman) — yang membuat portal menjadi berat dan lambat — lalu klik unduh Excel, pindah ke halaman berikutnya, klik unduh lagi, dan seterusnya hingga semua halaman selesai.
 
-### 1. Setup
-Clone the repository and install dependencies:
+Cindieh menghilangkan seluruh proses itu. Cukup klik satu tombol, ekstensi akan mengambil semua data langsung dari API internal Coretax secara otomatis di latar belakang, tanpa perlu membuka banyak halaman atau menunggu portal memuat ratusan baris sekaligus.
+
+Halaman yang didukung:
+- **e-Faktur** — PPN Keluaran, PPN Masukan, Retur PPN Keluaran, Retur PPN Masukan
+- **SPT Masa PPN** — Lampiran A2 (PPN Keluaran) dan Lampiran B2 (PPN Masukan)
+
+Data yang dihasilkan sudah diformat untuk kemudahan pengguna:
+- Format tanggal dikonversi otomatis dari ISO string (`2026-07-01T00:00:00`) ke format Indonesia standar (`01/07/2026`)
+- File tersedia langsung dalam format `.xlsx` — tidak perlu convert dari CSV
+
+---
+
+### 2. Unduhan PDF Massal
+
+Alih-alih mengklik tombol unduh satu per satu seperti di Coretax bawaan, Cindieh mengunduh semua PDF sekaligus secara berurutan di latar belakang. Setiap file otomatis diberi nama yang informatif:
+
+- **e-Faktur (PPN Keluaran, Masukan, Retur):**
+  Format nama: `Referensi - NomorFakturPajak.pdf`
+  Contoh: `SZ-0447/07/26 - 010.000-26.00000001.pdf`
+
+- **Bukti Potong:**
+  Format nama: `MM-YYYY-NomorBuktiPotong-NamaPemotong.pdf`
+  Contoh: `07-2026-BP-001-PT MITRA SEJAHTERA.pdf`
+
+---
+
+### 3. Pencarian Berdasarkan Referensi di e-Faktur PPN Keluaran
+
+Coretax dulu menyediakan fitur pencarian berdasarkan nomor referensi internal di kolom Referensi, namun fitur tersebut dihilangkan. Cindieh mengembalikannya dengan menambahkan kolom filter Referensi langsung di toolbar dan header grid halaman PPN Keluaran, sehingga pengguna bisa langsung menemukan faktur berdasarkan nomor referensi internal tanpa harus scroll manual.
+
+---
+
+### 4. Komparator Faktur PPN Keluaran
+
+Fitur ini memudahkan pengguna membandingkan data penjualan internal (dari Excel) dengan data faktur yang tercatat di Coretax — untuk melihat dengan cepat faktur mana yang nilainya berubah (direvisi), dibatalkan, atau baru diterbitkan di Coretax tapi belum ada di catatan internal.
+
+Cara kerja: cukup **copy dari Excel, lalu paste** ke panel Komparator. Tidak perlu upload file atau menyesuaikan format kolom — jauh lebih praktis.
+
+**Format input yang didukung (tab-separated dari Excel):**
+- **3 kolom:** `Referensi`, `DPP`, `PPN`
+- **4 kolom (mode Ref Lain):** `Referensi`, `Referensi Lain`, `DPP`, `PPN`
+
+**Status hasil perbandingan:**
+
+| Status | Keterangan |
+|---|---|
+| **Cocok** | DPP dan PPN sesuai antara data internal dan Coretax |
+| **DPP Berbeda** | Hanya DPP yang tidak sesuai |
+| **PPN Berbeda** | Hanya PPN yang tidak sesuai |
+| **Berbeda** | DPP dan PPN keduanya tidak sesuai |
+| **Tidak Ditemukan** | Referensi dari Excel tidak ditemukan di Coretax |
+| **Hanya di Coretax** | Ada di Coretax pada tanggal yang dipilih, tapi tidak ada di data Excel |
+
+**Opsi tambahan:**
+- **Toleransi** — batas selisih yang masih dianggap cocok, berguna untuk menangani pembulatan
+- **Mode Harian** — masukkan tanggal tertentu (1–31) untuk mendeteksi faktur di Coretax yang belum ada di catatan internal
+- **Filter Status** — saring hasil berdasarkan satu atau lebih status sekaligus
+- **Export XLSX** — ekspor seluruh hasil perbandingan ke file yang bisa langsung dibuka di Excel
+- **Klik baris hasil** — langsung menutup panel dan menjalankan pencarian referensi tersebut di tabel PPN Keluaran Coretax, untuk validasi cepat tanpa perlu copy-paste manual
+
+## Instalasi & Build
+
+### 1. Persiapan
+Clone repositori dan install dependensi:
 ```bash
 pnpm install
 ```
 
-### 2. Build for Production
-Generate the production-ready extension for your preferred browser:
+### 2. Build untuk Produksi
+Buat ekstensi siap pakai untuk browser yang diinginkan:
 
-| Command | Output Directory | Result |
-|---------|------------------|--------|
-| `pnpm run build:chrome` | `dist/chrome/` | Unpacked Chrome extension |
-| `pnpm run build:firefox`| `dist/firefox/`| Unpacked Firefox extension |
-| `pnpm run package`      | `/` (root)     | `.zip` (Chrome) & `.xpi` (Firefox) |
+| Perintah | Direktori Output | Hasil |
+|---|---|---|
+| `pnpm run build:chrome` | `dist/cindieh-chrome/` | Ekstensi Chrome (unpacked) |
+| `pnpm run build:firefox` | `dist/cindieh-firefox/` | Ekstensi Firefox (unpacked) |
+| `pnpm run package` | `/` (root) | `.zip` (Chrome) & `.xpi` (Firefox) |
 
-### 3. Loading the Extension
+### 3. Memasang Ekstensi
 
 #### Google Chrome / Edge
-1. Navigate to `chrome://extensions/`.
-2. Enable **Developer mode** in the top-right corner.
-3. Click **Load unpacked**.
-4. Select the `dist/chrome/` folder.
+1. Buka `chrome://extensions/`.
+2. Aktifkan **Mode Developer** di pojok kanan atas.
+3. Klik **Load unpacked**.
+4. Pilih folder `dist/cindieh-chrome/`.
 
 #### Mozilla Firefox
-1. Navigate to `about:addons`.
-2. Click the gear icon (⚙️) and select **Install Add-on From File...**.
-3. Select the `cindieh-firefox.xpi` file generated in the root directory.
-   *(Note: For local testing, ensure `xpinstall.signatures.required` is set to `false` in `about:config`)*.
+1. Buka `about:addons`.
+2. Klik ikon roda gigi (⚙️) dan pilih **Install Add-on From File...**.
+3. Pilih file `cindieh-firefox.xpi` yang dihasilkan di direktori root.
+   *(Catatan: Untuk pengujian lokal, pastikan `xpinstall.signatures.required` diatur ke `false` di `about:config`).*
 
 ## Tech Stack
-- **Language:** TypeScript
+- **Bahasa:** TypeScript
 - **Bundler:** esbuild
-- **Persistence:** Chrome Storage API
-- **Excel Generation:** SheetJS (xlsx)
+- **Persistensi:** Chrome Storage API
+- **Generasi Excel:** SheetJS (xlsx)
 - **UI:** Vanilla DOM & CSS
 
-## License
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+## Lisensi
+Proyek ini dilisensikan di bawah MIT License. Lihat [LICENSE](LICENSE) untuk detailnya.
