@@ -5,8 +5,8 @@
 import { browserAPI } from "../content/browser-shim";
 import { debugLog } from "../content/debug";
 
-debugLog("Better Coretax: Background script active");
+debugLog("Cindieh: Background script active");
 
 browserAPI.runtime.onInstalled.addListener(() => {
-  debugLog("Better Coretax: Extension installed/updated");
+  debugLog("Cindieh: Extension installed/updated");
 });

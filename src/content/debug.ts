@@ -23,18 +23,18 @@ export function disableDebug(): void {
 
 export function debugLog(...args: unknown[]): void {
   if (debugEnabled) {
-    console.log("[Better Coretax]", ...args);
+    console.log("[Cindieh]", ...args);
   }
 }
 
 export function debugWarn(...args: unknown[]): void {
   if (debugEnabled) {
-    console.warn("[Better Coretax]", ...args);
+    console.warn("[Cindieh]", ...args);
   }
 }
 
 export function debugError(...args: unknown[]): void {
   if (debugEnabled) {
-    console.error("[Better Coretax]", ...args);
+    console.error("[Cindieh]", ...args);
   }
 }

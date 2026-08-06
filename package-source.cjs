@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const archiver = require("archiver");
 
-const outputFilename = "better-coretax-source.zip";
+const outputFilename = "cindieh-source.zip";
 
 // Ensure dist directory exists
 const distDir = path.join(__dirname, "dist");
@@ -33,9 +33,9 @@ const exclude = [
 	"node_modules",
 	"dist",
 	".git",
-	"better-coretax-chrome.zip",
-	"better-coretax-firefox.xpi",
-	"better-coretax-source.zip",
+	"cindieh-chrome.zip",
+	"cindieh-firefox.xpi",
+	"cindieh-source.zip",
 	".antigravityignore",
 ];
 

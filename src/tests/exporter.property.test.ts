@@ -1,4 +1,4 @@
-// Feature: better-coretax-improvements, Property 7: generateDynamicFilename prefix consistency
+// Feature: cindieh-improvements, Property 7: generateDynamicFilename prefix consistency
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
 import type { ExportSource } from "../content/page-context";

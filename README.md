@@ -1,6 +1,6 @@
-# Better Coretax
+# Cindieh
 
-**Better Coretax** is a powerful browser extension designed to enhance and optimize the DJP Coretax portal. It simplifies the process of parsing, retrieving, and exporting massive volumes of tax data into clean, formatted Excel files and bulk PDF downloads.
+**Cindieh** is a powerful browser extension designed to enhance and optimize the DJP Coretax portal. It simplifies the process of parsing, retrieving, and exporting massive volumes of tax data into clean, formatted Excel files and bulk PDF downloads.
 
 ## Key Features
 
@@ -40,7 +40,7 @@ Generate the production-ready extension for your preferred browser:
 #### Mozilla Firefox
 1. Navigate to `about:addons`.
 2. Click the gear icon (⚙️) and select **Install Add-on From File...**.
-3. Select the `better-coretax-firefox.xpi` file generated in the root directory.
+3. Select the `cindieh-firefox.xpi` file generated in the root directory.
    *(Note: For local testing, ensure `xpinstall.signatures.required` is set to `false` in `about:config`)*.
 
 ## Tech Stack

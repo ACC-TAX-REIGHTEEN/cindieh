@@ -1,4 +1,4 @@
-// Feature: better-coretax-improvements, Property 8: CSV escaping round-trip
+// Feature: cindieh-improvements, Property 8: CSV escaping round-trip
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
 import { escapeCSV } from "../content/exporter";

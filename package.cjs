@@ -7,7 +7,7 @@ const browserArg = args.find((arg) => arg.startsWith("--browser="));
 const browser = browserArg ? browserArg.split("=")[1] : "chrome";
 const extension = browser === "firefox" ? "xpi" : "zip";
 
-const outputFilename = `better-coretax-${browser}.${extension}`;
+const outputFilename = `cindieh-${browser}.${extension}`;
 const outputPath = path.join(__dirname, "dist", outputFilename);
 
 // Ensure dist directory exists
@@ -40,7 +40,7 @@ archive.on("error", function (err) {
 
 archive.pipe(output);
 
-const distFolder = path.join("dist", `better-coretax-${browser}`);
+const distFolder = path.join("dist", `cindieh-${browser}`);
 if (!fs.existsSync(distFolder)) {
   console.error(`Error: Source directory ${distFolder} not found. Did you run the build first?`);
   process.exit(1);

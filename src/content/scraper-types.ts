@@ -53,5 +53,5 @@ export interface InterceptedXHR extends XMLHttpRequest {
    *  download path (xhrDownloadEfakturPdf / xhrDownloadWithholdingPdf).
    *  The native-download XHR interceptor in scraper.ts checks this flag
    *  so it doesn't double-fire DOWNLOAD_PDF_ITEM for extension-owned XHRs. */
-  __isBetterCoretaxBulk?: boolean;
+  __isCindiehBulk?: boolean;
 }

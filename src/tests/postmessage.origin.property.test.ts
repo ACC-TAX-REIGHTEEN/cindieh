@@ -1,4 +1,4 @@
-// Feature: better-coretax-improvements, Property 9: PostMessage origin guard
+// Feature: cindieh-improvements, Property 9: PostMessage origin guard
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
 import { shouldProcessPageMessage } from "../content/postmessage-guard";

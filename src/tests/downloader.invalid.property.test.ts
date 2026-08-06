@@ -1,4 +1,4 @@
-// Feature: better-coretax-improvements, Property 2: base64ToBlob rejects invalid input
+// Feature: cindieh-improvements, Property 2: base64ToBlob rejects invalid input
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
 import { base64ToBlob } from "../content/downloader";

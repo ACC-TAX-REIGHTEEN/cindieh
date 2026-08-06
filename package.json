@@ -1,9 +1,9 @@
 {
-  "name": "better-coretax",
+  "name": "cindieh",
   "version": "1.3.0",
   "private": true,
   "type": "module",
-  "description": "Better Coretax DJP Extension",
+  "description": "Cindieh DJP Extension",
   "main": "build.js",
   "scripts": {
     "build": "node build.cjs",

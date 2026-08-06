@@ -140,7 +140,7 @@ export function createActionDeps(): ActionDeps {
 /** Helper: find and click the search/refresh button */
 export function triggerSearch(): void {
   const searchBtn = Array.from(document.querySelectorAll("button")).find((btn) => {
-    // Ignore Better Coretax's own injected buttons (they use pi-search/pi-refresh icons)
+    // Ignore Cindieh's own injected buttons (they use pi-search/pi-refresh icons)
     if (btn.id?.startsWith("ch-")) return false;
     const text = btn.textContent?.toLowerCase() || "";
     const hasIcon = !!btn.querySelector(".pi-search, .pi-refresh, .pi-filter");

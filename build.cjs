@@ -9,7 +9,7 @@ const browser = browserArg ? browserArg.split("=")[1] : "chrome";
 
 console.log(`Building for ${browser}${watch ? " (watch mode)" : ""}...`);
 
-const outdir = `dist/better-coretax-${browser}`;
+const outdir = `dist/cindieh-${browser}`;
 
 const buildOptions = {
 	entryPoints: [

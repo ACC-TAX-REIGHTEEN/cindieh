@@ -1,4 +1,4 @@
-// Feature: better-coretax-improvements, Property 1: base64ToBlob round-trip
+// Feature: cindieh-improvements, Property 1: base64ToBlob round-trip
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
 import { base64ToBlob } from "../content/downloader";

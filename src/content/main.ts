@@ -60,7 +60,7 @@ import {
 const DEBOUNCE_DELAY_MS = 300;
 const GRID_FILTER_INJECT_DELAY_MS = 1500;
 
-debugLog("Better Coretax aktif");
+debugLog("Cindieh aktif");
 
 let lastUrl = location.href;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;

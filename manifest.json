@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Better Coretax",
+  "name": "Cindieh",
   "version": "1.3.0",
-  "description": "Better Coretax DJP Extension",
+  "description": "Cindieh DJP Extension",
   "background": {
     "scripts": [
       "background/background.js"
@@ -49,7 +49,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "better-coretax-ext-v2@arisman.me"
+      "id": "cindieh-ext-v2@arisman.me"
     }
   }
 }

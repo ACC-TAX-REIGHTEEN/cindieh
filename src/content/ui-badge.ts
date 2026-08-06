@@ -50,7 +50,7 @@ export function injectBadge() {
   if (oldContainer) oldContainer.remove();
   else if (oldBadge) oldBadge.remove();
 
-  console.log("Better Coretax: Injecting floating info bar...");
+  console.log("Cindieh: Injecting floating info bar...");
   const container = document.createElement("div");
   container.id = "ch-floating-info-container";
   container.className = "ch-floating-info";

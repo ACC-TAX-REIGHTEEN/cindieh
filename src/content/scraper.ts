@@ -214,7 +214,7 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
 
   // ── Global Download Interceptor ────────────────────
   // Prevents the portal from triggering a duplicate native download
-  // while Better Coretax is handling the PDF.
+  // while Cindieh is handling the PDF.
 
   let isProcessingBetterDownload = false;
   let processingResetTimer: ReturnType<typeof setTimeout> | null = null;
@@ -224,7 +224,7 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
     if (processingResetTimer) clearTimeout(processingResetTimer);
     processingResetTimer = setTimeout(() => {
       if (isProcessingBetterDownload) {
-        debugWarn("[Better Coretax] isProcessingBetterDownload reset by timeout");
+        debugWarn("[Cindieh] isProcessingBetterDownload reset by timeout");
         isProcessingBetterDownload = false;
       }
       processingResetTimer = null;
@@ -246,7 +246,7 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
   const origAnchorClick = HTMLAnchorElement.prototype.click;
   HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
     if (isProcessingBetterDownload && (this.download || this.href.startsWith("blob:"))) {
-      debugLog("[Better Coretax] Memblokir download klik bawaan.");
+      debugLog("[Cindieh] Memblokir download klik bawaan.");
       clearProcessingFlag();
       return;
     }
@@ -256,7 +256,7 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
   const origCreateObjectURL = window.URL.createObjectURL;
   window.URL.createObjectURL = function (obj: Blob | MediaSource) {
     if (isProcessingBetterDownload && obj instanceof Blob && obj.type === "application/pdf") {
-      debugLog("[Better Coretax] Memblokir pembuatan blob URL bawaan.");
+      debugLog("[Cindieh] Memblokir pembuatan blob URL bawaan.");
       return "javascript:void(0)";
     }
     return origCreateObjectURL.call(window.URL, obj);
@@ -265,7 +265,7 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
   const origWindowOpen = window.open;
   window.open = function (url?: string | URL, target?: string, features?: string) {
     if (isProcessingBetterDownload) {
-      debugLog("[Better Coretax] Memblokir window.open bawaan.");
+      debugLog("[Cindieh] Memblokir window.open bawaan.");
       return null;
     }
     return origWindowOpen.call(window, url, target, features);
@@ -338,14 +338,14 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
           });
         }
         debugWarn(
-          "[Better Coretax] Fetch interceptor: PDF data not found in response.",
+          "[Cindieh] Fetch interceptor: PDF data not found in response.",
           "Response keys:",
           Object.keys(json),
         );
         clearProcessingFlag();
         return resp;
       } catch (err) {
-        debugError("[Better Coretax] Fetch interceptor error:", err);
+        debugError("[Cindieh] Fetch interceptor error:", err);
         clearProcessingFlag();
         return origFetch.apply(window, args as Parameters<typeof fetch>);
       }
@@ -367,7 +367,7 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
       window.open = origWindowOpen;
       window.fetch = origFetch;
     } catch (err) {
-      debugError("[Better Coretax] teardown failed:", err);
+      debugError("[Cindieh] teardown failed:", err);
     }
   }
 
@@ -441,13 +441,13 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
     // extension's own bulk-download path AND the native UI button.
     //
     // Skip XHRs that the extension itself created for bulk download
-    // (__isBetterCoretaxBulk flag). Those are already handled by
+    // (__isCindiehBulk flag). Those are already handled by
     // ctx.postMessage in scraper-actions.ts; intercepting them here
     // would send DOWNLOAD_PDF_ITEM twice per file.
     if (
       this.__url?.includes("DownloadInvoice/download-invoice-document") &&
       typeof body === "string" &&
-      !(this as InterceptedXHR & { __isBetterCoretaxBulk?: boolean }).__isBetterCoretaxBulk
+      !(this as InterceptedXHR & { __isCindiehBulk?: boolean }).__isCindiehBulk
     ) {
       setProcessingFlag();
       const xhrDownloadBody = body;
@@ -478,7 +478,7 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
               // Best-effort
             }
 
-            debugLog("[Better Coretax] XHR download intercepted, posting DOWNLOAD_PDF_ITEM");
+            debugLog("[Cindieh] XHR download intercepted, posting DOWNLOAD_PDF_ITEM");
             window.postMessage(
               {
                 type: "DOWNLOAD_PDF_ITEM",
@@ -497,11 +497,11 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
               configurable: true,
             });
           } else {
-            debugWarn("[Better Coretax] XHR download interceptor: PDF data not found in response.");
+            debugWarn("[Cindieh] XHR download interceptor: PDF data not found in response.");
             clearProcessingFlag();
           }
         } catch (err) {
-          debugError("[Better Coretax] XHR download interceptor error:", err);
+          debugError("[Cindieh] XHR download interceptor error:", err);
           clearProcessingFlag();
         }
       });
@@ -559,7 +559,7 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
         }
         finalBody = JSON.stringify(parsed);
       } catch (e) {
-        debugError("Better Coretax [Scraper]: Filter injection failed", e);
+        debugError("Cindieh [Scraper]: Filter injection failed", e);
       }
     }
 
