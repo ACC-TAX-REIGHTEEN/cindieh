@@ -97,25 +97,112 @@ export function formatDate(dateStr: unknown): string {
 }
 
 export function processData(exportData: ExportData): ExportData {
-  if (
-    exportData.source === "INPUT_TAX" ||
-    exportData.source === "OUTPUT_RETURN" ||
-    exportData.source === "INPUT_RETURN"
-  ) {
+  const processMappedTaxColumns = (
+    columns: readonly (readonly [string, string])[],
+    warningMessage: string,
+  ): ExportData => {
+    const fields = columns.map(([, label]) => label);
     const processedData = exportData.data.map((row) => {
       const newRow: Record<string, unknown> = {};
-      for (const f of exportData.fields) {
-        let val = row[f];
-        if (typeof val === "string" && val.includes("T") && /^\d{4}-\d{2}-\d{2}T/.test(val)) {
-          val = formatDate(val);
+
+      for (const [sourceField, outputField] of columns) {
+        if (sourceField === "TaxInvoicePeriod" || sourceField === "PeriodCredit") {
+          const rawMonth = row[sourceField] || row["TaxPeriodMonth"] || row["TaxPeriod"] || "";
+          newRow[outputField] = rawMonth ? extractMonthFromPeriod(rawMonth).replace(/^0/, "") : "";
+        } else if (sourceField === "TaxInvoiceYear" || sourceField === "YearCredit") {
+          newRow[outputField] = extractYearFromPeriod(row[sourceField] || row["TaxPeriodYear"] || row["TaxPeriod"] || "");
+        } else {
+          let val = row[sourceField];
+          if (sourceField === "TaxInvoiceDate" || sourceField === "ReturnDate") {
+            val = formatDate(val);
+          }
+          newRow[outputField] = val;
         }
-        newRow[f] = val;
       }
+
       return newRow;
     });
-    return { data: processedData, fields: exportData.fields, source: exportData.source };
+
+    const sourceFields = columns.map(([sourceField]) => sourceField);
+    const allUndefined = exportData.data.some((row) =>
+      sourceFields.every((f) => row[f] === undefined || row[f] === null),
+    );
+    if (allUndefined) {
+      debugWarn(warningMessage, {
+        expected: sourceFields,
+        sampleRow: exportData.data[0],
+      });
+    }
+
+    return { data: processedData, fields, source: exportData.source };
+  };
+
+  if (exportData.source === "INPUT_TAX") {
+    return processMappedTaxColumns(
+      [
+        ["TaxInvoiceDate", "TANGGAL"],
+        ["TaxInvoicePeriod", "MASA"],
+        ["TaxInvoiceYear", "TAHUN"],
+        ["SellerTaxpayerName", "NAMA PENJUAL"],
+        ["SellerTIN", "NO IDENTITAS PENJUAL"],
+        ["TaxInvoiceNumber", "NO FAKTUR"],
+        ["TaxInvoiceStatus", "STATUS"],
+        ["BuyerStatus", "STATUS PEMBELI"],
+        ["PeriodCredit", "MASA PENGKREDITAN"],
+        ["YearCredit", "TAHUN PENGKREDITAN"],
+        ["SellingPrice", "DPP"],
+        ["OtherTaxBase", "DPP NILAI LAIN"],
+        ["VAT", "PPN"],
+        ["STLG", "PPNBM"],
+        ["Reference", "REFERENSI"],
+      ],
+      "API schema may have changed: no INPUT_TAX fields matched in any row",
+    );
   }
 
+  if (exportData.source === "OUTPUT_RETURN") {
+    return processMappedTaxColumns(
+      [
+        ["BuyerTIN", "NO IDENTITAS PEMBELI"],
+        ["BuyerTaxpayerNameClear", "NAMA PEMBELI"],
+        ["TaxInvoiceNumber", "NO FAKTUR"],
+        ["TaxInvoiceDate", "TANGGAL"],
+        ["ReturnNumber", "NO RETUR"],
+        ["ReturnDate", "TANGGAL RETUR"],
+        ["TaxInvoicePeriod", "MASA"],
+        ["TaxInvoiceYear", "TAHUN"],
+        ["BuyerStatus", "STATUS PEMBELI"],
+        ["TaxInvoiceStatus", "STATUS"],
+        ["SellingPrice", "DPP"],
+        ["OtherTaxBase", "DPP NILAI LAIN"],
+        ["VAT", "PPN"],
+        ["STLG", "PPNBM"],
+      ],
+      "API schema may have changed: no OUTPUT_RETURN fields matched in any row",
+    );
+  }
+
+  if (exportData.source === "INPUT_RETURN") {
+    return processMappedTaxColumns(
+      [
+        ["SellerTIN", "NO IDENTITAS PENJUAL"],
+        ["SellerTaxpayerName", "NAMA PENJUAL"],
+        ["TaxInvoiceNumber", "NO FAKTUR"],
+        ["TaxInvoiceDate", "TANGGAL"],
+        ["ReturnNumber", "NO RETUR"],
+        ["ReturnDate", "TANGGAL RETUR"],
+        ["TaxInvoicePeriod", "MASA"],
+        ["TaxInvoiceYear", "TAHUN"],
+        ["BuyerStatus", "STATUS PEMBELI"],
+        ["TaxInvoiceStatus", "STATUS"],
+        ["SellingPrice", "DPP"],
+        ["OtherTaxBase", "DPP NILAI LAIN"],
+        ["VAT", "PPN"],
+        ["STLG", "PPNBM"],
+      ],
+      "API schema may have changed: no INPUT_RETURN fields matched in any row",
+    );
+  }
   if (exportData.source === "SPT_A2") {
     // Hardcoded columns for SPT Masa PPN Lampiran A2 based on user request
     const a2Fields = ["DocumentDate", "Name", "TIN", "DocumentNumber", "TaxBase", "OtherTaxBase", "VAT", "STLG"];
@@ -165,21 +252,22 @@ export function processData(exportData: ExportData): ExportData {
   }
 
   // Default fallback to OutputTax logic
-  const hardcodedFields = [
-    "TaxInvoiceDate",
-    "TaxInvoicePeriod",
-    "TaxInvoiceYear",
-    "BuyerName",
-    "BuyerTIN",
-    "TaxInvoiceNumber",
-    "TaxInvoiceStatus",
-    "BuyerStatus",
-    "SellingPrice",
-    "OtherTaxBase",
-    "VAT",
-    "STLG",
-    "Reference",
-  ];
+  const outputTaxColumns = [
+    ["TaxInvoiceDate", "TANGGAL"],
+    ["TaxInvoicePeriod", "MASA"],
+    ["TaxInvoiceYear", "TAHUN"],
+    ["BuyerName", "NAMA PEMBELI"],
+    ["BuyerTIN", "NO IDENTITAS PEMBELI"],
+    ["TaxInvoiceNumber", "NO FAKTUR"],
+    ["TaxInvoiceStatus", "STATUS"],
+    ["BuyerStatus", "STATUS PEMBELI"],
+    ["SellingPrice", "DPP"],
+    ["OtherTaxBase", "DPP NILAI LAIN"],
+    ["VAT", "PPN"],
+    ["STLG", "PPNBM"],
+    ["Reference", "REFERENSI"],
+  ] as const;
+  const hardcodedFields = outputTaxColumns.map(([, label]) => label);
 
   const processedData = exportData.data.map((row) => {
     const newRow: Record<string, unknown> = {};
@@ -196,29 +284,30 @@ export function processData(exportData: ExportData): ExportData {
       row["TaxInvoiceYear"] || row["TaxPeriodYear"] || row["TaxPeriod"] || "",
     );
 
-    for (const f of hardcodedFields) {
-      if (f === "TaxInvoicePeriod") {
-        newRow[f] = masa;
-      } else if (f === "TaxInvoiceYear") {
-        newRow[f] = tahun;
+    for (const [sourceField, outputField] of outputTaxColumns) {
+      if (sourceField === "TaxInvoicePeriod") {
+        newRow[outputField] = masa;
+      } else if (sourceField === "TaxInvoiceYear") {
+        newRow[outputField] = tahun;
       } else {
-        let val = row[f];
-        if (f === "TaxInvoiceDate") {
+        let val = row[sourceField];
+        if (sourceField === "TaxInvoiceDate") {
           val = formatDate(val);
         }
-        newRow[f] = val;
+        newRow[outputField] = val;
       }
     }
     return newRow;
   });
 
   // Runtime validation: check if hardcoded fields still match API response
-  const allUndefined = processedData.some((row) =>
-    hardcodedFields.every((f) => row[f] === undefined || row[f] === null),
+  const sourceFields = outputTaxColumns.map(([sourceField]) => sourceField);
+  const allUndefined = exportData.data.some((row) =>
+    sourceFields.every((f) => row[f] === undefined || row[f] === null),
   );
   if (allUndefined) {
     debugWarn("API schema may have changed: no hardcoded fields matched in any row", {
-      expected: hardcodedFields,
+      expected: sourceFields,
       sampleRow: exportData.data[0],
     });
   }

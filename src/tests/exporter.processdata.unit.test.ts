@@ -36,22 +36,22 @@ describe("processData — OUTPUT_TAX (default hardcoded fields)", () => {
     ExtraField: "should be dropped",
   };
 
-  it("emits only the 13 hardcoded OUTPUT_TAX fields", () => {
+  it("emits Indonesian OUTPUT_TAX export headers", () => {
     const result = processData(makeExportData("OUTPUT_TAX", [row]));
     expect(result.fields).toEqual([
-      "TaxInvoiceDate",
-      "TaxInvoicePeriod",
-      "TaxInvoiceYear",
-      "BuyerName",
-      "BuyerTIN",
-      "TaxInvoiceNumber",
-      "TaxInvoiceStatus",
-      "BuyerStatus",
-      "SellingPrice",
-      "OtherTaxBase",
-      "VAT",
-      "STLG",
-      "Reference",
+      "TANGGAL",
+      "MASA",
+      "TAHUN",
+      "NAMA PEMBELI",
+      "NO IDENTITAS PEMBELI",
+      "NO FAKTUR",
+      "STATUS",
+      "STATUS PEMBELI",
+      "DPP",
+      "DPP NILAI LAIN",
+      "PPN",
+      "PPNBM",
+      "REFERENSI",
     ]);
   });
 
@@ -62,37 +62,37 @@ describe("processData — OUTPUT_TAX (default hardcoded fields)", () => {
 
   it("formats TaxInvoiceDate as DD/MM/YYYY", () => {
     const result = processData(makeExportData("OUTPUT_TAX", [row]));
-    expect(result.data[0].TaxInvoiceDate).toBe("15/04/2026");
+    expect(result.data[0].TANGGAL).toBe("15/04/2026");
   });
 
   it("extracts month from TaxInvoicePeriod (drops leading zero)", () => {
     const result = processData(makeExportData("OUTPUT_TAX", [row]));
-    expect(result.data[0].TaxInvoicePeriod).toBe("4");
+    expect(result.data[0].MASA).toBe("4");
   });
 
   it("extracts year from TaxInvoiceYear", () => {
     const result = processData(makeExportData("OUTPUT_TAX", [row]));
-    expect(result.data[0].TaxInvoiceYear).toBe("2026");
+    expect(result.data[0].TAHUN).toBe("2026");
   });
 
   it("handles TD007-prefixed period values (e.g. TD007-2026-04)", () => {
     const tdRow = { ...row, TaxInvoicePeriod: "TD007-2026-04", TaxInvoiceYear: "TD007-2026-04" };
     const result = processData(makeExportData("OUTPUT_TAX", [tdRow]));
-    expect(result.data[0].TaxInvoicePeriod).toBe("4");
-    expect(result.data[0].TaxInvoiceYear).toBe("2026");
+    expect(result.data[0].MASA).toBe("4");
+    expect(result.data[0].TAHUN).toBe("2026");
   });
 
   it("extracts month from Coretax tax domain period codes (e.g. TD.00706)", () => {
     const tdRow = { ...row, TaxInvoicePeriod: "TD.00706", TaxInvoiceYear: "2026" };
     const result = processData(makeExportData("OUTPUT_TAX", [tdRow]));
-    expect(result.data[0].TaxInvoicePeriod).toBe("6");
+    expect(result.data[0].MASA).toBe("6");
   });
 
   it("passes through non-date fields unchanged", () => {
     const result = processData(makeExportData("OUTPUT_TAX", [row]));
-    expect(result.data[0].BuyerName).toBe("PT Maju Jaya");
-    expect(result.data[0].SellingPrice).toBe(568000);
-    expect(result.data[0].Reference).toBe("REF-001");
+    expect(result.data[0]["NAMA PEMBELI"]).toBe("PT Maju Jaya");
+    expect(result.data[0].DPP).toBe(568000);
+    expect(result.data[0].REFERENSI).toBe("REF-001");
   });
 
   it("processes an empty data array without throwing", () => {
@@ -103,60 +103,185 @@ describe("processData — OUTPUT_TAX (default hardcoded fields)", () => {
 
 // ── INPUT_TAX ─────────────────────────────────────────────────────────────────
 
-describe("processData — INPUT_TAX", () => {
+describe("processData � INPUT_TAX", () => {
   const row = {
-    DocumentDate: "2026-03-10T00:00:00+07:00",
-    SellerName: "PT Supplier",
+    TaxInvoiceDate: "2026-03-10T00:00:00+07:00",
+    TaxInvoicePeriod: "TD.00703",
+    TaxInvoiceYear: "2026",
+    SellerTaxpayerName: "PT Supplier",
+    SellerTIN: "987654321",
     TaxInvoiceNumber: "0100000999",
-    Amount: 1000000,
+    TaxInvoiceStatus: "APPROVED",
+    BuyerStatus: "CREDITED",
+    PeriodCredit: "TD.00704",
+    YearCredit: "2026",
+    SellingPrice: 1000000,
+    OtherTaxBase: 916667,
+    VAT: 110000,
+    STLG: 0,
+    Reference: "REF-IN-001",
+    ExtraField: "should be dropped",
   };
-  const fields = Object.keys(row);
 
-  it("formats ISO datetime fields to DD/MM/YYYY", () => {
-    const result = processData(makeExportData("INPUT_TAX", [row], fields));
-    expect(result.data[0].DocumentDate).toBe("10/03/2026");
+  it("emits Indonesian INPUT_TAX export headers", () => {
+    const result = processData(makeExportData("INPUT_TAX", [row]));
+    expect(result.fields).toEqual([
+      "TANGGAL",
+      "MASA",
+      "TAHUN",
+      "NAMA PENJUAL",
+      "NO IDENTITAS PENJUAL",
+      "NO FAKTUR",
+      "STATUS",
+      "STATUS PEMBELI",
+      "MASA PENGKREDITAN",
+      "TAHUN PENGKREDITAN",
+      "DPP",
+      "DPP NILAI LAIN",
+      "PPN",
+      "PPNBM",
+      "REFERENSI",
+    ]);
   });
 
-  it("passes through non-date fields unchanged", () => {
-    const result = processData(makeExportData("INPUT_TAX", [row], fields));
-    expect(result.data[0].SellerName).toBe("PT Supplier");
-    expect(result.data[0].Amount).toBe(1000000);
+  it("drops fields not in the INPUT_TAX export list", () => {
+    const result = processData(makeExportData("INPUT_TAX", [row]));
+    expect(result.data[0]).not.toHaveProperty("ExtraField");
   });
 
-  it("preserves all input fields (no dropping)", () => {
-    const result = processData(makeExportData("INPUT_TAX", [row], fields));
-    expect(result.fields).toEqual(fields);
+  it("formats TaxInvoiceDate as DD/MM/YYYY", () => {
+    const result = processData(makeExportData("INPUT_TAX", [row]));
+    expect(result.data[0].TANGGAL).toBe("10/03/2026");
+  });
+
+  it("extracts month and year for INPUT_TAX", () => {
+    const result = processData(makeExportData("INPUT_TAX", [row]));
+    expect(result.data[0].MASA).toBe("3");
+    expect(result.data[0].TAHUN).toBe("2026");
+  });
+
+  it("maps crediting period and year for INPUT_TAX", () => {
+    const result = processData(makeExportData("INPUT_TAX", [row]));
+    expect(result.data[0]["MASA PENGKREDITAN"]).toBe("4");
+    expect(result.data[0]["TAHUN PENGKREDITAN"]).toBe("2026");
+  });
+
+  it("maps seller and tax value fields", () => {
+    const result = processData(makeExportData("INPUT_TAX", [row]));
+    expect(result.data[0]["NAMA PENJUAL"]).toBe("PT Supplier");
+    expect(result.data[0]["NO IDENTITAS PENJUAL"]).toBe("987654321");
+    expect(result.data[0].DPP).toBe(1000000);
+    expect(result.data[0]["DPP NILAI LAIN"]).toBe(916667);
+    expect(result.data[0].PPN).toBe(110000);
+    expect(result.data[0].REFERENSI).toBe("REF-IN-001");
   });
 });
 
 // ── OUTPUT_RETURN / INPUT_RETURN ──────────────────────────────────────────────
 
-describe("processData — OUTPUT_RETURN / INPUT_RETURN", () => {
+describe("processData - OUTPUT_RETURN", () => {
   const row = {
-    ReturnDate: "2025-12-01T00:00:00+07:00",
-    ReturnNumber: "RET-001",
+    BuyerTIN: "0639343490201000",
+    BuyerTaxpayerNameClear: "PT Buyer Clear",
     TaxInvoiceNumber: "0400000123",
-    Amount: 500000,
+    TaxInvoiceDate: "2026-06-18T00:00:00+07:00",
+    ReturnNumber: "RET-OUT-001",
+    ReturnDate: "2026-07-01T00:00:00+07:00",
+    TaxInvoicePeriod: "TD.00706",
+    TaxInvoiceYear: "2026",
+    BuyerStatus: "CREDITED",
+    TaxInvoiceStatus: "APPROVED",
+    SellingPrice: 291215,
+    OtherTaxBase: 266947,
+    VAT: 32034,
+    STLG: 0,
+    ExtraField: "should be dropped",
   };
-  const fields = Object.keys(row);
 
-  it("formats ISO datetime fields for OUTPUT_RETURN", () => {
-    const result = processData(makeExportData("OUTPUT_RETURN", [row], fields));
-    expect(result.data[0].ReturnDate).toBe("01/12/2025");
+  it("emits Indonesian OUTPUT_RETURN export headers", () => {
+    const result = processData(makeExportData("OUTPUT_RETURN", [row]));
+    expect(result.fields).toEqual([
+      "NO IDENTITAS PEMBELI",
+      "NAMA PEMBELI",
+      "NO FAKTUR",
+      "TANGGAL",
+      "NO RETUR",
+      "TANGGAL RETUR",
+      "MASA",
+      "TAHUN",
+      "STATUS PEMBELI",
+      "STATUS",
+      "DPP",
+      "DPP NILAI LAIN",
+      "PPN",
+      "PPNBM",
+    ]);
   });
 
-  it("formats ISO datetime fields for INPUT_RETURN", () => {
-    const result = processData(makeExportData("INPUT_RETURN", [row], fields));
-    expect(result.data[0].ReturnDate).toBe("01/12/2025");
-  });
-
-  it("does not drop any fields", () => {
-    const result = processData(makeExportData("OUTPUT_RETURN", [row], fields));
-    expect(result.fields).toEqual(fields);
-    expect(result.data[0].ReturnNumber).toBe("RET-001");
+  it("maps and formats OUTPUT_RETURN fields", () => {
+    const result = processData(makeExportData("OUTPUT_RETURN", [row]));
+    expect(result.data[0]["NO IDENTITAS PEMBELI"]).toBe("0639343490201000");
+    expect(result.data[0]["NAMA PEMBELI"]).toBe("PT Buyer Clear");
+    expect(result.data[0].TANGGAL).toBe("18/06/2026");
+    expect(result.data[0]["TANGGAL RETUR"]).toBe("01/07/2026");
+    expect(result.data[0].MASA).toBe("6");
+    expect(result.data[0].TAHUN).toBe("2026");
+    expect(result.data[0].DPP).toBe(291215);
+    expect(result.data[0]).not.toHaveProperty("ExtraField");
   });
 });
 
+describe("processData - INPUT_RETURN", () => {
+  const row = {
+    SellerTIN: "0016232159201000",
+    SellerTaxpayerName: "PT Seller",
+    TaxInvoiceNumber: "0100000123",
+    TaxInvoiceDate: "2026-06-18T00:00:00+07:00",
+    ReturnNumber: "RET-IN-001",
+    ReturnDate: "2026-07-02T00:00:00+07:00",
+    TaxInvoicePeriod: "TD.00706",
+    TaxInvoiceYear: "2026",
+    BuyerStatus: "CREDITED",
+    TaxInvoiceStatus: "APPROVED",
+    SellingPrice: 1000000,
+    OtherTaxBase: 916667,
+    VAT: 110000,
+    STLG: 0,
+    ExtraField: "should be dropped",
+  };
+
+  it("emits Indonesian INPUT_RETURN export headers", () => {
+    const result = processData(makeExportData("INPUT_RETURN", [row]));
+    expect(result.fields).toEqual([
+      "NO IDENTITAS PENJUAL",
+      "NAMA PENJUAL",
+      "NO FAKTUR",
+      "TANGGAL",
+      "NO RETUR",
+      "TANGGAL RETUR",
+      "MASA",
+      "TAHUN",
+      "STATUS PEMBELI",
+      "STATUS",
+      "DPP",
+      "DPP NILAI LAIN",
+      "PPN",
+      "PPNBM",
+    ]);
+  });
+
+  it("maps and formats INPUT_RETURN fields", () => {
+    const result = processData(makeExportData("INPUT_RETURN", [row]));
+    expect(result.data[0]["NO IDENTITAS PENJUAL"]).toBe("0016232159201000");
+    expect(result.data[0]["NAMA PENJUAL"]).toBe("PT Seller");
+    expect(result.data[0].TANGGAL).toBe("18/06/2026");
+    expect(result.data[0]["TANGGAL RETUR"]).toBe("02/07/2026");
+    expect(result.data[0].MASA).toBe("6");
+    expect(result.data[0].TAHUN).toBe("2026");
+    expect(result.data[0].PPN).toBe(110000);
+    expect(result.data[0]).not.toHaveProperty("ExtraField");
+  });
+});
 // ── SPT_A2 ────────────────────────────────────────────────────────────────────
 
 describe("processData — SPT_A2 (hardcoded 8 fields)", () => {
@@ -252,9 +377,9 @@ describe("processData — multiple rows", () => {
     ];
     const result = processData(makeExportData("OUTPUT_TAX", rows));
     expect(result.data).toHaveLength(2);
-    expect(result.data[0].TaxInvoiceDate).toBe("01/01/2026");
-    expect(result.data[1].TaxInvoiceDate).toBe("01/02/2026");
-    expect(result.data[0].Reference).toBe("R1");
-    expect(result.data[1].Reference).toBe("R2");
+    expect(result.data[0].TANGGAL).toBe("01/01/2026");
+    expect(result.data[1].TANGGAL).toBe("01/02/2026");
+    expect(result.data[0].REFERENSI).toBe("R1");
+    expect(result.data[1].REFERENSI).toBe("R2");
   });
 });
