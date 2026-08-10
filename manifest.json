@@ -51,5 +51,9 @@
     "gecko": {
       "id": "cindieh-ext-v2@arisman.me"
     }
+  },
+  "action": {
+    "default_title": "Cindieh",
+    "default_popup": "popup/popup.html"
   }
 }

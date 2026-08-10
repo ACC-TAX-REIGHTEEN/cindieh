@@ -95,6 +95,15 @@ describe("processData — OUTPUT_TAX (default hardcoded fields)", () => {
     expect(result.data[0].REFERENSI).toBe("REF-001");
   });
 
+
+  it("preserves original Coretax fields when export mode is raw", () => {
+    const result = processData({ ...makeExportData("OUTPUT_TAX", [row]), mode: "raw" });
+    expect(result.fields).toEqual(Object.keys(row));
+    expect(result.data[0].TaxInvoiceDate).toBe("15/04/2026");
+    expect(result.data[0].TaxInvoicePeriod).toBe("04");
+    expect(result.data[0].BuyerName).toBe("PT Maju Jaya");
+    expect(result.data[0]).toHaveProperty("ExtraField", "should be dropped");
+  });
   it("processes an empty data array without throwing", () => {
     const result = processData(makeExportData("OUTPUT_TAX", []));
     expect(result.data).toEqual([]);
@@ -175,9 +184,19 @@ describe("processData � INPUT_TAX", () => {
     expect(result.data[0].PPN).toBe(110000);
     expect(result.data[0].REFERENSI).toBe("REF-IN-001");
   });
-});
 
 // ── OUTPUT_RETURN / INPUT_RETURN ──────────────────────────────────────────────
+
+
+  it("preserves original Coretax fields when export mode is raw", () => {
+    const result = processData({ ...makeExportData("INPUT_TAX", [row]), mode: "raw" });
+    expect(result.fields).toEqual(Object.keys(row));
+    expect(result.data[0].TaxInvoiceDate).toBe("10/03/2026");
+    expect(result.data[0].TaxInvoicePeriod).toBe("TD.00703");
+    expect(result.data[0].SellerTaxpayerName).toBe("PT Supplier");
+    expect(result.data[0]).toHaveProperty("ExtraField", "should be dropped");
+  });
+});
 
 describe("processData - OUTPUT_RETURN", () => {
   const row = {

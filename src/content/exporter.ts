@@ -41,11 +41,14 @@ function extractMonthFromPeriod(raw: unknown): string {
   return "";
 }
 
+export type ExportMode = "cleaned" | "raw";
+
 export interface ExportData {
   data: Record<string, unknown>[];
   fields: string[];
   filenameHint?: string;
   source?: ExportSource;
+  mode?: ExportMode;
 }
 
 function downloadFile(content: string | BlobPart, filename: string, mimeType: string): void {
@@ -97,6 +100,21 @@ export function formatDate(dateStr: unknown): string {
 }
 
 export function processData(exportData: ExportData): ExportData {
+  if (exportData.mode === "raw") {
+    const processedData = exportData.data.map((row) => {
+      const newRow: Record<string, unknown> = {};
+      for (const f of exportData.fields) {
+        let val = row[f];
+        if (typeof val === "string" && val.includes("T") && /^\d{4}-\d{2}-\d{2}T/.test(val)) {
+          val = formatDate(val);
+        }
+        newRow[f] = val;
+      }
+      return newRow;
+    });
+    return { data: processedData, fields: exportData.fields, source: exportData.source, mode: exportData.mode };
+  }
+
   const processMappedTaxColumns = (
     columns: readonly (readonly [string, string])[],
     warningMessage: string,

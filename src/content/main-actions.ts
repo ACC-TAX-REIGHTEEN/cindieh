@@ -10,7 +10,7 @@
 // factory so tests can create independent, isolated instances.
 // ============================================================
 
-import { type ExportData, exportXLSX, exportCSV } from "./exporter";
+import { type ExportData, type ExportMode, exportXLSX, exportCSV } from "./exporter";
 import type { ExportSource } from "./page-context";
 import { getMultiInvoiceNumbers, showPanel, updatePanelProgress, updatePanelIdle } from "./ui";
 import { postToScraper } from "./bridge";
@@ -48,6 +48,7 @@ export interface ContentState {
   pendingExportFormat: "xlsx" | "csv" | "pdf" | null;
   pendingCompare: boolean;
   lastState: ScrapeState | null;
+  exportMode: ExportMode;
 }
 
 export function createContentState(): ContentState {
@@ -59,6 +60,7 @@ export function createContentState(): ContentState {
     pendingExportFormat: null,
     pendingCompare: false,
     lastState: null,
+    exportMode: "cleaned",
   };
 }
 
@@ -96,9 +98,14 @@ export function setPendingCompare(v: boolean): void { _state.pendingCompare = v;
 export function getLastState(): ScrapeState | null { return _state.lastState; }
 export function setLastState(v: ScrapeState | null): void { _state.lastState = v; }
 
+export function getExportMode(): ExportMode { return _state.exportMode; }
+export function setExportMode(v: ExportMode): void { _state.exportMode = v; }
+
 /** Reset the singleton — call on SPA navigation. */
 export function resetState(): void {
+  const exportMode = _state.exportMode;
   _state = createContentState();
+  _state.exportMode = exportMode;
 }
 
 // ── Constants ────────────────────────────────────────
@@ -223,6 +230,7 @@ export function handleExportAction(
       fields: state.scrapedFields,
       filenameHint: state.lastExportMeta?.filenameHint,
       source: state.lastExportMeta?.source,
+      mode: state.exportMode,
     };
     if (format === "xlsx") {
       deps.exportXLSX(exportData);

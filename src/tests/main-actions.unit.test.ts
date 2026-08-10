@@ -40,6 +40,7 @@ describe("createContentState", () => {
     expect(state.pendingExportFormat).toBeNull();
     expect(state.pendingCompare).toBe(false);
     expect(state.lastState).toBeNull();
+    expect(state.exportMode).toBe("cleaned");
   });
 
   it("each call returns an independent object (no shared reference)", () => {
@@ -169,6 +170,15 @@ describe("handleExportAction — data already scraped", () => {
     expect(arg.fields).toBe(scrapedFields);
     expect(arg.filenameHint).toBe("hint");
     expect(arg.source).toBe("OUTPUT_TAX");
+  });
+
+  it("passes the selected export mode to xlsx exports", () => {
+    const deps = makeDeps();
+    const state = makeStateWithData();
+    state.exportMode = "raw";
+    handleExportAction("xlsx", state, deps);
+    const arg = (deps.exportXLSX as ReturnType<typeof vi.fn>).mock.calls[0][0] as ExportData;
+    expect(arg.mode).toBe("raw");
   });
 
   it("calls exportCSV with the correct ExportData for csv format", () => {

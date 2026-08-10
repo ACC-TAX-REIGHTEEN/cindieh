@@ -10,6 +10,7 @@
 
 import { browserAPI } from "./browser-shim";
 import { type ExportData, exportXLSX, exportCSV } from "./exporter";
+import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode } from "../shared/export-preferences";
 import type { ExportSource } from "./page-context";
 import { shouldProcessPageMessage } from "./postmessage-guard";
 import { generateBridgeToken, getBridgeToken, postToScraper } from "./bridge";
@@ -53,6 +54,8 @@ import {
   setPendingCompare,
   getLastState,
   setLastState,
+  getExportMode,
+  setExportMode,
   resetState,
   type ScrapeState,
 } from "./main-actions";
@@ -60,6 +63,21 @@ import {
 const DEBOUNCE_DELAY_MS = 300;
 const GRID_FILTER_INJECT_DELAY_MS = 1500;
 
+async function loadExportModePreference(): Promise<void> {
+  try {
+    const result = await browserAPI.storage.local.get(EXPORT_MODE_STORAGE_KEY);
+    setExportMode(normalizeExportMode(result[EXPORT_MODE_STORAGE_KEY]));
+  } catch (err) {
+    debugError("Gagal membaca preferensi format export", err);
+  }
+}
+
+browserAPI.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local") return;
+  const change = changes[EXPORT_MODE_STORAGE_KEY];
+  if (!change) return;
+  setExportMode(normalizeExportMode(change.newValue));
+});
 debugLog("Cindieh aktif");
 
 let lastUrl = location.href;
@@ -129,11 +147,8 @@ function handlePdfExport(data: Record<string, unknown>[]): boolean {
 }
 
 // ── Relay: Popup → Content → Page ───────────────────
-// NOTE: This extension currently has no browser-action popup defined in the
-// manifest, so these messages originate from the (future) popup or external
-// callers. postToScraper applies the bridge token for consistency, but
-// verification is redundant here because popup→background→content messaging
-// is already authenticated by the extension's own message channel.
+// Popup/background messages arrive through the extension message channel.
+// postToScraper applies the bridge token when relaying into the page world.
 
 browserAPI.runtime.onMessage.addListener(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -224,6 +239,7 @@ window.addEventListener("message", (event: MessageEvent) => {
           fields,
           filenameHint: getLastExportMeta()?.filenameHint,
           source: getLastExportMeta()?.source,
+          mode: getExportMode(),
         };
         if (pendingFormat === "xlsx") {
           exportXLSX(exportData);
@@ -249,9 +265,8 @@ window.addEventListener("message", (event: MessageEvent) => {
     updatePanelError(cleanMsg.message || "Error");
   }
 
-  // NOTE: No browser-action popup is defined in the manifest, so there is no
-  // popup to forward to. State is already persisted via main-actions for the
-  // in-page panel and potential future popup.
+  // Popup state is persisted via main-actions and storage; page messages
+  // are reflected in the in-page panel here.
 });
 
 // ── Grid Filter Event ───────────────────────────────
@@ -392,6 +407,7 @@ function onNavigate(): void {
 }
 
 function init(): void {
+  void loadExportModePreference();
   debugLog("Extension starting up on page...", window.location.href);
   injectBadge();
   injectScraper();

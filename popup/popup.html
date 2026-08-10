@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>Cindieh</title>
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header>
+        <h1>Cindieh</h1>
+        <p>Format export</p>
+      </header>
+
+      <fieldset class="mode-group" aria-label="Format export">
+        <label class="mode-option">
+          <input id="mode-cleaned" type="radio" name="export-mode" value="cleaned" />
+          <span>
+            <strong>Dirapikan</strong>
+            <small>Header Indonesia dan kolom pilihan.</small>
+          </span>
+        </label>
+
+        <label class="mode-option">
+          <input id="mode-raw" type="radio" name="export-mode" value="raw" />
+          <span>
+            <strong>Asli</strong>
+            <small>Field Coretax apa adanya.</small>
+          </span>
+        </label>
+      </fieldset>
+
+      <p id="status-text" class="status">Format dirapikan aktif</p>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
