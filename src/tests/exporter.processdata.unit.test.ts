@@ -82,6 +82,12 @@ describe("processData — OUTPUT_TAX (default hardcoded fields)", () => {
     expect(result.data[0].TaxInvoiceYear).toBe("2026");
   });
 
+  it("extracts month from Coretax tax domain period codes (e.g. TD.00706)", () => {
+    const tdRow = { ...row, TaxInvoicePeriod: "TD.00706", TaxInvoiceYear: "2026" };
+    const result = processData(makeExportData("OUTPUT_TAX", [tdRow]));
+    expect(result.data[0].TaxInvoicePeriod).toBe("6");
+  });
+
   it("passes through non-date fields unchanged", () => {
     const result = processData(makeExportData("OUTPUT_TAX", [row]));
     expect(result.data[0].BuyerName).toBe("PT Maju Jaya");

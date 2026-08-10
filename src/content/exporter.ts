@@ -24,7 +24,11 @@ function extractYearFromPeriod(raw: unknown): string {
  */
 function extractMonthFromPeriod(raw: unknown): string {
   if (!raw) return "";
-  const s = String(raw).replace(/\D/g, "");
+  const rawText = String(raw).trim();
+  const taxDomainPeriod = rawText.match(/^TD\.?\d{3}(0[1-9]|1[0-2])$/i);
+  if (taxDomainPeriod) return taxDomainPeriod[1];
+
+  const s = rawText.replace(/\D/g, "");
   // Try YYYYMM suffix (last 6 digits)
   const yyyymm = s.match(/(20\d{2}|19\d{2})(0[1-9]|1[0-2])$/);
   if (yyyymm) return yyyymm[2];
