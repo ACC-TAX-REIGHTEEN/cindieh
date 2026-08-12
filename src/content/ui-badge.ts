@@ -17,7 +17,7 @@ let isPanelRunning = false;
 type ExportButtonKind = "xlsx" | "csv" | "pdf" | "dropdown";
 
 export function getIdlePanelStatus(): string {
-  return "Tidak ada proses berjalan. Mulai ekspor dari tombol Better Export.";
+  return "Siap. Mulai ekspor dari toolbar.";
 }
 
 export function getToggledPanelVisibility(isCurrentlyVisible: boolean): boolean {
@@ -58,7 +58,7 @@ export function injectBadge() {
   // Create stats element
   statsEl = document.createElement("div");
   statsEl.id = "ch-floating-stats";
-  statsEl.className = "ch-floating-stats ch-hidden";
+  statsEl.className = "ch-floating-stats";
 
   const createStatItem = (label: string, id: string) => {
     const item = document.createElement("div");
@@ -101,19 +101,25 @@ export function injectBadge() {
   badgeEl = document.createElement("div");
   badgeEl.id = "ch-badge";
   badgeEl.className = "ch-badge";
-  badgeEl.textContent = "bc";
+  badgeEl.textContent = "Cindieh";
 
   // Wire badge click to toggle the panel.
   badgeEl.addEventListener("click", () => {
     if (!statsEl) return;
-    const shouldShow = getToggledPanelVisibility(!statsEl.classList.contains("ch-hidden"));
+    const isOpen = container.classList.contains("ch-panel-open");
+    const shouldShow = getToggledPanelVisibility(isOpen);
     if (shouldShow && !isPanelRunning) {
       setIdlePanelContent();
     }
-    statsEl.classList.toggle("ch-hidden", !shouldShow);
+    container.classList.toggle("ch-panel-open", shouldShow);
   });
 
-  container.appendChild(statsEl);
+  // Wrap stats in animation wrapper
+  const statsWrap = document.createElement("div");
+  statsWrap.className = "ch-floating-stats-wrap";
+  statsWrap.appendChild(statsEl);
+
+  container.appendChild(statsWrap);
   container.appendChild(badgeEl);
   document.body.appendChild(container);
 
@@ -168,7 +174,7 @@ function setScrapeButtonState(isRunning: boolean): void {
  * Called at the start of every operation to auto-show the panel (Req 4.6).
  */
 export function showPanel(): void {
-  statsEl?.classList.remove("ch-hidden");
+  statsEl?.closest("#ch-floating-info-container")?.classList.add("ch-panel-open");
 }
 
 // ── Public API: Update Floating Info Bar ───────────────
@@ -176,7 +182,7 @@ export function showPanel(): void {
 export function updatePanelProgress(total: number, page: number, elapsed: string, status: string): void {
   if (!els || !statsEl) return;
   isPanelRunning = true;
-  statsEl.classList.remove("ch-hidden");
+  statsEl.closest("#ch-floating-info-container")?.classList.add("ch-panel-open");
   els.statTotal.textContent = total.toLocaleString("id-ID");
   els.statPages.textContent = String(page);
   els.statTime.textContent = elapsed;
@@ -196,18 +202,18 @@ export function updatePanelProgress(total: number, page: number, elapsed: string
 export function updatePanelComplete(total: number, pages: number, elapsed: string, failureCount?: number): void {
   if (!els || !statsEl) return;
   isPanelRunning = false;
-  statsEl.classList.remove("ch-hidden");
+  statsEl.closest("#ch-floating-info-container")?.classList.add("ch-panel-open");
   els.statTotal.textContent = total.toLocaleString("id-ID");
   els.statPages.textContent = String(pages);
   els.statTime.textContent = elapsed;
 
   if (failureCount && failureCount > 0) {
     const succeeded = total - failureCount;
-    els.statusText.textContent = `⚠️ ${succeeded}/${total} berhasil, ${failureCount} gagal (PDF sudah tidak tersedia)`;
+    els.statusText.textContent = `${succeeded}/${total} berhasil, ${failureCount} gagal (PDF sudah tidak tersedia)`;
   } else if (isWithholdingPage()) {
-    els.statusText.textContent = `✅ ${total} PDF Berhasil`;
+    els.statusText.textContent = `${total} PDF Berhasil`;
   } else {
-    els.statusText.textContent = `✅ ${total} Data Berhasil`;
+    els.statusText.textContent = `${total} Data Berhasil`;
   }
 
   if (isWithholdingPage()) {
@@ -225,8 +231,8 @@ export function updatePanelComplete(total: number, pages: number, elapsed: strin
 export function updatePanelError(message: string): void {
   if (!els || !statsEl) return;
   isPanelRunning = false;
-  statsEl.classList.remove("ch-hidden");
-  els.statusText.textContent = `❌ ${message}`;
+  statsEl.closest("#ch-floating-info-container")?.classList.add("ch-panel-open");
+  els.statusText.textContent = `${message}`;
 
   if (isWithholdingPage()) {
     setExportButtonState(getExportBtnEl(), "pdf", false);
@@ -240,7 +246,7 @@ export function updatePanelIdle(): void {
   if (!els || !statsEl) return;
   isPanelRunning = false;
   setIdlePanelContent();
-  statsEl.classList.add("ch-hidden");
+  statsEl.closest("#ch-floating-info-container")?.classList.remove("ch-panel-open");
 
   if (isWithholdingPage()) {
     setExportButtonState(getExportBtnEl(), "pdf", false);
@@ -252,7 +258,7 @@ export function updatePanelIdle(): void {
 
 /**
  * Clean up badge DOM elements and nullify refs.
- * Called by removeExportButton in ui.ts.
+ * Call this only when the extension is fully torn down.
  */
 export function destroyBadge(): void {
   const container = document.getElementById("ch-floating-info-container");

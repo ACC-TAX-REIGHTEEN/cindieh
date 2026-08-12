@@ -8,7 +8,7 @@ describe("floating badge panel", () => {
   });
 
   it("uses an informative status when opened while idle", () => {
-    expect(getIdlePanelStatus()).toBe("Tidak ada proses berjalan. Mulai ekspor dari tombol Better Export.");
+    expect(getIdlePanelStatus()).toBe("Siap. Mulai ekspor dari toolbar.");
   });
 
   it("uses consistent export button labels across normal and running states", () => {

@@ -25,7 +25,6 @@ import {
   updatePanelComplete,
   updatePanelError,
   updatePanelIdle,
-  destroyBadge,
 } from "./ui-badge";
 
 import { injectGridFilters, injectToolbarFilter, injectMultiInvoiceFilter, getMultiInvoiceNumbers, clearFilterTimers, scheduleRetry } from "./ui-filters";
@@ -489,5 +488,4 @@ export function removeExportButton(): void {
   if (scrapeBtn) scrapeBtn.remove();
   if (compareBtn) compareBtn.remove();
   resetAllButtonRefs();
-  destroyBadge();
 }
