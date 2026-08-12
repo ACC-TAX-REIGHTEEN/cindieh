@@ -2,6 +2,15 @@
 
 **Cindieh** adalah ekstensi browser yang dirancang untuk meningkatkan pengalaman penggunaan portal DJP Coretax. Ekstensi ini menyederhanakan proses pengambilan dan ekspor data pajak dalam jumlah besar ke file Excel terformat, unduhan PDF massal, pencarian faktur berdasarkan referensi, serta perbandingan data faktur antara catatan internal dan Coretax.
 
+## Prinsip Desain & Otomatisasi Terukur
+
+Cindieh **bukanlah alat untuk melompati (*bypass*) atau menerobos protokol keamanan Coretax**. Ekstensi ini bekerja secara sah di dalam browser pengguna menggunakan sesi login aktif Wajib Pajak.
+
+Alih-alih menjanjikan kecepatan di luar batas wajar yang berisiko memicu pemblokiran akun/IP, Cindieh menawarkan **Otomatisasi Alur Kerja Terukur (*Smart Workflow Automation*)**:
+* **Menghilangkan Pekerjaan Repetitif**: Menggantikan ratusan klik manual (*next page*, re-apply filter, unduh PDF satu per satu) dengan **satu kali klik (*one-click*)**.
+* **Kecepatan Maksimal yang Diizinkan**: Mengambil data pada kecepatan puncak yang diizinkan oleh Coretax (500 baris/request untuk e-Invoice dan 1.000 baris/request untuk SPT) secara berurutan (*sequential*).
+* **Aman & Patuh (*Compliant & Safe*)**: Menggunakan jeda waktu teratur (*inter-request delay*) sehingga proses scraping berjalan lancar di latar belakang tanpa memicu alarm keamanan WAF DJP.
+
 ## Fitur Utama
 
 ### 1. Ekspor Data ke Excel
@@ -105,6 +114,10 @@ Buat ekstensi siap pakai untuk browser yang diinginkan:
 - **Persistensi:** Chrome Storage API
 - **Generasi Excel:** SheetJS (xlsx)
 - **UI:** Vanilla DOM & CSS
+
+## Dokumentasi & Kepatuhan Hukum
+- [Panduan Pembatasan Kecepatan (RATE_LIMITING.md)](file:///d:/PROGRAMMING/cindieh/RATE_LIMITING.md) — Penjelasan rinci teknis rate-limiting & RTT.
+- [Pernyataan Kepatuhan Hukum & Keamanan (LEGAL_COMPLIANCE.md)](file:///d:/PROGRAMMING/cindieh/LEGAL_COMPLIANCE.md) — Audit hukum ITE, privasi data lokal, dan keamanan arsitektur kode.
 
 ## Lisensi
 Proyek ini dilisensikan di bawah MIT License. Lihat [LICENSE](LICENSE) untuk detailnya.

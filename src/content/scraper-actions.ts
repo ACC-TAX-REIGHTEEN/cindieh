@@ -194,7 +194,12 @@ export async function startScraping(
 
     const isSpt =
       captured.source === "SPT_A2" || captured.source === "SPT_B2" || captured.source.startsWith("PPH_21_");
-    const step = 1000;
+    const isEInvoice =
+      captured.source === "OUTPUT_TAX" ||
+      captured.source === "INPUT_TAX" ||
+      captured.source === "OUTPUT_RETURN" ||
+      captured.source === "INPUT_RETURN";
+    const step = isEInvoice ? 500 : 1000;
     const delayMs = isSpt ? 150 : 100;
 
     const { allData, page } = await scrapePaginated(captured, step, delayMs, ctx);
