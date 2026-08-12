@@ -197,12 +197,26 @@ button.p-button.ch-btn-highlight.ch-btn-danger:hover {
 .ch-filter-input {
     font-size: 0.875rem;
     padding: 0.5rem 0.75rem;
+    box-sizing: border-box;
+    line-height: 1.25;
+    border-color: var(--ch-primary) !important;
 }
 
-/* Inputgroup addon for search/filter icons */
+.ch-filter-input:focus {
+    border-color: var(--ch-primary) !important;
+    box-shadow: 0 0 0 0.2rem rgba(194, 59, 34, 0.25) !important;
+    outline: none;
+}
+
+/* Inputgroup addon for search/filter icons — primary accent */
 .ch-filter-addon {
     font-size: 13px;
     padding: 0 0.6rem;
+    box-sizing: border-box;
+    line-height: 1.25;
+    background-color: var(--ch-primary) !important;
+    border-color: var(--ch-primary) !important;
+    color: #fff !important;
 }
 
 /* Grid Filter Container */
@@ -210,30 +224,37 @@ button.p-button.ch-btn-highlight.ch-btn-danger:hover {
     padding: 4px;
 }
 
-/* Multi-Invoice Toggle Button — matches input height, has visible border */
+/* Multi-Invoice Toggle Button — primary colour, matches export buttons */
 .ch-multi-invoice-toggle {
     font-size: 0.875rem;
     padding: 0.5rem 0.75rem;
+    box-sizing: border-box;
+    line-height: 1.25;
     cursor: pointer;
-    border-radius: 3px;
-    border: 1px solid var(--ch-border);
-    background: var(--ch-white);
-    color: var(--ch-text-dark);
+    border-radius: 6px;
+    border: 1px solid var(--ch-primary);
+    background: var(--ch-primary);
+    color: #fff;
     transition:
         background 0.2s,
         border-color 0.2s,
-        box-shadow 0.2s;
+        box-shadow 0.2s,
+        transform 0.1s;
 }
 
 .ch-multi-invoice-toggle:hover {
-    background: var(--ch-bg-hover);
-    border-color: var(--ch-blue-border);
+    background: var(--ch-primary-hover);
+    border-color: var(--ch-primary-hover);
+    box-shadow: 0 2px 8px rgba(194, 59, 34, 0.4);
+}
+
+.ch-multi-invoice-toggle:active {
+    transform: scale(0.95);
 }
 
 .ch-multi-invoice-toggle:focus {
-    border-color: var(--ch-blue-border);
-    box-shadow: 0 0 0 0.2rem rgba(62, 93, 138, 0.25);
     outline: none;
+    box-shadow: 0 0 0 0.2rem rgba(194, 59, 34, 0.35);
 }
 
 /* Multi-Invoice Panel — appended to body, positioned via JS */
