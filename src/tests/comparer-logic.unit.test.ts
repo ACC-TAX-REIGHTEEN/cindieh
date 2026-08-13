@@ -10,6 +10,9 @@ import {
   parseDailyDates,
   getStatusLabel,
   createComparerSession,
+  runComparison,
+  rerunComparison,
+  prepareComparison,
 } from "../content/comparer-logic";
 import type { ComparisonResult, ComparisonStatus } from "../content/comparer";
 
@@ -311,6 +314,157 @@ describe("getStatusLabel", () => {
     for (const s of allStatuses) {
       expect(() => getStatusLabel(s)).not.toThrow();
       expect(typeof getStatusLabel(s)).toBe("string");
+    }
+  });
+});
+
+// ── runComparison ─────────────────────────────────────────────────────────────
+
+describe("runComparison", () => {
+  it("stores fresh results and resets page/viewed highlight", () => {
+    const session = createComparerSession();
+    session.currentPage = 3;
+    session.viewedRefs.add("REF-001");
+
+    const pasted = [{ reference: "REF-001", refLain: "", dpp: 100, ppn: 10 }];
+    const scraped = [{ Reference: "REF-001", SellingPrice: 100, VAT: 10 }];
+    const results = runComparison(session, pasted, scraped);
+
+    expect(session.results).toBe(results);
+    expect(session.currentPage).toBe(1);
+    expect(session.viewedRefs.size).toBe(0);
+    expect(results[0].status).toBe("COCOK");
+  });
+
+  it("passes dailyDates when daily mode is on and dates exist", () => {
+    const session = createComparerSession();
+    session.dailyDates = [3, 5];
+    const results = runComparison(
+      session,
+      [{ reference: "REF-X", refLain: "", dpp: 0, ppn: 0 }],
+      [],
+    );
+    expect(results).toHaveLength(1);
+    expect(results[0].status).toBe("TIDAK_DITEMUKAN");
+  });
+
+  it("drops dailyDates when daily mode is disabled", () => {
+    const session = createComparerSession();
+    session.dailyEnabled = false;
+    session.dailyDates = [3, 5];
+    const results = runComparison(
+      session,
+      [{ reference: "REF-X", refLain: "", dpp: 0, ppn: 0 }],
+      [],
+    );
+    expect(results).toHaveLength(1);
+  });
+});
+
+// ── rerunComparison ───────────────────────────────────────────────────────────
+
+describe("rerunComparison", () => {
+  it("re-runs from textarea content when scraped data exists", () => {
+    const session = createComparerSession();
+    const results = rerunComparison(
+      session,
+      "REF-001\tREF-002\t100\t10\n",
+      [{ Reference: "REF-001", SellingPrice: 100, VAT: 10 }],
+    );
+    expect(results).not.toBeNull();
+    expect(results).toHaveLength(1);
+  });
+
+  it("returns null when the textarea is empty", () => {
+    const session = createComparerSession();
+    expect(rerunComparison(session, "  ", [{ Reference: "REF-001" }])).toBeNull();
+  });
+
+  it("returns null when scraped data is missing or empty", () => {
+    const session = createComparerSession();
+    expect(rerunComparison(session, "REF-001\t100\t10\n", null)).toBeNull();
+    expect(rerunComparison(session, "REF-001\t100\t10\n", [])).toBeNull();
+  });
+
+  it("returns null when the text is unparseable", () => {
+    const session = createComparerSession();
+    expect(rerunComparison(session, "garbage", [{ Reference: "REF-001" }])).toBeNull();
+  });
+});
+
+// ── prepareComparison ─────────────────────────────────────────────────────────
+
+describe("prepareComparison", () => {
+  const VALID_PASTE = "REF-001\tREF-002\t100\t10\n";
+  const SCRAPED = [{ Reference: "REF-001", SellingPrice: 100, VAT: 10 }];
+
+  it("returns run when everything is valid", () => {
+    const session = createComparerSession();
+    const result = prepareComparison(session, VALID_PASTE, SCRAPED, "5");
+    expect(result.action).toBe("run");
+    if (result.action === "run") expect(result.pastedRows).toHaveLength(1);
+  });
+
+  it("errors when daily mode needs dates and the input is empty", () => {
+    const session = createComparerSession();
+    session.dailyEnabled = true;
+    const result = prepareComparison(session, VALID_PASTE, SCRAPED, " ");
+    expect(result.action).toBe("error");
+    if (result.action === "error") {
+      expect(result.message).toContain("Silakan masukkan tanggal");
+    }
+  });
+
+  it("errors when daily mode dates are invalid", () => {
+    const session = createComparerSession();
+    const result = prepareComparison(session, VALID_PASTE, SCRAPED, "99");
+    expect(result.action).toBe("error");
+    if (result.action === "error") {
+      expect(result.message).toContain("Format tanggal tidak valid");
+    }
+  });
+
+  it("updates session.dailyDates when daily validation passes", () => {
+    const session = createComparerSession();
+    prepareComparison(session, VALID_PASTE, SCRAPED, "3, 15");
+    expect(session.dailyDates).toEqual([3, 15]);
+  });
+
+  it("errors when the paste area is empty", () => {
+    const session = createComparerSession();
+    const result = prepareComparison(session, "", SCRAPED, "5");
+    expect(result.action).toBe("error");
+    if (result.action === "error") {
+      expect(result.message).toContain("Silakan paste data dari Excel");
+    }
+  });
+
+  it("errors when the paste text is unparseable", () => {
+    const session = createComparerSession();
+    const result = prepareComparison(session, "garbage", SCRAPED, "5");
+    expect(result.action).toBe("error");
+  });
+
+  it("returns needScrape when scraped data is missing", () => {
+    const session = createComparerSession();
+    const result = prepareComparison(session, VALID_PASTE, null, "5");
+    expect(result.action).toBe("needScrape");
+  });
+
+  it("re-runs when results already exist", () => {
+    const session = createComparerSession();
+    session.results = RESULTS;
+    const result = prepareComparison(session, VALID_PASTE, SCRAPED, "5");
+    expect(result.action).toBe("run");
+  });
+
+  it("honours the 3-column format message when refLain is off", () => {
+    const session = createComparerSession();
+    session.refLainEnabled = false;
+    const result = prepareComparison(session, "garbage", SCRAPED, "5");
+    expect(result.action).toBe("error");
+    if (result.action === "error") {
+      expect(result.message).toContain("Referensi, DPP, PPN");
     }
   });
 });

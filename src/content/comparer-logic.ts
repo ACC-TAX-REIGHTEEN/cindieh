@@ -7,7 +7,8 @@
 // logic, and status summary generation.
 // ============================================================
 
-import type { ComparisonResult, ComparisonStatus } from "./comparer";
+import type { ComparisonResult, ComparisonStatus, PastedRow } from "./comparer";
+import { compareData, parsePastedData } from "./comparer";
 
 // ── Session state ──────────────────────────────────────
 
@@ -21,6 +22,8 @@ export interface ComparerSession {
   /** Day-of-month values (1-31) for the daily reverse check. */
   dailyDates: number[];
   refLainEnabled: boolean;
+  /** References the user has already double-clicked (row highlight). */
+  viewedRefs: Set<string>;
 }
 
 export function createComparerSession(): ComparerSession {
@@ -32,6 +35,7 @@ export function createComparerSession(): ComparerSession {
     dailyEnabled: true,
     dailyDates: [],
     refLainEnabled: true,
+    viewedRefs: new Set(),
   };
 }
 
@@ -159,4 +163,112 @@ export function getStatusLabel(status: ComparisonStatus): StatusLabel {
     case "TIDAK_DITEMUKAN": return "Tidak ditemukan";
     case "HANYA_CORETAX": return "Hanya di Coretax";
   }
+}
+
+// ── Session orchestration ─────────────────────────────
+// The state transitions the view used to hand-roll: run a fresh
+// comparison, re-run with current inputs, and prepare the "Periksa"
+// decision tree. All pure — the view only renders the outcome.
+
+/**
+ * Run a comparison against already-parsed pasted rows and update the
+ * session: fresh results, page reset, viewed highlights cleared.
+ */
+export function runComparison(
+  session: ComparerSession,
+  pastedRows: PastedRow[],
+  scrapedData: Record<string, unknown>[],
+): ComparisonResult[] {
+  const dailyDatesArg = session.dailyEnabled && session.dailyDates.length > 0
+    ? session.dailyDates
+    : null;
+  session.results = compareData(pastedRows, scrapedData, session.tolerance, dailyDatesArg);
+  session.currentPage = 1;
+  session.viewedRefs.clear();
+  return session.results;
+}
+
+/**
+ * Re-run the comparison from the raw textarea content after a control
+ * (tolerance, refLain, daily mode, daily dates) changed. No-op when the
+ * paste area is empty or scraped data is missing.
+ */
+export function rerunComparison(
+  session: ComparerSession,
+  textareaValue: string,
+  scrapedData: Record<string, unknown>[] | null,
+): ComparisonResult[] | null {
+  const text = textareaValue.trim();
+  if (!text || !scrapedData || scrapedData.length === 0) return null;
+  const pastedRows = parsePastedData(text, session.refLainEnabled);
+  if (pastedRows.length === 0) return null;
+  return runComparison(session, pastedRows, scrapedData);
+}
+
+export type PrepareResult =
+  | { action: "run"; pastedRows: PastedRow[]; scrapedData: Record<string, unknown>[] }
+  | { action: "needScrape"; pastedRows: PastedRow[] }
+  | { action: "error"; message: string };
+
+/**
+ * Decide what the "Periksa" button must do for the current session and
+ * inputs. Ordering is deliberate and load-bearing:
+ *   1. daily-dates validation runs before anything else (before scraping);
+ *   2. when results already exist, re-run them first (the paste area may
+ *      be hidden — its current content is the source of truth);
+ *   3. empty input is an error; unparseable input is an error;
+ *   4. no scraped data means scrape first.
+ * Mutates only `session.dailyDates` (mirrors handleCheck). The view maps
+ * the returned action to DOM/UI behaviour.
+ */
+export function prepareComparison(
+  session: ComparerSession,
+  textareaValue: string,
+  scrapedData: Record<string, unknown>[] | null,
+  dailyDatesInputValue: string,
+): PrepareResult {
+  if (session.dailyEnabled) {
+    const raw = dailyDatesInputValue.trim();
+    if (!raw) {
+      return { action: "error", message: "Silakan masukkan tanggal (1-31) terlebih dahulu." };
+    }
+    const parsed = parseDailyDates(raw);
+    if (parsed.length === 0) {
+      return { action: "error", message: "Format tanggal tidak valid. Gunakan angka 1-31, pisahkan dengan koma." };
+    }
+    session.dailyDates = parsed;
+  }
+
+  // If results already exist, re-run the comparison with the current
+  // tolerance (the textarea may be hidden after the first check).
+  if (session.results.length > 0) {
+    const text = textareaValue.trim();
+    if (text && scrapedData && scrapedData.length > 0) {
+      const pastedRows = parsePastedData(text, session.refLainEnabled);
+      if (pastedRows.length > 0) {
+        return { action: "run", pastedRows, scrapedData };
+      }
+    }
+  }
+
+  const text = textareaValue.trim();
+  if (!text) {
+    return { action: "error", message: "Silakan paste data dari Excel terlebih dahulu." };
+  }
+
+  const pastedRows = parsePastedData(text, session.refLainEnabled);
+  if (pastedRows.length === 0) {
+    return {
+      action: "error",
+      message: session.refLainEnabled
+        ? "Format data tidak dikenali. Pastikan format: Referensi, Referensi Lain, DPP, PPN (tab-separated)."
+        : "Format data tidak dikenali. Pastikan format: Referensi, DPP, PPN (tab-separated).",
+    };
+  }
+
+  if (!scrapedData || scrapedData.length === 0) {
+    return { action: "needScrape", pastedRows };
+  }
+
+  return { action: "run", pastedRows, scrapedData };
 }
