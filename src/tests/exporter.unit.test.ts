@@ -2,8 +2,29 @@
 // Validates: Requirements 6.5, 6.6, 12.2, 12.3
 import { describe, it, expect } from "vitest";
 import type { ExportSource } from "../content/page-context";
-import { escapeCSV, formatDate, generateDynamicFilename, PREFIX_MAP } from "../content/exporter";
+import { escapeCSV, buildCSV, formatDate, generateDynamicFilename, PREFIX_MAP } from "../content/exporter";
 import type { ExportData } from "../content/exporter";
+
+// ============================================================
+// buildCSV
+// ============================================================
+describe("buildCSV", () => {
+	it("prepends a UTF-8 BOM", () => {
+		expect(buildCSV([["a"]])).toMatch(/^\uFEFF/);
+	});
+
+	it("joins cells with commas and rows with newlines", () => {
+		expect(buildCSV([["a", "b"], ["c", "d"]])).toBe("\uFEFFa,b\nc,d\n");
+	});
+
+	it("escapes cells that need quoting", () => {
+		expect(buildCSV([["hello, world", 'say "hi"']])).toBe('\uFEFF"hello, world","say ""hi"""\n');
+	});
+
+	it("handles an empty row list", () => {
+		expect(buildCSV([])).toBe("\uFEFF");
+	});
+});
 
 // ============================================================
 // escapeCSV

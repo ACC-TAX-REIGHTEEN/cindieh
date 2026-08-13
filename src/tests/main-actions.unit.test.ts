@@ -1,10 +1,19 @@
 // Unit tests for main-actions.ts
 // Tests createContentState, handleExportAction, startScrape, and applyMultiInvoiceFilter
 // using injected deps — no DOM, no module singleton.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+const mockInvoiceNumbers: string[] = [];
+vi.mock("../content/ui", () => ({
+  getMultiInvoiceNumbers: () => mockInvoiceNumbers,
+  showPanel: vi.fn(),
+  updatePanelProgress: vi.fn(),
+  updatePanelIdle: vi.fn(),
+}));
 import {
   createContentState,
   handleExportAction,
+  startPdfDownload,
   startScrape,
   applyMultiInvoiceFilter,
   type ContentState,
@@ -189,10 +198,18 @@ describe("handleExportAction — data already scraped", () => {
     expect(arg.data).toBe(scrapedData);
   });
 
-  it("returns false for pdf format when data exists (caller handles it)", () => {
+  it("returns true for pdf format when data exists (handled internally)", () => {
     const deps = makeDeps();
     const result = handleExportAction("pdf", makeStateWithData(), deps);
-    expect(result).toBe(false);
+    expect(result).toBe(true);
+  });
+
+  it("posts START_PDF_DOWNLOAD for pdf format when data exists", () => {
+    const deps = makeDeps();
+    handleExportAction("pdf", makeStateWithData(), deps);
+    expect(deps.postToScraper).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "START_PDF_DOWNLOAD" }),
+    );
   });
 
   it("does NOT call exportXLSX/exportCSV for pdf format", () => {
@@ -333,6 +350,72 @@ describe("applyMultiInvoiceFilter", () => {
     // This is validated via the integration path in handleExportAction tests above
     // (multi-invoice filter posts SCRAPE_BY_INVOICES with the right numbers).
     expect(true).toBe(true);
+  });
+});
+
+// ── startPdfDownload ──────────────────────────────────────────────────────────
+
+describe("startPdfDownload", () => {
+  const rows = [
+    { TaxInvoiceNumber: "INV-001" },
+    { TaxInvoiceNumber: "INV-002" },
+  ];
+
+  beforeEach(() => {
+    mockInvoiceNumbers.length = 0;
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.stubGlobal("alert", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts START_PDF_DOWNLOAD with the rows and shows the panel", () => {
+    const deps = makeDeps();
+    const state = createContentState();
+
+    const result = startPdfDownload(rows, state, deps);
+
+    expect(result).toBe(true);
+    expect(state.isRunning).toBe(true);
+    expect(deps.showPanel).toHaveBeenCalledOnce();
+    expect(deps.postToScraper).toHaveBeenCalledWith({
+      type: "START_PDF_DOWNLOAD",
+      data: rows,
+    });
+  });
+
+  it("asks for confirmation when more than 10 files would be downloaded", () => {
+    const many = Array.from({ length: 15 }, (_, i) => ({ TaxInvoiceNumber: `INV-${i}` }));
+    const deps = makeDeps();
+
+    startPdfDownload(many, createContentState(), deps);
+
+    expect(globalThis.confirm).toHaveBeenCalledOnce();
+  });
+
+  it("does not post when the user cancels the confirmation", () => {
+    vi.mocked(globalThis.confirm).mockReturnValue(false);
+    const many = Array.from({ length: 15 }, (_, i) => ({ TaxInvoiceNumber: `INV-${i}` }));
+    const deps = makeDeps();
+    const state = createContentState();
+
+    const result = startPdfDownload(many, state, deps);
+
+    expect(result).toBe(false);
+    expect(state.isRunning).toBe(false);
+    expect(deps.postToScraper).not.toHaveBeenCalled();
+  });
+
+  it("returns false and alerts when the multi-invoice filter matches nothing", () => {
+    mockInvoiceNumbers.push("NOPE");
+    const deps = makeDeps();
+    const result = startPdfDownload(rows, createContentState(), deps);
+
+    expect(result).toBe(false);
+    expect(globalThis.alert).toHaveBeenCalled();
+    expect(deps.postToScraper).not.toHaveBeenCalled();
   });
 });
 

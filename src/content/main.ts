@@ -9,7 +9,6 @@
 // ============================================================
 
 import { browserAPI } from "./browser-shim";
-import { type ExportData, exportXLSX, exportCSV } from "./exporter";
 import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode } from "../shared/export-preferences";
 import type { ExportSource } from "./page-context";
 import { shouldProcessPageMessage, createMessageDispatcher } from "./postmessage-guard";
@@ -22,7 +21,6 @@ import {
   isOutputTaxPage,
   isSupportedExportPage,
   removeExportButton,
-  showPanel,
   updatePanelComplete,
   updatePanelError,
   updatePanelIdle,
@@ -37,23 +35,18 @@ import { registerShortcuts } from "./shortcuts";
 import { debugLog, debugError } from "./debug";
 import {
   handleExportAction,
-  applyMultiInvoiceFilter,
   startScrape,
   triggerSearch,
   getIsRunning,
   setIsRunning,
-  getScrapedData,
   setScrapedData,
-  getScrapedFields,
   setScrapedFields,
-  getLastExportMeta,
   setLastExportMeta,
   getPendingExportFormat,
   setPendingExportFormat,
   getPendingCompare,
   setPendingCompare,
   setLastState,
-  getExportMode,
   setExportMode,
   resetState,
   type ScrapeState,
@@ -123,28 +116,6 @@ function injectScraper(): void {
   (document.head || document.documentElement).appendChild(script);
 }
 
-// ── Shared PDF Export ───────────────────────────────
-// Filter → confirm → start download. Returns true if download was started.
-
-function handlePdfExport(data: Record<string, unknown>[]): boolean {
-  const filtered = applyMultiInvoiceFilter(data);
-  if (filtered.length === 0) {
-    alert("Tidak ada faktur yang cocok dengan filter No. Faktur.\nKosongkan filter atau periksa nomor faktur.");
-    return false;
-  }
-  const total = filtered.length;
-  if (total > 10) {
-    const confirmed = window.confirm(
-      `Anda akan mengunduh ${total} file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?`,
-    );
-    if (!confirmed) return false;
-  }
-  setIsRunning(true);
-  showPanel();
-  postToScraper({ type: "START_PDF_DOWNLOAD", data: filtered });
-  return true;
-}
-
 // ── Relay: Page → Content → Popup + In-page panel ───
 // One guard-then-dispatch seam (FROM_PAGE) for every message the
 // scraper sends in. New message types register in the table.
@@ -205,27 +176,11 @@ const pageMessageDispatcher = createMessageDispatcher({
         runPendingCompare();
       }
 
-      // Auto-export if a pending format was requested before scrape started
+      // Auto-export if a pending format was requested before scrape started.
+      // The same interface the buttons use — one export decision tree.
       const pendingFormat = getPendingExportFormat();
-      const data = getScrapedData();
-      const fields = getScrapedFields();
-      if (pendingFormat && data && fields) {
-        if (pendingFormat === "pdf") {
-          handlePdfExport(data);
-        } else {
-          const exportData: ExportData = {
-            data,
-            fields,
-            filenameHint: getLastExportMeta()?.filenameHint,
-            source: getLastExportMeta()?.source,
-            mode: getExportMode(),
-          };
-          if (pendingFormat === "xlsx") {
-            exportXLSX(exportData);
-          } else {
-            exportCSV(exportData);
-          }
-        }
+      if (pendingFormat) {
+        handleExportAction(pendingFormat);
         setPendingExportFormat(null);
       }
     },
@@ -319,9 +274,7 @@ document.addEventListener("ch:export-csv", () => {
 
 // Export PDF
 document.addEventListener("ch:export-pdf", () => {
-  if (!handleExportAction("pdf")) {
-    handlePdfExport(getScrapedData()!);
-  }
+  handleExportAction("pdf");
 });
 
 // Auto-start scrape (only starts if not already running, never stops)

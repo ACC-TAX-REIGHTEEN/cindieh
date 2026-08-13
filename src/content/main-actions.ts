@@ -197,11 +197,40 @@ export function startScrape(
 }
 
 /**
+ * Start a bulk PDF download for the given rows: apply the multi-invoice
+ * filter, confirm when the count is large, show the panel, and post
+ * START_PDF_DOWNLOAD to the scraper.
+ *
+ * Accepts an optional ContentState + ActionDeps for testability.
+ */
+export function startPdfDownload(
+  data: Record<string, unknown>[],
+  state: ContentState = _state,
+  deps: ActionDeps = createActionDeps(),
+): boolean {
+  const filtered = applyMultiInvoiceFilter(data);
+  if (filtered.length === 0) {
+    globalThis.alert?.("Tidak ada faktur yang cocok dengan filter No. Faktur.\nKosongkan filter atau periksa nomor faktur.");
+    return false;
+  }
+  if (filtered.length > 10) {
+    const confirmed = globalThis.confirm?.(
+      `Anda akan mengunduh ${filtered.length} file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?`,
+    );
+    if (!confirmed) return false;
+  }
+  state.isRunning = true;
+  deps.showPanel();
+  deps.postToScraper({ type: "START_PDF_DOWNLOAD", data: filtered });
+  return true;
+}
+
+/**
  * Common export action handler shared by XLSX, CSV, and PDF.
  *
  * - If already running: stops scrape, resets pending format, returns true.
- * - If data is available (XLSX/CSV): exports immediately, returns true.
- * - If data is available (PDF): returns false — caller handles filtering/confirmation.
+ * - If data is available: exports immediately (PDF runs its filter +
+ *   confirmation flow internally), returns true.
  * - If no data (XLSX/CSV with multi-invoice filter): starts targeted scrape, returns true.
  * - Otherwise: sets pendingExportFormat and calls startScrape(), returns true.
  *
@@ -221,8 +250,11 @@ export function handleExportAction(
   }
 
   if (state.scrapedData && state.scrapedFields) {
-    // PDF: let caller handle filtering, confirmation, and download
-    if (format === "pdf") return false;
+    // PDF runs its own filtering + confirmation flow.
+    if (format === "pdf") {
+      startPdfDownload(state.scrapedData, state, deps);
+      return true;
+    }
 
     // XLSX / CSV: export immediately
     const exportData: ExportData = {

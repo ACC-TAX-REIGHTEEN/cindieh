@@ -8,6 +8,7 @@
 // ============================================================
 
 import { parsePastedData, type ComparisonResult } from "./comparer";
+import { buildCSV, downloadTextFile } from "./exporter";
 import { getScrapedData, setPendingCompare, startScrape } from "./main-actions";
 import {
   applyStatusFilter,
@@ -735,26 +736,8 @@ function handleExportResults(): void {
     }
   });
 
-  // Generate CSV with BOM for Excel compatibility
-  let csv = "\uFEFF";
-  for (const row of rows) {
-    csv += row
-      .map((cell) => {
-        if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
-          return `"${cell.replace(/"/g, '""')}"`;
-        }
-        return cell;
-      })
-      .join(",") + "\n";
-  }
-
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "perbandingan-faktur.csv";
-  a.click();
-  URL.revokeObjectURL(url);
+  // Generate CSV with BOM for Excel compatibility via the shared writer.
+  downloadTextFile(buildCSV(rows), "perbandingan-faktur.csv", "text/csv;charset=utf-8");
 }
 
 // ── Search reference in Coretax ───────────────────────

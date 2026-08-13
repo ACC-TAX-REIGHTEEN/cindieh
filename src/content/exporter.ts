@@ -67,6 +67,23 @@ export function escapeCSV(value: unknown): string {
   return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+/**
+ * Build a CSV string from rows of string cells, applying CSV escaping.
+ * Prepends a UTF-8 BOM so Excel opens it with the right encoding.
+ */
+export function buildCSV(rows: readonly (readonly unknown[])[]): string {
+  let csv = "\uFEFF";
+  for (const row of rows) {
+    csv += `${row.map(escapeCSV).join(",")}\n`;
+  }
+  return csv;
+}
+
+/** Trigger a browser download for text content. */
+export function downloadTextFile(content: string, filename: string, mimeType: string): void {
+  downloadFile(content, filename, mimeType);
+}
+
 export function formatDate(dateStr: unknown): string {
   if (!dateStr || typeof dateStr !== "string") return String(dateStr || "");
 
@@ -483,12 +500,8 @@ export function exportCSV(exportData: ExportData): void {
   const filename = generateDynamicFilename(exportData);
   const { data, fields } = processData(exportData);
 
-  let csv = `${fields.map(escapeCSV).join(",")}\n`;
-  for (const row of data) {
-    csv += `${fields.map((f) => escapeCSV(row[f])).join(",")}\n`;
-  }
-
-  downloadFile(`\uFEFF${csv}`, `${filename}.csv`, "text/csv;charset=utf-8");
+  const rows = [fields, ...data.map((row) => fields.map((f) => row[f]))];
+  downloadTextFile(buildCSV(rows), `${filename}.csv`, "text/csv;charset=utf-8");
 }
 
 export function exportXLSX(exportData: ExportData): void {
