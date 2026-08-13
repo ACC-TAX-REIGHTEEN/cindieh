@@ -10,6 +10,7 @@
 // ============================================================
 
 import { extractFilenameHintFromBody } from "./page-context";
+import type { ExportSource } from "./page-context";
 import { debugLog, debugError } from "./debug";
 import { mergeRows, collectFields } from "./scraper-helpers";
 import {
@@ -30,8 +31,8 @@ export interface ScraperContext {
   isStopRequested(): boolean;
   /** Send a ScrapeMessage back to the content script. */
   sendToContent(msg: ScrapeMessage): void;
-  /** Post a raw message to window (for DOWNLOAD_PDF_ITEM). */
-  postMessage(msg: Record<string, unknown>): void;
+  /** Emit a DOWNLOAD_PDF_ITEM message for a bulk-downloaded PDF row. */
+  emitPdfDownload(base64: string, item: Record<string, unknown>, source: ExportSource): void;
   /** Read DOM to get the masa pajak period string (PPh 21 pages). */
   getMasaPajakFromDOM(): string;
   /** XHR timeout in ms. */
@@ -150,12 +151,7 @@ export async function downloadBulkWithholdingPdf(
 
     try {
       const base64 = await xhrDownloadWithholdingPdfFn(captured, row, ctx.timeout);
-      ctx.postMessage({
-        type: "DOWNLOAD_PDF_ITEM",
-        base64,
-        item: row,
-        direction: "FROM_PAGE",
-      });
+      ctx.emitPdfDownload(base64, row, "WITHHOLDING_SLIPS");
       await delay(800);
     } catch (err) {
       failureCount++;
@@ -298,13 +294,7 @@ export async function startPdfDownload(
 
     try {
       const base64 = await xhrDownloadEfakturPdfFn(lastCaptured, row, source, ctx.timeout);
-      ctx.postMessage({
-        type: "DOWNLOAD_PDF_ITEM",
-        base64,
-        item: row,
-        source,
-        direction: "FROM_PAGE",
-      });
+      ctx.emitPdfDownload(base64, row, source);
       await delay(800);
     } catch (err) {
       failureCount++;

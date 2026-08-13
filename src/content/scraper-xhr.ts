@@ -6,6 +6,7 @@
 // ============================================================
 
 import { buildEfakturDownloadUrl, buildEfakturPdfBody } from "./scraper-helpers";
+import { unwrapPdfData, isSuccessfulPdfResponse } from "./scraper-pdf";
 import type { CapturedRequest } from "./scraper-types";
 
 /**
@@ -113,8 +114,8 @@ export function xhrDownloadWithholdingPdf(
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const res = JSON.parse(xhr.responseText);
-          if (res.IsSuccessful && res.Payload?.Message?.Data) {
-            resolve(res.Payload.Message.Data);
+          if (isSuccessfulPdfResponse(res) && unwrapPdfData(res)) {
+            resolve(unwrapPdfData(res)!);
           } else {
             reject(
               new Error(
@@ -176,8 +177,7 @@ export function xhrDownloadEfakturPdf(
         try {
           const res = JSON.parse(xhr.responseText);
           // PDF data: res.Content (top-level) or res.Payload.Message.Data
-          const pdfData =
-            res.Content || (res.IsSuccessful && res.Payload?.Message?.Data) || res.Payload?.Data || res.Data;
+          const pdfData = unwrapPdfData(res);
           if (pdfData && typeof pdfData === "string" && pdfData.length > 100) {
             resolve(pdfData);
           } else {

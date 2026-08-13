@@ -163,6 +163,9 @@ export function handlePdfDownload(
     case "INPUT_RETURN":
       filename = generateReturnFilename(item as PdfItem);
       break;
+    case "WITHHOLDING_SLIPS":
+      filename = generateWithholdingFilename(item as WithholdingSlip);
+      break;
     default:
       filename = generateWithholdingFilename(item as WithholdingSlip);
       break;

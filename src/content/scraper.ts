@@ -31,6 +31,10 @@ import {
   type ScraperContext,
 } from "./scraper-actions";
 import { buildInterceptContext, interceptRequest as makeInterceptRequest } from "./scraper-intercept";
+import {
+  buildPdfDownloadMessage,
+  createPdfDownloadSession,
+} from "./scraper-pdf";
 
 (() => {
   const TIMEOUT = 30000;
@@ -61,9 +65,12 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
   const ctx: ScraperContext = {
     isStopRequested: () => stopRequested,
     sendToContent,
-    postMessage: (msg) => {
+    emitPdfDownload: (base64, item, source) => {
       try {
-        window.postMessage({ ...msg, token: bridgeToken }, window.location.origin);
+        window.postMessage(
+          buildPdfDownloadMessage({ base64, item, source, token: bridgeToken }),
+          window.location.origin,
+        );
       } catch {
         // never let messaging errors stop the scraping loop
       }
@@ -212,32 +219,26 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
     return "";
   }
 
-  // ── Global Download Interceptor ────────────────────
-  // Prevents the portal from triggering a duplicate native download
-  // while Cindieh is handling the PDF.
+  // ── PDF download session ───────────────────────────
+  // Owns the native download processing flag and DOWNLOAD_PDF_ITEM
+  // emission for the fetch/XHR interceptors below.
 
-  let isProcessingBetterDownload = false;
-  let processingResetTimer: ReturnType<typeof setTimeout> | null = null;
+  // Maps invoice identifiers (TaxInvoiceNumber, LetterNumber) to row data
+  // so the fetch interceptor can resolve item metadata for PDF filenames.
+  const invoiceRowMap = new Map<string, Record<string, unknown>>();
 
-  function setProcessingFlag(): void {
-    isProcessingBetterDownload = true;
-    if (processingResetTimer) clearTimeout(processingResetTimer);
-    processingResetTimer = setTimeout(() => {
-      if (isProcessingBetterDownload) {
-        debugWarn("[Cindieh] isProcessingBetterDownload reset by timeout");
-        isProcessingBetterDownload = false;
+  const pdfSession = createPdfDownloadSession({
+    token: bridgeToken,
+    getRowMap: () => invoiceRowMap,
+    getSource: () => getPageExportSource(),
+    emit: (msg) => {
+      try {
+        window.postMessage(msg, window.location.origin);
+      } catch {
+        // never let messaging errors stop the download path
       }
-      processingResetTimer = null;
-    }, 5000);
-  }
-
-  function clearProcessingFlag(): void {
-    isProcessingBetterDownload = false;
-    if (processingResetTimer) {
-      clearTimeout(processingResetTimer);
-      processingResetTimer = null;
-    }
-  }
+    },
+  });
 
   const origOpen = XMLHttpRequest.prototype.open;
   const origSend = XMLHttpRequest.prototype.send;
@@ -245,9 +246,9 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
 
   const origAnchorClick = HTMLAnchorElement.prototype.click;
   HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
-    if (isProcessingBetterDownload && (this.download || this.href.startsWith("blob:"))) {
+    if (pdfSession.isProcessing() && (this.download || this.href.startsWith("blob:"))) {
       debugLog("[Cindieh] Memblokir download klik bawaan.");
-      clearProcessingFlag();
+      pdfSession.clearProcessing();
       return;
     }
     return origAnchorClick.apply(this);
@@ -255,7 +256,7 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
 
   const origCreateObjectURL = window.URL.createObjectURL;
   window.URL.createObjectURL = function (obj: Blob | MediaSource) {
-    if (isProcessingBetterDownload && obj instanceof Blob && obj.type === "application/pdf") {
+    if (pdfSession.isProcessing() && obj instanceof Blob && obj.type === "application/pdf") {
       debugLog("[Cindieh] Memblokir pembuatan blob URL bawaan.");
       return "javascript:void(0)";
     }
@@ -264,7 +265,7 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
 
   const origWindowOpen = window.open;
   window.open = function (url?: string | URL, target?: string, features?: string) {
-    if (isProcessingBetterDownload) {
+    if (pdfSession.isProcessing()) {
       debugLog("[Cindieh] Memblokir window.open bawaan.");
       return null;
     }
@@ -281,57 +282,19 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
     const url =
       typeof args[0] === "string" ? args[0] : (args[0] as Request)?.url;
     if (url?.includes("DownloadInvoice/download-invoice-document")) {
-      setProcessingFlag();
+      pdfSession.beginProcessing();
       try {
         const resp = await origFetch.apply(window, args as Parameters<typeof fetch>);
         const json = await resp.clone().json();
-        const pdfData = json.Content ?? json.Payload?.Content ?? json.Payload?.Message?.Data;
-        if (pdfData) {
-          // Determine source from current page URL so the correct filename
-          // generator is selected (OUTPUT_TAX, INPUT_TAX, etc.).
-          const fetchSource = getPageExportSource() || "OUTPUT_TAX";
-
-          // Resolve invoice metadata from the cached row map.
-          // The DownloadInvoice endpoint only returns the PDF binary (base64),
-          // not invoice metadata, so we extract the invoice identifier from
-          // the request body and look it up in the map built earlier from the
-          // grid data response.
-          let resolvedItem: Record<string, unknown> = {};
-          try {
-            const reqBody =
-              typeof args[0] === "object" && args[0] !== null && "body" in args[0]
-                ? await (args[0] as Request).clone().text()
-                : typeof args[1] === "string"
-                  ? args[1]
-                  : null;
-            if (reqBody) {
-              const parsed = JSON.parse(reqBody) as Record<string, unknown>;
-              // Try TaxInvoiceNumber first, then LetterNumber as fallback.
-              // Both keys are indexed in invoiceRowMap during XHR capture.
-              const lookupKey = String(
-                parsed.TaxInvoiceNumber || parsed.taxInvoiceNumber || parsed.LetterNumber || parsed.letterNumber || "",
-              ).trim().toLowerCase();
-              if (lookupKey && invoiceRowMap.has(lookupKey)) {
-                resolvedItem = invoiceRowMap.get(lookupKey)!;
-              }
-            }
-          } catch {
-            // Best-effort: fall back to empty item if resolution fails.
-          }
-
-          window.postMessage(
-            {
-              type: "DOWNLOAD_PDF_ITEM",
-              base64: pdfData,
-              item: resolvedItem,
-              source: fetchSource,
-              direction: "FROM_PAGE",
-              token: bridgeToken,
-            },
-            window.location.origin,
-          );
-          // NOTE: intentionally do NOT clear the processing flag here — the 5s
-          // timeout keeps the native download blocked until we've handled the PDF.
+        const reqBody =
+          typeof args[0] === "object" && args[0] !== null && "body" in args[0]
+            ? await (args[0] as Request).clone().text()
+            : typeof args[1] === "string"
+              ? args[1]
+              : "";
+        const { intercepted } = pdfSession.handleNativeResponse(json, reqBody);
+        if (intercepted) {
+          // Block the native download: Coretax sees success but empty Content.
           return new Response(JSON.stringify({ IsSuccessful: true, Content: "" }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
@@ -342,11 +305,10 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
           "Response keys:",
           Object.keys(json),
         );
-        clearProcessingFlag();
         return resp;
       } catch (err) {
         debugError("[Cindieh] Fetch interceptor error:", err);
-        clearProcessingFlag();
+        pdfSession.clearProcessing();
         return origFetch.apply(window, args as Parameters<typeof fetch>);
       }
     }
@@ -379,10 +341,6 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
   const captureSubscribers: ((req: CapturedRequest) => void)[] = [];
   let lastCaptured: CapturedRequest | null = null;
   let lastCapturedTime = 0;
-
-  // Maps invoice identifiers (TaxInvoiceNumber, LetterNumber) to row data
-  // so the fetch interceptor can resolve item metadata for PDF filenames.
-  const invoiceRowMap = new Map<string, Record<string, unknown>>();
 
   // ── Message listener: filter updates ──────────────
 
@@ -449,47 +407,15 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
       typeof body === "string" &&
       !(this as InterceptedXHR & { __isCindiehBulk?: boolean }).__isCindiehBulk
     ) {
-      setProcessingFlag();
+      pdfSession.beginProcessing();
       const xhrDownloadBody = body;
-      const xhrDownloadUrl = this.__url;
-      const xhrDownloadHeaders = { ...(this.__headers || {}) };
 
       this.addEventListener("load", function (this: XMLHttpRequest) {
         try {
           const res = JSON.parse(this.responseText) as Record<string, unknown>;
-          const pdfData =
-            (res.Content as string | undefined) ??
-            (res.Payload as Record<string, unknown> | undefined)?.Content as string | undefined ??
-            ((res.Payload as Record<string, unknown> | undefined)?.Message as Record<string, unknown> | undefined)?.Data as string | undefined;
-
-          if (pdfData && typeof pdfData === "string" && pdfData.length > 100) {
-            const xhrSource = getPageExportSource() || "OUTPUT_TAX";
-
-            let resolvedItem: Record<string, unknown> = {};
-            try {
-              const parsed = JSON.parse(xhrDownloadBody) as Record<string, unknown>;
-              const lookupKey = String(
-                parsed.TaxInvoiceNumber || parsed.taxInvoiceNumber || parsed.LetterNumber || parsed.letterNumber || "",
-              ).trim().toLowerCase();
-              if (lookupKey && invoiceRowMap.has(lookupKey)) {
-                resolvedItem = invoiceRowMap.get(lookupKey)!;
-              }
-            } catch {
-              // Best-effort
-            }
-
+          const { intercepted } = pdfSession.handleNativeResponse(res, xhrDownloadBody);
+          if (intercepted) {
             debugLog("[Cindieh] XHR download intercepted, posting DOWNLOAD_PDF_ITEM");
-            window.postMessage(
-              {
-                type: "DOWNLOAD_PDF_ITEM",
-                base64: pdfData,
-                item: resolvedItem,
-                source: xhrSource,
-                direction: "FROM_PAGE",
-                token: bridgeToken,
-              },
-              window.location.origin,
-            );
             // Block the native download: replace response so Coretax
             // sees a success but with empty Content — same as fetch path.
             Object.defineProperty(this, "responseText", {
@@ -498,11 +424,10 @@ import { buildInterceptContext, interceptRequest as makeInterceptRequest } from 
             });
           } else {
             debugWarn("[Cindieh] XHR download interceptor: PDF data not found in response.");
-            clearProcessingFlag();
           }
         } catch (err) {
           debugError("[Cindieh] XHR download interceptor error:", err);
-          clearProcessingFlag();
+          pdfSession.clearProcessing();
         }
       });
 
