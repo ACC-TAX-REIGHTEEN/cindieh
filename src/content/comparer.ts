@@ -5,6 +5,8 @@
 // Pure functions — no DOM or browser API dependencies.
 // ============================================================
 
+import { extractYMD } from "./tax-date";
+
 export interface PastedRow {
   reference: string;
   refLain: string;
@@ -116,16 +118,11 @@ export function parseNumericField(value: unknown): number | null {
  * Returns null when no valid day is found.
  */
 export function extractDayFromDate(value: unknown): number | null {
-  if (value == null) return null;
-  const s = String(value);
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) {
-    const day = parseInt(m[3], 10);
-    return day >= 1 && day <= 31 ? day : null;
-  }
-  return null;
+  const ymd = extractYMD(value);
+  if (!ymd) return null;
+  const day = parseInt(ymd.day, 10);
+  return day >= 1 && day <= 31 ? day : null;
 }
-
 /**
  * Compare pasted data rows against scraped efaktur data.
  * Matches by the "Reference" field (case-insensitive).

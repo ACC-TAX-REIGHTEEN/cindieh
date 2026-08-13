@@ -2,6 +2,8 @@
  * DOWNLOADER.TS — Logic for handling PDF downloads with custom naming
  */
 
+import { extractYMD } from "./tax-date";
+
 export interface WithholdingSlip {
   WithholdingSlipsNumber: string;
   WithholdingSlipsDate: string; // "2026-01-31T00:00:00+07:00"
@@ -58,10 +60,10 @@ export function generateWithholdingFilename(item: WithholdingSlip): string {
   if (item.WithholdingSlipsDate) {
     // Parse the calendar date directly from the ISO string to avoid
     // timezone-dependent shifts from `new Date("...+07:00")`.
-    const m = String(item.WithholdingSlipsDate).match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) {
-      year = m[1];
-      month = m[2];
+    const ymd = extractYMD(item.WithholdingSlipsDate);
+    if (ymd) {
+      year = ymd.year;
+      month = ymd.month;
     } else {
       const d = new Date(item.WithholdingSlipsDate);
       if (!isNaN(d.getTime())) {
@@ -162,6 +164,9 @@ export function handlePdfDownload(
     case "OUTPUT_RETURN":
     case "INPUT_RETURN":
       filename = generateReturnFilename(item as PdfItem);
+      break;
+    case "WITHHOLDING_SLIPS":
+      filename = generateWithholdingFilename(item as WithholdingSlip);
       break;
     default:
       filename = generateWithholdingFilename(item as WithholdingSlip);

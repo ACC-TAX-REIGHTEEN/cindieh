@@ -1,37 +1,36 @@
 // ============================================================
 // UI-COMPARER.TS — Modal for paste & compare feature
 // ============================================================
-// Injects a modal with a textarea for pasting Excel data,
-// a "Periksa" button, and a paginated results table.
+// Thin view over a ComparerSession (comparer-logic.ts): builds the
+// modal DOM, wires events, and renders session state. All comparison
+// decision logic — run, re-run, "Periksa" decision tree — lives in
+// comparer-logic.ts where it is pure and testable.
 // ============================================================
 
-import { compareData, parsePastedData, type ComparisonResult } from "./comparer";
+import { parsePastedData, type ComparisonResult } from "./comparer";
+import { buildCSV, downloadTextFile } from "./exporter";
 import { getScrapedData, setPendingCompare, startScrape } from "./main-actions";
 import {
   applyStatusFilter,
   buildStatusSummary,
   computePagination,
+  createComparerSession,
   formatStatusSummary,
   getStatusLabel,
   parseDailyDates,
+  prepareComparison,
+  rerunComparison,
+  runComparison as runSessionComparison,
   type ComparerSession,
 } from "./comparer-logic";
 
 const PAGE_SIZE = 10;
 
-// ── State ──────────────────────────────────────────────
+// ── Session ───────────────────────────────────────────
+// Session state lives in comparer-logic's factory; the view only reads
+// and mutates it through comparer-logic's orchestration functions.
 
-let comparerModal: HTMLElement | null = null;
-let comparerTextarea: HTMLElement | null = null;
-let comparerResults: HTMLElement | null = null;
-let currentResults: ComparisonResult[] = [];
-let currentPage = 1;
-let tolerance = 0;
-let statusFilter: ComparisonResult["status"][] = [];
-let viewedRefs = new Set<string>();
-let dailyEnabled = true;
-let dailyDates: number[] = [];
-let refLainEnabled = true;
+const session: ComparerSession = createComparerSession();
 
 // ── Inject the comparer modal ──────────────────────────
 
@@ -269,10 +268,6 @@ export function injectComparerModal(): void {
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
-  comparerModal = modal;
-  comparerTextarea = textarea;
-  comparerResults = results;
-
   // ── Event wiring ──────────────────────────────────
 
   closeBtn.addEventListener("click", closeComparerModal);
@@ -303,71 +298,43 @@ export function injectComparerModal(): void {
   // Tolerance input: update tolerance and re-run comparison if results exist
   toleranceInput.addEventListener("change", () => {
     const val = parseInt(toleranceInput.value, 10);
-    tolerance = isNaN(val) || val < 0 ? 0 : val;
-    if (currentResults.length > 0) {
-      const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
-      const scrapedData = getScrapedData();
-      if (textarea && textarea.value.trim() && scrapedData && scrapedData.length > 0) {
-        const pastedRows = parsePastedData(textarea.value, refLainEnabled);
-        if (pastedRows.length > 0) runComparison(pastedRows, scrapedData);
-      }
-    }
+    session.tolerance = isNaN(val) || val < 0 ? 0 : val;
+    rerunFromTextarea();
   });
 
   // Ref Lain checkbox
   refLainCheckbox.addEventListener("change", () => {
-    refLainEnabled = refLainCheckbox.checked;
-    if (currentResults.length > 0) {
-      const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
-      const scrapedData = getScrapedData();
-      if (textarea && textarea.value.trim() && scrapedData && scrapedData.length > 0) {
-        const pastedRows = parsePastedData(textarea.value, refLainEnabled);
-        if (pastedRows.length > 0) runComparison(pastedRows, scrapedData);
-      }
-    }
+    session.refLainEnabled = refLainCheckbox.checked;
+    rerunFromTextarea();
   });
 
   // Daily checkbox: toggle daily mode and show/hide the date input
   dailyCheckbox.addEventListener("change", () => {
-    dailyEnabled = dailyCheckbox.checked;
-    dailyDatesInput.classList.toggle("ch-hidden", !dailyEnabled);
-    if (currentResults.length > 0) {
-      const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
-      const scrapedData = getScrapedData();
-      if (textarea && textarea.value.trim() && scrapedData && scrapedData.length > 0) {
-        const pastedRows = parsePastedData(textarea.value, refLainEnabled);
-        if (pastedRows.length > 0) runComparison(pastedRows, scrapedData);
-      }
-    }
+    session.dailyEnabled = dailyCheckbox.checked;
+    dailyDatesInput.classList.toggle("ch-hidden", !session.dailyEnabled);
+    rerunFromTextarea();
   });
 
   // Daily dates input: parse dates (1-31, comma separated)
   dailyDatesInput.addEventListener("change", () => {
-    dailyDates = parseDailyDates(dailyDatesInput.value);
-    if (currentResults.length > 0) {
-      const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
-      const scrapedData = getScrapedData();
-      if (textarea && textarea.value.trim() && scrapedData && scrapedData.length > 0) {
-        const pastedRows = parsePastedData(textarea.value, refLainEnabled);
-        if (pastedRows.length > 0) runComparison(pastedRows, scrapedData);
-      }
-    }
+    session.dailyDates = parseDailyDates(dailyDatesInput.value);
+    rerunFromTextarea();
   });
 
   // Status filter dropdown: custom dropdown with checkboxes
   const applyFilter = () => {
     const checked = filterCheckboxes.filter((cb) => cb.checked).map((cb) => cb.value);
     if (checked.includes("ALL")) {
-      statusFilter = [];
+      session.statusFilter = [];
       filterToggleLabel.textContent = "Semua Status";
     } else if (checked.length === 0) {
-      statusFilter = [];
+      session.statusFilter = [];
       filterToggleLabel.textContent = "Semua Status";
     } else {
-      statusFilter = checked.filter((v) => v !== "ALL") as ComparisonResult["status"][];
-      filterToggleLabel.textContent = `${statusFilter.length} status`;
+      session.statusFilter = checked.filter((v) => v !== "ALL") as ComparisonResult["status"][];
+      filterToggleLabel.textContent = `${session.statusFilter.length} status`;
     }
-    currentPage = 1;
+    session.currentPage = 1;
     renderResults();
   };
 
@@ -446,61 +413,28 @@ export function closeComparerModal(): void {
 }
 
 // ── Check handler ─────────────────────────────────────
+// Delegates the decision tree to comparer-logic's prepareComparison;
+// maps the returned action onto DOM/UI behaviour.
 
 function handleCheck(): void {
   const statusMsg = document.getElementById("ch-comparer-status");
   if (!statusMsg) return;
 
-  // Validate daily dates before anything else (including before scraping).
-  if (dailyEnabled) {
-    const datesInput = document.getElementById("ch-comparer-daily-dates") as HTMLInputElement;
-    const raw = datesInput ? datesInput.value.trim() : "";
-    if (!raw) {
-      statusMsg.textContent = "Silakan masukkan tanggal (1-31) terlebih dahulu.";
-      statusMsg.className = "ch-comparer-status ch-comparer-status-error";
-      return;
-    }
-    const parsed = parseDailyDates(raw);
-    if (parsed.length === 0) {
-      statusMsg.textContent = "Format tanggal tidak valid. Gunakan angka 1-31, pisahkan dengan koma.";
-      statusMsg.className = "ch-comparer-status ch-comparer-status-error";
-      return;
-    }
-    dailyDates = parsed;
-  }
-
-  // If results already exist, re-run the comparison with the current
-  // tolerance (the textarea may be hidden after the first check).
-  if (currentResults.length > 0) {
-    const scrapedData = getScrapedData();
-    const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
-    if (scrapedData && scrapedData.length > 0 && textarea && textarea.value.trim()) {
-      const pastedRows = parsePastedData(textarea.value, refLainEnabled);
-      if (pastedRows.length > 0) {
-        runComparison(pastedRows, scrapedData);
-        return;
-      }
-    }
-  }
-
   const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
-  if (!textarea || !textarea.value.trim()) {
-    statusMsg.textContent = "Silakan paste data dari Excel terlebih dahulu.";
-    statusMsg.className = "ch-comparer-status ch-comparer-status-error";
-    return;
-  }
-
-  const pastedRows = parsePastedData(textarea.value, refLainEnabled);
-  if (pastedRows.length === 0) {
-    statusMsg.textContent = refLainEnabled
-      ? "Format data tidak dikenali. Pastikan format: Referensi, Referensi Lain, DPP, PPN (tab-separated)."
-      : "Format data tidak dikenali. Pastikan format: Referensi, DPP, PPN (tab-separated).";
-    statusMsg.className = "ch-comparer-status ch-comparer-status-error";
-    return;
-  }
-
+  const datesInput = document.getElementById("ch-comparer-daily-dates") as HTMLInputElement;
+  const textareaValue = textarea ? textarea.value : "";
+  const datesValue = datesInput ? datesInput.value : "";
   const scrapedData = getScrapedData();
-  if (!scrapedData || scrapedData.length === 0) {
+
+  const decision = prepareComparison(session, textareaValue, scrapedData, datesValue);
+
+  if (decision.action === "error") {
+    statusMsg.textContent = decision.message;
+    statusMsg.className = "ch-comparer-status ch-comparer-status-error";
+    return;
+  }
+
+  if (decision.action === "needScrape") {
     // No scraped data yet — scrape first, then run the comparison automatically.
     statusMsg.textContent = "Belum ada data. Mohon tunggu, sedang melakukan scraping data PPN Keluaran terlebih dahulu...";
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
@@ -509,33 +443,20 @@ function handleCheck(): void {
     return;
   }
 
-  runComparison(pastedRows, scrapedData);
+  runSessionComparison(session, decision.pastedRows, decision.scrapedData);
+  renderAfterComparison();
 }
 
-function runComparison(
-  pastedRows: ReturnType<typeof parsePastedData>,
-  scrapedData: Record<string, unknown>[],
-): void {
-  const statusMsg = document.getElementById("ch-comparer-status");
-
-  // Daily mode: pass the selected dates so coretax-only rows on those dates
-  // are also included in the results.
-  const dailyDatesArg = dailyEnabled && dailyDates.length > 0 ? dailyDates : null;
-  currentResults = compareData(pastedRows, scrapedData, tolerance, dailyDatesArg);
-  currentPage = 1;
-  viewedRefs.clear();
-  renderResults();
-
-  if (statusMsg) {
-    statusMsg.textContent = formatStatusSummary(buildStatusSummary(currentResults));
-    statusMsg.className = "ch-comparer-status ch-comparer-status-info";
-  }
-
-  // Hide the paste textarea after checking (can be re-shown via toggle)
-  const textareaEl = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
-  const toggleIcon = document.getElementById("ch-comparer-toggle-icon");
-  if (textareaEl) textareaEl.classList.add("ch-hidden");
-  if (toggleIcon) toggleIcon.className = "pi pi-chevron-down";
+/**
+ * Re-run the comparison after a control (tolerance, refLain, daily mode,
+ * daily dates) changed. No-op unless a comparison is already showing.
+ */
+function rerunFromTextarea(): void {
+  if (session.results.length === 0) return;
+  const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
+  const scrapedData = getScrapedData();
+  const result = rerunComparison(session, textarea ? textarea.value : "", scrapedData);
+  if (result) renderAfterComparison();
 }
 
 /**
@@ -548,13 +469,30 @@ export function runPendingCompare(): void {
   const scrapedData = getScrapedData();
   if (!textarea || !textarea.value.trim() || !scrapedData || scrapedData.length === 0) return;
 
-  const pastedRows = parsePastedData(textarea.value, refLainEnabled);
+  const pastedRows = parsePastedData(textarea.value, session.refLainEnabled);
   if (pastedRows.length === 0) return;
 
-  runComparison(pastedRows, scrapedData);
+  runSessionComparison(session, pastedRows, scrapedData);
+  renderAfterComparison();
 }
 
 // ── Render results table ──────────────────────────────
+
+function renderAfterComparison(): void {
+  renderResults();
+
+  const statusMsg = document.getElementById("ch-comparer-status");
+  if (statusMsg) {
+    statusMsg.textContent = formatStatusSummary(buildStatusSummary(session.results));
+    statusMsg.className = "ch-comparer-status ch-comparer-status-info";
+  }
+
+  // Hide the paste textarea after checking (can be re-shown via toggle)
+  const textareaEl = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
+  const toggleIcon = document.getElementById("ch-comparer-toggle-icon");
+  if (textareaEl) textareaEl.classList.add("ch-hidden");
+  if (toggleIcon) toggleIcon.className = "pi pi-chevron-down";
+}
 
 function renderResults(): void {
   const container = document.getElementById("ch-comparer-results");
@@ -567,16 +505,16 @@ function renderResults(): void {
   const filterWrap = document.getElementById("ch-comparer-filter-wrap");
   if (filterWrap) filterWrap.classList.remove("ch-hidden");
 
-  if (currentResults.length === 0) {
+  if (session.results.length === 0) {
     container.textContent = "Tidak ada data untuk ditampilkan.";
     return;
   }
 
   // Apply status filter and compute pagination via extracted pure functions.
-  const filtered = applyStatusFilter(currentResults, statusFilter);
+  const filtered = applyStatusFilter(session.results, session.statusFilter);
   const { totalPages: filteredTotalPages, currentPage: clampedPage, startIndex: filteredStart, pageRows: filteredPageRows } =
-    computePagination(filtered, PAGE_SIZE, currentPage);
-  currentPage = clampedPage;
+    computePagination(filtered, PAGE_SIZE, session.currentPage);
+  session.currentPage = clampedPage;
 
   const table = document.createElement("table");
   table.className = "ch-comparer-table";
@@ -587,14 +525,14 @@ function renderResults(): void {
   const headers = [
     "No",
     "Referensi",
-    refLainEnabled ? "Referensi Lain" : "Nama Pembeli",
-    refLainEnabled ? "Nama Pembeli" : "DPP Coretax",
-    refLainEnabled ? "DPP Coretax" : "DPP Baru",
-    refLainEnabled ? "DPP Baru" : "PPN Coretax",
-    refLainEnabled ? "PPN Coretax" : "PPN Baru",
-    refLainEnabled ? "PPN Baru" : "Selisih PPN",
-    refLainEnabled ? "Selisih PPN" : "Status",
-    refLainEnabled ? "Status" : "",
+    session.refLainEnabled ? "Referensi Lain" : "Nama Pembeli",
+    session.refLainEnabled ? "Nama Pembeli" : "DPP Coretax",
+    session.refLainEnabled ? "DPP Coretax" : "DPP Baru",
+    session.refLainEnabled ? "DPP Baru" : "PPN Coretax",
+    session.refLainEnabled ? "PPN Coretax" : "PPN Baru",
+    session.refLainEnabled ? "PPN Baru" : "Selisih PPN",
+    session.refLainEnabled ? "Selisih PPN" : "Status",
+    session.refLainEnabled ? "Status" : "",
   ].filter((h) => h !== "");
   for (const h of headers) {
     const th = document.createElement("th");
@@ -609,7 +547,7 @@ function renderResults(): void {
   filteredPageRows.forEach((r, idx) => {
     const tr = document.createElement("tr");
     // Highlight rows that have been viewed (double-clicked); no status colors.
-    if (viewedRefs.has(r.reference)) {
+    if (session.viewedRefs.has(r.reference)) {
       tr.classList.add("ch-comparer-row-viewed");
     }
 
@@ -626,7 +564,7 @@ function renderResults(): void {
 
     const statusLabel = getStatusLabel(r.status);
 
-    const cells = refLainEnabled
+    const cells = session.refLainEnabled
       ? [
           String(filteredStart + idx + 1),
           r.reference,
@@ -655,7 +593,7 @@ function renderResults(): void {
       const td = document.createElement("td");
       td.textContent = c;
       // Right-align numeric columns and the No column
-      const numCols = refLainEnabled ? [0, 4, 5, 6, 7, 8] : [0, 3, 4, 5, 6, 7];
+      const numCols = session.refLainEnabled ? [0, 4, 5, 6, 7, 8] : [0, 3, 4, 5, 6, 7];
       if (numCols.includes(i)) {
         td.classList.add("ch-comparer-num");
       }
@@ -666,7 +604,7 @@ function renderResults(): void {
     // (disabled for "Tidak ditemukan" rows since there is nothing to search)
     if (!isNotFound) {
       tr.addEventListener("dblclick", () => {
-        viewedRefs.add(r.reference);
+        session.viewedRefs.add(r.reference);
         renderResults();
         searchReference(r.reference);
       });
@@ -686,26 +624,26 @@ function renderResults(): void {
     prevBtn.type = "button";
     prevBtn.className = "ch-comparer-page-btn";
     prevBtn.textContent = "Sebelumnya";
-    prevBtn.disabled = currentPage === 1;
+    prevBtn.disabled = session.currentPage === 1;
     prevBtn.addEventListener("click", () => {
-      if (currentPage > 1) {
-        currentPage--;
+      if (session.currentPage > 1) {
+        session.currentPage--;
         renderResults();
       }
     });
 
     const pageInfo = document.createElement("span");
     pageInfo.className = "ch-comparer-page-info";
-    pageInfo.textContent = `Halaman ${currentPage} dari ${filteredTotalPages}`;
+    pageInfo.textContent = `Halaman ${session.currentPage} dari ${filteredTotalPages}`;
 
     const nextBtn = document.createElement("button");
     nextBtn.type = "button";
     nextBtn.className = "ch-comparer-page-btn";
     nextBtn.textContent = "Berikutnya";
-    nextBtn.disabled = currentPage === filteredTotalPages;
+    nextBtn.disabled = session.currentPage === filteredTotalPages;
     nextBtn.addEventListener("click", () => {
-      if (currentPage < filteredTotalPages) {
-        currentPage++;
+      if (session.currentPage < filteredTotalPages) {
+        session.currentPage++;
         renderResults();
       }
     });
@@ -718,14 +656,15 @@ function renderResults(): void {
 }
 
 // ── Export results to XLSX ────────────────────────────
+// TODO(candidate 5): route through exporter's shared CSV/Excel writer.
 
 function handleExportResults(): void {
   const container = document.getElementById("ch-comparer-results");
   if (!container || container.classList.contains("ch-hidden")) return;
 
-  if (currentResults.length === 0) return;
+  if (session.results.length === 0) return;
 
-  const headers = refLainEnabled
+  const headers = session.refLainEnabled
     ? [
         "No",
         "Referensi",
@@ -762,8 +701,8 @@ function handleExportResults(): void {
   };
 
   const rows: string[][] = [headers];
-  currentResults.forEach((r, idx) => {
-    if (refLainEnabled) {
+  session.results.forEach((r, idx) => {
+    if (session.refLainEnabled) {
       rows.push([
         String(idx + 1),
         r.reference,
@@ -797,26 +736,8 @@ function handleExportResults(): void {
     }
   });
 
-  // Generate CSV with BOM for Excel compatibility
-  let csv = "\uFEFF";
-  for (const row of rows) {
-    csv += row
-      .map((cell) => {
-        if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
-          return `"${cell.replace(/"/g, '""')}"`;
-        }
-        return cell;
-      })
-      .join(",") + "\n";
-  }
-
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "perbandingan-faktur.csv";
-  a.click();
-  URL.revokeObjectURL(url);
+  // Generate CSV with BOM for Excel compatibility via the shared writer.
+  downloadTextFile(buildCSV(rows), "perbandingan-faktur.csv", "text/csv;charset=utf-8");
 }
 
 // ── Search reference in Coretax ───────────────────────

@@ -27,7 +27,7 @@ import {
   updatePanelIdle,
 } from "./ui-badge";
 
-import { injectGridFilters, injectToolbarFilter, injectMultiInvoiceFilter, getMultiInvoiceNumbers, clearFilterTimers, scheduleRetry } from "./ui-filters";
+import { injectGridFilters, injectToolbarFilter, injectMultiInvoiceFilter, getMultiInvoiceNumbers, splitInvoiceNumbers, clearFilterTimers, scheduleRetry } from "./ui-filters";
 import { injectComparerModal, openComparerModal, runPendingCompare } from "./ui-comparer";
 
 import {
@@ -72,6 +72,7 @@ export {
   injectToolbarFilter,
   injectMultiInvoiceFilter,
   getMultiInvoiceNumbers,
+  splitInvoiceNumbers,
   injectComparerModal,
   openComparerModal,
   runPendingCompare,

@@ -2,8 +2,29 @@
 // Validates: Requirements 6.5, 6.6, 12.2, 12.3
 import { describe, it, expect } from "vitest";
 import type { ExportSource } from "../content/page-context";
-import { escapeCSV, formatDate, generateDynamicFilename, PREFIX_MAP } from "../content/exporter";
+import { escapeCSV, buildCSV, generateDynamicFilename, PREFIX_MAP } from "../content/exporter";
 import type { ExportData } from "../content/exporter";
+
+// ============================================================
+// buildCSV
+// ============================================================
+describe("buildCSV", () => {
+	it("prepends a UTF-8 BOM", () => {
+		expect(buildCSV([["a"]])).toMatch(/^\uFEFF/);
+	});
+
+	it("joins cells with commas and rows with newlines", () => {
+		expect(buildCSV([["a", "b"], ["c", "d"]])).toBe("\uFEFFa,b\nc,d\n");
+	});
+
+	it("escapes cells that need quoting", () => {
+		expect(buildCSV([["hello, world", 'say "hi"']])).toBe('\uFEFF"hello, world","say ""hi"""\n');
+	});
+
+	it("handles an empty row list", () => {
+		expect(buildCSV([])).toBe("\uFEFF");
+	});
+});
 
 // ============================================================
 // escapeCSV
@@ -240,81 +261,5 @@ describe("PREFIX_MAP", () => {
 
 	it("default entry is FPK-", () => {
 		expect(PREFIX_MAP["default"]).toBe("FPK-");
-	});
-});
-
-// ============================================================
-// formatDate — timezone handling across multiple offsets
-// ============================================================
-describe("formatDate", () => {
-	// ── Pure date strings ────────────────────────────────
-	it("converts YYYY-MM-DD to DD/MM/YYYY without timezone shift", () => {
-		expect(formatDate("2026-04-15")).toBe("15/04/2026");
-	});
-
-	it("converts YYYY-01-01 edge case correctly", () => {
-		expect(formatDate("2025-01-01")).toBe("01/01/2025");
-	});
-
-	it("converts YYYY-12-31 edge case correctly", () => {
-		expect(formatDate("2025-12-31")).toBe("31/12/2025");
-	});
-
-	// ── ISO datetime with +07:00 (Indonesia WIB) ─────────
-	it("extracts calendar date at +07:00 offset — no midnight shift", () => {
-		// 2026-01-31T23:00:00+07:00 is 16:00 UTC on 2026-01-31 — still Jan 31
-		expect(formatDate("2026-01-31T23:00:00+07:00")).toBe("31/01/2026");
-	});
-
-	it("extracts calendar date at +07:00 when UTC would be previous day", () => {
-		// 2026-03-01T00:30:00+07:00 is 2026-02-28T17:30:00Z — date in +07:00 is Mar 1
-		expect(formatDate("2026-03-01T00:30:00+07:00")).toBe("01/03/2026");
-	});
-
-	// ── ISO datetime with +08:00 (WITA / Singapore) ──────
-	it("extracts calendar date at +08:00 offset correctly", () => {
-		// 2026-06-15T10:00:00+08:00 → June 15 at offset
-		expect(formatDate("2026-06-15T10:00:00+08:00")).toBe("15/06/2026");
-	});
-
-	it("extracts calendar date at +08:00 near midnight — no off-by-one", () => {
-		// 2026-07-01T00:15:00+08:00 is 2026-06-30T16:15:00Z — date in +08:00 is Jul 1
-		expect(formatDate("2026-07-01T00:15:00+08:00")).toBe("01/07/2026");
-	});
-
-	// ── ISO datetime with +09:00 (WIT / Japan) ───────────
-	it("extracts calendar date at +09:00 offset correctly", () => {
-		expect(formatDate("2026-12-25T09:00:00+09:00")).toBe("25/12/2026");
-	});
-
-	it("extracts calendar date at +09:00 near midnight — no off-by-one", () => {
-		// 2026-04-01T00:05:00+09:00 is 2026-03-31T15:05:00Z — date in +09:00 is Apr 1
-		expect(formatDate("2026-04-01T00:05:00+09:00")).toBe("01/04/2026");
-	});
-
-	// ── ISO datetime with UTC (Z) ─────────────────────────
-	it("extracts calendar date for UTC (Z) offset correctly", () => {
-		expect(formatDate("2026-08-20T12:00:00Z")).toBe("20/08/2026");
-	});
-
-	it("extracts calendar date for UTC midnight correctly", () => {
-		expect(formatDate("2026-11-01T00:00:00Z")).toBe("01/11/2026");
-	});
-
-	// ── ISO datetime with negative offset ─────────────────
-	it("extracts calendar date at -05:00 offset correctly", () => {
-		// 2026-09-10T20:00:00-05:00 is 2026-09-11T01:00:00Z — date at -05:00 is Sep 10
-		expect(formatDate("2026-09-10T20:00:00-05:00")).toBe("10/09/2026");
-	});
-
-	// ── Non-date / edge cases ─────────────────────────────
-	it("returns empty string for null-ish input", () => {
-		expect(formatDate(null)).toBe("");
-		expect(formatDate(undefined)).toBe("");
-		expect(formatDate("")).toBe("");
-	});
-
-	it("returns non-date strings as-is", () => {
-		expect(formatDate("not-a-date")).toBe("not-a-date");
 	});
 });
