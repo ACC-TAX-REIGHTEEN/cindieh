@@ -61,12 +61,13 @@ Existing code follows these patterns — new code should match them:
 
 - **Coretax is an Angular SPA** — DOM re-renders constantly. `main.ts` observes mutations and debounces injection (`GRID_FILTER_INJECT_DELAY_MS`) to avoid fighting the framework. Injection logic should respect that pattern.
 - **Bridge token is the security boundary.** Never store it on `window`, log it, or weaken `shouldProcessPageMessage`. A forged `DOWNLOAD_PDF_ITEM`/`START_SCRAPE` is exactly what the token prevents.
-- **Extension-owned XHRs are flagged** `__isCindiehBulk` (see `ScraperContext.__isCindiehBulk` in `scraper-types.ts`) so the interceptor does not re-capture them and double-fire `DOWNLOAD_PDF_ITEM`. Keep that flag working when adding download paths.
+- **Extension-owned XHRs are flagged** `__isCindiehBulk` (see `InterceptedXHR` in `scraper-types.ts`) so the interceptor does not re-capture them and double-fire `DOWNLOAD_PDF_ITEM`. Keep that flag working when adding download paths.
 - **Coretax API responses** wrap rows as `{ Payload: { Data: [...] } }`. Parse defensively; the scraper already treats `Payload.Data` as the row array.
-- **Dates**: `formatDate` converts ISO strings to Indonesian `DD/MM/YYYY`; it is timezone-aware, and existing tests pin behaviour across `+07/+08/+09/Z` offsets. Do not "simplify" it.
+- **Dates**: `tax-date.ts` (`formatDate`, `extractYear`, `extractMonth`, `extractYMD`) converts ISO strings to Indonesian `DD/MM/YYYY`; it is timezone-aware, and existing tests pin behaviour across `+07/+08/+09/Z` offsets. Do not "simplify" it, and put new date/period parsing there instead of hand-rolling regexes.
 - **Filenames** use per-source prefixes in `PREFIX_MAP` (`FPK-`, `FPM-`, `RET-FPK-`, `A2-`, `B2-`, `PPH21-L1A-`, `BP-`, ...) — exporter specs enumerate all 11 sources.
 - **`dist/` is a gitignored build artifact.** Never edit it; the build regenerates it. `build.cjs` rewrites the manifest per browser (Chrome `service_worker`, Firefox scripts + `browser_specific_settings.gecko.data_collection_permissions`), so manifest edits go in the source `manifest.json`.
 - **Versioning:** `pnpm version` runs `sync-manifest.cjs` to keep `manifest.json` in sync; releases go through `pnpm release` (standard-version → CHANGELOG.md).
+- **pnpm 11 auto-runs `pnpm install` before every command** (`verify-deps-before-run`), and the install fails on the ignored `esbuild` build script (`ERR_PNPM_IGNORED_BUILDS`). Run commands with `pnpm --config.verify-deps-before-run=false <cmd>` to skip the pre-run install; the `node_modules` tree stays valid.
 
 ## Validation loop
 

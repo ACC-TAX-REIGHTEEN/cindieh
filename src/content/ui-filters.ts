@@ -163,15 +163,20 @@ export function injectToolbarFilter(retries = MAX_RETRIES): void {
 let multiInvoiceTextarea: HTMLTextAreaElement | null = null;
 let multiInvoicePanel: HTMLElement | null = null;
 
+/** Split a multi-invoice textarea value into trimmed, non-empty numbers. */
+export function splitInvoiceNumbers(raw: string): string[] {
+  return raw
+    .split(/[\n;,]+|\s{2,}/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
 /** Get parsed invoice numbers from the multi-invoice filter */
 export function getMultiInvoiceNumbers(): string[] {
   if (!multiInvoiceTextarea) return [];
   const raw = multiInvoiceTextarea.value.trim();
   if (!raw) return [];
-  return raw
-    .split(/[\n;,]+|\s{2,}/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  return splitInvoiceNumbers(raw);
 }
 
 /** Inject multi-invoice filter toggle on efaktur pages. */

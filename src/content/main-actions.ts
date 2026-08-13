@@ -12,23 +12,15 @@
 
 import { type ExportData, type ExportMode, exportXLSX, exportCSV } from "./exporter";
 import type { ExportSource } from "./page-context";
+import type { ScrapeProgress, ScrapeComplete, ScrapeError } from "./scraper-types";
 import { getMultiInvoiceNumbers, showPanel, updatePanelProgress, updatePanelIdle } from "./ui";
 import { postToScraper } from "./bridge";
 import { debugLog, debugWarn } from "./debug";
 
 // ── Types ────────────────────────────────────────────
 
-export interface ScrapeState {
-  type: "SCRAPE_PROGRESS" | "SCRAPE_COMPLETE" | "SCRAPE_ERROR";
-  total?: number;
-  page?: number;
-  pages?: number;
-  elapsed?: string;
-  status?: string;
-  message?: string;
-  data?: Record<string, unknown>[];
-  fields?: string[];
-}
+/** The last scrape message, persisted for reconnection. */
+export type ScrapeState = ScrapeProgress | ScrapeComplete | ScrapeError;
 
 export interface LastExportMeta {
   filenameHint?: string;

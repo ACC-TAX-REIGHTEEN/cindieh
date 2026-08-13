@@ -29,6 +29,7 @@ import {
   injectComparerModal,
   openComparerModal,
   runPendingCompare,
+  splitInvoiceNumbers,
 } from "./ui";
 import { handlePdfDownload } from "./downloader";
 import { registerShortcuts } from "./shortcuts";
@@ -233,12 +234,7 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       const raw = target.value.trim();
-      const numbers = raw
-        ? raw
-          .split(/[\n;,]+|\s{2,}/)
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0)
-        : [];
+      const numbers = raw ? splitInvoiceNumbers(raw) : [];
 
       // Just update hint — no API filter, no search. Targeted scrape runs on Download PDF click.
       const hint = document.getElementById("ch-multi-invoice-count");
