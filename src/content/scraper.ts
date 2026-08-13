@@ -77,6 +77,7 @@ import { createMessageDispatcher } from "./postmessage-guard";
       }
     },
     getMasaPajakFromDOM,
+    delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     timeout: TIMEOUT,
     maxErrors: MAX_ERRORS,
   };

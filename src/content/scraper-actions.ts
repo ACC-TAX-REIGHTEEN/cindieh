@@ -35,16 +35,31 @@ export interface ScraperContext {
   emitPdfDownload(base64: string, item: Record<string, unknown>, source: ExportSource): void;
   /** Read DOM to get the masa pajak period string (PPh 21 pages). */
   getMasaPajakFromDOM(): string;
+  /** Sleep for the given number of milliseconds (rate limiting). */
+  delay(ms: number): Promise<void>;
   /** XHR timeout in ms. */
   timeout: number;
   /** Maximum consecutive XHR errors before aborting a paginated scrape. */
   maxErrors: number;
 }
 
-// ── Helpers ───────────────────────────────────────────
+// ── Pagination config ─────────────────────────────────
+// The Coretax rate-limit pacing lives here, local to the orchestration:
+// 500 rows/request for e-invoice, 1000 for SPT, with a slower inter-page
+// delay for SPT.
 
-function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+export function getPaginateConfig(source: ExportSource): { step: number; delayMs: number } {
+  const isEInvoice =
+    source === "OUTPUT_TAX" ||
+    source === "INPUT_TAX" ||
+    source === "OUTPUT_RETURN" ||
+    source === "INPUT_RETURN";
+  const isSpt =
+    source === "SPT_A2" || source === "SPT_B2" || source.startsWith("PPH_21_");
+  return {
+    step: isEInvoice ? 500 : 1000,
+    delayMs: isSpt ? 150 : 100,
+  };
 }
 
 // ── Paginated scraping loop ───────────────────────────
@@ -59,7 +74,6 @@ function delay(ms: number): Promise<void> {
 export async function scrapePaginated(
   captured: CapturedRequest,
   step: number,
-  delayMs: number,
   ctx: ScraperContext,
 ): Promise<{ allData: Record<string, unknown>[]; page: number }> {
   const allData: Record<string, unknown>[] = [];
@@ -69,6 +83,7 @@ export async function scrapePaginated(
   let keepGoing = true;
   let errorCount = 0;
   const startTime = Date.now();
+  const { delayMs } = getPaginateConfig(captured.source);
 
   while (keepGoing && !ctx.isStopRequested()) {
     page++;
@@ -93,7 +108,7 @@ export async function scrapePaginated(
       } else {
         first += step;
         errorCount = 0;
-        await delay(delayMs);
+        await ctx.delay(delayMs);
       }
     } catch (err) {
       errorCount++;
@@ -105,7 +120,7 @@ export async function scrapePaginated(
           message: `${ctx.maxErrors} error berturut-turut: ${errMsg}`,
         });
       } else {
-        await delay(2000);
+        await ctx.delay(2000);
       }
     }
   }
@@ -152,7 +167,7 @@ export async function downloadBulkWithholdingPdf(
     try {
       const base64 = await xhrDownloadWithholdingPdfFn(captured, row, ctx.timeout);
       ctx.emitPdfDownload(base64, row, "WITHHOLDING_SLIPS");
-      await delay(800);
+      await ctx.delay(800);
     } catch (err) {
       failureCount++;
       debugError(`Gagal unduh PDF idx ${i}:`, err);
@@ -188,17 +203,9 @@ export async function startScraping(
     const captured = await interceptRequest();
     const startTime = Date.now();
 
-    const isSpt =
-      captured.source === "SPT_A2" || captured.source === "SPT_B2" || captured.source.startsWith("PPH_21_");
-    const isEInvoice =
-      captured.source === "OUTPUT_TAX" ||
-      captured.source === "INPUT_TAX" ||
-      captured.source === "OUTPUT_RETURN" ||
-      captured.source === "INPUT_RETURN";
-    const step = isEInvoice ? 500 : 1000;
-    const delayMs = isSpt ? 150 : 100;
+    const { step } = getPaginateConfig(captured.source);
 
-    const { allData, page } = await scrapePaginated(captured, step, delayMs, ctx);
+    const { allData, page } = await scrapePaginated(captured, step, ctx);
 
     if (ctx.isStopRequested()) {
       debugLog("⏹ Stopped by user.");
@@ -295,7 +302,7 @@ export async function startPdfDownload(
     try {
       const base64 = await xhrDownloadEfakturPdfFn(lastCaptured, row, source, ctx.timeout);
       ctx.emitPdfDownload(base64, row, source);
-      await delay(800);
+      await ctx.delay(800);
     } catch (err) {
       failureCount++;
       debugError(`Gagal unduh PDF efaktur idx ${i} (${ref}):`, err);
@@ -363,7 +370,7 @@ export async function scrapeByInvoices(
           elapsed,
           status: `Mencoba ulang: ${num} (percobaan ${attempt + 1}/${MAX_INVOICE_RETRIES + 1})`,
         });
-        await delay(backoffMs);
+        await ctx.delay(backoffMs);
       } else {
         const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
         ctx.sendToContent({
@@ -380,7 +387,7 @@ export async function scrapeByInvoices(
         mergeRows(allData, seen, rows);
         consecutiveFailures = 0;
         success = true;
-        await delay(50);
+        await ctx.delay(50);
         break;
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
