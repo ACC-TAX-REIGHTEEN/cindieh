@@ -49,8 +49,8 @@ export function shouldProcessPageMessage(
 export interface MessageDispatcherOptions {
   /** The message direction this world accepts. */
   direction: MessageDirection;
-  /** The bridge token every message must carry. */
-  token: string;
+  /** The bridge token every message must carry (string or getter function). */
+  token: string | (() => string);
   /** Handler table keyed by message `type`. */
   handlers: Record<string, MessageHandler>;
   /** Reference window for origin/source checks. Defaults to `window`. */
@@ -71,7 +71,8 @@ export function createMessageDispatcher(opts: MessageDispatcherOptions): Message
   const selfWindow = opts.selfWindow ?? window;
   return {
     handle(event: MessageEventLike): void {
-      if (!shouldProcessPageMessage(event, opts.token, selfWindow, opts.direction)) return;
+      const expectedToken = typeof opts.token === "function" ? opts.token() : opts.token;
+      if (!shouldProcessPageMessage(event, expectedToken, selfWindow, opts.direction)) return;
       const data = event.data as Record<string, unknown>;
       const type = data?.type;
       if (typeof type !== "string") return;

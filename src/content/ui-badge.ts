@@ -141,7 +141,7 @@ function setIdlePanelContent(): void {
   els.progressBar.style.width = "0%";
 }
 
-function getExportButtonIcon(kind: ExportButtonKind, isRunning: boolean): string {
+function getExportButtonIcon(kind: ExportButtonKind): string {
   if (kind === "xlsx") return "pi pi-file-excel";
   if (kind === "csv") return "pi pi-file";
   return "pi pi-download";
@@ -150,7 +150,7 @@ function getExportButtonIcon(kind: ExportButtonKind, isRunning: boolean): string
 function setExportButtonState(btn: HTMLButtonElement | null, kind: ExportButtonKind, isRunning: boolean): void {
   if (!btn) return;
   const icon = btn.querySelector(".p-button-icon") as HTMLElement | null;
-  if (icon) icon.className = `p-button-icon p-button-icon-left ${getExportButtonIcon(kind, isRunning)} mr-1`;
+  if (icon) icon.className = `p-button-icon p-button-icon-left ${getExportButtonIcon(kind)} mr-1`;
 
   const label = btn.querySelector(".p-button-label") as HTMLElement | null;
   if (label) label.textContent = getExportButtonLabel(kind, isRunning);

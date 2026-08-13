@@ -13,7 +13,6 @@ import {
   inferCapturedSource,
   extractFilenameHintFromBody,
 } from "../content/page-context";
-import type { ExportSource } from "../content/page-context";
 
 // ── URL predicate helpers ────────────────────────────────────────────────────
 

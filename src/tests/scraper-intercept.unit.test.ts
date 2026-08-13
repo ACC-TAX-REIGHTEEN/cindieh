@@ -1,7 +1,7 @@
 // Unit tests for scraper-intercept.ts
 // Tests interceptRequest, isCacheValid, and triggerXhrCapture
 // without any browser environment.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   interceptRequest,
   isCacheValid,

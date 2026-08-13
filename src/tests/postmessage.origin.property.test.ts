@@ -254,6 +254,34 @@ describe("createMessageDispatcher", () => {
   const dispatcher = (opts: Parameters<typeof createMessageDispatcher>[0]) =>
     createMessageDispatcher(opts);
 
+  it("evaluates a token getter function dynamically on each message", () => {
+    let currentToken = "";
+    const spy = vi.fn();
+    const d = dispatcher({
+      direction: "FROM_PAGE",
+      token: () => currentToken,
+      handlers: { PING: spy },
+      selfWindow: fakeWindow,
+    });
+
+    // When token is initially empty, message with token "tok-123" should be dropped
+    d.handle({
+      source: fakeWindow,
+      origin: FAKE_ORIGIN,
+      data: { type: "PING", direction: "FROM_PAGE", token: "tok-123" },
+    });
+    expect(spy).not.toHaveBeenCalled();
+
+    // After token is updated lazily (e.g. after script injection), dynamic getter should match it
+    currentToken = "tok-123";
+    d.handle({
+      source: fakeWindow,
+      origin: FAKE_ORIGIN,
+      data: { type: "PING", direction: "FROM_PAGE", token: "tok-123" },
+    });
+    expect(spy).toHaveBeenCalledWith({ type: "PING" });
+  });
+
   it("dispatches a validated message to the handler for its type", () => {
     const spy = vi.fn();
     const d = dispatcher({

@@ -123,7 +123,7 @@ function injectScraper(): void {
 
 const pageMessageDispatcher = createMessageDispatcher({
   direction: "FROM_PAGE",
-  token: getBridgeToken(),
+  token: getBridgeToken,
   handlers: {
     SCRAPE_PROGRESS: (msg) => {
       setLastState(msg as unknown as ScrapeState);
