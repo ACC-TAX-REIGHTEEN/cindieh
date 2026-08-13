@@ -4,42 +4,7 @@
 import * as XLSX from "xlsx";
 import type { ExportSource } from "./page-context";
 import { debugWarn } from "./debug";
-
-/**
- * Extract a 4-digit year from a raw period value that may contain
- * non-digit prefixes (e.g. "TD007-2026-04" → "2026").
- * Returns empty string when no valid year is found.
- */
-function extractYearFromPeriod(raw: unknown): string {
-  if (!raw) return "";
-  const s = String(raw).replace(/\D/g, "");
-  const match = s.match(/(20\d{2}|19\d{2})/);
-  return match ? match[1] : "";
-}
-
-/**
- * Extract a 2-digit month from a raw period value that may contain
- * non-digit prefixes (e.g. "TD007-2026-04" → "04").
- * Returns empty string when no valid month is found.
- */
-function extractMonthFromPeriod(raw: unknown): string {
-  if (!raw) return "";
-  const rawText = String(raw).trim();
-  const taxDomainPeriod = rawText.match(/^TD\.?\d{3}(0[1-9]|1[0-2])$/i);
-  if (taxDomainPeriod) return taxDomainPeriod[1];
-
-  const s = rawText.replace(/\D/g, "");
-  // Try YYYYMM suffix (last 6 digits)
-  const yyyymm = s.match(/(20\d{2}|19\d{2})(0[1-9]|1[0-2])$/);
-  if (yyyymm) return yyyymm[2];
-  // Try MMYYYY suffix (last 6 digits)
-  const mmyyyy = s.match(/(0[1-9]|1[0-2])(20\d{2}|19\d{2})$/);
-  if (mmyyyy) return mmyyyy[1];
-  // Bare month (e.g. "04" or "4") — only valid when year is provided separately
-  const bare = s.match(/^(0?[1-9]|1[0-2])$/);
-  if (bare) return bare[1].padStart(2, "0");
-  return "";
-}
+import { extractYear, extractMonth, formatDate } from "./tax-date";
 
 export type ExportMode = "cleaned" | "raw";
 
@@ -84,38 +49,6 @@ export function downloadTextFile(content: string, filename: string, mimeType: st
   downloadFile(content, filename, mimeType);
 }
 
-export function formatDate(dateStr: unknown): string {
-  if (!dateStr || typeof dateStr !== "string") return String(dateStr || "");
-
-  // Fast path: pure date "YYYY-MM-DD" (no time component) — safe from timezone shift.
-  const dateOnly = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (dateOnly) {
-    return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`; // DD/MM/YYYY
-  }
-
-  // ISO datetime with explicit offset (e.g. "2026-01-31T23:00:00+07:00").
-  // The calendar date (year, month, day) in the string is ALREADY expressed in
-  // the stated timezone offset — we just reformat those captured digits directly.
-  // No UTC conversion needed: converting to UTC and back would shift the date
-  // whenever the local time is near midnight, causing off-by-one errors.
-  const iso = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})([+-]\d{2}:?\d{2}|Z)$/i);
-  if (iso) {
-    // iso[1]=YYYY, iso[2]=MM, iso[3]=DD — already in the offset's calendar date
-    return `${iso[3]}/${iso[2]}/${iso[1]}`;
-  }
-
-  // Fallback: best-effort parse (may be timezone-dependent).
-  const d = new Date(dateStr);
-  if (!isNaN(d.getTime())) {
-    const day = String(d.getDate()).padStart(2, "0");
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const year = d.getFullYear();
-    return `${day}/${month}/${year}`;
-  }
-
-  return dateStr;
-}
-
 export function processData(exportData: ExportData): ExportData {
   if (exportData.mode === "raw") {
     const processedData = exportData.data.map((row) => {
@@ -143,9 +76,9 @@ export function processData(exportData: ExportData): ExportData {
       for (const [sourceField, outputField] of columns) {
         if (sourceField === "TaxInvoicePeriod" || sourceField === "PeriodCredit") {
           const rawMonth = row[sourceField] || row["TaxPeriodMonth"] || row["TaxPeriod"] || "";
-          newRow[outputField] = rawMonth ? extractMonthFromPeriod(rawMonth).replace(/^0/, "") : "";
+          newRow[outputField] = rawMonth ? extractMonth(rawMonth).replace(/^0/, "") : "";
         } else if (sourceField === "TaxInvoiceYear" || sourceField === "YearCredit") {
-          newRow[outputField] = extractYearFromPeriod(row[sourceField] || row["TaxPeriodYear"] || row["TaxPeriod"] || "");
+          newRow[outputField] = extractYear(row[sourceField] || row["TaxPeriodYear"] || row["TaxPeriod"] || "");
         } else {
           let val = row[sourceField];
           if (sourceField === "TaxInvoiceDate" || sourceField === "ReturnDate") {
@@ -311,11 +244,11 @@ export function processData(exportData: ExportData): ExportData {
     let masa = "";
     const rawMonth = row["TaxInvoicePeriod"] || row["TaxPeriodMonth"] || row["TaxPeriod"] || "";
     if (rawMonth) {
-      masa = extractMonthFromPeriod(rawMonth).replace(/^0/, ""); // Remove leading zero for display
+      masa = extractMonth(rawMonth).replace(/^0/, ""); // Remove leading zero for display
     }
 
     // Extract Tahun (Year) - handle TD007 prefix or use separate field
-    let tahun = extractYearFromPeriod(
+    let tahun = extractYear(
       row["TaxInvoiceYear"] || row["TaxPeriodYear"] || row["TaxPeriod"] || "",
     );
 
@@ -441,14 +374,14 @@ export function generateDynamicFilename(exportData: ExportData): string {
       if (rawY && rawM) {
         const sY = String(rawY);
         const sM = String(rawM);
-        y = extractYearFromPeriod(sY);
-        m = extractMonthFromPeriod(sM).padStart(2, "0");
+        y = extractYear(sY);
+        m = extractMonth(sM).padStart(2, "0");
       }
       // Priority 2: Consolidated TaxPeriod (usually YYYYMM or TD007-YYYY-MM)
       else if (row["TaxPeriod"]) {
         const sP = String(row["TaxPeriod"]);
-        y = extractYearFromPeriod(sP);
-        m = extractMonthFromPeriod(sP).padStart(2, "0");
+        y = extractYear(sP);
+        m = extractMonth(sP).padStart(2, "0");
       }
       // Fallback: Date fields (Last Resort - only if no period fields found)
       else {

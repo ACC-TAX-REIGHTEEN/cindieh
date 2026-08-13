@@ -1,3 +1,5 @@
+import { extractYear, extractMonth } from "./tax-date";
+
 export type ExportSource =
 	| "OUTPUT_TAX"
 	| "INPUT_TAX"
@@ -121,24 +123,6 @@ function findFirstFilterValue(filters: FilterLike[], patterns: string[]): string
 		}
 	}
 	return "";
-}
-
-function extractYear(value: string): string {
-	const digits = value.replace(/\D/g, "");
-	const match = digits.match(/(20\d{2}|19\d{2})/);
-	return match ? match[1] : "";
-}
-
-function extractMonth(value: string): string {
-	const digits = value.replace(/\D/g, "");
-	const yyyymm = digits.match(/(20\d{2}|19\d{2})(0[1-9]|1[0-2])$/);
-	if (yyyymm) return yyyymm[2];
-
-	const mmyyyy = digits.match(/(0[1-9]|1[0-2])(20\d{2}|19\d{2})$/);
-	if (mmyyyy) return mmyyyy[1];
-
-	const monthOnly = digits.match(/^(0?[1-9]|1[0-2])$/);
-	return monthOnly ? monthOnly[1].padStart(2, "0") : "";
 }
 
 export function extractFilenameHintFromBody(
