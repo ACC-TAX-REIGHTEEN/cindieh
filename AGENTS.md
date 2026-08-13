@@ -8,6 +8,8 @@ Tech: TypeScript (strict), esbuild bundling, SheetJS (`xlsx`), vanilla DOM/CSS �
 
 **Language split:** user-facing strings (UI text, alerts, panel status) and the README are in **Indonesian**; code comments and this file are in English. Keep user-visible text in Indonesian.
 
+**Architecture decisions** live in `docs/adr/` (numbered, one per decision). The domain glossary is `CONTEXT.md`. When changing the shape of a module, check both before re-litigating a settled seam.
+
 ## Two-worlds architecture
 
 The extension runs in two JavaScript worlds on the Coretax page that communicate **only** through token-authenticated `postMessage`:
@@ -33,9 +35,11 @@ Key message types:
 | `scraper-xhr.ts` | The extension's own API calls (building on captured request metadata) |
 | `scraper-intercept.ts` | `interceptRequest` factory + injectable `InterceptContext` |
 | `scraper-helpers.ts` | Pure helpers: download-URL/body builders, row merge, field collection |
-| `scraper-types.ts` | Shared types: `CapturedRequest`, `ScrapeMessage`, `InterceptedXHR` |
+| `scraper-types.ts` | Shared types: `CapturedRequest`, `ScrapeMessage`, `FromContentMessage`, `InterceptedXHR` |
+| `scraper-pdf.ts` | PDF download module: `createPdfDownloadSession` + pure unwrap/resolve/message build; all DOWNLOAD_PDF_ITEM emission |
 | `page-context.ts` | URL → `ExportSource` mapping (`OUTPUT_TAX`, `INPUT_TAX`, `SPT_A2`, `PPH_21_L1A`, ...), filename-hint extraction from request filters |
-| `exporter.ts` | XLSX/CSV generation, `generateDynamicFilename`, `formatDate`, `PREFIX_MAP` |
+| `tax-date.ts` | Masa pajak period & date parsing: `extractYear`, `extractMonth`, `extractYMD`, `formatDate` |
+| `exporter.ts` | XLSX/CSV generation, `generateDynamicFilename`, `buildCSV`, `PREFIX_MAP` |
 | `downloader.ts` | Browser download orchestration with custom PDF naming |
 | `main-actions.ts` | Scrape/export action handlers + `ContentState` (module singleton; `createContentState()` factory for tests) |
 | `comparer.ts`, `comparer-logic.ts`, `ui-comparer.ts` | Paste-and-compare feature vs Coretax data |
@@ -57,9 +61,7 @@ Existing code follows these patterns — new code should match them:
 - **Strictness:** `tsconfig.json` is `strict`; `eslint.config.js` enforces `@typescript-eslint/recommended` with `no-explicit-any` at warn.
 - Section banner comments (`===== NAME =====` / `── ... ──`) mark file and region intent.
 
-## Gotchas
-
-- **Coretax is an Angular SPA** — DOM re-renders constantly. `main.ts` observes mutations and debounces injection (`GRID_FILTER_INJECT_DELAY_MS`) to avoid fighting the framework. Injection logic should respect that pattern.
+## Gotchas- **Coretax is an Angular SPA** — DOM re-renders constantly. `main.ts` observes mutations and debounces injection (`GRID_FILTER_INJECT_DELAY_MS`) to avoid fighting the framework. Injection logic should respect that pattern.
 - **Bridge token is the security boundary.** Never store it on `window`, log it, or weaken `shouldProcessPageMessage`. A forged `DOWNLOAD_PDF_ITEM`/`START_SCRAPE` is exactly what the token prevents.
 - **Extension-owned XHRs are flagged** `__isCindiehBulk` (see `InterceptedXHR` in `scraper-types.ts`) so the interceptor does not re-capture them and double-fire `DOWNLOAD_PDF_ITEM`. Keep that flag working when adding download paths.
 - **Coretax API responses** wrap rows as `{ Payload: { Data: [...] } }`. Parse defensively; the scraper already treats `Payload.Data` as the row array.
