@@ -42,7 +42,17 @@ export interface ScrapeError {
   message: string;
 }
 
-export type ScrapeMessage = ScrapeProgress | ScrapeComplete | ScrapeError | { type: "INJECTED_READY" } | { type: "RESET_SCRAPER" };
+export type ScrapeMessage = ScrapeProgress | ScrapeComplete | ScrapeError | { type: "INJECTED_READY" };
+
+/** Messages the isolated world sends INTO the scraper (direction FROM_CONTENT). */
+export type FromContentMessage =
+  | { type: "START_SCRAPE" }
+  | { type: "STOP_SCRAPE" }
+  | { type: "RESET_SCRAPER" }
+  | { type: "START_PDF_DOWNLOAD"; data: Record<string, unknown>[] }
+  | { type: "SCRAPE_BY_INVOICES"; invoiceNumbers: string[] }
+  | { type: "SET_SERVER_FILTER"; field: string; value: unknown }
+  | { type: "CLEAR_FILTERS"; fields: string[] };
 
 // Extend XHR for intercepted properties
 export interface InterceptedXHR extends XMLHttpRequest {

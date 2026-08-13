@@ -1,21 +1,7 @@
 // Feature: cindieh-improvements, Property 9: PostMessage origin guard
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import * as fc from "fast-check";
-import { shouldProcessPageMessage } from "../content/postmessage-guard";
-
-/**
- * Pure function that replicates the origin guard logic used in scraper.ts
- * (Scraper message listener — expects direction "FROM_CONTENT").
- *
- * Returns true if the message should be processed, false if it should be
- * silently discarded.
- */
-function scraperGuard(opts: { sourceMatches: boolean; directionMatches: boolean; originMatches: boolean }): boolean {
-  if (!opts.sourceMatches) return false;
-  if (!opts.originMatches) return false;
-  if (!opts.directionMatches) return false;
-  return true;
-}
+import { shouldProcessPageMessage, createMessageDispatcher } from "../content/postmessage-guard";
 
 const FAKE_ORIGIN = "https://coretaxdjp.pajak.go.id";
 const fakeWindow = { location: { origin: FAKE_ORIGIN } } as Window & typeof globalThis;
@@ -51,6 +37,47 @@ describe("PostMessage origin guard — Property 9", () => {
         },
       ),
     );
+  });
+
+  it("FROM_CONTENT direction is rejected by the FROM_PAGE guard", () => {
+    const result = shouldProcessPageMessage(
+      {
+        source: fakeWindow,
+        origin: FAKE_ORIGIN,
+        data: { direction: "FROM_CONTENT", token: "tok" },
+      },
+      "tok",
+      fakeWindow,
+    );
+    expect(result).toBe(false);
+  });
+
+  it("FROM_PAGE direction is rejected by the FROM_CONTENT guard", () => {
+    const result = shouldProcessPageMessage(
+      {
+        source: fakeWindow,
+        origin: FAKE_ORIGIN,
+        data: { direction: "FROM_PAGE", token: "tok" },
+      },
+      "tok",
+      fakeWindow,
+      "FROM_CONTENT",
+    );
+    expect(result).toBe(false);
+  });
+
+  it("FROM_CONTENT guard accepts direction FROM_CONTENT", () => {
+    const result = shouldProcessPageMessage(
+      {
+        source: fakeWindow,
+        origin: FAKE_ORIGIN,
+        data: { direction: "FROM_CONTENT", token: "tok" },
+      },
+      "tok",
+      fakeWindow,
+      "FROM_CONTENT",
+    );
+    expect(result).toBe(true);
   });
 
   it("token validation: rejects when token does not match", () => {
@@ -108,7 +135,7 @@ describe("PostMessage origin guard — Property 9", () => {
     expect(result).toBe(true);
   });
 
-  it("Scraper guard: processes message iff sourceMatches && directionMatches && originMatches", () => {
+  it("FROM_CONTENT guard: processes message iff sourceMatches && directionMatches && originMatches", () => {
     fc.assert(
       fc.property(
         fc.record({
@@ -117,14 +144,23 @@ describe("PostMessage origin guard — Property 9", () => {
           originMatches: fc.boolean(),
         }),
         (flags) => {
-          const result = scraperGuard(flags);
+          const result = shouldProcessPageMessage(
+            {
+              source: flags.sourceMatches ? fakeWindow : null,
+              origin: flags.originMatches ? FAKE_ORIGIN : "https://other.com",
+              data: flags.directionMatches ? { direction: "FROM_CONTENT" } : { direction: "OTHER" },
+            },
+            undefined,
+            fakeWindow,
+            "FROM_CONTENT",
+          );
           expect(result).toBe(flags.sourceMatches && flags.directionMatches && flags.originMatches);
         },
       ),
     );
   });
 
-  it("guard rejects when only sourceMatches is false", () => {
+  it("guard rejects when only sourceMatches is false (both directions)", () => {
     fc.assert(
       fc.property(
         fc.record({
@@ -134,14 +170,26 @@ describe("PostMessage origin guard — Property 9", () => {
         }),
         (flags) => {
           if (!flags.sourceMatches) {
-            expect(scraperGuard(flags)).toBe(false);
+            const page = shouldProcessPageMessage(
+              { source: null, origin: flags.originMatches ? FAKE_ORIGIN : "x", data: flags.directionMatches ? { direction: "FROM_PAGE" } : { direction: "OTHER" } },
+              undefined,
+              fakeWindow,
+            );
+            const content = shouldProcessPageMessage(
+              { source: null, origin: flags.originMatches ? FAKE_ORIGIN : "x", data: flags.directionMatches ? { direction: "FROM_CONTENT" } : { direction: "OTHER" } },
+              undefined,
+              fakeWindow,
+              "FROM_CONTENT",
+            );
+            expect(page).toBe(false);
+            expect(content).toBe(false);
           }
         },
       ),
     );
   });
 
-  it("guard rejects when only originMatches is false", () => {
+  it("guard rejects when only originMatches is false (both directions)", () => {
     fc.assert(
       fc.property(
         fc.record({
@@ -151,14 +199,26 @@ describe("PostMessage origin guard — Property 9", () => {
         }),
         (flags) => {
           if (!flags.originMatches) {
-            expect(scraperGuard(flags)).toBe(false);
+            const page = shouldProcessPageMessage(
+              { source: flags.sourceMatches ? fakeWindow : null, origin: "https://other.com", data: flags.directionMatches ? { direction: "FROM_PAGE" } : { direction: "OTHER" } },
+              undefined,
+              fakeWindow,
+            );
+            const content = shouldProcessPageMessage(
+              { source: flags.sourceMatches ? fakeWindow : null, origin: "https://other.com", data: flags.directionMatches ? { direction: "FROM_CONTENT" } : { direction: "OTHER" } },
+              undefined,
+              fakeWindow,
+              "FROM_CONTENT",
+            );
+            expect(page).toBe(false);
+            expect(content).toBe(false);
           }
         },
       ),
     );
   });
 
-  it("guard rejects when only directionMatches is false", () => {
+  it("guard rejects when only directionMatches is false (both directions)", () => {
     fc.assert(
       fc.property(
         fc.record({
@@ -168,28 +228,125 @@ describe("PostMessage origin guard — Property 9", () => {
         }),
         (flags) => {
           if (!flags.directionMatches) {
-            expect(scraperGuard(flags)).toBe(false);
+            const page = shouldProcessPageMessage(
+              { source: flags.sourceMatches ? fakeWindow : null, origin: flags.originMatches ? FAKE_ORIGIN : "x", data: { direction: "OTHER" } },
+              undefined,
+              fakeWindow,
+            );
+            const content = shouldProcessPageMessage(
+              { source: flags.sourceMatches ? fakeWindow : null, origin: flags.originMatches ? FAKE_ORIGIN : "x", data: { direction: "OTHER" } },
+              undefined,
+              fakeWindow,
+              "FROM_CONTENT",
+            );
+            expect(page).toBe(false);
+            expect(content).toBe(false);
           }
         },
       ),
     );
   });
+});
 
-  it("guard processes message only when all three flags are true", () => {
-    const allCombinations = [
-      { sourceMatches: false, directionMatches: false, originMatches: false },
-      { sourceMatches: false, directionMatches: false, originMatches: true },
-      { sourceMatches: false, directionMatches: true, originMatches: false },
-      { sourceMatches: false, directionMatches: true, originMatches: true },
-      { sourceMatches: true, directionMatches: false, originMatches: false },
-      { sourceMatches: true, directionMatches: false, originMatches: true },
-      { sourceMatches: true, directionMatches: true, originMatches: false },
-      { sourceMatches: true, directionMatches: true, originMatches: true },
-    ];
+// ── createMessageDispatcher ───────────────────────────────────────────────────
 
-    for (const flags of allCombinations) {
-      const expected = flags.sourceMatches && flags.directionMatches && flags.originMatches;
-      expect(scraperGuard(flags)).toBe(expected);
-    }
+describe("createMessageDispatcher", () => {
+  const dispatcher = (opts: Parameters<typeof createMessageDispatcher>[0]) =>
+    createMessageDispatcher(opts);
+
+  it("dispatches a validated message to the handler for its type", () => {
+    const spy = vi.fn();
+    const d = dispatcher({
+      direction: "FROM_PAGE",
+      token: "tok",
+      handlers: { PING: spy },
+      selfWindow: fakeWindow,
+    });
+    d.handle({
+      source: fakeWindow,
+      origin: FAKE_ORIGIN,
+      data: { type: "PING", payload: 1, direction: "FROM_PAGE", token: "tok" },
+    });
+    expect(spy).toHaveBeenCalledWith({ type: "PING", payload: 1 });
+  });
+
+  it("strips direction and token before calling the handler", () => {
+    let received: Record<string, unknown> | undefined;
+    const d = dispatcher({
+      direction: "FROM_CONTENT",
+      token: "tok",
+      handlers: { START: (msg) => (received = msg) },
+      selfWindow: fakeWindow,
+    });
+    d.handle({
+      source: fakeWindow,
+      origin: FAKE_ORIGIN,
+      data: { type: "START", direction: "FROM_CONTENT", token: "tok", field: "x" },
+    });
+    expect(received).toEqual({ type: "START", field: "x" });
+  });
+
+  it("drops messages with a mismatched token", () => {
+    const spy = vi.fn();
+    const d = dispatcher({
+      direction: "FROM_PAGE",
+      token: "tok",
+      handlers: { PING: spy },
+      selfWindow: fakeWindow,
+    });
+    d.handle({
+      source: fakeWindow,
+      origin: FAKE_ORIGIN,
+      data: { type: "PING", direction: "FROM_PAGE", token: "WRONG" },
+    });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("drops messages with the wrong direction", () => {
+    const spy = vi.fn();
+    const d = dispatcher({
+      direction: "FROM_PAGE",
+      token: "tok",
+      handlers: { PING: spy },
+      selfWindow: fakeWindow,
+    });
+    d.handle({
+      source: fakeWindow,
+      origin: FAKE_ORIGIN,
+      data: { type: "PING", direction: "FROM_CONTENT", token: "tok" },
+    });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("silently drops unknown message types", () => {
+    const spy = vi.fn();
+    const d = dispatcher({
+      direction: "FROM_PAGE",
+      token: "tok",
+      handlers: { PING: spy },
+      selfWindow: fakeWindow,
+    });
+    d.handle({
+      source: fakeWindow,
+      origin: FAKE_ORIGIN,
+      data: { type: "UNKNOWN", direction: "FROM_PAGE", token: "tok" },
+    });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("drops messages with a non-string or missing type", () => {
+    const spy = vi.fn();
+    const d = dispatcher({
+      direction: "FROM_PAGE",
+      token: "tok",
+      handlers: { PING: spy },
+      selfWindow: fakeWindow,
+    });
+    d.handle({
+      source: fakeWindow,
+      origin: FAKE_ORIGIN,
+      data: { direction: "FROM_PAGE", token: "tok" },
+    });
+    expect(spy).not.toHaveBeenCalled();
   });
 });

@@ -12,16 +12,16 @@ Tech: TypeScript (strict), esbuild bundling, SheetJS (`xlsx`), vanilla DOM/CSS �
 
 The extension runs in two JavaScript worlds on the Coretax page that communicate **only** through token-authenticated `postMessage`:
 
-- **Isolated world** — `src/content/main.ts`: the content script (has `browser.runtime`). Injects in-page UI, fires browser downloads, relays messages. All extension UI lives in-page; there is **no browser-action popup** in the manifest.
+- **Isolated world** — `src/content/main.ts`: the content script (has `browser.runtime`). Injects in-page UI, fires browser downloads, relays messages. All extension UI lives in-page; there is **no browser-action popup** in the manifest (the popup only sets the export-mode preference via `storage.local`).
 - **MAIN world** — `src/content/scraper.ts`: injected into the page via a `<script>` tag pointing at the web-accessible `content/scraper.js`. It sits next to the portal's own code, so it can intercept XHR/fetch, read request bodies (filters), and **capture** API responses for scraping and PDF download. It has no browser API.
 
-The **bridge token** makes this safe: `bridge.ts` generates a random token once, in the isolated world, and smuggles it to the scraper through the script's URL query param so it never sits on `window`. Message direction and token are validated by `postmessage-guard.ts` (`shouldProcessPageMessage` requires `direction: "FROM_PAGE"`, matching `event.source`, and the token).
+The **bridge token** makes this safe: `bridge.ts` generates a random token once, in the isolated world, and smuggles it to the scraper through the script's URL query param so it never sits on `window`. Message direction and token are validated by `postmessage-guard.ts` (`shouldProcessPageMessage` checks `event.source`, the origin, the token, and that `direction` matches the world — `FROM_PAGE` from the scraper, `FROM_CONTENT` into the scraper).
 
 Key message types:
 - isolated → MAIN: `START_SCRAPE`, `STOP_SCRAPE`, `SCRAPE_BY_INVOICES`, `SET_SERVER_FILTER`, `RESET_SCRAPER`, `START_PDF_DOWNLOAD`
 - MAIN → isolated: `INJECTED_READY`, `SCRAPE_PROGRESS`, `SCRAPE_COMPLETE`, `SCRAPE_ERROR`, `DOWNLOAD_PDF_ITEM`
 
-`main.ts` relays these (`window.postMessage` ↔ `browser.runtime.onMessage`). State is stored in `main-actions.ts` (`ContentState`) so the in-page panel survives content-script restarts and SPA navigation.
+`main.ts` and `scraper.ts` each run one `createMessageDispatcher` (from `postmessage-guard.ts`) — a guard-then-dispatch seam per world, keyed by message `type`. New message types register in the handler table of the world that receives them. State is stored in `main-actions.ts` (`ContentState`) so the in-page panel survives content-script restarts and SPA navigation.
 
 ## Source map (`src/content/`)
 
@@ -40,7 +40,7 @@ Key message types:
 | `main-actions.ts` | Scrape/export action handlers + `ContentState` (module singleton; `createContentState()` factory for tests) |
 | `comparer.ts`, `comparer-logic.ts`, `ui-comparer.ts` | Paste-and-compare feature vs Coretax data |
 | `ui.ts`, `ui-filters.ts`, `ui-badge.ts`, `button-state.ts`, `shortcuts.ts` | In-page DOM injection and UI state |
-| `bridge.ts`, `postmessage-guard.ts` | Cross-world messaging + validator (pure, exported for tests) |
+| `bridge.ts`, `postmessage-guard.ts` | Cross-world messaging: token generation + the guard-then-dispatch seam (`createMessageDispatcher`), pure and exported for tests |
 | `browser-shim.ts` | Picks `browser`/`chrome` runtime |
 | `debug.ts` | Logging; suppressed in production builds unless `enableDebug()` |
 | `background.ts` | Minimal MV3 background (install logging) |

@@ -35,6 +35,7 @@ import {
   buildPdfDownloadMessage,
   createPdfDownloadSession,
 } from "./scraper-pdf";
+import { createMessageDispatcher } from "./postmessage-guard";
 
 (() => {
   const TIMEOUT = 30000;
@@ -81,82 +82,104 @@ import {
   };
 
   // ── Message listener: content script → scraper ─────
+  // One guard-then-dispatch seam (FROM_CONTENT) for every message the
+  // isolated world sends in. New message types register in the table.
 
-  window.addEventListener("message", (event: MessageEvent) => {
-    if (event.source !== window) return;
-    if (event.origin !== window.location.origin) return;
-    if (!event.data || event.data.direction !== "FROM_CONTENT") return;
-    // Anti-spoofing: reject messages without the correct bridge token.
-    if (event.data.token !== bridgeToken) return;
-
-    const msg = event.data;
-
-    if (msg.type === "START_SCRAPE") {
-      if (isRunning) return;
-      stopRequested = false;
-      isRunning = true;
-      startScraping(interceptRequest, ctx).finally(() => {
-        isRunning = false;
-        debugLog("⏹ Scraping finished. isRunning=false");
-      });
-    }
-
-    if (msg.type === "STOP_SCRAPE") {
-      stopRequested = true;
-    }
-
-    if (msg.type === "RESET_SCRAPER") {
-      // Called on SPA navigation to prevent stale state from leaking
-      // into the new page. Resets running flags, captured request cache,
-      // filter state, and pending capture subscribers.
-      stopRequested = true;
-      isRunning = false;
-      lastCaptured = null;
-      lastCapturedTime = 0;
-      captureSubscribers.length = 0;
-      invoiceRowMap.clear();
-      for (const key of Object.keys(filterState)) {
-        delete filterState[key];
-      }
-      debugLog("Scraper state reset via RESET_SCRAPER");
-    }
-
-    if (msg.type === "START_PDF_DOWNLOAD") {
-      if (isRunning) return;
-      if (!lastCaptured) {
-        sendToContent({
-          type: "SCRAPE_ERROR",
-          message: "Tidak ada data request yang tersimpan. Silakan jalankan ekspor terlebih dahulu.",
+  const messageDispatcher = createMessageDispatcher({
+    direction: "FROM_CONTENT",
+    token: bridgeToken,
+    handlers: {
+      START_SCRAPE: () => {
+        if (isRunning) return;
+        stopRequested = false;
+        isRunning = true;
+        startScraping(interceptRequest, ctx).finally(() => {
+          isRunning = false;
+          debugLog("⏹ Scraping finished. isRunning=false");
         });
-        return;
-      }
-      stopRequested = false;
-      isRunning = true;
-      startPdfDownload(msg.data as Record<string, unknown>[], lastCaptured, ctx).finally(() => {
-        isRunning = false;
-      });
-    }
+      },
 
-    if (msg.type === "SCRAPE_BY_INVOICES") {
-      debugLog("RECEIVED SCRAPE_BY_INVOICES:", msg.invoiceNumbers);
-      if (isRunning) {
-        debugLog("SCRAPE_BY_INVOICES blocked: already running");
-        return;
-      }
-      if (!lastCaptured) {
-        sendToContent({
-          type: "SCRAPE_ERROR",
-          message: "Tidak ada request tersimpan.",
-        });
-        return;
-      }
-      stopRequested = false;
-      isRunning = true;
-      scrapeByInvoices(msg.invoiceNumbers as string[], lastCaptured, ctx).finally(() => {
+      STOP_SCRAPE: () => {
+        stopRequested = true;
+      },
+
+      RESET_SCRAPER: () => {
+        // Called on SPA navigation to prevent stale state from leaking
+        // into the new page. Resets running flags, captured request cache,
+        // filter state, and pending capture subscribers.
+        stopRequested = true;
         isRunning = false;
-      });
-    }
+        lastCaptured = null;
+        lastCapturedTime = 0;
+        captureSubscribers.length = 0;
+        invoiceRowMap.clear();
+        for (const key of Object.keys(filterState)) {
+          delete filterState[key];
+        }
+        debugLog("Scraper state reset via RESET_SCRAPER");
+      },
+
+      START_PDF_DOWNLOAD: (msg) => {
+        if (isRunning) return;
+        if (!lastCaptured) {
+          sendToContent({
+            type: "SCRAPE_ERROR",
+            message: "Tidak ada data request yang tersimpan. Silakan jalankan ekspor terlebih dahulu.",
+          });
+          return;
+        }
+        stopRequested = false;
+        isRunning = true;
+        startPdfDownload(msg.data as Record<string, unknown>[], lastCaptured, ctx).finally(() => {
+          isRunning = false;
+        });
+      },
+
+      SCRAPE_BY_INVOICES: (msg) => {
+        debugLog("RECEIVED SCRAPE_BY_INVOICES:", msg.invoiceNumbers);
+        if (isRunning) {
+          debugLog("SCRAPE_BY_INVOICES blocked: already running");
+          return;
+        }
+        if (!lastCaptured) {
+          sendToContent({
+            type: "SCRAPE_ERROR",
+            message: "Tidak ada request tersimpan.",
+          });
+          return;
+        }
+        stopRequested = false;
+        isRunning = true;
+        scrapeByInvoices(msg.invoiceNumbers as string[], lastCaptured, ctx).finally(() => {
+          isRunning = false;
+        });
+      },
+
+      SET_SERVER_FILTER: (msg) => {
+        const { value } = msg;
+        const field = msg.field as string;
+        if (value) {
+          // Invalidate cache when filter changes to ensure a fresh request
+          lastCaptured = null;
+          lastCapturedTime = 0;
+          filterState[field] = {
+            value,
+            matchMode: Array.isArray(value) ? "equals" : "contains",
+          };
+        } else {
+          delete filterState[field];
+        }
+      },
+
+      CLEAR_FILTERS: (msg) => {
+        const { fields } = msg;
+        if (Array.isArray(fields)) {
+          fields.forEach((f: string) => delete filterState[f]);
+        }
+      },
+    },
   });
+  window.addEventListener("message", (event) => messageDispatcher.handle(event));
 
   // ── sendToContent helper ───────────────────────────
 
@@ -341,37 +364,6 @@ import {
   const captureSubscribers: ((req: CapturedRequest) => void)[] = [];
   let lastCaptured: CapturedRequest | null = null;
   let lastCapturedTime = 0;
-
-  // ── Message listener: filter updates ──────────────
-
-  window.addEventListener("message", (event) => {
-    if (event.source !== window) return;
-    if (event.origin !== window.location.origin) return;
-    if (event.data.direction !== "FROM_CONTENT") return;
-    if (event.data.token !== bridgeToken) return;
-
-    if (event.data.type === "SET_SERVER_FILTER") {
-      const { field, value } = event.data;
-      if (value) {
-        // Invalidate cache when filter changes to ensure a fresh request
-        lastCaptured = null;
-        lastCapturedTime = 0;
-        filterState[field] = {
-          value,
-          matchMode: Array.isArray(value) ? "equals" : "contains",
-        };
-      } else {
-        delete filterState[field];
-      }
-    }
-
-    if (event.data.type === "CLEAR_FILTERS") {
-      const { fields } = event.data;
-      if (Array.isArray(fields)) {
-        fields.forEach((f: string) => delete filterState[f]);
-      }
-    }
-  });
 
   // ── XHR prototype overrides ────────────────────────
 
