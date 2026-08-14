@@ -21,10 +21,17 @@ import { escapeCSV } from "../content/exporter";
  * - Otherwise, return the field as-is.
  */
 function parseCSVField(field: string): string {
-	if (field.startsWith('"') && field.endsWith('"')) {
-		return field.slice(1, -1).replace(/""/g, '"');
+	let content = field;
+	if (content.startsWith('"') && content.endsWith('"')) {
+		content = content.slice(1, -1).replace(/""/g, '"');
 	}
-	return field;
+	if (
+		content.startsWith("'") &&
+		(/^[=\+@\t\r]/.test(content.slice(1)) || (content.slice(1).startsWith("-") && isNaN(Number(content.slice(1)))))
+	) {
+		content = content.slice(1);
+	}
+	return content;
 }
 
 /**

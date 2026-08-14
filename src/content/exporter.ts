@@ -28,7 +28,13 @@ function downloadFile(content: string | BlobPart, filename: string, mimeType: st
 
 export function escapeCSV(value: unknown): string {
   if (value == null) return "";
-  const s = String(value);
+  let s = String(value);
+  if (
+    typeof value !== "number" &&
+    (/^[=\+@\t\r]/.test(s) || (s.startsWith("-") && isNaN(Number(s))))
+  ) {
+    s = `'${s}`;
+  }
   return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

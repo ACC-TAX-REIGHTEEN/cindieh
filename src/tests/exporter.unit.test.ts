@@ -69,6 +69,19 @@ describe("escapeCSV", () => {
 	it("returns an empty string for an empty string input", () => {
 		expect(escapeCSV("")).toBe("");
 	});
+
+	it("sanitizes CSV formula injection characters (=, +, @, non-numeric -)", () => {
+		expect(escapeCSV("=SUM(A1:A10)")).toBe("'=SUM(A1:A10)");
+		expect(escapeCSV("@SUM(A1)")).toBe("'@SUM(A1)");
+		expect(escapeCSV("@SUM(1,2)")).toBe('"\'@SUM(1,2)"');
+		expect(escapeCSV("+CMD")).toBe("'+CMD");
+		expect(escapeCSV("-CMD|' /C calc'!A0")).toBe("'-CMD|' /C calc'!A0");
+	});
+
+	it("does not sanitize valid numeric values starting with - or +", () => {
+		expect(escapeCSV(-100)).toBe("-100");
+		expect(escapeCSV("-100.50")).toBe("-100.50");
+	});
 });
 
 // ============================================================
