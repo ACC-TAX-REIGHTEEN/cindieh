@@ -7,6 +7,7 @@
 
 import { isWithholdingPage } from "./page-context";
 import { getExportBtnEl, getExportDropdownBtnEl, getScrapeBtnEl } from "./button-state";
+import { debugLog } from "./debug";
 
 // ── Floating Info State ──────────────────────────────
 
@@ -50,7 +51,7 @@ export function injectBadge() {
   if (oldContainer) oldContainer.remove();
   else if (oldBadge) oldBadge.remove();
 
-  console.log("Cindieh: Injecting floating info bar...");
+  debugLog("Cindieh: Injecting floating info bar...");
   const container = document.createElement("div");
   container.id = "ch-floating-info-container";
   container.className = "ch-floating-info";
