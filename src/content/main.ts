@@ -33,18 +33,8 @@ import {
   handleExportAction,
   startScrape,
   triggerSearch,
-  getIsRunning,
-  setIsRunning,
-  setScrapedData,
-  setScrapedFields,
-  setLastExportMeta,
-  getPendingExportFormat,
-  setPendingExportFormat,
-  getPendingCompare,
-  setPendingCompare,
-  setLastState,
-  setExportMode,
-  resetState,
+  contentState,
+  resetContentState,
   type ScrapeState,
 } from "./main-actions";
 
@@ -54,7 +44,7 @@ const GRID_FILTER_INJECT_DELAY_MS = 1500;
 async function loadExportModePreference(): Promise<void> {
   try {
     const result = await browserAPI.storage.local.get(EXPORT_MODE_STORAGE_KEY);
-    setExportMode(normalizeExportMode(result[EXPORT_MODE_STORAGE_KEY]));
+    contentState.exportMode = normalizeExportMode(result[EXPORT_MODE_STORAGE_KEY]);
   } catch (err) {
     debugError("Gagal membaca preferensi format export", err);
   }
@@ -64,7 +54,7 @@ browserAPI.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return;
   const change = changes[EXPORT_MODE_STORAGE_KEY];
   if (!change) return;
-  setExportMode(normalizeExportMode(change.newValue));
+  contentState.exportMode = normalizeExportMode(change.newValue);
 });
 debugLog("Cindieh aktif");
 
@@ -122,7 +112,7 @@ const pageMessageDispatcher = createMessageDispatcher({
   token: getBridgeToken,
   handlers: {
     SCRAPE_PROGRESS: (msg) => {
-      setLastState(msg as unknown as ScrapeState);
+      contentState.lastState = msg as unknown as ScrapeState;
       updatePanelProgress(
         (msg.total as number) || 0,
         (msg.page as number) || 0,
@@ -135,7 +125,7 @@ const pageMessageDispatcher = createMessageDispatcher({
       // Scraper just finished initializing. If the user already requested a
       // scrape before the scraper was ready (message would have been lost),
       // resend START_SCRAPE so the two worlds stay in sync.
-      if (getIsRunning()) {
+      if (contentState.isRunning) {
         debugLog("Scraper ready; resending START_SCRAPE (was requested earlier)");
         postToScraper({ type: "START_SCRAPE" });
       }
@@ -153,32 +143,32 @@ const pageMessageDispatcher = createMessageDispatcher({
         filenameHint?: string;
         source?: ExportSource;
       };
-      setIsRunning(false);
-      setScrapedData(complete.data || null);
+      contentState.isRunning = false;
+      contentState.scrapedData = complete.data || null;
       // Only update fields if we got actual field data (PDF download sends empty fields)
       if (complete.fields && complete.fields.length > 0) {
-        setScrapedFields(complete.fields);
+        contentState.scrapedFields = complete.fields;
       }
-      setLastExportMeta({
+      contentState.lastExportMeta = {
         filenameHint: complete.filenameHint,
         source: complete.source,
-      });
+      };
       updatePanelComplete(complete.total || 0, complete.pages || 0, complete.elapsed || "0s", complete.failureCount);
-      setLastState(complete as unknown as ScrapeState);
+      contentState.lastState = complete as unknown as ScrapeState;
 
       // If the user clicked "Periksa" before any data was scraped, run the
       // comparison automatically now that scraping is complete.
-      if (getPendingCompare()) {
-        setPendingCompare(false);
+      if (contentState.pendingCompare) {
+        contentState.pendingCompare = false;
         runPendingCompare();
       }
 
       // Auto-export if a pending format was requested before scrape started.
       // The same interface the buttons use — one export decision tree.
-      const pendingFormat = getPendingExportFormat();
+      const pendingFormat = contentState.pendingExportFormat;
       if (pendingFormat) {
         handleExportAction(pendingFormat);
-        setPendingExportFormat(null);
+        contentState.pendingExportFormat = null;
       }
     },
 
@@ -192,8 +182,8 @@ const pageMessageDispatcher = createMessageDispatcher({
     },
 
     SCRAPE_ERROR: (msg) => {
-      setIsRunning(false);
-      setLastState(msg as unknown as ScrapeState);
+      contentState.isRunning = false;
+      contentState.lastState = msg as unknown as ScrapeState;
       updatePanelError((msg.message as string) || "Error");
     },
   },
@@ -244,10 +234,10 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
 // ── In-page button events ───────────────────────────
 
 document.addEventListener("ch:scrape-toggle", () => {
-  if (getIsRunning()) {
+  if (contentState.isRunning) {
     postToScraper({ type: "STOP_SCRAPE" });
-    setIsRunning(false);
-    setPendingExportFormat(null);
+    contentState.isRunning = false;
+    contentState.pendingExportFormat = null;
     updatePanelIdle();
   } else {
     startScrape();
@@ -271,7 +261,7 @@ document.addEventListener("ch:export-pdf", () => {
 
 // Auto-start scrape (only starts if not already running, never stops)
 document.addEventListener("ch:scrape-start", () => {
-  if (getIsRunning()) return; // Already running, don't restart
+  if (contentState.isRunning) return; // Already running, don't restart
   startScrape();
 });
 
@@ -305,7 +295,7 @@ function onNavigate(): void {
 
   // Reset content-script state so stale data from the previous page
   // cannot leak into exports on the new page.
-  resetState();
+  resetContentState(contentState, { preserveExportMode: true });
 
   // Ask the scraper (MAIN world) to reset its own state too:
   // captured request cache, filter state, running flags, etc.
@@ -335,7 +325,7 @@ function init(): void {
   debugLog("Extension starting up on page...", window.location.href);
   injectBadge();
   injectScraper();
-  registerShortcuts(() => getIsRunning());
+  registerShortcuts(() => contentState.isRunning);
 
   if (isSupportedExportPage()) {
     debugLog("Page match found on init.");

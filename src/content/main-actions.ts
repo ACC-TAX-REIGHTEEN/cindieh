@@ -31,7 +31,7 @@ export interface LastExportMeta {
 // ── State object ─────────────────────────────────────
 // Encapsulates all mutable state that was previously stored as
 // bare module-level `let` variables. Tests create a fresh instance
-// per test case — no shared singleton, no resetState() ceremony.
+// per test case — no shared singleton reset ceremony.
 
 export interface ContentState {
   isRunning: boolean;
@@ -58,47 +58,21 @@ export function createContentState(): ContentState {
 }
 
 // ── Module singleton ──────────────────────────────────
-// main.ts and ui-comparer.ts import this directly.
+// main.ts and ui-comparer.ts import this object directly.
 // Tests should call createContentState() and use the action
 // functions directly instead of depending on this singleton.
 
-let _state: ContentState = createContentState();
+export const contentState: ContentState = createContentState();
 
-// ── State Getters / Setters (singleton API) ──────────
-// Kept for backward compatibility with main.ts which uses them
-// directly. New code should prefer passing a ContentState object.
-
-export function getIsRunning(): boolean { return _state.isRunning; }
-export function setIsRunning(v: boolean): void { _state.isRunning = v; }
-
-export function getScrapedData(): Record<string, unknown>[] | null { return _state.scrapedData; }
-export function setScrapedData(v: Record<string, unknown>[] | null): void { _state.scrapedData = v; }
-
-export function getScrapedFields(): string[] | null { return _state.scrapedFields; }
-export function setScrapedFields(v: string[] | null): void { _state.scrapedFields = v; }
-
-export function getLastExportMeta(): LastExportMeta | null { return _state.lastExportMeta; }
-export function setLastExportMeta(v: LastExportMeta | null): void { _state.lastExportMeta = v; }
-
-export function getPendingExportFormat(): "xlsx" | "csv" | "pdf" | null { return _state.pendingExportFormat; }
-export function setPendingExportFormat(format: "xlsx" | "csv" | "pdf" | null): void { _state.pendingExportFormat = format; }
-
-export function clearPendingExportFormat(): void { _state.pendingExportFormat = null; }
-
-export function getPendingCompare(): boolean { return _state.pendingCompare; }
-export function setPendingCompare(v: boolean): void { _state.pendingCompare = v; }
-
-export function getLastState(): ScrapeState | null { return _state.lastState; }
-export function setLastState(v: ScrapeState | null): void { _state.lastState = v; }
-
-export function getExportMode(): ExportMode { return _state.exportMode; }
-export function setExportMode(v: ExportMode): void { _state.exportMode = v; }
-
-/** Reset the singleton — call on SPA navigation. */
-export function resetState(): void {
-  const exportMode = _state.exportMode;
-  _state = createContentState();
-  _state.exportMode = exportMode;
+export function resetContentState(
+  state: ContentState,
+  options: { preserveExportMode?: boolean } = {},
+): void {
+  const exportMode = state.exportMode;
+  Object.assign(state, createContentState());
+  if (options.preserveExportMode) {
+    state.exportMode = exportMode;
+  }
 }
 
 // ── Constants ────────────────────────────────────────
@@ -170,7 +144,7 @@ export function applyMultiInvoiceFilter(d: Record<string, unknown>[]): Record<st
  * When omitted, uses the module singleton and production deps.
  */
 export function startScrape(
-  state: ContentState = _state,
+  state: ContentState = contentState,
   deps: ActionDeps = createActionDeps(),
 ): void {
   deps.showPanel();
@@ -198,7 +172,7 @@ export function startScrape(
  */
 export function startPdfDownload(
   data: Record<string, unknown>[],
-  state: ContentState = _state,
+  state: ContentState = contentState,
   deps: ActionDeps = createActionDeps(),
 ): boolean {
   const filtered = applyMultiInvoiceFilter(data);
@@ -231,7 +205,7 @@ export function startPdfDownload(
  */
 export function handleExportAction(
   format: "xlsx" | "csv" | "pdf",
-  state: ContentState = _state,
+  state: ContentState = contentState,
   deps: ActionDeps = createActionDeps(),
 ): boolean {
   if (state.isRunning) {

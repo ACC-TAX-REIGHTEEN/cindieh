@@ -9,7 +9,7 @@
 
 import { parsePastedData, type ComparisonResult } from "./comparer";
 import { downloadXLSXFile } from "./exporter";
-import { getScrapedData, setPendingCompare, startScrape } from "./main-actions";
+import { contentState, startScrape } from "./main-actions";
 import {
   applyStatusFilter,
   buildStatusSummary,
@@ -424,7 +424,7 @@ function handleCheck(): void {
   const datesInput = document.getElementById("ch-comparer-daily-dates") as HTMLInputElement;
   const textareaValue = textarea ? textarea.value : "";
   const datesValue = datesInput ? datesInput.value : "";
-  const scrapedData = getScrapedData();
+  const scrapedData = contentState.scrapedData;
 
   const decision = prepareComparison(session, textareaValue, scrapedData, datesValue);
 
@@ -438,7 +438,7 @@ function handleCheck(): void {
     // No scraped data yet — scrape first, then run the comparison automatically.
     statusMsg.textContent = "Belum ada data. Mohon tunggu, sedang melakukan scraping data PPN Keluaran terlebih dahulu...";
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
-    setPendingCompare(true);
+    contentState.pendingCompare = true;
     startScrape();
     return;
   }
@@ -454,7 +454,7 @@ function handleCheck(): void {
 function rerunFromTextarea(): void {
   if (session.results.length === 0) return;
   const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
-  const scrapedData = getScrapedData();
+  const scrapedData = contentState.scrapedData;
   const result = rerunComparison(session, textarea ? textarea.value : "", scrapedData);
   if (result) renderAfterComparison();
 }
@@ -466,7 +466,7 @@ function rerunFromTextarea(): void {
  */
 export function runPendingCompare(): void {
   const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
-  const scrapedData = getScrapedData();
+  const scrapedData = contentState.scrapedData;
   if (!textarea || !textarea.value.trim() || !scrapedData || scrapedData.length === 0) return;
 
   const pastedRows = parsePastedData(textarea.value, session.refLainEnabled);

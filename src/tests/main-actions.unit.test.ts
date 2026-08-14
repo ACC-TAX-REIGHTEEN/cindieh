@@ -14,6 +14,7 @@ vi.mock("../content/ui-filters", () => ({
 }));
 import {
   createContentState,
+  resetContentState,
   handleExportAction,
   startPdfDownload,
   startScrape,
@@ -59,6 +60,33 @@ describe("createContentState", () => {
     const b = createContentState();
     a.isRunning = true;
     expect(b.isRunning).toBe(false);
+  });
+});
+
+describe("resetContentState", () => {
+  it("resets a ContentState object in place and preserves exportMode only when requested", () => {
+    const state = createContentState();
+    state.isRunning = true;
+    state.scrapedData = [{ id: 1 }];
+    state.pendingExportFormat = "pdf";
+    state.exportMode = "raw";
+    const sameState = state;
+
+    resetContentState(state);
+
+    expect(state).toBe(sameState);
+    expect(state.isRunning).toBe(false);
+    expect(state.scrapedData).toBeNull();
+    expect(state.pendingExportFormat).toBeNull();
+    expect(state.exportMode).toBe("cleaned");
+
+    state.exportMode = "raw";
+    state.isRunning = true;
+    resetContentState(state, { preserveExportMode: true });
+
+    expect(state).toBe(sameState);
+    expect(state.isRunning).toBe(false);
+    expect(state.exportMode).toBe("raw");
   });
 });
 
