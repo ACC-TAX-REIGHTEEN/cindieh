@@ -3,6 +3,7 @@
  */
 
 import { extractYMD } from "./tax-date";
+import { debugWarn } from "./debug";
 
 export interface WithholdingSlip {
   WithholdingSlipsNumber: string;
@@ -143,6 +144,32 @@ export function generateReturnFilename(item: PdfItem): string {
 }
 
 /**
+ * Formats a generic PDF filename for unknown or unsupported PDF sources.
+ */
+export function generateGenericPdfFilename(
+  item: PdfItem,
+  source: string,
+): string {
+  const cleanSource = (source || "DOKUMEN")
+    .replace(/[/\\?%*:| "<>]/g, "-")
+    .trim();
+
+  const ref = String(
+    item.Reference ||
+      item.TaxInvoiceNumber ||
+      item.LetterNumber ||
+      item.ReturnNumber ||
+      item.DocumentNumber ||
+      item.WithholdingSlipsNumber ||
+      "TANPA_NOMOR",
+  )
+    .replace(/[/\\?%*:| "<>]/g, "-")
+    .trim();
+
+  return `${cleanSource}-${ref}.pdf`;
+}
+
+/**
  * Handles a PDF download by converting base64 to Blob, selecting the appropriate
  * filename generator based on source, and triggering the browser download.
  */
@@ -169,7 +196,8 @@ export function handlePdfDownload(
       filename = generateWithholdingFilename(item as WithholdingSlip);
       break;
     default:
-      filename = generateWithholdingFilename(item as WithholdingSlip);
+      debugWarn(`handlePdfDownload: Unknown or unhandled PDF source "${source}", using generic filename fallback.`);
+      filename = generateGenericPdfFilename(item as PdfItem, source);
       break;
   }
 

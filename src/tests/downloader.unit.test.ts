@@ -7,6 +7,7 @@ import {
   base64ToBlob,
   generateWithholdingFilename,
   generateOutputTaxFilename,
+  generateGenericPdfFilename,
   type WithholdingSlip,
 } from "../content/downloader";
 
@@ -274,5 +275,26 @@ describe("generateOutputTaxFilename", () => {
     const item = { Reference: "R", LetterNumber: "N" };
 
     expect(generateOutputTaxFilename(item)).toMatch(/\.pdf$/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// generateGenericPdfFilename
+// ---------------------------------------------------------------------------
+
+describe("generateGenericPdfFilename", () => {
+  it("formats generic PDF filename using source and reference/number fields", () => {
+    const item = { Reference: "REF-A2-001" };
+    expect(generateGenericPdfFilename(item, "SPT_A2")).toBe("SPT_A2-REF-A2-001.pdf");
+  });
+
+  it("falls back to TANPA_NOMOR when item has no reference fields", () => {
+    const item = {};
+    expect(generateGenericPdfFilename(item, "PPH_21_L1A")).toBe("PPH_21_L1A-TANPA_NOMOR.pdf");
+  });
+
+  it("sanitizes forbidden characters in source and reference", () => {
+    const item = { DocumentNumber: "DOC/123\\456" };
+    expect(generateGenericPdfFilename(item, "UNKNOWN/SOURCE")).toBe("UNKNOWN-SOURCE-DOC-123-456.pdf");
   });
 });
