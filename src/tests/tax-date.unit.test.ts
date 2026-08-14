@@ -2,7 +2,7 @@
 // Covers extractYear, extractMonth (including the TD. tax-domain form),
 // extractYMD, and the timezone-safe formatDate.
 import { describe, it, expect } from "vitest";
-import { extractYear, extractMonth, extractYMD, formatDate } from "../content/tax-date";
+import { extractYear, extractMonth, extractYMD, formatDate, getCurrentYearMonthWIB } from "../content/tax-date";
 
 // ── extractYear ───────────────────────────────────────────────────────────────
 
@@ -127,5 +127,23 @@ describe("formatDate", () => {
 
   it("passes through unparseable strings", () => {
     expect(formatDate("not-a-date")).toBe("not-a-date");
+  });
+});
+
+// ── getCurrentYearMonthWIB ───────────────────────────────────────────────────
+
+describe("getCurrentYearMonthWIB", () => {
+  it("returns year and month formatted for Asia/Jakarta timezone", () => {
+    const fixedDate = new Date("2026-08-14T20:00:00Z"); // 2026-08-15 03:00 WIB
+    const res = getCurrentYearMonthWIB(fixedDate);
+    expect(res.year).toBe("2026");
+    expect(res.month).toBe("08");
+  });
+
+  it("handles day crossover into next day in WIB", () => {
+    const nearMidnightUTC = new Date("2026-04-30T18:00:00Z"); // 2026-05-01 01:00 WIB
+    const res = getCurrentYearMonthWIB(nearMidnightUTC);
+    expect(res.year).toBe("2026");
+    expect(res.month).toBe("05");
   });
 });

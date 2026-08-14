@@ -106,3 +106,23 @@ export function formatDate(dateStr: unknown): string {
 
   return dateStr;
 }
+
+/**
+ * Get current year and month formatted as { year: YYYY, month: MM } in Asia/Jakarta (WIB, UTC+7).
+ * Timezone-safe: independent of the browser local system timezone offset.
+ */
+export function getCurrentYearMonthWIB(nowDate: Date = new Date()): { year: string; month: string } {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+  });
+  const parts = formatter.formatToParts(nowDate);
+  let year = "";
+  let month = "";
+  for (const p of parts) {
+    if (p.type === "year") year = p.value;
+    if (p.type === "month") month = p.value;
+  }
+  return { year, month };
+}

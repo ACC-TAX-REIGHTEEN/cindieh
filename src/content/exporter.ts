@@ -4,7 +4,7 @@
 import * as XLSX from "xlsx";
 import type { ExportSource } from "./page-context";
 import { debugWarn } from "./debug";
-import { extractYear, extractMonth, formatDate } from "./tax-date";
+import { extractYear, extractMonth, formatDate, extractYMD, getCurrentYearMonthWIB } from "./tax-date";
 
 export type ExportMode = "cleaned" | "raw";
 
@@ -411,19 +411,10 @@ export function generateDynamicFilename(exportData: ExportData): string {
       // Fallback: Date fields (Last Resort - only if no period fields found)
       else {
         const dateField = isA2 ? row["DocumentDate"] || row["Date"] || "" : row["TaxInvoiceDate"];
-        const dStr = String(dateField || "");
-        if (dStr) {
-          const parts = dStr.split("T")[0].split("-");
-          if (parts.length === 3 && parts[0].length === 4) {
-            y = parts[0];
-            m = parts[1];
-          } else {
-            const d = new Date(dStr);
-            if (!isNaN(d.getTime())) {
-              y = String(d.getFullYear());
-              m = String(d.getMonth() + 1).padStart(2, "0");
-            }
-          }
+        const ymd = extractYMD(dateField);
+        if (ymd) {
+          y = ymd.year;
+          m = ymd.month;
         }
       }
 
@@ -444,10 +435,8 @@ export function generateDynamicFilename(exportData: ExportData): string {
     return `${prefix}${formatPeriod(dataPeriods[0])}-${formatPeriod(dataPeriods[dataPeriods.length - 1])}`;
   }
 
-  // FALLBACK: CURRENT DATE
-  const now = new Date();
-  const mString = String(now.getMonth() + 1).padStart(2, "0");
-  const yString = String(now.getFullYear());
+  // FALLBACK: CURRENT DATE (Asia/Jakarta, UTC+7 timezone-safe)
+  const { year: yString, month: mString } = getCurrentYearMonthWIB();
   if (source === "OUTPUT_RETURN" || source === "INPUT_RETURN") {
     return `${prefix}${yString}`;
   }
