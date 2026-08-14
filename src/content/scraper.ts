@@ -51,6 +51,7 @@ import { createMessageDispatcher } from "./postmessage-guard";
     if (selfScript && selfScript.src) {
       const url = new URL(selfScript.src, location.href);
       bridgeToken = url.searchParams.get("token") || "";
+      selfScript.remove();
     }
   } catch {
     bridgeToken = "";

@@ -113,6 +113,7 @@ function injectScraper(): void {
   script.src = `${browserAPI.runtime.getURL("content/scraper.js")}?token=${encodeURIComponent(token)}`;
   script.onload = () => {
     debugLog("Scraper injected into page context");
+    script.remove();
   };
   (document.head || document.documentElement).appendChild(script);
 }
