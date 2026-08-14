@@ -289,7 +289,7 @@ import { createMessageDispatcher } from "./postmessage-guard";
   window.URL.createObjectURL = function (obj: Blob | MediaSource) {
     if (pdfSession.isProcessing() && obj instanceof Blob && obj.type === "application/pdf") {
       debugLog("[Cindieh] Memblokir pembuatan blob URL bawaan.");
-      return "javascript:void(0)";
+      return "";
     }
     return origCreateObjectURL.call(window.URL, obj);
   };
