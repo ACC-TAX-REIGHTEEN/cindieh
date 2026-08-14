@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getExportButtonLabel, getIdlePanelStatus, getToggledPanelVisibility } from "../content/ui";
+import { getExportButtonLabel, getIdlePanelStatus, getToggledPanelVisibility } from "../content/ui-badge";
 
 describe("floating badge panel", () => {
   it("toggles the panel visibility whenever the badge is clicked", () => {

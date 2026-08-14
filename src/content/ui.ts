@@ -1,7 +1,6 @@
 // ============================================================
 // UI.TS — Inject export controls into the Coretax PPN page
 // ============================================================
-// Central hub that re-exports from ui-badge and ui-filters.
 // Handles export button injection/removal and button placement.
 // ============================================================
 
@@ -15,20 +14,10 @@ import {
   isWithholdingPage,
 } from "./page-context";
 
-import {
-  getIdlePanelStatus,
-  getToggledPanelVisibility,
-  getExportButtonLabel,
-  showPanel,
-  injectBadge,
-  updatePanelProgress,
-  updatePanelComplete,
-  updatePanelError,
-  updatePanelIdle,
-} from "./ui-badge";
+import { getExportButtonLabel } from "./ui-badge";
 
-import { injectGridFilters, injectToolbarFilter, injectMultiInvoiceFilter, getMultiInvoiceNumbers, splitInvoiceNumbers, clearFilterTimers, scheduleRetry } from "./ui-filters";
-import { injectComparerModal, openComparerModal, runPendingCompare } from "./ui-comparer";
+import { clearFilterTimers, scheduleRetry } from "./ui-filters";
+import { injectComparerModal } from "./ui-comparer";
 
 import {
   setExportBtnEl,
@@ -43,40 +32,6 @@ import {
   getScrapeBtnEl,
   getCompareBtnEl,
 } from "./button-state";
-
-// ── Re-export page-context functions ──────────────────
-
-export {
-  isInputReturnPage,
-  isInputTaxPage,
-  isOutputReturnPage,
-  isOutputTaxPage,
-  isSptPage,
-  isSupportedExportPage,
-  isWithholdingPage,
-};
-
-// ── Re-export badge/filters public API ────────────────
-
-export {
-  getIdlePanelStatus,
-  getToggledPanelVisibility,
-  getExportButtonLabel,
-  showPanel,
-  injectBadge,
-  updatePanelProgress,
-  updatePanelComplete,
-  updatePanelError,
-  updatePanelIdle,
-  injectGridFilters,
-  injectToolbarFilter,
-  injectMultiInvoiceFilter,
-  getMultiInvoiceNumbers,
-  splitInvoiceNumbers,
-  injectComparerModal,
-  openComparerModal,
-  runPendingCompare,
-};
 
 // ── Constants ─────────────────────────────────────────
 

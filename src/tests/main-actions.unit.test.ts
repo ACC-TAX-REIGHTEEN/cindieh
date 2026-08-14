@@ -4,11 +4,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mockInvoiceNumbers: string[] = [];
-vi.mock("../content/ui", () => ({
-  getMultiInvoiceNumbers: () => mockInvoiceNumbers,
+vi.mock("../content/ui-badge", () => ({
   showPanel: vi.fn(),
   updatePanelProgress: vi.fn(),
   updatePanelIdle: vi.fn(),
+}));
+vi.mock("../content/ui-filters", () => ({
+  getMultiInvoiceNumbers: () => mockInvoiceNumbers,
 }));
 import {
   createContentState,

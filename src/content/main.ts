@@ -10,26 +10,21 @@
 
 import { browserAPI } from "./browser-shim";
 import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode } from "../shared/export-preferences";
-import type { ExportSource } from "./page-context";
+import { isOutputTaxPage, isSupportedExportPage, type ExportSource } from "./page-context";
 import { shouldProcessPageMessage, createMessageDispatcher } from "./postmessage-guard";
 import { generateBridgeToken, getBridgeToken, postToScraper } from "./bridge";
 import {
   injectBadge,
-  injectExportButton,
-  injectGridFilters,
-  injectMultiInvoiceFilter,
-  isOutputTaxPage,
-  isSupportedExportPage,
-  removeExportButton,
   updatePanelComplete,
   updatePanelError,
   updatePanelIdle,
   updatePanelProgress,
-  injectToolbarFilter,
-  injectComparerModal,
-  openComparerModal,
-  runPendingCompare,
-  splitInvoiceNumbers,
+} from "./ui-badge";
+import { injectComparerModal, openComparerModal, runPendingCompare } from "./ui-comparer";
+import { injectGridFilters, injectMultiInvoiceFilter, injectToolbarFilter, splitInvoiceNumbers } from "./ui-filters";
+import {
+  injectExportButton,
+  removeExportButton,
 } from "./ui";
 import { handlePdfDownload } from "./downloader";
 import { registerShortcuts } from "./shortcuts";
