@@ -2,7 +2,7 @@
 // Validates: Requirements 6.5, 6.6, 12.2, 12.3
 import { describe, it, expect } from "vitest";
 import type { ExportSource } from "../content/page-context";
-import { escapeCSV, buildCSV, generateDynamicFilename, PREFIX_MAP } from "../content/exporter";
+import { escapeCSV, buildCSV, generateDynamicFilename, PREFIX_MAP, downloadXLSXFile } from "../content/exporter";
 import type { ExportData } from "../content/exporter";
 
 // ============================================================
@@ -274,5 +274,53 @@ describe("PREFIX_MAP", () => {
 
 	it("default entry is FPK-", () => {
 		expect(PREFIX_MAP["default"]).toBe("FPK-");
+	});
+});
+
+// ============================================================
+// downloadXLSXFile
+// ============================================================
+describe("downloadXLSXFile", () => {
+	it("executes without error when given 2D rows", () => {
+		const originalCreate = URL.createObjectURL;
+		const originalRevoke = URL.revokeObjectURL;
+		const originalDocument = globalThis.document;
+		let created = false;
+		let revoked = false;
+		let clicked = false;
+
+		URL.createObjectURL = () => {
+			created = true;
+			return "blob:fake-url";
+		};
+		URL.revokeObjectURL = () => {
+			revoked = true;
+		};
+		(globalThis as unknown as { document: unknown }).document = {
+			createElement: () => ({
+				href: "",
+				download: "",
+				click: () => {
+					clicked = true;
+				},
+			}),
+		};
+
+		const rows = [
+			["Header 1", "Header 2"],
+			["Value 1", 1000],
+		];
+
+		expect(() => {
+			downloadXLSXFile(rows, "test.xlsx", "Sheet1");
+		}).not.toThrow();
+
+		expect(created).toBe(true);
+		expect(revoked).toBe(true);
+		expect(clicked).toBe(true);
+
+		URL.createObjectURL = originalCreate;
+		URL.revokeObjectURL = originalRevoke;
+		(globalThis as unknown as { document: unknown }).document = originalDocument;
 	});
 });

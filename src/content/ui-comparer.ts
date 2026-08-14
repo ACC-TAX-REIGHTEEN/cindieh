@@ -8,7 +8,7 @@
 // ============================================================
 
 import { parsePastedData, type ComparisonResult } from "./comparer";
-import { buildCSV, downloadTextFile } from "./exporter";
+import { downloadXLSXFile } from "./exporter";
 import { getScrapedData, setPendingCompare, startScrape } from "./main-actions";
 import {
   applyStatusFilter,
@@ -656,7 +656,6 @@ function renderResults(): void {
 }
 
 // ── Export results to XLSX ────────────────────────────
-// TODO(candidate 5): route through exporter's shared CSV/Excel writer.
 
 function handleExportResults(): void {
   const container = document.getElementById("ch-comparer-results");
@@ -736,8 +735,8 @@ function handleExportResults(): void {
     }
   });
 
-  // Generate CSV with BOM for Excel compatibility via the shared writer.
-  downloadTextFile(buildCSV(rows), "perbandingan-faktur.csv", "text/csv;charset=utf-8");
+  // Generate XLSX file via the shared writer.
+  downloadXLSXFile(rows, "perbandingan-faktur.xlsx", "Perbandingan");
 }
 
 // ── Search reference in Coretax ───────────────────────

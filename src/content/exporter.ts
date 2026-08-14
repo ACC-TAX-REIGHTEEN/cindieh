@@ -17,6 +17,7 @@ export interface ExportData {
 }
 
 function downloadFile(content: string | BlobPart, filename: string, mimeType: string): void {
+  if (typeof document === "undefined") return;
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -53,6 +54,24 @@ export function buildCSV(rows: readonly (readonly unknown[])[]): string {
 /** Trigger a browser download for text content. */
 export function downloadTextFile(content: string, filename: string, mimeType: string): void {
   downloadFile(content, filename, mimeType);
+}
+
+/** Trigger a browser download for an XLSX spreadsheet generated from a 2D array of rows. */
+export function downloadXLSXFile(
+  rows: readonly (readonly unknown[])[],
+  filename: string,
+  sheetName = "Sheet1",
+): void {
+  const worksheet = XLSX.utils.aoa_to_sheet(rows as unknown[][]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+
+  const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  downloadFile(
+    excelBuffer,
+    filename,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
 }
 
 export function processData(exportData: ExportData): ExportData {
