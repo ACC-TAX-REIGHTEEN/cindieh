@@ -160,7 +160,13 @@ import { createMessageDispatcher } from "./postmessage-guard";
       SET_SERVER_FILTER: (msg) => {
         const { value } = msg;
         const field = msg.field as string;
-        if (value) {
+        const hasValue =
+          value !== undefined &&
+          value !== null &&
+          value !== "" &&
+          (!Array.isArray(value) || value.length > 0);
+
+        if (hasValue) {
           // Invalidate cache when filter changes to ensure a fresh request
           lastCaptured = null;
           lastCapturedTime = 0;
