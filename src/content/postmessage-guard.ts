@@ -41,8 +41,8 @@ export function shouldProcessPageMessage(
     event.origin === selfWindow.location.origin &&
     !!data &&
     data.direction === direction &&
-    // When a token is provided, the message must carry the matching token.
-    (expectedToken === undefined || data.token === expectedToken)
+    // When a token is provided, the message must carry the matching non-empty token.
+    (expectedToken === undefined || (expectedToken !== "" && data.token === expectedToken))
   );
 }
 

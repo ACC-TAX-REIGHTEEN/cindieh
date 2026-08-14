@@ -122,6 +122,19 @@ describe("PostMessage origin guard — Property 9", () => {
     );
   });
 
+  it("token validation: rejects when expectedToken is empty string", () => {
+    const result = shouldProcessPageMessage(
+      {
+        source: fakeWindow,
+        origin: FAKE_ORIGIN,
+        data: { direction: "FROM_PAGE", token: "" },
+      },
+      "",
+      fakeWindow,
+    );
+    expect(result).toBe(false);
+  });
+
   it("token validation: accepts when no expectedToken is provided (undefined)", () => {
     const result = shouldProcessPageMessage(
       {
