@@ -61,6 +61,12 @@ debugLog("Cindieh aktif");
 let lastUrl = location.href;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Rate-limit guard for the INJECTED_READY → START_SCRAPE resend (audit):
+// after each scraper injection, resend a pending START_SCRAPE at most once,
+// so a repeated INJECTED_READY (e.g. re-injection race) can't spam the
+// scraper with duplicate start commands.
+let scraperResendArmed = true;
+
 const observer = new MutationObserver(() => {
   const url = location.href;
   if (url !== lastUrl) {
@@ -91,6 +97,10 @@ observer.observe(document.body, { subtree: true, childList: true });
 
 function injectScraper(): void {
   if (document.getElementById("__ch_scraper_injected__")) return;
+
+  // A fresh scraper instance is being created — allow exactly one
+  // START_SCRAPE resend from its INJECTED_READY.
+  scraperResendArmed = true;
 
   const token = generateBridgeToken();
   const script = document.createElement("script");
@@ -124,8 +134,11 @@ const pageMessageDispatcher = createMessageDispatcher({
     INJECTED_READY: () => {
       // Scraper just finished initializing. If the user already requested a
       // scrape before the scraper was ready (message would have been lost),
-      // resend START_SCRAPE so the two worlds stay in sync.
-      if (contentState.isRunning) {
+      // resend START_SCRAPE so the two worlds stay in sync — at most once per
+      // injection (guarded by scraperResendArmed) so repeated INJECTED_READY
+      // can't fire duplicate START_SCRAPE / scrape restarts.
+      if (contentState.isRunning && scraperResendArmed) {
+        scraperResendArmed = false;
         debugLog("Scraper ready; resending START_SCRAPE (was requested earlier)");
         postToScraper({ type: "START_SCRAPE" });
       }
