@@ -24,6 +24,7 @@ import {
   clearFilterTimers,
 } from "../content/ui-filters";
 import { isEfakturPage } from "../content/page-context";
+import { stubFakeDom, type FakeDoc, type FakeWindow } from "./__mocks__/fake-dom";
 
 describe("splitInvoiceNumbers", () => {
   it("splits on newlines", () => {
@@ -102,196 +103,18 @@ describe("parseMultiInvoiceText", () => {
   });
 });
 
-// ── Minimal fake DOM ────────────────────────────────────────────────
-// Enough surface for injectMultiInvoiceFilter / removeMultiInvoiceFilter:
-// element creation, id lookup, append/insert/remove, attribute & class
-// queries, event listeners (element + document + window), and contains().
-
-type Listener = (event?: unknown) => void;
-
-class FakeEl {
-  id = "";
-  className = "";
-  style: Record<string, string> = {};
-  value = "";
-  title = "";
-  type = "";
-  htmlFor = "";
-  rows = 0;
-  placeholder = "";
-  textContent = "";
-  children: FakeEl[] = [];
-  listeners: Record<string, Listener[]> = {};
-  attributes: Record<string, string> = {};
-  parentElement: FakeEl | null = null;
-  nextSibling: FakeEl | null = null;
-  tagName: string;
-  doc: FakeDoc;
-
-  constructor(tagName: string, doc: FakeDoc) {
-    this.tagName = tagName;
-    this.doc = doc;
-  }
-
-  appendChild(child: FakeEl): FakeEl {
-    this.children.push(child);
-    child.parentElement = this;
-    child.nextSibling = null;
-    if (this.children.length > 1) {
-      this.children[this.children.length - 2].nextSibling = child;
-    }
-    this.doc.register(child);
-    return child;
-  }
-
-  insertBefore(child: FakeEl, ref: FakeEl | null): FakeEl {
-    if (!ref) return this.appendChild(child);
-    const idx = this.children.indexOf(ref);
-    if (idx === -1) return this.appendChild(child);
-    this.children.splice(idx, 0, child);
-    child.parentElement = this;
-    this.doc.register(child);
-    return child;
-  }
-
-  remove(): void {
-    if (this.parentElement) {
-      const idx = this.parentElement.children.indexOf(this);
-      if (idx > -1) this.parentElement.children.splice(idx, 1);
-      this.parentElement = null;
-    }
-    this.doc.unregister(this);
-  }
-
-  setAttribute(key: string, value: string): void {
-    this.attributes[key] = value;
-  }
-
-  getAttribute(key: string): string | null {
-    return this.attributes[key] ?? null;
-  }
-
-  addEventListener(type: string, fn: Listener): void {
-    if (!this.listeners[type]) this.listeners[type] = [];
-    this.listeners[type].push(fn);
-  }
-
-  getBoundingClientRect(): {
-    bottom: number;
-    left: number;
-    top: number;
-    right: number;
-    width: number;
-    height: number;
-  } {
-    return { bottom: 0, left: 0, top: 0, right: 0, width: 0, height: 0 };
-  }
-
-  contains(node: FakeEl): boolean {
-    let current: FakeEl | null = node;
-    while (current) {
-      if (current === this) return true;
-      current = current.parentElement;
-    }
-    return false;
-  }
-
-  querySelector(sel: string): FakeEl | null {
-    if (sel.startsWith(".")) {
-      const cls = sel.slice(1);
-      return this.children.find((c) => c.className.split(/\s+/).includes(cls)) ?? null;
-    }
-    return null;
-  }
-}
-
-class FakeDoc {
-  byId = new Map<string, FakeEl>();
-  buttons: FakeEl[] = [];
-  body: FakeEl;
-  listeners = new Map<string, Set<Listener>>();
-
-  constructor() {
-    this.body = new FakeEl("body", this);
-  }
-
-  createElement(tag: string): FakeEl {
-    return new FakeEl(tag, this);
-  }
-
-  createTextNode(text: string): FakeEl {
-    const node = new FakeEl("#text", this);
-    node.textContent = text;
-    return node;
-  }
-
-  getElementById(id: string): FakeEl | null {
-    return this.byId.get(id) ?? null;
-  }
-
-  querySelectorAll(sel: string): FakeEl[] {
-    return sel === "button" ? this.buttons : [];
-  }
-
-  register(el: FakeEl): void {
-    if (el.id) this.byId.set(el.id, el);
-  }
-
-  unregister(el: FakeEl): void {
-    if (el.id && this.byId.get(el.id) === el) this.byId.delete(el.id);
-  }
-
-  addEventListener(type: string, fn: Listener): void {
-    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
-    this.listeners.get(type)?.add(fn);
-  }
-
-  removeEventListener(type: string, fn: Listener): void {
-    this.listeners.get(type)?.delete(fn);
-  }
-
-  listenerCount(type: string): number {
-    return this.listeners.get(type)?.size ?? 0;
-  }
-}
-
-interface FakeWindow {
-  scrollY: number;
-  scrollX: number;
-  addEventListener(type: string, fn: Listener): void;
-  removeEventListener(type: string, fn: Listener): void;
-  listenerCount(type: string): number;
-}
-
-function makeWindowStub(): FakeWindow {
-  const listeners = new Map<string, Set<Listener>>();
-  return {
-    scrollY: 0,
-    scrollX: 0,
-    addEventListener(type, fn) {
-      if (!listeners.has(type)) listeners.set(type, new Set());
-      listeners.get(type)?.add(fn);
-    },
-    removeEventListener(type, fn) {
-      listeners.get(type)?.delete(fn);
-    },
-    listenerCount(type) {
-      return listeners.get(type)?.size ?? 0;
-    },
-  };
-}
-
 // ── injectMultiInvoiceFilter / removeMultiInvoiceFilter (DOM) ──────────
+// The fake DOM itself lives in ./__mocks__/fake-dom.ts (shared with the
+// ui-badge tests); these tests only drive it via stubFakeDom().
 
 describe("injectMultiInvoiceFilter / removeMultiInvoiceFilter (DOM)", () => {
   let doc: FakeDoc;
   let win: FakeWindow;
 
   beforeEach(() => {
-    doc = new FakeDoc();
-    win = makeWindowStub();
-    vi.stubGlobal("document", doc as unknown as Document);
-    vi.stubGlobal("window", win as unknown as Window & typeof globalThis);
+    const fake = stubFakeDom();
+    doc = fake.doc;
+    win = fake.win;
     // Reset any module-level multi-invoice state left by a previous test.
     removeMultiInvoiceFilter();
     vi.mocked(isEfakturPage).mockReturnValue(true);
