@@ -22,7 +22,7 @@ Dokumen ini mencatat hasil audit hukum, privasi data, dan keamanan teknis terhad
 
 | Aspek Privasi | Penjelasan Teknis | Status Kepatuhan |
 |---|---|---|
-| **Pemrosesan Data Lokal (*Client-Side Only*)** | Seluruh proses ekstraksi data, konversi ke Excel (`.xlsx`), penataan format tanggal, dan penamaan PDF dilakukan 100% di memori browser lokal pengguna. | ✅ **Patuh** |
+| **Pemrosesan Data Lokal (*Client-Side Only*)** | Seluruh proses ekstraksi data, konversi ke Excel (`.xlsx`) atau CSV (`.csv`), penataan format tanggal, dan penamaan PDF dilakukan 100% di memori browser lokal pengguna. | ✅ **Patuh** |
 | **Tanpa Server Pihak Ketiga (*Zero Exfiltration*)** | Cindieh **TIDAK memiliki server perantara (proxy), telemetri, atau pustaka analitik eksternal**. Tidak ada data Wajib Pajak yang dikirimkan ke pihak ketiga mana pun. | ✅ **Patuh** |
 | **Pengelolaan Kredensial** | Cindieh **TIDAK pernah mencatat, membaca, atau menyimpan Password, PIN, atau Passphrase** pengguna. | ✅ **Patuh** |
 
@@ -45,8 +45,8 @@ DJP melarang aktivitas otomatisasi yang berpotensi menggangu ketersediaan layana
 
 ## 4. Keamanan Arsitektur Kode (*Code Security*)
 
-- **Bridge Token Security** ([`src/content/bridge.ts`](file:///d:/PROGRAMMING/cindieh/src/content/bridge.ts)): Menggunakan token acak unik sekali pakai (*nonce*) untuk memverifikasi komunikasi antar-dunia JavaScript (Isolated World ↔ MAIN World). Hal ini mencegah script web jahat dari luar memalsukan perintah ke ekstensi.
-- **PostMessage Guard** ([`src/content/postmessage-guard.ts`](file:///d:/PROGRAMMING/cindieh/src/content/postmessage-guard.ts)): Memvalidasi asal (*origin* dan *direction*) setiap pesan guna memastikan keamanan dari serangan *Cross-World Script Hijacking*.
+- **Bridge Token Security** ([`src/content/bridge.ts`](src/content/bridge.ts)): Menggunakan token acak unik yang dibuat sekali per halaman di dunia Isolated dan dibawa ke scraper (MAIN World) melalui URL script, lalu divalidasi pada setiap pesan. Hal ini mencegah skrip MAIN-world lain (misalnya ekstensi lain atau kode yang disuntikkan ke halaman) memalsukan perintah ke ekstensi.
+- **PostMessage Guard** ([`src/content/postmessage-guard.ts`](src/content/postmessage-guard.ts)): Memvalidasi `event.source`, *origin*, *direction*, dan token bridge pada setiap pesan sebelum di-dispatch, guna memastikan keamanan dari serangan *Cross-World Script Hijacking*.
 
 ---
 

@@ -39,8 +39,8 @@ Credit-note grids for output/input e-faktur.
 _Avoid_: output return, input return (code constants: `OUTPUT_RETURN`, `INPUT_RETURN`)
 
 **SPT**:
-Tax return. The SPT Masa PPN portal hosts Lampiran A2 (PPN Keluaran) and Lampiran B2 (PPN Masukan) grids.
-_Avoid_: return, tax return form (code constants: `SPT_A2`, `SPT_B2`)
+Tax return. The SPT portal (`returnsheets-portal`) hosts the PPN sheets — Lampiran A2 (PPN Keluaran) and Lampiran B2 (PPN Masukan) — and the Article 21/26 sheets — Lampiran L1A, L1B, L2, L3 (grids `rshshr-art2126-l1a/l1b/l2/l3-grid`).
+_Avoid_: return, tax return form (code constants: `SPT_A2`, `SPT_B2`, `PPH_21_L1A`, `PPH_21_L1B`, `PPH_21_L2`, `PPH_21_L3`)
 
 **Bukti Potong**:
 Withholding slip (PPh 21) — the portal's withholding-slips grid and its bulk PDFs.
@@ -83,6 +83,10 @@ _Avoid_: portal download, one-click download
 **Bulk download**:
 The extension firing the download requests itself for a set of grid rows (e-faktur or bukti potong). It already holds each row, so naming uses that row's data directly; it never re-resolves metadata from the grid capture.
 _Avoid_: bulk PDF, batch download
+
+**No. Faktur filter**:
+The efaktur-only filter (toolbar toggle "No. Faktur" on the four e-invoice grids) that takes a list of invoice numbers — one per line, or comma/semicolon separated — and restricts which rows get PDF downloads, or which invoice numbers get a targeted scrape for XLSX/CSV export. Not available on withholding-slips or SPT pages.
+_Avoid_: invoice filter, multi-invoice filter
 
 **Pending export**:
 An export (or comparison) the user requested before any data existed; it is fulfilled automatically when a scrape completes.

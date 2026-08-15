@@ -8,18 +8,18 @@ Dokumen ini mencatat batasan kecepatan (*rate limiting*), jeda waktu (*delays*),
 
 ## 1. Parameter Pembatasan dalam Kode
 
-Berikut adalah konstanta dan jeda waktu yang diterapkan dalam kode ([`src/content/scraper-actions.ts`](file:///d:/PROGRAMMING/cindieh/src/content/scraper-actions.ts) & [`src/content/scraper.ts`](file:///d:/PROGRAMMING/cindieh/src/content/scraper.ts)):
+Berikut adalah konstanta dan jeda waktu yang diterapkan dalam kode ([`scraper-actions.ts`](src/content/scraper-actions.ts) & [`scraper.ts`](src/content/scraper.ts)). Referensi kode mengarah ke **nama fungsi/konstanta** (bukan nomor baris) agar tidak usang saat kode di-refactor:
 
 | Fitur / Parameter | Nilai / Konfigurasi | Lokasi Kode | Keterangan |
 |---|---|---|---|
-| **Batch Pagination e-Invoice** | `step = 500`, `delayMs = 100` | [`scraper-actions.ts`](file:///d:/PROGRAMMING/cindieh/src/content/scraper-actions.ts#L199) | 500 data/req (menyesuaikan batas maks UI e-Invoice portal `500`). |
-| **Batch Pagination SPT atau Returnsheets Portal** | `step = 1000`, `delayMs = 150` | [`scraper-actions.ts`](file:///d:/PROGRAMMING/cindieh/src/content/scraper-actions.ts#L199) | 1.000 data/req (menyesuaikan batas maks UI Returnsheets PPN portal `1000`). |
-| **Bulk PDF Download** | `delay(800)` (800 ms) | [`scraper-actions.ts`](file:///d:/PROGRAMMING/cindieh/src/content/scraper-actions.ts#L159) | Jeda 800 ms antar unduhan berkas PDF (e-Faktur & Bukti Potong). |
-| **Scrape per Faktur Spesifik** | `delay(50)` (50 ms) | [`scraper-actions.ts`](file:///d:/PROGRAMMING/cindieh/src/content/scraper-actions.ts#L388) | Jeda 50 ms antar nomor faktur pada fitur pencarian dari daftar. |
-| **Retry & Backoff Faktur** | `MAX_INVOICE_RETRIES = 2`, `BACKOFF_BASE_MS = 1000` | [`scraper-actions.ts`](file:///d:/PROGRAMMING/cindieh/src/content/scraper-actions.ts#L344) | Maks 2x retry dengan *exponential backoff* (`1000ms`, `2000ms`) jika request gagal. |
-| **Request Timeout** | `TIMEOUT = 30000` (30 detik) | [`scraper.ts`](file:///d:/PROGRAMMING/cindieh/src/content/scraper.ts#L36) | Batas waktu maksimal tunggu respons XHR dari Coretax. |
-| **Circuit Breaker** | `MAX_ERRORS = 3` | [`scraper.ts`](file:///d:/PROGRAMMING/cindieh/src/content/scraper.ts#L37) | Hentikan scraping otomatis jika terjadi 3 error berturut-turut. |
-| **Recovery Delay** | `delay(2000)` (2 detik) | [`scraper-actions.ts`](file:///d:/PROGRAMMING/cindieh/src/content/scraper-actions.ts#L107) | Jeda pemulihan 2 detik jika terjadi 1 kali error sebelum mencoba lagi. |
+| **Batch Pagination e-Invoice** | `step = 500`, `delayMs = 100` | [`getPaginateConfig()`](src/content/scraper-actions.ts) | 500 data/req (menyesuaikan batas maks UI e-Invoice portal `500`). |
+| **Batch Pagination SPT atau Returnsheets Portal** | `step = 1000`, `delayMs = 150` | [`getPaginateConfig()`](src/content/scraper-actions.ts) | 1.000 data/req (menyesuaikan batas maks UI Returnsheets PPN portal `1000`). |
+| **Bulk PDF Download** | `delay(800)` (800 ms) | [`downloadBulkWithholdingPdf()`](src/content/scraper-actions.ts) & [`startPdfDownload()`](src/content/scraper-actions.ts) | Jeda 800 ms antar unduhan berkas PDF (e-Faktur & Bukti Potong). |
+| **Scrape per Faktur Spesifik** | `delay(50)` (50 ms) | [`scrapeByInvoices()`](src/content/scraper-actions.ts) | Jeda 50 ms antar nomor faktur pada fitur pencarian dari daftar. |
+| **Retry & Backoff Faktur** | `MAX_INVOICE_RETRIES = 2`, `BACKOFF_BASE_MS = 1000` | [`scrapeByInvoices()`](src/content/scraper-actions.ts) | Maks 2x retry dengan *exponential backoff* (`1000ms`, `2000ms`) jika request gagal. |
+| **Request Timeout** | `TIMEOUT = 30000` (30 detik) | konstanta [`TIMEOUT`](src/content/scraper.ts) | Batas waktu maksimal tunggu respons XHR dari Coretax. |
+| **Circuit Breaker** | `MAX_ERRORS = 3` | konstanta [`MAX_ERRORS`](src/content/scraper.ts) | Hentikan scraping otomatis jika terjadi 3 error berturut-turut. |
+| **Recovery Delay** | `delay(2000)` (2 detik) | [`scrapePaginated()`](src/content/scraper-actions.ts) | Jeda pemulihan 2 detik jika terjadi 1 kali error sebelum mencoba lagi. |
 
 > **Catatan Eksekusi Sequential**: Seluruh eksekusi fetching bersifat berurutan (*serial/sequential*). Jeda `delayMs` (misal 100 ms) dihitung **setelah request sebelumnya selesai/berhasil diterima** dari server Coretax (`await request -> merge data -> await delay(100ms) -> request berikutnya`). Ekstensi tidak pernah mengirim request baru secara bersamaan/tumpang tindih (*no concurrent requests*).
 

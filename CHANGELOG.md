@@ -7,18 +7,13 @@ All notable changes to this project will be documented in this file, generated w
 
 ### Features
 
-* **comparer:** add invoice comparator panel with paste-from-excel workflow ([ui-comparer](https://github.com/allababbot/cindieh/commit/ui-comparer))
+* **comparer:** add invoice comparator panel with paste-from-excel workflow ([d3e273a](https://github.com/allababbot/cindieh/commit/d3e273a))
 * **comparer:** support 3-column and 4-column (Ref Lain) paste modes
 * **comparer:** add daily mode to detect coretax-only rows by date range
 * **comparer:** add status filter dropdown, tolerance input, and XLSX export
 * **comparer:** double-click row to close panel and trigger reference search in coretax grid
 * **comparer:** auto-scrape when no data is available before comparison
 * rename project from better-coretax to cindieh
-
-
-### Features
-
-* add SPA navigation state reset and fetch interceptor PDF metadata resolution ([e360d42](https://github.com/allababbot/cindieh/commit/e360d425dc807fac0ae94aba84ebd81ffeaa9c2c))
 
 ## [1.2.0](https://github.com/allababbot/cindieh/compare/v1.1.1...v1.2.0) (2026-07-24)
 

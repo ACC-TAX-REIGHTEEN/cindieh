@@ -1,6 +1,6 @@
 # Cindieh
 
-**Cindieh** adalah ekstensi browser yang dirancang untuk meningkatkan pengalaman penggunaan portal DJP Coretax. Ekstensi ini menyederhanakan proses pengambilan dan ekspor data pajak dalam jumlah besar ke file Excel terformat, unduhan PDF massal, pencarian faktur berdasarkan referensi, serta perbandingan data faktur antara catatan internal dan Coretax.
+**Cindieh** adalah ekstensi browser yang dirancang untuk meningkatkan pengalaman penggunaan portal DJP Coretax. Ekstensi ini menyederhanakan proses pengambilan dan ekspor data pajak dalam jumlah besar ke file Excel/CSV terformat, unduhan PDF massal (dengan filter nomor faktur), pencarian faktur berdasarkan referensi, serta perbandingan data faktur antara catatan internal dan Coretax.
 
 ## Prinsip Desain & Otomatisasi Terukur
 
@@ -13,19 +13,21 @@ Alih-alih menjanjikan kecepatan di luar batas wajar yang berisiko memicu pemblok
 
 ## Fitur Utama
 
-### 1. Ekspor Data ke Excel
+### 1. Ekspor Data ke Excel & CSV
 
 Coretax bawaan hanya mengunduh data yang sedang ditampilkan di layar. Untuk mengunduh semua data, pengguna harus mengatur tampilan ke jumlah baris maksimal (500–1.000 per halaman) — yang membuat portal menjadi berat dan lambat — lalu klik unduh Excel, pindah ke halaman berikutnya, klik unduh lagi, dan seterusnya hingga semua halaman selesai.
 
 Cindieh menghilangkan seluruh proses itu. Cukup klik satu tombol, ekstensi akan mengambil semua data langsung dari API internal Coretax secara otomatis di latar belakang, tanpa perlu membuka banyak halaman atau menunggu portal memuat ratusan baris sekaligus.
 
-Halaman yang didukung:
+Halaman yang didukung (ekspor XLSX/CSV):
 - **e-Faktur** — PPN Keluaran, PPN Masukan, Retur PPN Keluaran, Retur PPN Masukan
 - **SPT Masa PPN** — Lampiran A2 (PPN Keluaran) dan Lampiran B2 (PPN Masukan)
+- **SPT PPh 21/26** — Lampiran L1A, L1B, L2, L3
+- **Bukti Potong (Withholding Slips)** — khusus unduhan PDF massal (tanpa ekspor Excel/CSV)
 
 Data yang dihasilkan sudah diformat untuk kemudahan pengguna:
 - Format tanggal dikonversi otomatis dari ISO string (`2026-07-01T00:00:00`) ke format Indonesia standar (`01/07/2026`)
-- File tersedia langsung dalam format `.xlsx` — tidak perlu convert dari CSV
+- File tersedia langsung dalam format `.xlsx` atau `.csv` — tidak perlu konversi manual
 
 ---
 
@@ -40,6 +42,8 @@ Alih-alih mengklik tombol unduh satu per satu seperti di Coretax bawaan, Cindieh
 - **Bukti Potong:**
   Format nama: `MM-YYYY-NomorBuktiPotong-NamaPemotong.pdf`
   Contoh: `07-2026-BP-001-PT MITRA SEJAHTERA.pdf`
+
+**Filter No. Faktur (khusus e-Faktur):** di halaman e-Faktur, unduhan PDF bisa dibatasi ke nomor faktur tertentu. Klik tombol **"No. Faktur"** di toolbar, tempel daftar nomor faktur (satu per baris, atau dipisah koma/titik koma), lalu klik **Unduh PDF** — hanya faktur yang cocok yang akan diunduh. Filter ini hanya tersedia di halaman e-Faktur (PPN Keluaran, PPN Masukan, Retur) dan tidak muncul di halaman Bukti Potong.
 
 ---
 
@@ -111,13 +115,13 @@ Buat ekstensi siap pakai untuk browser yang diinginkan:
 ## Tech Stack
 - **Bahasa:** TypeScript
 - **Bundler:** esbuild
-- **Persistensi:** Chrome Storage API
-- **Generasi Excel:** SheetJS (xlsx)
+- **Persistensi:** WebExtension Storage API (`storage.local`)
+- **Generasi Excel/CSV:** SheetJS (xlsx)
 - **UI:** Vanilla DOM & CSS
 
 ## Dokumentasi & Kepatuhan Hukum
-- [Panduan Pembatasan Kecepatan (RATE_LIMITING.md)](file:///d:/PROGRAMMING/cindieh/RATE_LIMITING.md) — Penjelasan rinci teknis rate-limiting & RTT.
-- [Pernyataan Kepatuhan Hukum & Keamanan (LEGAL_COMPLIANCE.md)](file:///d:/PROGRAMMING/cindieh/LEGAL_COMPLIANCE.md) — Audit hukum ITE, privasi data lokal, dan keamanan arsitektur kode.
+- [Panduan Pembatasan Kecepatan](RATE_LIMITING.md) — Penjelasan rinci teknis rate-limiting & RTT.
+- [Pernyataan Kepatuhan Hukum & Keamanan](LEGAL_COMPLIANCE.md) — Audit hukum ITE, privasi data lokal, dan keamanan arsitektur kode.
 
 ## Lisensi
 Proyek ini dilisensikan di bawah MIT License. Lihat [LICENSE](LICENSE) untuk detailnya.
