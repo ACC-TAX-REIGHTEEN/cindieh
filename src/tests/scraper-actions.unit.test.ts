@@ -234,4 +234,71 @@ describe("scrapeByInvoices", () => {
       }),
     );
   });
+
+  it("returns early on abort — never sends SCRAPE_COMPLETE after SCRAPE_ERROR", async () => {
+    mockedXhrRequestByInvoice.mockRejectedValue(new Error("always fails"));
+    const ctx = makeCtx({ maxErrors: 1 });
+
+    await scrapeByInvoices(["A", "B"], makeCaptured(), ctx);
+
+    const messages = (ctx.sendToContent as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0],
+    );
+    expect(messages.some((m) => m.type === "SCRAPE_ERROR")).toBe(true);
+    expect(messages.some((m) => m.type === "SCRAPE_COMPLETE")).toBe(false);
+    // Aborted after the first invoice — the second invoice is never queried.
+    expect(mockedXhrRequestByInvoice).toHaveBeenCalledTimes(3); // attempts 0..MAX_INVOICE_RETRIES for "A" only
+  });
+
+  it("tries each invoice MAX_INVOICE_RETRIES + 1 times with escalating backoff", async () => {
+    mockedXhrRequestByInvoice.mockRejectedValue(new Error("always fails"));
+    const ctx = makeCtx({ maxErrors: 99 }); // never aborts
+    const delaySpy = ctx.delay as ReturnType<typeof vi.fn>;
+
+    await scrapeByInvoices(["A"], makeCaptured(), ctx);
+
+    expect(mockedXhrRequestByInvoice).toHaveBeenCalledTimes(3);
+    expect(delaySpy).toHaveBeenCalledWith(1000); // BACKOFF_BASE_MS * attempt 1
+    expect(delaySpy).toHaveBeenCalledWith(2000); // BACKOFF_BASE_MS * attempt 2
+  });
+
+  it("resets the consecutive-failure counter after a success", async () => {
+    mockedXhrRequestByInvoice
+      .mockRejectedValueOnce(new Error("fail A"))
+      .mockRejectedValueOnce(new Error("fail A"))
+      .mockRejectedValueOnce(new Error("fail A"))
+      .mockResolvedValueOnce([{ Reference: "B1" }]) // success resets the counter
+      .mockRejectedValueOnce(new Error("fail C"))
+      .mockRejectedValueOnce(new Error("fail C"))
+      .mockRejectedValueOnce(new Error("fail C"));
+    const ctx = makeCtx({ maxErrors: 2 });
+
+    await scrapeByInvoices(["A", "B", "C"], makeCaptured(), ctx);
+
+    // A fails (1 consecutive), B succeeds (resets to 0), C fails (1) — the
+    // counter never reaches maxErrors, so the run completes instead of aborting.
+    expect(ctx.sendToContent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "SCRAPE_COMPLETE", data: [{ Reference: "B1" }] }),
+    );
+    const messages = (ctx.sendToContent as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0],
+    );
+    expect(messages.some((m) => m.type === "SCRAPE_ERROR")).toBe(false);
+  });
+
+  it("stops mid-way when stop is requested and completes with partial data", async () => {
+    let stop = false;
+    mockedXhrRequestByInvoice.mockImplementationOnce(async () => {
+      stop = true; // noticed at the next iteration's stop check
+      return [{ Reference: "R1" }];
+    });
+    const ctx = makeCtx({ isStopRequested: () => stop });
+
+    await scrapeByInvoices(["A", "B"], makeCaptured(), ctx);
+
+    expect(mockedXhrRequestByInvoice).toHaveBeenCalledTimes(1);
+    expect(ctx.sendToContent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "SCRAPE_COMPLETE", data: [{ Reference: "R1" }] }),
+    );
+  });
 });

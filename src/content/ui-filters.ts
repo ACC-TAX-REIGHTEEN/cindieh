@@ -171,12 +171,20 @@ export function splitInvoiceNumbers(raw: string): string[] {
     .filter((s) => s.length > 0);
 }
 
+/**
+ * Parse the raw textarea value into invoice numbers (pure; no DOM).
+ * Trims the whole input first and returns [] when nothing usable remains.
+ */
+export function parseMultiInvoiceText(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  return splitInvoiceNumbers(trimmed);
+}
+
 /** Get parsed invoice numbers from the multi-invoice filter */
 export function getMultiInvoiceNumbers(): string[] {
   if (!multiInvoiceTextarea) return [];
-  const raw = multiInvoiceTextarea.value.trim();
-  if (!raw) return [];
-  return splitInvoiceNumbers(raw);
+  return parseMultiInvoiceText(multiInvoiceTextarea.value);
 }
 
 /** Inject multi-invoice filter toggle on efaktur pages. */
