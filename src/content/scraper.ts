@@ -30,7 +30,7 @@ import {
   scrapeByInvoices,
   type ScraperContext,
 } from "./scraper-actions";
-import { buildInterceptContext, interceptRequest as makeInterceptRequest } from "./scraper-intercept";
+import { interceptRequest as makeInterceptRequest } from "./scraper-intercept";
 import {
   buildPdfDownloadMessage,
   createPdfDownloadSession,
@@ -67,6 +67,7 @@ import { createMessageDispatcher } from "./postmessage-guard";
   // this IIFE's mutable variables directly.
 
   const ctx: ScraperContext = {
+    // ── Orchestration ──────────────────────────────────
     isStopRequested: () => stopRequested,
     sendToContent,
     emitPdfDownload: (base64, item, source) => {
@@ -83,6 +84,25 @@ import { createMessageDispatcher } from "./postmessage-guard";
     delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     timeout: TIMEOUT,
     maxErrors: MAX_ERRORS,
+
+    // ── Request capture ────────────────────────────────
+    getLastCaptured: () => lastCaptured,
+    getLastCapturedTime: () => lastCapturedTime,
+    getVisibleGridSource,
+    getCurrentPageSource: getPageExportSource,
+    isWithholdingPage,
+    subscribeCapture: (fn) => {
+      captureSubscribers.push(fn);
+      return () => {
+        const idx = captureSubscribers.indexOf(fn);
+        if (idx > -1) captureSubscribers.splice(idx, 1);
+      };
+    },
+    queryElement: (selector) => document.querySelector(selector),
+    queryAllButtons: () => Array.from(document.querySelectorAll("button")),
+    clickElement: (el) => (el as HTMLElement).click(),
+    setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+    clearTimeout: (h) => window.clearTimeout(h as number),
   };
 
   // ── Message listener: content script → scraper ─────
@@ -541,23 +561,8 @@ import { createMessageDispatcher } from "./postmessage-guard";
   // ── Request interceptor ────────────────────────────
   // Delegates to the extracted, testable module in scraper-intercept.ts.
 
-  const interceptCtx = buildInterceptContext({
-    getLastCaptured: () => lastCaptured,
-    getLastCapturedTime: () => lastCapturedTime,
-    getVisibleGridSource,
-    getCurrentPageSource: getPageExportSource,
-    isWithholdingPage,
-    subscribeCapture: (fn) => {
-      captureSubscribers.push(fn);
-      return () => {
-        const idx = captureSubscribers.indexOf(fn);
-        if (idx > -1) captureSubscribers.splice(idx, 1);
-      };
-    },
-  });
-
   function interceptRequest(): Promise<CapturedRequest> {
-    return makeInterceptRequest(interceptCtx);
+    return makeInterceptRequest(ctx);
   }
 
   // Signal that the injected script is ready

@@ -6,8 +6,8 @@ import {
   interceptRequest,
   isCacheValid,
   triggerXhrCapture,
-  type InterceptContext,
 } from "../content/scraper-intercept";
+import type { ScraperContext } from "../content/scraper-actions";
 import type { CapturedRequest } from "../content/scraper-types";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -29,7 +29,10 @@ type TimerFn = (fn: () => void, ms: number) => unknown;
 type ClearTimerFn = (h: unknown) => void;
 
 /**
- * Build a fake InterceptContext with controllable state.
+ * Build a fake ScraperContext with controllable state.
+ * Only the request-capture members are wired for behaviour;
+ * the orchestration members are no-op stubs (never called by
+ * intercept-focused tests).
  * setTimeout/clearTimeout are vitest spies that record calls
  * but do NOT auto-fire — tests control timer execution manually.
  */
@@ -41,7 +44,7 @@ function makeCtx(opts: {
   isWithholdingPage?: boolean;
   queryElementResult?: Element | null;
   buttons?: Array<{ id?: string; textContent?: string; querySelector?: (sel: string) => Element | null }>;
-}): InterceptContext & {
+}): ScraperContext & {
   _subscribers: Array<(req: CapturedRequest) => void>;
   _unsubscribeCalls: number;
   _timeouts: Array<{ fn: () => void; ms: number }>;
@@ -55,6 +58,16 @@ function makeCtx(opts: {
   const clickedElements: Element[] = [];
 
   return {
+    // ── Orchestration stubs (not exercised by intercept tests) ────
+    isStopRequested: vi.fn(() => false),
+    sendToContent: vi.fn(),
+    emitPdfDownload: vi.fn(),
+    getMasaPajakFromDOM: vi.fn(() => ""),
+    delay: vi.fn(() => Promise.resolve()),
+    timeout: 30000,
+    maxErrors: 3,
+
+    // ── Request capture (fully wired for these tests) ────
     getLastCaptured: () => opts.lastCaptured ?? null,
     getLastCapturedTime: () => opts.lastCapturedTime ?? 0,
     getVisibleGridSource: () => opts.visibleGridSource ?? null,

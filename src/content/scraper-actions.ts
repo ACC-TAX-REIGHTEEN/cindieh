@@ -23,10 +23,16 @@ import type { CapturedRequest, ScrapeMessage } from "./scraper-types";
 
 // ── Context interface ─────────────────────────────────
 // All dependencies on mutable closure state in scraper.ts are
-// injected through this interface so the action functions are pure
-// enough to unit-test without a live browser.
+// injected through this interface. Members cover both the
+// orchestration concerns (stopping, messaging, PDF emission, delay)
+// and the request-capture concerns (cache state, DOM triggers, timer
+// abstraction) — formerly split across ScraperContext and
+// InterceptContext. Merging them here lets scraper.ts build a single
+// ctx object for both action functions and interceptRequest.
 
 export interface ScraperContext {
+  // ── Orchestration (used by scraper-actions) ────────
+
   /** Returns true when a stop has been requested by the user. */
   isStopRequested(): boolean;
   /** Send a ScrapeMessage back to the content script. */
@@ -41,6 +47,53 @@ export interface ScraperContext {
   timeout: number;
   /** Maximum consecutive XHR errors before aborting a paginated scrape. */
   maxErrors: number;
+
+  // ── Request capture (used by scraper-intercept) ────
+
+  /** Return the most recently captured request, or null if none. */
+  getLastCaptured(): CapturedRequest | null;
+  /** Return the epoch-ms timestamp of the last captured request (0 if none). */
+  getLastCapturedTime(): number;
+  /**
+   * Return the ExportSource of the currently-visible grid component, or null
+   * when no grid is visible. Used to decide whether the cache is still valid.
+   */
+  getVisibleGridSource(): ExportSource | null;
+  /**
+   * Return the ExportSource of the current page URL, or null when the page
+   * is not a supported export page.
+   */
+  getCurrentPageSource(): ExportSource | null;
+  /**
+   * Return true when the current page URL is a withholding-slips page.
+   * Used in the cache-validity check.
+   */
+  isWithholdingPage(): boolean;
+  /**
+   * Register a one-shot subscriber that will be called with the next captured
+   * request. Returns an unsubscribe function that removes the subscriber
+   * without calling it.
+   */
+  subscribeCapture(fn: (req: CapturedRequest) => void): () => void;
+  /**
+   * Query a single DOM element by CSS selector.
+   * Returns null when no matching element is found.
+   */
+  queryElement(selector: string): Element | null;
+  /**
+   * Return all buttons on the page as an array.
+   */
+  queryAllButtons(): HTMLButtonElement[];
+  /** Trigger a click on the given element. */
+  clickElement(el: Element): void;
+  /**
+   * Schedule a callback after `ms` milliseconds. Returns a handle that can
+   * be passed to clearTimeout to cancel it.
+   * Defaults to window.setTimeout in production; can be stubbed in tests.
+   */
+  setTimeout(fn: () => void, ms: number): unknown;
+  /** Cancel a timeout scheduled by this context's setTimeout. */
+  clearTimeout(handle: unknown): void;
 }
 
 // ── Pagination config ─────────────────────────────────

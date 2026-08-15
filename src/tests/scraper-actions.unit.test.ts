@@ -37,6 +37,7 @@ function makeCaptured(source: CapturedRequest["source"] = "OUTPUT_TAX"): Capture
 
 function makeCtx(overrides: Partial<ScraperContext> = {}): ScraperContext {
   return {
+    // ── Orchestration ──────────────────────────────────
     isStopRequested: () => false,
     sendToContent: vi.fn(),
     emitPdfDownload: vi.fn(),
@@ -44,6 +45,20 @@ function makeCtx(overrides: Partial<ScraperContext> = {}): ScraperContext {
     delay: vi.fn(() => Promise.resolve()),
     timeout: 30000,
     maxErrors: 3,
+
+    // ── Request capture (stubs — not exercised by action tests) ──
+    getLastCaptured: () => null,
+    getLastCapturedTime: () => 0,
+    getVisibleGridSource: () => null,
+    getCurrentPageSource: () => null,
+    isWithholdingPage: () => false,
+    subscribeCapture: vi.fn(() => () => {}),
+    queryElement: vi.fn(() => null),
+    queryAllButtons: vi.fn(() => []),
+    clickElement: vi.fn(),
+    setTimeout: vi.fn(() => 0),
+    clearTimeout: vi.fn(),
+
     ...overrides,
   };
 }
