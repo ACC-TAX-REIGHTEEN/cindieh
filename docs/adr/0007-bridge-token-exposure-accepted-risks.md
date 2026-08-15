@@ -14,7 +14,7 @@ Threat model: reading the token requires already running arbitrary script in the
 
 Mitigations that remain load-bearing:
 
-- The token is never stored on `window`; the scraper reads it from its own `<script>` element and immediately removes `src`/`id` and the element itself (the URL window is sub-frame).
+- The token is never stored on `window`; the scraper reads it from its own `<script>` element and immediately removes `src` (the exposure window is sub-frame). The element itself is retained (id only) as the one-time injection marker — see ADR-0008.
 - `shouldProcessPageMessage` validates `event.source`, origin, token, and direction for every message — do not weaken it, and do not reintroduce ad-hoc message listeners (ADR-0002).
 - Do not log the token, persist it, or expose it via any debug hook.
 

@@ -52,9 +52,11 @@ import { createMessageDispatcher } from "./postmessage-guard";
     if (selfScript && selfScript.src) {
       const url = new URL(selfScript.src, location.href);
       bridgeToken = url.searchParams.get("token") || "";
+      // Strip the token from src immediately (exposure window is sub-frame).
+      // The element itself stays in the DOM as the one-time injection marker:
+      // injectScraper's getElementById guard then prevents a second scraper
+      // instance on SPA navigation (zombie interceptors). See ADR-0008.
       selfScript.removeAttribute("src");
-      selfScript.removeAttribute("id");
-      selfScript.remove();
     }
   } catch {
     bridgeToken = "";

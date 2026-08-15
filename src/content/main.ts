@@ -108,6 +108,15 @@ function injectScraper(): void {
   script.src = `${browserAPI.runtime.getURL("content/scraper.js")}?token=${encodeURIComponent(token)}`;
   script.onload = () => {
     debugLog("Scraper injected into page context");
+    // Deliberately keep the element: scraper.ts stripped `src` (and with it
+    // the token) as its first action, and the retained id makes injection
+    // one-time per page — SPA navigation never spawns a second scraper
+    // instance (ADR-0008).
+  };
+  script.onerror = () => {
+    // Load failed (CSP/network): drop the element so injection can be
+    // retried, which also removes the token-bearing src early.
+    debugError("Gagal memuat scraper; elemen dihapus untuk percobaan ulang");
     script.remove();
   };
   (document.head || document.documentElement).appendChild(script);

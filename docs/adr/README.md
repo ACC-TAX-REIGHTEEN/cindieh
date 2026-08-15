@@ -11,3 +11,4 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0005 | [Deferred refactors: two context interfaces](0005-deferred-refactors.md) | Accepted — all completed |
 | 0006 | [Comparer matching uses primary Reference only; refLain is reserved for internal tracking](0006-comparer-reference-matching.md) | Accepted |
 | 0007 | [Bridge token exposure in postMessage payload and script URL is an accepted risk](0007-bridge-token-exposure-accepted-risks.md) | Accepted |
+| 0008 | [Scraper injection is one-time per page; the script element stays as the marker](0008-scraper-injection-one-time-per-page.md) | Accepted |
