@@ -8,7 +8,7 @@ Tech: TypeScript (strict), esbuild bundling, SheetJS (`xlsx`), vanilla DOM/CSS â
 
 **Language split:** user-facing strings (UI text, alerts, panel status) and the README are in **Indonesian**; code comments and this file are in English. Keep user-visible text in Indonesian.
 
-**Architecture decisions** live in `docs/adr/` (numbered, one per decision). The domain glossary is `CONTEXT.md`. When changing the shape of a module, check both before re-litigating a settled seam.
+**Architecture decisions** live in `docs/adr/` (numbered, one per decision; see `docs/adr/README.md` for the index). The domain glossary is `CONTEXT.md`. When changing the shape of a module, check both before re-litigating a settled seam.
 
 ## Two-worlds architecture
 
