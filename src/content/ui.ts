@@ -39,6 +39,13 @@ const MAX_RETRIES = 8;
 
 let isInjected = false;
 
+/**
+ * Document-level click handler that closes the export dropdown. Tracked
+ * module-wide so re-injection and removal can unregister it — otherwise every
+ * Angular re-render would stack another listener (audit: listener leak).
+ */
+let outsideClickHandler: ((e: MouseEvent) => void) | null = null;
+
 // ── Anchor Button Helpers ─────────────────────────────
 
 /**
@@ -333,12 +340,15 @@ export function injectExportButton(retries = MAX_RETRIES): void {
       document.dispatchEvent(new CustomEvent("ch:export-csv"));
     });
 
-    // Close menu when clicking outside
-    document.addEventListener("click", (e: MouseEvent) => {
+    // Close menu when clicking outside. Replace any previous handler so
+    // repeated injections (Angular re-renders) don't stack listeners.
+    if (outsideClickHandler) document.removeEventListener("click", outsideClickHandler);
+    outsideClickHandler = (e: MouseEvent) => {
       if (!exportDropdown.contains(e.target as Node)) {
         menu.classList.add("ch-hidden");
       }
-    });
+    };
+    document.addEventListener("click", outsideClickHandler);
 
     // Add PDF Download button for efaktur pages
     const isEfaktur = isOutputTax || isInputTax || isOutputReturn || isInputReturn;
@@ -433,6 +443,10 @@ export function injectExportButton(retries = MAX_RETRIES): void {
 /** Remove elements on navigation */
 export function removeExportButton(): void {
   clearFilterTimers();
+  if (outsideClickHandler) {
+    document.removeEventListener("click", outsideClickHandler);
+    outsideClickHandler = null;
+  }
   const exportBtn = getExportBtnEl();
   const exportDropdown = document.getElementById("ch-export-dropdown");
   const pdfBtn = getPdfBtnEl();

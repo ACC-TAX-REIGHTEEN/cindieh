@@ -54,7 +54,8 @@ export function injectComparerModal(): void {
 
   const closeBtn = document.createElement("button");
   closeBtn.className = "ch-comparer-close";
-  closeBtn.innerHTML = "&times;";
+  // Static glyph — set via textContent, no HTML parsing needed.
+  closeBtn.textContent = "×";
   closeBtn.setAttribute("aria-label", "Tutup");
 
   header.appendChild(title);

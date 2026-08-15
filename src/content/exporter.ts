@@ -56,7 +56,16 @@ export function downloadTextFile(content: string, filename: string, mimeType: st
   downloadFile(content, filename, mimeType);
 }
 
-/** Trigger a browser download for an XLSX spreadsheet generated from a 2D array of rows. */
+/**
+ * Trigger a browser download for an XLSX spreadsheet generated from a 2D
+ * array of rows (AOA — "array of arrays").
+ *
+ * Deliberately separate from exportXLSX (json_to_sheet): this path feeds
+ * pre-built 2D string grids — e.g. the comparer results table in
+ * ui-comparer.ts — whose rows are already shaped and labeled. json_to_sheet
+ * would add nothing but overhead there. Keep the two writers distinct; they
+ * serve different data shapes.
+ */
 export function downloadXLSXFile(
   rows: readonly (readonly unknown[])[],
   filename: string,
@@ -455,6 +464,10 @@ export function exportXLSX(exportData: ExportData): void {
   const filename = generateDynamicFilename(exportData);
   const { data, fields } = processData(exportData);
 
+  // JSON → sheet with an explicit header: the main export flow keeps data as
+  // row objects keyed by field name, so json_to_sheet + { header: fields }
+  // preserves column order and typing. Deliberately separate from
+  // downloadXLSXFile (aoa_to_sheet), which serves pre-shaped 2D grids.
   const worksheet = XLSX.utils.json_to_sheet(data, { header: fields });
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Faktur");
