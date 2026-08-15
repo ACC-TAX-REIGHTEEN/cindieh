@@ -31,25 +31,61 @@ function generateToken(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-let bridgeToken = "";
-
-export function setBridgeToken(t: string): void {
-  bridgeToken = t;
+export interface Bridge {
+  /** Set the bridge token manually (re-injection / tests). */
+  setBridgeToken(t: string): void;
+  /** Return the current bridge token. */
+  getBridgeToken(): string;
+  /** Generate a fresh random token and store it. */
+  generateBridgeToken(): string;
+  /** Post a message to the page (scraper) world with the bridge token attached. */
+  postToScraper(msg: Record<string, unknown>): void;
 }
 
-export function getBridgeToken(): string {
-  return bridgeToken;
+/**
+ * Build an independent bridge instance. `windowRef` is injectable so tests
+ * pass a stub instead of touching the global `window`; it defaults to the
+ * global in the browser (the only place postToScraper is used).
+ */
+export function createBridge(windowRef?: Window): Bridge {
+  // Resolve lazily at call time: the singleton must pick up a stubbed
+  // globalThis.window (tests), while instances can pin an explicit stub.
+  const w = (): Window => windowRef ?? globalThis.window;
+  let bridgeToken = "";
+
+  function setBridgeToken(t: string): void {
+    bridgeToken = t;
+  }
+
+  function getBridgeToken(): string {
+    return bridgeToken;
+  }
+
+  function generateBridgeToken(): string {
+    bridgeToken = generateToken();
+    return bridgeToken;
+  }
+
+  function postToScraper(msg: Record<string, unknown>): void {
+    const win = w();
+    win.postMessage(
+      { ...msg, direction: "FROM_CONTENT", token: bridgeToken },
+      win.location.origin,
+    );
+  }
+
+  return { setBridgeToken, getBridgeToken, generateBridgeToken, postToScraper };
 }
 
-export function generateBridgeToken(): string {
-  bridgeToken = generateToken();
-  return bridgeToken;
-}
+// ── Module singleton ──────────────────────────────────
+// Production consumers (main.ts, main-actions.ts, shortcuts.ts) import the
+// named helpers below, which delegate to this singleton. Tests should call
+// createBridge() for an independent instance instead of mutating shared
+// module state — avoids cross-test order dependency.
 
-/** Post a message to the page (scraper) world with the bridge token attached. */
-export function postToScraper(msg: Record<string, unknown>): void {
-  window.postMessage(
-    { ...msg, direction: "FROM_CONTENT", token: bridgeToken },
-    window.location.origin,
-  );
-}
+export const bridge: Bridge = createBridge();
+
+export const setBridgeToken = bridge.setBridgeToken;
+export const getBridgeToken = bridge.getBridgeToken;
+export const generateBridgeToken = bridge.generateBridgeToken;
+export const postToScraper = bridge.postToScraper;
