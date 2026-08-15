@@ -200,6 +200,19 @@ describe("xhrDownloadWithholdingPdf", () => {
     const sentBody = JSON.parse(instances[0].send.mock.calls[0][0] as string);
     expect(sentBody.EbupotType).toBe("EBUPOTBPU");
   });
+
+  it("falls back to defaults when rawBody is not valid JSON", async () => {
+    const captured = makeCaptured({ rawBody: "not-json{{{" });
+    const promise = xhrDownloadWithholdingPdf(captured, WITHHOLDING_ROW, 30000);
+
+    instances[0]._triggerLoad(
+      JSON.stringify({ IsSuccessful: true, Payload: { Message: { Data: VALID_BASE64 } } }),
+    );
+    await promise;
+
+    const sentBody = JSON.parse(instances[0].send.mock.calls[0][0] as string);
+    expect(sentBody.EbupotType).toBe("EBUPOTBPU");
+  });
 });
 
 // ── xhrDownloadEfakturPdf ─────────────────────────────────────────────────────
@@ -327,6 +340,21 @@ describe("xhrDownloadEfakturPdf", () => {
 
   it("sets EInvoiceMenuType to Outgoing for OUTPUT_TAX", async () => {
     const promise = xhrDownloadEfakturPdf(BASE_CAPTURED, EFAKTUR_ROW, "OUTPUT_TAX", 30000);
+
+    instances[0]._triggerLoad(JSON.stringify({ Content: VALID_BASE64 }));
+    await promise;
+
+    const body = JSON.parse(instances[0].send.mock.calls[0][0] as string);
+    expect(body.EInvoiceMenuType).toBe("Outgoing");
+  });
+
+  it("falls back to defaults when rawBody is not valid JSON", async () => {
+    const captured = makeCaptured({
+      url: "https://coretaxdjp.pajak.go.id/einvoiceportal/api/outputinvoice/list",
+      rawBody: "not-json{{{",
+      source: "OUTPUT_TAX",
+    });
+    const promise = xhrDownloadEfakturPdf(captured, EFAKTUR_ROW, "OUTPUT_TAX", 30000);
 
     instances[0]._triggerLoad(JSON.stringify({ Content: VALID_BASE64 }));
     await promise;

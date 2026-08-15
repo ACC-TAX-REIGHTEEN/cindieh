@@ -10,6 +10,20 @@ import { unwrapPdfData, isSuccessfulPdfResponse } from "./scraper-pdf";
 import type { CapturedRequest } from "./scraper-types";
 
 /**
+ * Parse a captured request body defensively. Returns {} for empty or invalid
+ * rawBody so callers fall back to defaults instead of throwing a raw
+ * SyntaxError before the XHR is even created.
+ */
+function parseCapturedBody(captured: CapturedRequest): Record<string, unknown> {
+  if (!captured.rawBody) return {};
+  try {
+    return JSON.parse(captured.rawBody) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Shared XHR helper: builds, sends, and parses a POST request.
  * @param captured - The captured request metadata (url, headers, rawBody)
  * @param bodyOverrides - Key-value pairs to merge into the request body
@@ -44,14 +58,7 @@ export function makeXhrRequest(
     xhr.onerror = () => reject(new Error(`Network error di ${JSON.stringify(bodyOverrides)}`));
     xhr.ontimeout = () => reject(new Error(`Timeout di ${JSON.stringify(bodyOverrides)}`));
 
-    let baseBody: Record<string, unknown> = {};
-    try {
-      baseBody = JSON.parse(captured.rawBody) as Record<string, unknown>;
-    } catch {
-      // Invalid or empty rawBody — send only the overrides; the server will
-      // surface the parse error via onload/onerror below.
-    }
-    const body = { ...baseBody, ...bodyOverrides };
+    const body = { ...parseCapturedBody(captured), ...bodyOverrides };
     xhr.send(JSON.stringify(body));
   });
 }
@@ -149,7 +156,7 @@ export function xhrDownloadWithholdingPdf(
     xhr.onerror = () => reject(new Error("Network error saat download PDF"));
     xhr.ontimeout = () => reject(new Error("Timeout saat download PDF"));
 
-    const capturedBody = captured.rawBody ? JSON.parse(captured.rawBody) : {};
+    const capturedBody = parseCapturedBody(captured);
     const body = {
       WithholdingSlipsAggregateIdentifier: row.WithholdingslipsAggregateIdentifier,
       WithholdingSlipsRecordIdentifier: row.RecordId,
@@ -211,7 +218,7 @@ export function xhrDownloadEfakturPdf(
     xhr.onerror = () => reject(new Error("Network error saat download PDF"));
     xhr.ontimeout = () => reject(new Error("Timeout saat download PDF"));
 
-    const capturedBody = captured.rawBody ? JSON.parse(captured.rawBody) : {};
+    const capturedBody = parseCapturedBody(captured);
     const body = buildEfakturPdfBody(row, source, capturedBody);
 
     xhr.send(JSON.stringify(body));
