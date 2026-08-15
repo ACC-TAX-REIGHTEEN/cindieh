@@ -44,7 +44,14 @@ export function makeXhrRequest(
     xhr.onerror = () => reject(new Error(`Network error di ${JSON.stringify(bodyOverrides)}`));
     xhr.ontimeout = () => reject(new Error(`Timeout di ${JSON.stringify(bodyOverrides)}`));
 
-    const body = { ...JSON.parse(captured.rawBody), ...bodyOverrides };
+    let baseBody: Record<string, unknown> = {};
+    try {
+      baseBody = JSON.parse(captured.rawBody) as Record<string, unknown>;
+    } catch {
+      // Invalid or empty rawBody — send only the overrides; the server will
+      // surface the parse error via onload/onerror below.
+    }
+    const body = { ...baseBody, ...bodyOverrides };
     xhr.send(JSON.stringify(body));
   });
 }
@@ -69,13 +76,20 @@ export function xhrRequestByInvoice(
   invoiceNumber: string,
   timeout: number,
 ): Promise<Record<string, unknown>[]> {
-  const fk = "Filters" in JSON.parse(captured.rawBody) ? "Filters" : "filters";
+  let filterKey: "Filters" | "filters" = "Filters";
+  try {
+    const parsed = JSON.parse(captured.rawBody) as Record<string, unknown>;
+    filterKey = "Filters" in parsed ? "Filters" : "filters";
+  } catch {
+    // Invalid or empty rawBody — fall back to the standard "Filters" key;
+    // makeXhrRequest handles the unusable body defensively as well.
+  }
   return makeXhrRequest(
     captured,
     {
       First: 0,
       Rows: 10,
-      [fk]: [
+      [filterKey]: [
         {
           PropertyName: "TaxInvoiceNumber",
           Value: invoiceNumber,

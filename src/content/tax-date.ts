@@ -50,6 +50,17 @@ export function extractMonth(raw: unknown): string {
   return "";
 }
 
+/**
+ * Extract a masa pajak period in MM/YYYY or MM-YYYY form from free text
+ * (e.g. "Periode Masa Pajak 04-2026" → "04-2026").
+ * Returns empty string when no match is found.
+ */
+export function extractMasaPajak(text: string): string {
+  if (!text) return "";
+  const match = text.match(/(\d{2}[-/]\d{4})/);
+  return match ? match[1] : "";
+}
+
 export interface YmdParts {
   year: string;
   month: string;

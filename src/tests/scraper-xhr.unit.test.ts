@@ -173,4 +173,20 @@ describe("xhrRequestByInvoice", () => {
     expect(sentBody.filters).toHaveLength(1);
     expect(sentBody.filters[0].Value).toBe("INV-456");
   });
+
+  it("falls back to the Filters key when rawBody is not valid JSON", async () => {
+    const captured = makeCaptured({ rawBody: "not-json{{{" });
+    const promise = xhrRequestByInvoice(captured, "INV-789", 30000);
+
+    instances[0]._triggerLoad(JSON.stringify({ Payload: { Data: [] } }));
+    await promise;
+
+    const sentBody = JSON.parse(instances[0].send.mock.calls[0][0] as string);
+    expect(sentBody.Filters).toHaveLength(1);
+    expect(sentBody.Filters[0]).toMatchObject({
+      PropertyName: "TaxInvoiceNumber",
+      Value: "INV-789",
+      MatchMode: "equals",
+    });
+  });
 });

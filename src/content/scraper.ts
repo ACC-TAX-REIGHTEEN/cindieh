@@ -22,6 +22,7 @@ import {
   inferCapturedSource,
   isWithholdingPage,
 } from "./page-context";
+import { extractMasaPajak } from "./tax-date";
 import { debugLog, debugWarn, debugError } from "./debug";
 import type { CapturedRequest, ScrapeMessage, InterceptedXHR } from "./scraper-types";
 import {
@@ -262,8 +263,8 @@ import { createMessageDispatcher } from "./postmessage-guard";
         if (input && input.value) return input.value.trim();
 
         const text = container.textContent || "";
-        const match = text.match(/(\d{2}[-/]\d{4})/);
-        if (match) return match[1];
+        const masaPajak = extractMasaPajak(text);
+        if (masaPajak) return masaPajak;
 
         const lastChild = container.lastElementChild;
         if (lastChild && lastChild.textContent) return lastChild.textContent.trim();
@@ -330,11 +331,33 @@ import { createMessageDispatcher } from "./postmessage-guard";
   // SECURITY: Only intercepts URLs matching the specific Coretax
   // download endpoint. All other fetch requests pass through unchanged.
 
+  /**
+   * True when the fetch call is one the extension created itself for bulk
+   * download — flagged with __isCindiehBulk on the RequestInit or the
+   * Request object, mirroring InterceptedXHR on the XHR path.
+   */
+  function isBulkFetchRequest(...args: unknown[]): boolean {
+    const init = args[1] as (RequestInit & { __isCindiehBulk?: boolean }) | undefined;
+    if (init?.__isCindiehBulk) return true;
+    const req = args[0];
+    if (req && typeof req === "object") {
+      return (req as { __isCindiehBulk?: boolean }).__isCindiehBulk === true;
+    }
+    return false;
+  }
+
   const origFetch = window.fetch;
   window.fetch = async function (...args: unknown[]) {
     const url =
       typeof args[0] === "string" ? args[0] : (args[0] as Request)?.url;
-    if (url?.includes("DownloadInvoice/download-invoice-document")) {
+    // Guard mirrors the XHR interceptor: skip extension-owned bulk fetches
+    // (__isCindiehBulk) so they never double-fire DOWNLOAD_PDF_ITEM. Today the
+    // bulk paths use XHR only (xhrDownloadEfakturPdf / xhrDownloadWithholdingPdf),
+    // but keep this flag working if any of them moves to fetch.
+    if (
+      url?.includes("DownloadInvoice/download-invoice-document") &&
+      !isBulkFetchRequest(...args)
+    ) {
       pdfSession.beginProcessing();
       try {
         const resp = await origFetch.apply(window, args as Parameters<typeof fetch>);

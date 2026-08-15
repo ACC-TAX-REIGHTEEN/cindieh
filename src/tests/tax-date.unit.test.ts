@@ -2,7 +2,7 @@
 // Covers extractYear, extractMonth (including the TD. tax-domain form),
 // extractYMD, and the timezone-safe formatDate.
 import { describe, it, expect } from "vitest";
-import { extractYear, extractMonth, extractYMD, formatDate, getCurrentYearMonthWIB } from "../content/tax-date";
+import { extractYear, extractMonth, extractMasaPajak, extractYMD, formatDate, getCurrentYearMonthWIB } from "../content/tax-date";
 
 // ── extractYear ───────────────────────────────────────────────────────────────
 
@@ -54,6 +54,31 @@ describe("extractMonth", () => {
     expect(extractMonth("abc")).toBe("");
     expect(extractMonth("13")).toBe("");
     expect(extractMonth("2026")).toBe("");
+  });
+});
+
+// ── extractMasaPajak ──────────────────────────────────────────────────────────
+
+describe("extractMasaPajak", () => {
+  it("extracts an MM/YYYY period from free text", () => {
+    expect(extractMasaPajak("Periode Masa Pajak 04/2026")).toBe("04/2026");
+    expect(extractMasaPajak("Masa Pajak: 07/2026")).toBe("07/2026");
+  });
+
+  it("extracts an MM-YYYY period from free text", () => {
+    expect(extractMasaPajak("Masa Pajak 04-2026")).toBe("04-2026");
+    expect(extractMasaPajak("Periode 12-2026 (Desember)")).toBe("12-2026");
+  });
+
+  it("returns the first MM/YYYY or MM-YYYY match", () => {
+    expect(extractMasaPajak("Dari 01/2026 sampai 04/2026")).toBe("01/2026");
+  });
+
+  it("returns empty string for missing or invalid input", () => {
+    expect(extractMasaPajak("")).toBe("");
+    expect(extractMasaPajak("Masa Pajak belum diisi")).toBe("");
+    expect(extractMasaPajak("2026")).toBe("");
+    expect(extractMasaPajak("Tahun 2026 bulan 4")).toBe("");
   });
 });
 
