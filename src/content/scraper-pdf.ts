@@ -39,6 +39,13 @@ export interface PdfDownloadSessionDeps {
   getSource: () => ExportSource | null;
   /** Emits a DOWNLOAD_PDF_ITEM message (postMessage into the page). */
   emit: (msg: PdfDownloadMessage) => void;
+  /**
+   * Schedule the processing-flag auto-reset timer. Defaults to the global
+   * setTimeout in production; inject a stub in tests (no fake timers needed).
+   */
+  setTimeout?: (fn: () => void, ms: number) => unknown;
+  /** Cancel a timer scheduled by this session's setTimeout. */
+  clearTimeout?: (handle: unknown) => void;
 }
 
 export interface PdfDownloadSession {
@@ -146,13 +153,17 @@ export function buildPdfDownloadMessage(params: {
 // success path leaves it blocking the native download until handled.
 
 export function createPdfDownloadSession(deps: PdfDownloadSessionDeps): PdfDownloadSession {
+  const schedule = deps.setTimeout ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
+  const cancel =
+    deps.clearTimeout ??
+    ((handle: unknown) => clearTimeout(handle as Parameters<typeof clearTimeout>[0]));
   let processing = false;
-  let resetTimer: ReturnType<typeof setTimeout> | null = null;
+  let resetTimer: unknown = null;
 
   function beginProcessing(): void {
     processing = true;
-    if (resetTimer) clearTimeout(resetTimer);
-    resetTimer = setTimeout(() => {
+    if (resetTimer !== null) cancel(resetTimer);
+    resetTimer = schedule(() => {
       if (processing) processing = false;
       resetTimer = null;
     }, PROCESSING_RESET_TIMEOUT_MS);
@@ -160,8 +171,8 @@ export function createPdfDownloadSession(deps: PdfDownloadSessionDeps): PdfDownl
 
   function clearProcessing(): void {
     processing = false;
-    if (resetTimer) {
-      clearTimeout(resetTimer);
+    if (resetTimer !== null) {
+      cancel(resetTimer);
       resetTimer = null;
     }
   }

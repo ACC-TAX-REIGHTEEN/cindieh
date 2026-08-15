@@ -111,8 +111,15 @@ export function createActionDeps(): ActionDeps {
 
 // ── Functions ────────────────────────────────────────
 
-/** Helper: find and click the search/refresh button */
-export function triggerSearch(): void {
+/**
+ * Helper: find and click the search/refresh button.
+ *
+ * `scheduleDelay` defaults to the global setTimeout in production; tests pass
+ * a stub to capture the click without touching the DOM timer.
+ */
+export function triggerSearch(
+  scheduleDelay: (fn: () => void, ms: number) => unknown = setTimeout,
+): void {
   const searchBtn = Array.from(document.querySelectorAll("button")).find((btn) => {
     // Ignore Cindieh's own injected buttons (they use pi-search/pi-refresh icons)
     if (btn.id?.startsWith("ch-")) return false;
@@ -123,7 +130,7 @@ export function triggerSearch(): void {
 
   if (searchBtn) {
     debugLog("Triggering search via button:", searchBtn.textContent?.trim());
-    setTimeout(() => searchBtn.click(), SEARCH_CLICK_DELAY_MS);
+    scheduleDelay(() => searchBtn.click(), SEARCH_CLICK_DELAY_MS);
   } else {
     debugWarn("Could not find search/refresh button");
   }

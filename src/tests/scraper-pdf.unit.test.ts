@@ -1,7 +1,7 @@
 // Unit tests for scraper-pdf.ts — PDF download module.
 // Covers the pure core (unwrap, row resolution, message build)
 // and the interception session (processing flag lifecycle, emit).
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   unwrapPdfData,
   isSuccessfulPdfResponse,
@@ -147,11 +147,32 @@ describe("buildPdfDownloadMessage", () => {
 });
 
 // ── createPdfDownloadSession ──────────────────────────────────────────────────
+// Timer behaviour is driven through injected setTimeout/clearTimeout deps so
+// tests control the reset timer deterministically — no fake timers required.
 
 describe("createPdfDownloadSession", () => {
   const rowMap = new Map([
     ["010.000-26.00000001", { Reference: "SZ-0447/07/26", TaxInvoiceNumber: "010.000-26.00000001" }],
   ]);
+
+  /** Injectable timer harness: records schedules, honours cancellations. */
+  function makeTimerHarness() {
+    const scheduled: Array<{ fn: () => void; cancelled: boolean }> = [];
+    return {
+      scheduled,
+      setTimeout: (fn: () => void) => {
+        scheduled.push({ fn, cancelled: false });
+        return scheduled.length;
+      },
+      clearTimeout: (handle: unknown) => {
+        const idx = Number(handle) - 1;
+        if (scheduled[idx]) scheduled[idx].cancelled = true;
+      },
+      fireAll: () => {
+        for (const t of scheduled) if (!t.cancelled) t.fn();
+      },
+    };
+  }
 
   function makeDeps(overrides: Partial<Parameters<typeof createPdfDownloadSession>[0]> = {}) {
     const emit = vi.fn();
@@ -160,37 +181,61 @@ describe("createPdfDownloadSession", () => {
       getRowMap: () => rowMap,
       getSource: () => null,
       emit,
+      setTimeout: vi.fn(() => 1),
+      clearTimeout: vi.fn(),
       ...overrides,
     } as Parameters<typeof createPdfDownloadSession>[0] & { emit: ReturnType<typeof vi.fn> };
   }
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
 
   it("is not processing initially", () => {
     const session = createPdfDownloadSession(makeDeps());
     expect(session.isProcessing()).toBe(false);
   });
 
-  it("beginProcessing arms the flag and the timeout resets it", () => {
-    const session = createPdfDownloadSession(makeDeps());
+  it("beginProcessing arms the flag and the injected reset timer disarms it", () => {
+    const timers = makeTimerHarness();
+    const session = createPdfDownloadSession(
+      makeDeps({ setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout }),
+    );
+
     session.beginProcessing();
     expect(session.isProcessing()).toBe(true);
-    vi.advanceTimersByTime(5000);
+    expect(timers.scheduled).toHaveLength(1);
+
+    timers.fireAll();
     expect(session.isProcessing()).toBe(false);
   });
 
-  it("clearProcessing disarms the flag and cancels the reset timer", () => {
-    const session = createPdfDownloadSession(makeDeps());
+  it("clearProcessing disarms the flag and cancels the pending reset timer", () => {
+    const timers = makeTimerHarness();
+    const session = createPdfDownloadSession(
+      makeDeps({ setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout }),
+    );
+
     session.beginProcessing();
     session.clearProcessing();
+
     expect(session.isProcessing()).toBe(false);
-    vi.advanceTimersByTime(5000);
+    expect(timers.scheduled[0].cancelled).toBe(true);
+
+    timers.fireAll();
+    expect(session.isProcessing()).toBe(false);
+  });
+
+  it("re-beginProcessing cancels the previous reset timer", () => {
+    const timers = makeTimerHarness();
+    const session = createPdfDownloadSession(
+      makeDeps({ setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout }),
+    );
+
+    session.beginProcessing();
+    session.beginProcessing();
+
+    expect(timers.scheduled).toHaveLength(2);
+    expect(timers.scheduled[0].cancelled).toBe(true);
+    expect(timers.scheduled[1].cancelled).toBe(false);
+
+    timers.fireAll();
     expect(session.isProcessing()).toBe(false);
   });
 

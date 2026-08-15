@@ -19,6 +19,7 @@ import {
   startPdfDownload,
   startScrape,
   applyMultiInvoiceFilter,
+  triggerSearch,
   type ContentState,
   type ActionDeps,
 } from "../content/main-actions";
@@ -476,5 +477,102 @@ describe("state isolation", () => {
 
     expect(depsA.postToScraper).toHaveBeenCalledOnce();
     expect(depsB.postToScraper).toHaveBeenCalledOnce();
+  });
+});
+
+// ── triggerSearch ─────────────────────────────────────────────────────────────
+// The delayed click is driven through the injected scheduleDelay so no real
+// DOM timer or fake timers are needed.
+
+describe("triggerSearch", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function makeButton(overrides: Partial<HTMLButtonElement> = {}): HTMLButtonElement {
+    return {
+      id: "",
+      textContent: "",
+      querySelector: () => null,
+      click: vi.fn(),
+      ...overrides,
+    } as unknown as HTMLButtonElement;
+  }
+
+  function captureSchedule() {
+    const scheduled: Array<() => void> = [];
+    const schedule = (fn: () => void) => {
+      scheduled.push(fn);
+      return 1;
+    };
+    return { scheduled, schedule };
+  }
+
+  it("schedules a delayed click on the matching search button", () => {
+    const click = vi.fn();
+    vi.stubGlobal("document", {
+      querySelectorAll: () => [makeButton({ textContent: "Cari", click })],
+    });
+    const { scheduled, schedule } = captureSchedule();
+
+    triggerSearch(schedule);
+
+    expect(scheduled).toHaveLength(1);
+    scheduled[0]();
+    expect(click).toHaveBeenCalledOnce();
+  });
+
+  it("matches buttons by refresh text", () => {
+    const click = vi.fn();
+    vi.stubGlobal("document", {
+      querySelectorAll: () => [makeButton({ textContent: "Refresh Data", click })],
+    });
+    const { scheduled, schedule } = captureSchedule();
+
+    triggerSearch(schedule);
+
+    expect(scheduled).toHaveLength(1);
+  });
+
+  it("matches buttons carrying a pi-search icon even without matching text", () => {
+    const click = vi.fn();
+    vi.stubGlobal("document", {
+      querySelectorAll: () => [
+        makeButton({ textContent: "Export", querySelector: () => ({}) as Element, click }),
+      ],
+    });
+    const { scheduled, schedule } = captureSchedule();
+
+    triggerSearch(schedule);
+
+    expect(scheduled).toHaveLength(1);
+  });
+
+  it("ignores Cindieh's own ch-* buttons and clicks the real search button", () => {
+    const chClick = vi.fn();
+    const cariClick = vi.fn();
+    vi.stubGlobal("document", {
+      querySelectorAll: () => [
+        makeButton({ id: "ch-export", textContent: "Export", click: chClick }),
+        makeButton({ textContent: "Cari", click: cariClick }),
+      ],
+    });
+    const { scheduled, schedule } = captureSchedule();
+
+    triggerSearch(schedule);
+
+    expect(scheduled).toHaveLength(1);
+    scheduled[0]();
+    expect(chClick).not.toHaveBeenCalled();
+    expect(cariClick).toHaveBeenCalledOnce();
+  });
+
+  it("schedules nothing when no search button exists", () => {
+    vi.stubGlobal("document", { querySelectorAll: () => [] });
+    const { scheduled, schedule } = captureSchedule();
+
+    triggerSearch(schedule);
+
+    expect(scheduled).toHaveLength(0);
   });
 });
