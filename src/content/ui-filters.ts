@@ -296,7 +296,9 @@ export function injectMultiInvoiceFilter(retries = MAX_RETRIES): void {
   toggleBtn.addEventListener("click", (e: MouseEvent) => {
     e.stopPropagation();
     if (!multiInvoicePanel) return;
-    const isVisible = multiInvoicePanel.style.display !== "none";
+    // The panel's stylesheet hides it by default (display: none). Only inline
+    // `display: block` counts as open, so the first click always shows it.
+    const isVisible = multiInvoicePanel.style.display === "block";
     if (isVisible) {
       multiInvoicePanel.style.display = "none";
     } else {
