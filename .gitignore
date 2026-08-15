@@ -14,6 +14,7 @@ Desktop.ini
 # Editor
 .vscode/
 .idea/
+.freebuff/
 *.swp
 *.swo
 
