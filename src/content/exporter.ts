@@ -32,7 +32,12 @@ export function escapeCSV(value: unknown): string {
   let s = String(value);
   if (
     typeof value !== "number" &&
-    (/^[=\+@\t\r]/.test(s) || (s.startsWith("-") && isNaN(Number(s))))
+    // Prefix a leading apostrophe too: besides making the escape injective
+    // (so `'-` and `'=1` round-trip), Excel consumes a single leading `'` as
+    // its "text" marker — doubling it preserves a literal apostrophe in data.
+    (s.startsWith("'") ||
+      /^[=\+@\t\r]/.test(s) ||
+      (s.startsWith("-") && isNaN(Number(s))))
   ) {
     s = `'${s}`;
   }

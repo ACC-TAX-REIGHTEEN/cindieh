@@ -82,6 +82,12 @@ describe("escapeCSV", () => {
 		expect(escapeCSV(-100)).toBe("-100");
 		expect(escapeCSV("-100.50")).toBe("-100.50");
 	});
+
+	it("preserves a leading apostrophe by doubling it (Excel text marker)", () => {
+		expect(escapeCSV("'hello")).toBe("''hello");
+		expect(escapeCSV("'-")).toBe("''-");
+		expect(escapeCSV("'=SUM(A1)")).toBe("''=SUM(A1)");
+	});
 });
 
 // ============================================================

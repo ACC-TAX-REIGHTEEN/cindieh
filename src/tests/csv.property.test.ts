@@ -27,7 +27,9 @@ function parseCSVField(field: string): string {
 	}
 	if (
 		content.startsWith("'") &&
-		(/^[=\+@\t\r]/.test(content.slice(1)) || (content.slice(1).startsWith("-") && isNaN(Number(content.slice(1)))))
+		(content.startsWith("''") || // doubled apostrophe: escapeCSV preserved a literal leading '
+			(/^[=\+@\t\r]/.test(content.slice(1)) ||
+				(content.slice(1).startsWith("-") && isNaN(Number(content.slice(1))))))
 	) {
 		content = content.slice(1);
 	}
