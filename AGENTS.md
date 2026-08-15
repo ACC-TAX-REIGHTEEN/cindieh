@@ -70,6 +70,7 @@ Existing code follows these patterns — new code should match them:
 - **`dist/` is a gitignored build artifact.** Never edit it; the build regenerates it. `build.cjs` rewrites the manifest per browser (Chrome `service_worker`, Firefox scripts + `browser_specific_settings.gecko.data_collection_permissions`), so manifest edits go in the source `manifest.json`.
 - **Versioning:** `pnpm version` runs `sync-manifest.cjs` to keep `manifest.json` in sync; releases go through `pnpm release` (release-it + `@release-it/conventional-changelog` → CHANGELOG.md, tag `vX.Y.Z`, no push). Preview the next release without touching anything with `pnpm release:dry-run`.
 - **pnpm 11 auto-runs `pnpm install` before every command** (`verify-deps-before-run`), and the install fails on the ignored `esbuild` build script (`ERR_PNPM_IGNORED_BUILDS`). Run commands with `pnpm --config.verify-deps-before-run=false <cmd>` to skip the pre-run install; the `node_modules` tree stays valid.
+- **TypeScript 7 is the compiler; `typescript` is aliased on purpose.** `tsc` runs the Go-native TypeScript 7 (`@typescript/native`), while the `typescript` dependency is deliberately `npm:@typescript/typescript6` because TypeScript 7 ships no compiler API and `typescript-eslint` (peer: `<6.1.0`) needs one. `pnpm exec tsc6` gives the 6.0 compiler. Never bump `typescript` to `^7` directly — lint breaks; keep both aliases in sync when upgrading.
 
 ## Validation loop
 
