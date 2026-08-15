@@ -1,151 +1,97 @@
-# Audit Menyeluruh — Cindieh Extension v2.0.0
+# Audit Menyeluruh — Cindieh Extension v2.0.0 (2026-08-15)
 
-**Tanggal audit:** 2026-08-15  
-**Hasil validasi otomatis:** ✅ TypeScript 0 error · ✅ 499/499 test pass · ✅ ESLint 0 error
+**Tanggal audit:** 2026-08-15
+**Hasil validasi otomatis:** ✅ TypeScript 0 error · ✅ 531/531 test pass (22 file) · ✅ ESLint 0 error · ✅ Build Chrome sukses
+
+**Ruang lingkup:** Seluruh `src/`, `popup/`, `manifest.json`, `docs/`, dan toolchain. Audit mencakup perubahan terbaru yang belum di-commit (isolasi filter No. Faktur ke halaman e-Faktur saja + perbaikan re-injection panel).
 
 ---
 
 ## Ringkasan Eksekutif
 
-Proyek dalam kondisi **baik secara keseluruhan**: semua toolchain hijau, arsitektur dua-dunia (isolated ↔ MAIN) terimplementasi konsisten, dan cakupan tes sangat luas (22 file, 499 kasus). Namun ditemukan beberapa temuan yang perlu ditangani — dua di antaranya terkait keamanan dan satu potensi bug.
+Proyek dalam kondisi **sehat dan jauh lebih baik dari audit sebelumnya**. Seluruh 14 temuan audit lama sudah dituntaskan (detail di bawah): temuan keamanan didokumentasikan sebagai *accepted risk* (ADR-0007), bug potensial diperbaiki, dan gap test ditutup. Tidak ada temuan baru berseverity **High** atau **Medium**. Sisa temuan berkelas **Low/Info** — sebagian besar soal dokumentasi yang usang dan modul DOM-heavy yang belum punya unit test.
+
+Perbedaan besar sejak audit sebelumnya:
+
+- **Keamanan bridge**: paparan token di `postMessage` dan URL script kini terdokumentasi eksplisit sebagai *accepted risk* (ADR-0007) dengan mitigasi yang dijaga; guard `shouldProcessPageMessage` tetap utuh dan diuji property.
+- **Anti-zombie interceptor**: injeksi scraper kini one-time per halaman (ADR-0008) — bug lama *stacked interceptors* saat SPA navigate sudah hilang.
+- **Toolchain**: TypeScript 7 (native) + alias TypeScript 6 untuk typescript-eslint (ADR-0009); `standard-version` diganti `release-it`.
+- **Test**: 499 → 531 kasus. Path retry-exhaustion `scrapeByInvoices` yang tadinya tidak diuji kini lengkap (abort, early-return, backoff, reset counter).
 
 ---
 
-## 1. Keamanan
+## 1. Status Temuan Audit Sebelumnya
 
-### [HIGH] Token bridge bisa terbaca oleh skrip MAIN-world lain
-
-**File:** [`bridge.ts:51-54`](file:///D:/PROGRAMMING/cindieh/extension/src/content/bridge.ts#L50-L55), [`scraper.ts:217-221`](file:///D:/PROGRAMMING/cindieh/extension/src/content/scraper.ts#L216-L222)
-
-```ts
-// bridge.ts — postToScraper
-window.postMessage({ ...msg, direction: "FROM_CONTENT", token: bridgeToken }, window.location.origin);
-```
-
-Token dikirim sebagai field plaintext dalam payload `window.postMessage`. Karena `window.addEventListener("message", ...)` dapat dipasang oleh **semua** skrip MAIN-world (termasuk skrip Angular Coretax itu sendiri, ekstensi lain, atau skrip injeksi), token bisa dibaca dari event `data.token`.
-
-**Dampak nyata:** Sangat terbatas. Penyerang harus sudah ada di MAIN-world (artinya sudah berhasil inject skrip ke halaman). Namun jika ini terjadi, token bisa digunakan untuk forge `START_SCRAPE` atau `DOWNLOAD_PDF_ITEM`.
-
-**Mitigasi yang ada:** Token di-validasi per-pesan, tidak di-store di `window`, dan script tag dihapus setelah load. Risiko residual tetap ada tapi **acceptable** mengingat threat model ekstensi browser.
-
-**Rekomendasi:** Catat ini sebagai known accepted risk di ADR baru; tidak ada fix arsitektural tanpa mengganti postMessage dengan `chrome.runtime.sendMessage` (yang tidak tersedia di MAIN world).
-
----
-
-### [MEDIUM] Token dalam URL saat injeksi scraper
-
-**File:** [`main.ts:98`](file:///D:/PROGRAMMING/cindieh/extension/src/content/main.ts#L98)
-
-```ts
-script.src = `${browserAPI.runtime.getURL("content/scraper.js")}?token=${encodeURIComponent(token)}`;
-```
-
-Selama rentang waktu antara `appendChild` dan saat `scraper.ts` menghapus `src`/`id` (baris 54-56 `scraper.ts`), token terekspos di atribut `src` elemen `<script>`. Skrip MAIN-world yang sudah aktif dan memantau mutasi DOM bisa membacanya.
-
-**Mitigasi yang ada:** `scraper.ts` langsung `removeAttribute("src")` dan `remove()` saat pertama berjalan. Jendela paparan sangat singkat.
-
-**Rekomendasi:** Akui sebagai accepted risk; tidak ada cara lain untuk pass token ke MAIN world yang sudah terdokumentasi dalam arsitektur.
+| # | Temuan lama | Severity lama | Status |
+|---|-------------|---------------|--------|
+| 1 | Fetch interceptor tidak cek `__isCindiehBulk` | Medium | ✅ **Diperbaiki** — `isBulkFetchRequest()` guard ada di `scraper.ts`; komentar peringatan mengikuti pola AGENTS.md |
+| 2 | `xhrRequestByInvoice` `JSON.parse` tanpa try-catch | Medium | ✅ **Diperbaiki** — try-catch + `parseCapturedBody()` defensif |
+| 3 | `getMasaPajakFromDOM` inline regex | Low | ✅ **Diperbaiki** — `extractMasaPajak()` di `tax-date.ts` |
+| 4 | Test `scrapeByInvoices` retry exhaustion | Low | ✅ **Ditutup** — 6 kasus baru (abort, early-return, backoff, reset, stop) |
+| 5 | Test `ui-filters.ts` tipis | Low | ✅ **Ditutup** — 13 kasus untuk `splitInvoiceNumbers`/`parseMultiInvoiceText` |
+| 6 | `bridge.ts` tanpa factory | Low | ✅ **Diperbaiki** — `createBridge(windowRef?)` + singleton; test bebas order-dependency |
+| 7 | Upgrade TypeScript | Low | ✅ **Selesai** — TS 7 native (ADR-0009) |
+| 8 | Ganti `standard-version` | Low | ✅ **Selesai** — `release-it` + `@release-it/conventional-changelog` |
+| 9 | Token di postMessage = accepted risk (ADR baru) | Low | ✅ **Selesai** — ADR-0007 |
+| 10 | `createPdfDownloadSession` `setTimeout` global | Quality | ✅ **Diperbaiki** — `setTimeout`/`clearTimeout` injectable via deps |
+| 11 | `ui-comparer.ts` `innerHTML = "&times;"` | Quality | ✅ **Diperbaiki** — `textContent = "×"` |
+| 12 | `ui.ts` listener `click` tidak di-remove | Quality | ✅ **Diperbaiki** — `outsideClickHandler` dilacak & dilepas di `removeExportButton` |
+| 13 | Duplikasi XLSX (`aoa_to_sheet` vs `json_to_sheet`) | Quality | ✅ **Diklarifikasi** — komentar menjelaskan dua path disengaja untuk dua bentuk data |
+| 14 | Rate-limit guard `INJECTED_READY` → `START_SCRAPE` | Low | ✅ **Diperbaiki** — `scraperResendArmed` (satu resend per injeksi) |
 
 ---
 
-### [LOW] Tidak ada rate-limit guard di sisi isolated world
+## 2. Keamanan
 
-**File:** [`main.ts`](file:///D:/PROGRAMMING/cindieh/extension/src/content/main.ts) — handler `START_PDF_DOWNLOAD` tidak membatasi berapa kali scraper bisa dipanggil ulang jika `INJECTED_READY` diterima berkali-kali.
+### [INFO] Paparan token bridge — accepted risk (ADR-0007)
 
-Jika scraper di-inject ulang (SPA navigate back-and-forth cepat), ada potensi race antara dua instance scraper mengirim `INJECTED_READY`. Saat ini `injectScraper()` memang sudah guard via `getElementById`, tapi ini patut diperhatikan.
+Token tetap dikirim sebagai field plaintext dalam `window.postMessage` dan sempat berada di `?token=` pada `<script src>` saat injeksi. Ini **disengaja dan didokumentasikan** (ADR-0007): MAIN world tidak punya `browser.runtime`, jadi `postMessage` adalah satu-satunya kanal; membacanya butuh skrip MAIN-world yang sudah berjalan, yang saat itu bisa membaca apa pun di halaman. Mitigasi yang masih dijaga:
 
----
+- Token tidak pernah disimpan di `window`; `scraper.ts` membaca dari elemen `<script>` sendiri lalu langsung `removeAttribute("src")`.
+- Guard `shouldProcessPageMessage` (source, origin, direction, token) diuji dengan property test (`postmessage.origin.property.test.ts`, 19 kasus) — **jangan dilemahkan**.
+- ADR-0008: elemen script dipertahankan hanya sebagai marker id (tanpa token) → satu instance scraper per halaman, tanpa zombie interceptor.
 
-## 2. Kualitas Kode & Bug Potensial
+### [INFO] CSV formula-injection hardening ✅
 
-### [BUG — MEDIUM] Fetch interceptor tidak menghormati flag `__isCindiehBulk`
+`escapeCSV` me-prefix `'` pada nilai berawalan `= + - @ tab CR` dan apostrof; ada property test (`csv.property.test.ts`) + unit test. XLSX via SheetJS menulis string sebagai sel bertipe string, bukan formula. Postur baik.
 
-**File:** [`scraper.ts:333-369`](file:///D:/PROGRAMMING/cindieh/extension/src/content/scraper.ts#L333-L369)
+### [INFO] Permintaan minimal — manifest
 
-```ts
-// XHR send() — sudah ada guard:
-if (...!(this as InterceptedXHR & { __isCindiehBulk?: boolean }).__isCindiehBulk) { ... }
-
-// TAPI fetch interceptor TIDAK ada guard serupa:
-window.fetch = async function (...args: unknown[]) {
-  if (url?.includes("DownloadInvoice/download-invoice-document")) {
-    pdfSession.beginProcessing();  // ← langsung diproses, tidak cek apakah ini bulk-fetch
-```
-
-AGENTS.md eksplisit menyebut: *"Keep that flag working when adding download paths."* Saat ini `xhrDownloadEfakturPdf` dan `xhrDownloadWithholdingPdf` menggunakan XHR (bukan fetch), jadi belum terdampak. Namun jika ada refactor ke fetch di masa depan, ini akan menyebabkan double-emit `DOWNLOAD_PDF_ITEM`.
-
-**Rekomendasi:** Tambahkan komentar peringatan di fetch interceptor bahwa jika bulk-download path pindah ke fetch, flag harus dicek.
+`host_permissions` dan `web_accessible_resources` dibatasi ke `https://coretaxdjp.pajak.go.id/*`; `use_dynamic_url: true` pada `scraper.js`; permission hanya `activeTab` + `storage`. Tidak ada `unlimitedStorage` atau permission berlebihan. ✅
 
 ---
 
-### [BUG — MINOR] `getMasaPajakFromDOM` menggunakan inline regex untuk date parsing
+## 3. Kualitas Kode & Temuan Baru
 
-**File:** [`scraper.ts:265`](file:///D:/PROGRAMMING/cindieh/extension/src/content/scraper.ts#L265)
+### [LOW] `RATE_LIMITING.md` — referensi baris usang
 
-```ts
-const match = text.match(/(\d{2}[-/]\d{4})/);
-```
+**File:** [`RATE_LIMITING.md`](RATE_LIMITING.md)
 
-AGENTS.md melarang hand-rolling date regex: *"put new date/period parsing there instead of hand-rolling regexes"* (merujuk ke `tax-date.ts`). Format `MM/YYYY` atau `MM-YYYY` belum ada parser di `tax-date.ts`, jadi ini adalah gap kecil — tapi melanggar konvensi proyek.
+Link `file:///...scraper-actions.ts#L159`, `#L388`, `#L344` sudah tidak akurat setelah refactor (merge `ScraperContext`/`InterceptContext`, `ContentState`, ekstraksi modul). Nilainya sendiri masih cocok dengan kode: bulk PDF `delay(800)`, per-invoice `delay(50)`, `MAX_INVOICE_RETRIES = 2`, `BACKOFF_BASE_MS = 1000`.
 
-**Rekomendasi:** Tambahkan `extractMasaPajak(text: string): string` ke `tax-date.ts` dan panggil dari `getMasaPajakFromDOM`.
+**Rekomendasi:** Hapus nomor baris dari link (atau sebut nama fungsi, bukan nomor baris) supaya tidak usang lagi.
 
----
+### [LOW] Modul DOM-heavy masih minim unit test
 
-### [QUALITY] `bridge.ts` tidak menyediakan factory untuk test isolation
+- `ui-filters.ts` — helper murni sudah diuji (13 kasus), tapi logika **injection DOM** belum: guard `isEfakturPage`, deteksi setengah-inject (toggle/panel), unregister listener di `removeMultiInvoiceFilter`. Ini logika yang baru ditulis dan paling rentan regresi.
+- `ui-badge.ts` — hanya 3 smoke test (`ui.badge.unit.test.ts`).
+- `ui.ts`, `ui-comparer.ts` — tanpa unit test (DOM-heavy, di-cover sebagian lewat `comparer-logic`).
 
-**File:** [`bridge.ts`](file:///D:/PROGRAMMING/cindieh/extension/src/content/bridge.ts)
+**Rekomendasi:** Minimal, tambah test untuk logika *re-injection* `injectMultiInvoiceFilter` (DOM stub minimal seperti pola `triggerSearch` di `main-actions.unit.test.ts`). Tidak menuntut test penuh untuk `ui.ts`/`ui-comparer.ts`.
 
-```ts
-let bridgeToken = "";  // module-level shared state
-export function setBridgeToken(t: string): void { bridgeToken = t; }
-export function generateBridgeToken(): string { bridgeToken = generateToken(); return bridgeToken; }
-```
+### [INFO] `main.ts` — branch keyup `ch-multi-invoice-textarea` mati di halaman non-e-Faktur
 
-AGENTS.md: *"Stateful modules export a production singleton plus a `createX()` factory so tests use independent instances."* `bridge.ts` tidak memiliki factory — `bridge.unit.test.ts` sudah ada tapi menggunakan module state langsung. Ini menyebabkan test order-dependency jika test dijalankan dalam batch tanpa reset.
+**File:** [`main.ts:241`](src/content/main.ts)
 
-**Rekomendasi:** Tambahkan `createBridge()` yang mengembalikan `{ setBridgeToken, getBridgeToken, generateBridgeToken, postToScraper }` object, dan buat singleton dari factory tersebut.
+Handler masih memproses `target.id === "ch-multi-invoice-textarea"` di semua halaman. Aman (elemen hanya ada di halaman e-Faktur), hanya sisa kode yang tidak pernah aktif di halaman Withholding Slips. Tidak perlu diubah kecuali mau dirapikan.
 
----
+### [INFO] Logika baru filter No. Faktur (efaktur-only) — direview
 
-### [QUALITY] `createPdfDownloadSession` menggunakan `setTimeout` global tanpa injeksi
-
-**File:** [`scraper-pdf.ts:155`](file:///D:/PROGRAMMING/cindieh/extension/src/content/scraper-pdf.ts#L154-L158)
-
-```ts
-resetTimer = setTimeout(() => {   // ← global setTimeout, tidak bisa di-stub tests
-  if (processing) processing = false;
-  resetTimer = null;
-}, PROCESSING_RESET_TIMEOUT_MS);
-```
-
-`PdfDownloadSessionDeps` tidak menyertakan `setTimeout`/`clearTimeout`. Tests di `scraper-pdf.unit.test.ts` sudah menggunakan `vi.useFakeTimers()` untuk workaround ini, tapi dependency injection yang proper lebih rapi.
+Perubahan terbaru (belum di-commit): `injectMultiInvoiceFilter` kini dibatasi ke halaman e-Faktur via `isEfakturPage()` dan melakukan *re-injection bersih* jika salah satu bagian (toggle/panel) hilang karena re-render Angular; `removeMultiInvoiceFilter()` melepas listener `click`/`scroll`/`resize` yang dilacak modul-level; guard paralel di `main-actions.ts` (`applyMultiInvoiceFilter` + jalur `SCRAPE_BY_INVOICES`) mencegah nomor faktur basi bocor ke halaman lain. Konsisten dengan pola DI `ActionDeps`. Tidak ada masalah ditemukan; satu-satunya catatan adalah belum ada unit test untuk logika DOM-nya (lihat temuan di atas).
 
 ---
 
-### [QUALITY] `xhrRequestByInvoice` melakukan `JSON.parse` tanpa try-catch
-
-**File:** [`scraper-xhr.ts:72`](file:///D:/PROGRAMMING/cindieh/extension/src/content/scraper-xhr.ts#L72)
-
-```ts
-const fk = "Filters" in JSON.parse(captured.rawBody) ? "Filters" : "filters";
-```
-
-Jika `captured.rawBody` kosong atau bukan valid JSON, ini akan throw dan menyebabkan seluruh `scrapeByInvoices` gagal tanpa error message yang informatif. `makeXhrRequest` sudah ada try-catch di `onload`, tapi baris ini ada **sebelum** XHR dibuat.
-
-**Rekomendasi:** Wrap dengan try-catch, fallback ke `"Filters"`.
-
----
-
-### [QUALITY] `exporter.ts` duplikasi logika di `exportXLSX` vs `downloadXLSXFile`
-
-**File:** [`exporter.ts:60-75`](file:///D:/PROGRAMMING/cindieh/extension/src/content/exporter.ts#L60-L75) dan [`exporter.ts:454-464`](file:///D:/PROGRAMMING/cindieh/extension/src/content/exporter.ts#L454-L464)
-
-Ada dua cara buat XLSX — `downloadXLSXFile` (via `aoa_to_sheet`) dan `exportXLSX` (via `json_to_sheet`). Ini sengaja berbeda (AOA vs JSON), tapi bisa membingungkan. Tidak ada bug, hanya perlu komentar kenapa dua path ini ada.
-
----
-
-## 3. Arsitektur
+## 4. Arsitektur
 
 ### Status ADR
 
@@ -155,114 +101,83 @@ Ada dua cara buat XLSX — `downloadXLSXFile` (via `aoa_to_sheet`) dan `exportXL
 | 0002 | Message Dispatch Seam | ✅ Implemented |
 | 0003 | Comparer Session | ✅ Implemented |
 | 0004 | Export Tree & Tax Date | ✅ Implemented |
-| 0005 | Deferred Refactors | ✅ All 3 completed |
+| 0005 | Deferred Refactors (dua context interface) | ✅ Semua selesai |
 | 0006 | Comparer Reference Matching | ✅ Implemented |
-
-Semua ADR sudah diimplementasikan sesuai keputusan.
-
----
+| 0007 | Bridge Token Exposure — accepted risk | ✅ Accepted |
+| 0008 | Scraper Injection One-Time per Page | ✅ Accepted |
+| 0009 | TypeScript 7 native + TS 6 alias | ✅ Accepted |
 
 ### Kepatuhan Two-Worlds Architecture
 
 | Aspek | Status | Catatan |
 |-------|--------|---------|
-| Bridge token | ✅ | Token tidak di-store di `window` |
-| Guard sebelum dispatch | ✅ | `shouldProcessPageMessage` + `createMessageDispatcher` dipakai keduanya |
-| `__isCindiehBulk` flag | ⚠️ | XHR ✅, Fetch ❌ (belum terdampak tapi belum di-guard) |
-| Isolated world: hanya relays, tidak scrape | ✅ | `main.ts` bersih |
-| MAIN world: tidak ada browser API | ✅ | `scraper.ts` tidak import `browser.*` |
-| SPA nav reset | ✅ | `RESET_SCRAPER` dikirim on navigate |
-| Injection guard (idempotent) | ✅ | `getElementById` check |
+| Bridge token tidak di-`window` | ✅ | ADR-0007, ADR-0008 |
+| Guard sebelum dispatch | ✅ | `createMessageDispatcher` tunggal per world; property-tested |
+| `__isCindiehBulk` flag | ✅ | XHR **dan** fetch (`isBulkFetchRequest`) |
+| Isolated world: hanya relay + UI | ✅ | `main.ts` tidak scrape |
+| MAIN world: tanpa browser API | ✅ | `scraper.ts` tidak import `browser.*` |
+| SPA nav reset | ✅ | `RESET_SCRAPER` + `resetContentState` |
+| Injeksi idempotent | ✅ | `getElementById` guard + ADR-0008 |
+| Stateful modul: singleton + factory | ✅ | `bridge`, `contentState`, `createPdfDownloadSession`, `ScraperContext`/`ActionDeps` |
+| Timer injectable untuk test | ✅ | `PdfDownloadSessionDeps.setTimeout`, `ScraperContext.setTimeout`, `triggerSearch(scheduleDelay)` |
 
 ---
 
-### Modul yang tidak mengikuti pola DI
+## 5. Test Coverage
 
-| Modul | Masalah |
-|-------|---------|
-| `bridge.ts` | Module-level state, tidak ada factory |
-| `scraper-pdf.ts` | `setTimeout` langsung ke global |
-| `scraper.ts:265` | Inline date regex |
-| `main-actions.ts:126` | `setTimeout` langsung di `triggerSearch` |
+| Modul | File test | Kasus | Penilaian |
+|-------|-----------|-------|-----------|
+| `bridge.ts` | `bridge.unit.test.ts` | 7 | ✅ Factory + isolasi instance |
+| `comparer-logic.ts` | `comparer-logic.unit.test.ts` | 61 | ✅ Komprehensif |
+| `comparer.ts` | `comparer.unit.test.ts` | 39 | ✅ Komprehensif |
+| `csv.property.test.ts` | — | 8 | ✅ Property: escaping & formula-injection |
+| `downloader.ts` | `downloader.unit/property/invalid.property` | 31 | ✅ Termasuk base64 invalid & naming |
+| `exporter.ts` | `exporter.unit/processdata/property` | 82 | ✅ Sangat lengkap |
+| `main-actions.ts` | `main-actions.unit.test.ts` | 46 | ✅ Termasuk guard e-Faktur baru |
+| `page-context.ts` | `page-context.unit.test.ts` | 56 | ✅ Termasuk `isEfakturPage` baru |
+| `postmessage-guard.ts` | `postmessage.origin.property.test.ts` | 19 | ✅ Property test guard keamanan |
+| `scraper-actions.ts` | `scraper-actions.unit.test.ts` | 16 | ✅ Termasuk retry-exhaustion `scrapeByInvoices` |
+| `scraper-helpers.ts` | `scraper-helpers.unit.test.ts` | 24 | ✅ Lengkap |
+| `scraper-intercept.ts` | `scraper-intercept.unit.test.ts` | 24 | ✅ Termasuk cache validity |
+| `scraper-pdf.ts` | `scraper-pdf.unit.test.ts` | 29 | ✅ Termasuk session + pure core |
+| `scraper-xhr.ts` | `scraper-xhr.unit.test.ts` + `scraper-xhr-download.unit.test.ts` | 48 | ✅ Termasuk parse defensif & 4 source PDF |
+| `tax-date.ts` | `tax-date.unit.test.ts` | 25 | ✅ Timezone-aware |
+| `ui-filters.ts` | `ui-filters.unit.test.ts` | 13 | ⚠️ Helper murni ✅; logika DOM belum |
+| `ui-badge.ts` | `ui.badge.unit.test.ts` | 3 | ⚠️ Sangat tipis |
+| `ui.ts`, `ui-comparer.ts` | — | 0 | ❌ DOM-heavy; acceptable tapi catat gap |
+| `scraper.ts`, `main.ts` | — | 0 | ❌ World-entry, tidak bisa unit-test (by design) |
 
----
-
-## 4. Test Coverage
-
-### Summary
-
-| Modul | File test | Penilaian |
-|-------|-----------|-----------|
-| `bridge.ts` | `bridge.unit.test.ts` | ⚠️ Ada, tapi rentan order-dependency |
-| `comparer-logic.ts` | `comparer-logic.unit.test.ts` | ✅ Komprehensif |
-| `comparer.ts` | `comparer.unit.test.ts` | ✅ Komprehensif |
-| `exporter.ts` | `exporter.unit.test.ts`, `exporter.processdata.unit.test.ts`, `exporter.property.test.ts`, `csv.property.test.ts` | ✅ Sangat lengkap |
-| `downloader.ts` | `downloader.unit.test.ts`, `downloader.property.test.ts`, `downloader.invalid.property.test.ts` | ✅ Lengkap termasuk property |
-| `main-actions.ts` | `main-actions.unit.test.ts` | ✅ Lengkap |
-| `page-context.ts` | `page-context.unit.test.ts` | ✅ Lengkap |
-| `postmessage-guard.ts` | `postmessage.origin.property.test.ts` | ✅ Property test komprehensif |
-| `scraper-actions.ts` | `scraper-actions.unit.test.ts` | ⚠️ Partial — `scrapeByInvoices` belum diuji path retry exhaustion |
-| `scraper-helpers.ts` | `scraper-helpers.unit.test.ts` | ✅ Lengkap |
-| `scraper-intercept.ts` | `scraper-intercept.unit.test.ts` | ✅ Lengkap |
-| `scraper-pdf.ts` | `scraper-pdf.unit.test.ts` | ✅ Lengkap |
-| `scraper-xhr.ts` | `scraper-xhr.unit.test.ts`, `scraper-xhr-download.unit.test.ts` | ✅ Lengkap |
-| `tax-date.ts` | `tax-date.unit.test.ts` | ✅ Timezone-aware |
-| `ui-filters.ts` | `ui-filters.unit.test.ts` | ⚠️ Sangat tipis (1KB) — hanya smoke test |
-| `ui-badge.ts` | `ui.badge.unit.test.ts` | ⚠️ Sangat tipis (1KB) — hanya smoke test |
-| `ui.ts` | ❌ Tidak ada | DOM-heavy, acceptable tapi perlu integ test manual |
-| `ui-comparer.ts` | ❌ Tidak ada | DOM-heavy, covered via comparer-logic tests |
-| `scraper.ts` | ❌ Tidak ada | World-entry, tidak bisa unit-test |
-| `main.ts` | ❌ Tidak ada | World-entry, tidak bisa unit-test |
-
-### Gap kritis
-
-1. **`scrapeByInvoices` retry exhaustion** — path di mana `consecutiveFailures >= maxErrors` dan fungsi return early belum diuji
-2. **`ui-filters.ts`** — hampir tidak ada test; `splitInvoiceNumbers` dan `getMultiInvoiceNumbers` adalah fungsi critical path
-3. **`isCacheValid`** — sudah diuji di `scraper-intercept.unit.test.ts` ✅
+**Total:** 22 file, 531 kasus, semuanya hijau.
 
 ---
 
-## 5. Dependensi
+## 6. Dependensi
 
 | Package | Versi | Catatan |
 |---------|-------|---------|
-| `xlsx` | 0.20.3 | Custom CDN (SheetJS Pro) — aman, pinned |
-| `typescript` | ^5.3.3 | Cukup lama; TS 5.7+ sudah rilis. Pertimbangkan upgrade |
+| `xlsx` | 0.20.3 | Custom CDN (SheetJS) — pinned, aman |
+| `@typescript/native` | ^7.0.2 | Compiler Go-native (ADR-0009) |
+| `typescript` (alias) | npm:@typescript/typescript6@^6.0.2 | API compiler untuk typescript-eslint |
 | `vitest` | ^4.1.5 | Mutakhir ✅ |
 | `esbuild` | ^0.25.12 | Mutakhir ✅ |
 | `eslint` | ^10.3.0 | Mutakhir ✅ |
 | `fast-check` | ^4.7.0 | Mutakhir ✅ |
-| `standard-version` | ^9.5.0 | ⚠️ Deprecated (unmaintained sejak 2022) — pertimbangkan `release-it` atau `changesets` |
+| `release-it` | ^21.0.2 | Pengganti `standard-version` ✅ |
+
+Tidak ada dependensi runtime selain `xlsx`. Semua devDependencies relevan dan terpakai.
 
 ---
 
-## 6. Temuan Lain
+## 7. Verifikasi Build & Toolchain
 
-### `ui-comparer.ts` — `innerHTML` untuk `&times;`
+| Langkah | Hasil |
+|---------|-------|
+| `pnpm typecheck` (`tsc --noEmit`, TS 7 native) | ✅ 0 error |
+| `pnpm test` (vitest, 22 file) | ✅ 531/531 |
+| `pnpm lint` (eslint + typescript-eslint) | ✅ 0 error |
+| `pnpm build:chrome` | ✅ Build + manifest + assets lengkap |
 
-**File:** [`ui-comparer.ts:57`](file:///D:/PROGRAMMING/cindieh/extension/src/content/ui-comparer.ts#L57)
-
-```ts
-closeBtn.innerHTML = "&times;";
-```
-
-Ini adalah HTML entity yang aman (bukan string dari user), tapi secara konvensi lebih bersih menggunakan `textContent = "×"` atau `createTextNode("×")`. Tidak ada risiko XSS karena string statis.
-
----
-
-### `ui.ts` — event listener `document.addEventListener("click", ...)` tidak di-remove
-
-**File:** [`ui.ts:337-341`](file:///D:/PROGRAMMING/cindieh/extension/src/content/ui.ts#L337-L341)
-
-```ts
-document.addEventListener("click", (e: MouseEvent) => {
-  if (!exportDropdown.contains(e.target as Node)) {
-    menu.classList.add("ch-hidden");
-  }
-});
-```
-
-Setiap kali `injectExportButton()` dipanggil ulang (setelah Angular re-render), dropdown baru dibuat dan listener baru ditambahkan ke `document`. Listener lama tidak di-remove karena sudah ada `isInjected` guard yang mencegah double-inject, tapi jika inject terjadi ulang (misal setelah Angular re-mount), listener lama masih aktif. Bisa menyebabkan leak minor tapi tidak kritikal karena element reference ter-capture dalam closure sudah di-remove dari DOM.
+`popup.js` adalah artefak build dari `src/popup/popup.ts` (lihat `build.cjs`), bukan file sumber — jangan diedit langsung. `dist/` di-gitignore, di-regenerasi build.
 
 ---
 
@@ -270,12 +185,9 @@ Setiap kali `injectExportButton()` dipanggil ulang (setelah Angular re-render), 
 
 | # | Temuan | Severity | Effort |
 |---|--------|----------|--------|
-| 1 | Fetch interceptor tidak check `__isCindiehBulk` | Medium | Low |
-| 2 | `xhrRequestByInvoice` `JSON.parse` tanpa try-catch | Medium | Low |
-| 3 | `getMasaPajakFromDOM` inline regex, harusnya di `tax-date.ts` | Low | Low |
-| 4 | Test untuk `scrapeByInvoices` retry exhaustion | Low | Low |
-| 5 | Test untuk `ui-filters.ts` (`splitInvoiceNumbers`) | Low | Low |
-| 6 | `bridge.ts` factory pattern | Low | Medium |
-| 7 | Upgrade TypeScript ke >=5.5 | Low | Low |
-| 8 | Ganti `standard-version` dengan `release-it` | Low | Low |
-| 9 | Dokumen token-in-postMessage sebagai accepted risk (ADR baru) | Low | Low |
+| 1 | Test logika DOM `ui-filters.ts` (re-injection & cleanup) | Low | Medium |
+| 2 | Rapikan `RATE_LIMITING.md` (hapus nomor baris) | Low | Trivial |
+| 3 | Test `ui-badge.ts` diperluas dari 3 smoke test | Low | Low |
+| 4 | (Opsional) Hapus branch keyup `ch-multi-invoice-textarea` yang mati di `main.ts` | Info | Trivial |
+
+**Kesimpulan:** Tidak ada blocker. Proyek siap untuk iterasi berikutnya; rekomendasi fokus ke menutup gap test untuk logika DOM yang baru ditulis.
