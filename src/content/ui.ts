@@ -16,7 +16,7 @@ import {
 
 import { getExportButtonLabel } from "./ui-badge";
 
-import { clearFilterTimers, scheduleRetry } from "./ui-filters";
+import { clearFilterTimers, removeMultiInvoiceFilter, scheduleRetry } from "./ui-filters";
 import { injectComparerModal } from "./ui-comparer";
 
 import {
@@ -443,6 +443,9 @@ export function injectExportButton(retries = MAX_RETRIES): void {
 /** Remove elements on navigation */
 export function removeExportButton(): void {
   clearFilterTimers();
+  // Tear down the No. Faktur filter too — leaving an export page (e.g. to the
+  // dashboard) should not leave the panel orphaned in <body>.
+  removeMultiInvoiceFilter();
   if (outsideClickHandler) {
     document.removeEventListener("click", outsideClickHandler);
     outsideClickHandler = null;

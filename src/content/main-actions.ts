@@ -11,7 +11,7 @@
 // ============================================================
 
 import { type ExportData, type ExportMode, exportXLSX, exportCSV } from "./exporter";
-import type { ExportSource } from "./page-context";
+import { isEfakturPage, type ExportSource } from "./page-context";
 import type { ScrapeProgress, ScrapeComplete, ScrapeError } from "./scraper-types";
 import { showPanel, updatePanelProgress, updatePanelIdle } from "./ui-badge";
 import { getMultiInvoiceNumbers } from "./ui-filters";
@@ -89,6 +89,8 @@ export interface ActionDeps {
   updatePanelProgress: (total: number, page: number, elapsed: string, status: string) => void;
   updatePanelIdle: () => void;
   getMultiInvoiceNumbers: () => string[];
+  /** True on efaktur pages (PPN Keluaran/Masukan/Retur) — the only pages where the No. Faktur filter applies. */
+  isEfakturPage: () => boolean;
   exportXLSX: (data: ExportData) => void;
   exportCSV: (data: ExportData) => void;
   /** Find and click the Coretax search/refresh button. */
@@ -103,6 +105,7 @@ export function createActionDeps(): ActionDeps {
     updatePanelProgress,
     updatePanelIdle,
     getMultiInvoiceNumbers,
+    isEfakturPage: () => isEfakturPage(),
     exportXLSX,
     exportCSV,
     triggerSearch: () => triggerSearch(),
@@ -136,8 +139,14 @@ export function triggerSearch(
   }
 }
 
-export function applyMultiInvoiceFilter(d: Record<string, unknown>[]): Record<string, unknown>[] {
-  const nums = getMultiInvoiceNumbers();
+export function applyMultiInvoiceFilter(
+  d: Record<string, unknown>[],
+  deps: Pick<ActionDeps, "getMultiInvoiceNumbers" | "isEfakturPage"> = createActionDeps(),
+): Record<string, unknown>[] {
+  // No. Faktur filtering exists for efaktur pages only; on other pages
+  // (e.g. withholding slips) pass every row through untouched.
+  if (!deps.isEfakturPage()) return d;
+  const nums = deps.getMultiInvoiceNumbers();
   if (nums.length === 0) return d;
   const set = new Set(nums.map((n) => n.toLowerCase()));
   return d.filter((r) => set.has(String(r.TaxInvoiceNumber || r.LetterNumber || "").toLowerCase()));
@@ -182,7 +191,7 @@ export function startPdfDownload(
   state: ContentState = contentState,
   deps: ActionDeps = createActionDeps(),
 ): boolean {
-  const filtered = applyMultiInvoiceFilter(data);
+  const filtered = applyMultiInvoiceFilter(data, deps);
   if (filtered.length === 0) {
     globalThis.alert?.("Tidak ada faktur yang cocok dengan filter No. Faktur.\nKosongkan filter atau periksa nomor faktur.");
     return false;
@@ -246,8 +255,8 @@ export function handleExportAction(
     return true;
   }
 
-  // No data yet — check multi-invoice filter (XLSX/CSV only)
-  if (format !== "pdf") {
+  // No data yet — check multi-invoice filter (XLSX/CSV only, efaktur pages only)
+  if (format !== "pdf" && deps.isEfakturPage()) {
     const nums = deps.getMultiInvoiceNumbers();
     if (nums.length > 0) {
       debugLog("[BC] sending SCRAPE_BY_INVOICES", nums);

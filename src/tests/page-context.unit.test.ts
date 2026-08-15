@@ -6,6 +6,7 @@ import {
   isInputTaxPage,
   isOutputReturnPage,
   isInputReturnPage,
+  isEfakturPage,
   isSptPage,
   isWithholdingPage,
   isSupportedExportPage,
@@ -77,6 +78,22 @@ describe("isInputReturnPage", () => {
   });
   it("rejects input-tax page", () => {
     expect(isInputReturnPage(URLS.inputTax)).toBe(false);
+  });
+});
+
+describe("isEfakturPage", () => {
+  it("matches each efaktur page type", () => {
+    for (const url of [
+      URLS.outputTax, URLS.outputTaxVat, URLS.outputTaxKeluaran,
+      URLS.inputTax, URLS.outputReturn, URLS.inputReturn,
+    ]) {
+      expect(isEfakturPage(url)).toBe(true);
+    }
+  });
+  it("rejects non-efaktur pages (SPT, withholding, unrelated)", () => {
+    for (const url of [URLS.sptVat, URLS.sptPph, URLS.withholding, URLS.unrelated]) {
+      expect(isEfakturPage(url)).toBe(false);
+    }
   });
 });
 

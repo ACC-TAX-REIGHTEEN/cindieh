@@ -6,7 +6,7 @@
 // for efaktur pages.
 // ============================================================
 
-import { isOutputTaxPage } from "./page-context";
+import { isEfakturPage, isOutputTaxPage } from "./page-context";
 
 // Duplicated from ui.ts to avoid circular dependencies.
 // Both RETRY_DELAY_MS and MAX_RETRIES are used by
@@ -162,6 +162,13 @@ export function injectToolbarFilter(retries = MAX_RETRIES): void {
 
 let multiInvoiceTextarea: HTMLTextAreaElement | null = null;
 let multiInvoicePanel: HTMLElement | null = null;
+let multiInvoiceToggle: HTMLButtonElement | null = null;
+
+// Track window/document listeners so cleanup can unregister them — otherwise
+// repeated injection (SPA re-renders) would stack duplicate handlers.
+let onMultiInvoiceDocClick: ((e: MouseEvent) => void) | null = null;
+let onMultiInvoiceWinScroll: (() => void) | null = null;
+let onMultiInvoiceWinResize: (() => void) | null = null;
 
 /** Split a multi-invoice textarea value into trimmed, non-empty numbers. */
 export function splitInvoiceNumbers(raw: string): string[] {
@@ -187,9 +194,52 @@ export function getMultiInvoiceNumbers(): string[] {
   return parseMultiInvoiceText(multiInvoiceTextarea.value);
 }
 
-/** Inject multi-invoice filter toggle on efaktur pages. */
+/**
+ * Remove the multi-invoice filter toggle and panel from the DOM, unregister
+ * its window/document listeners, and reset module state. Used when leaving an
+ * efaktur page so stale invoice numbers cannot leak into exports on other
+ * pages (e.g. withholding slips), and before re-injecting after a re-render.
+ */
+export function removeMultiInvoiceFilter(): void {
+  if (onMultiInvoiceDocClick) {
+    document.removeEventListener("click", onMultiInvoiceDocClick);
+    onMultiInvoiceDocClick = null;
+  }
+  if (onMultiInvoiceWinScroll) {
+    window.removeEventListener("scroll", onMultiInvoiceWinScroll);
+    onMultiInvoiceWinScroll = null;
+  }
+  if (onMultiInvoiceWinResize) {
+    window.removeEventListener("resize", onMultiInvoiceWinResize);
+    onMultiInvoiceWinResize = null;
+  }
+  multiInvoiceToggle?.remove();
+  multiInvoicePanel?.remove();
+  multiInvoiceToggle = null;
+  multiInvoicePanel = null;
+  multiInvoiceTextarea = null;
+}
+
+/** Inject multi-invoice filter toggle on efaktur pages only. */
 export function injectMultiInvoiceFilter(retries = MAX_RETRIES): void {
-  if (document.getElementById("ch-multi-invoice-filter")) return;
+  // The No. Faktur filter belongs to efaktur pages only (PPN Keluaran,
+  // PPN Masukan, Retur). On any other supported page — e.g. withholding
+  // slips — tear down any leftover UI/state from a previous efaktur visit.
+  if (!isEfakturPage()) {
+    removeMultiInvoiceFilter();
+    return;
+  }
+
+  // The panel lives in <body> and survives Angular re-renders, while the
+  // toggle sits inside the rendered page content. If either half is missing
+  // (SPA navigation between efaktur pages, or a grid re-render), tear the
+  // stale half down so both get re-injected together below.
+  const hasToggle = !!document.getElementById("ch-multi-invoice-toggle");
+  const hasPanel = !!document.getElementById("ch-multi-invoice-filter");
+  if (!hasToggle || !hasPanel) {
+    removeMultiInvoiceFilter();
+  }
+  if (hasToggle && hasPanel) return;
 
   const anchor =
     document.getElementById("ch-toolbar-filter-container") ||
@@ -208,6 +258,7 @@ export function injectMultiInvoiceFilter(retries = MAX_RETRIES): void {
   toggleBtn.className = "ch-multi-invoice-toggle";
   toggleBtn.title = "Filter berdasarkan No. Faktur (multi)";
   toggleBtn.style.marginLeft = "8px";
+  multiInvoiceToggle = toggleBtn;
   const toggleIcon = document.createElement("i");
   toggleIcon.className = "pi pi-filter";
   toggleIcon.setAttribute("aria-hidden", "true");
@@ -258,32 +309,39 @@ export function injectMultiInvoiceFilter(retries = MAX_RETRIES): void {
     }
   });
 
-  document.addEventListener("click", (e: MouseEvent) => {
-    if (!multiInvoicePanel || !toggleBtn) return;
+  const handleDocClick = (e: MouseEvent): void => {
+    if (!multiInvoicePanel || !multiInvoiceToggle) return;
     const target = e.target as HTMLElement;
     if (
       multiInvoicePanel.style.display !== "none" &&
       !multiInvoicePanel.contains(target) &&
-      !toggleBtn.contains(target)
+      !multiInvoiceToggle.contains(target)
     ) {
       multiInvoicePanel.style.display = "none";
     }
-  });
+  };
 
   // Reposition on scroll/resize so panel tracks the button
-  window.addEventListener("scroll", () => {
-    if (!multiInvoicePanel || multiInvoicePanel.style.display === "none") return;
-    const rect = toggleBtn.getBoundingClientRect();
+  const handleWinScroll = (): void => {
+    if (!multiInvoicePanel || !multiInvoiceToggle || multiInvoicePanel.style.display === "none") return;
+    const rect = multiInvoiceToggle.getBoundingClientRect();
     multiInvoicePanel.style.top = `${rect.bottom + window.scrollY + 4}px`;
     multiInvoicePanel.style.left = `${rect.left + window.scrollX}px`;
-  }, { passive: true });
+  };
 
-  window.addEventListener("resize", () => {
-    if (!multiInvoicePanel || multiInvoicePanel.style.display === "none") return;
-    const rect = toggleBtn.getBoundingClientRect();
+  const handleWinResize = (): void => {
+    if (!multiInvoicePanel || !multiInvoiceToggle || multiInvoicePanel.style.display === "none") return;
+    const rect = multiInvoiceToggle.getBoundingClientRect();
     multiInvoicePanel.style.top = `${rect.bottom + window.scrollY + 4}px`;
     multiInvoicePanel.style.left = `${rect.left + window.scrollX}px`;
-  }, { passive: true });
+  };
+
+  onMultiInvoiceDocClick = handleDocClick;
+  onMultiInvoiceWinScroll = handleWinScroll;
+  onMultiInvoiceWinResize = handleWinResize;
+  document.addEventListener("click", handleDocClick);
+  window.addEventListener("scroll", handleWinScroll, { passive: true });
+  window.addEventListener("resize", handleWinResize, { passive: true });
 
   const parent = anchor.parentElement;
   if (!parent) return;

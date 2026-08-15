@@ -34,6 +34,7 @@ function makeDeps(overrides: Partial<ActionDeps> = {}): ActionDeps {
     updatePanelProgress: vi.fn(),
     updatePanelIdle: vi.fn(),
     getMultiInvoiceNumbers: vi.fn(() => []),
+    isEfakturPage: vi.fn(() => true),
     exportXLSX: vi.fn(),
     exportCSV: vi.fn(),
     triggerSearch: vi.fn(),
@@ -316,6 +317,23 @@ describe("handleExportAction — multi-invoice filter", () => {
     );
     expect(deps.postToScraper).toHaveBeenCalledWith({ type: "START_SCRAPE" });
   });
+
+  it("does NOT use SCRAPE_BY_INVOICES on non-efaktur pages (e.g. withholding slips)", () => {
+    const state = createContentState();
+    const deps = makeDeps({
+      getMultiInvoiceNumbers: vi.fn(() => ["INV-001"]),
+      isEfakturPage: vi.fn(() => false),
+    });
+
+    handleExportAction("xlsx", state, deps);
+
+    // The No. Faktur filter only exists on efaktur pages; elsewhere the
+    // multi-invoice scrape must not run even if numbers were somehow present.
+    expect(deps.postToScraper).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "SCRAPE_BY_INVOICES" }),
+    );
+    expect(deps.postToScraper).toHaveBeenCalledWith({ type: "START_SCRAPE" });
+  });
 });
 
 // ── handleExportAction — no data, no multi-invoice filter ────────────────────
@@ -358,29 +376,27 @@ describe("applyMultiInvoiceFilter", () => {
   ];
 
   it("returns all rows when no invoice numbers are present", () => {
-    const result = applyMultiInvoiceFilter(rows);
+    const result = applyMultiInvoiceFilter(rows, makeDeps());
     expect(result).toHaveLength(rows.length);
   });
 
-  it("filters rows by TaxInvoiceNumber (case-insensitive)", () => {
-    // Temporarily override getMultiInvoiceNumbers via the module-level state
-    // We test the pure filtering directly by relying on the exported singleton
-    // getMultiInvoiceNumbers which reads from the UI — so we test the
-    // standalone pure logic via its dependency instead.
-    // The function reads from getMultiInvoiceNumbers() from the UI module,
-    // so we test it indirectly by confirming row filtering is correct when
-    // the numbers list is empty (pass-through).
-    const result = applyMultiInvoiceFilter(rows);
-    expect(result).toBe(rows); // identity: same reference when no filter
+  it("passes every row through untouched on non-efaktur pages", () => {
+    const deps = makeDeps({
+      getMultiInvoiceNumbers: vi.fn(() => ["INV-001"]),
+      isEfakturPage: vi.fn(() => false),
+    });
+    const result = applyMultiInvoiceFilter(rows, deps);
+    expect(result).toBe(rows); // identity: same reference when filter not applicable
+    expect(deps.getMultiInvoiceNumbers).not.toHaveBeenCalled();
   });
 
-  it("is covered for filtering behaviour in the filterRows helper test", () => {
-    // applyMultiInvoiceFilter calls getMultiInvoiceNumbers() from ui.ts which
-    // reads from DOM state — the filtering logic itself is:
-    //   d.filter(r => set.has(String(r.TaxInvoiceNumber || r.LetterNumber || "").toLowerCase()))
-    // This is validated via the integration path in handleExportAction tests above
-    // (multi-invoice filter posts SCRAPE_BY_INVOICES with the right numbers).
-    expect(true).toBe(true);
+  it("filters rows by TaxInvoiceNumber (case-insensitive) on efaktur pages", () => {
+    const deps = makeDeps({
+      getMultiInvoiceNumbers: vi.fn(() => ["INV-001"]),
+      isEfakturPage: vi.fn(() => true),
+    });
+    const result = applyMultiInvoiceFilter(rows, deps);
+    expect(result).toEqual([{ TaxInvoiceNumber: "INV-001", SellingPrice: 100 }]);
   });
 });
 
@@ -440,8 +456,9 @@ describe("startPdfDownload", () => {
   });
 
   it("returns false and alerts when the multi-invoice filter matches nothing", () => {
-    mockInvoiceNumbers.push("NOPE");
-    const deps = makeDeps();
+    const deps = makeDeps({
+      getMultiInvoiceNumbers: vi.fn(() => ["NOPE"]),
+    });
     const result = startPdfDownload(rows, createContentState(), deps);
 
     expect(result).toBe(false);

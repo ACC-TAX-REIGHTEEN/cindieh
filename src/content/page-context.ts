@@ -49,6 +49,15 @@ export function isInputReturnPage(url = location.href): boolean {
 	return normalizedUrl.includes("/e-invoice-portal") && normalizedUrl.includes("input-return");
 }
 
+export function isEfakturPage(url = location.href): boolean {
+	return (
+		isOutputTaxPage(url) ||
+		isInputTaxPage(url) ||
+		isOutputReturnPage(url) ||
+		isInputReturnPage(url)
+	);
+}
+
 export function isSptPage(url = location.href): boolean {
 	const normalizedUrl = normalizeUrl(url);
 	return (
