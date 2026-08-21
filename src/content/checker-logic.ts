@@ -104,9 +104,9 @@ export function checkRowAccuracy(
   let status = "";
   if (benchmark === "DPP") {
     if (dppNilaiLainMismatch && ppnMismatch) {
-      status = "DPP Nilai Lain & PPN Berbeda";
+      status = "DPP NL & PPN Berbeda";
     } else if (dppNilaiLainMismatch) {
-      status = "DPP Nilai Lain Berbeda";
+      status = "DPP NL Berbeda";
     } else {
       status = "PPN Berbeda";
     }
@@ -120,11 +120,11 @@ export function checkRowAccuracy(
     }
   } else {
     if (dppMismatch && dppNilaiLainMismatch) {
-      status = "DPP & DPP Nilai Lain Berbeda";
+      status = "DPP & DPP NL Berbeda";
     } else if (dppMismatch) {
       status = "DPP Berbeda";
     } else {
-      status = "DPP Nilai Lain Berbeda";
+      status = "DPP NL Berbeda";
     }
   }
 
@@ -197,7 +197,7 @@ export function applyCheckerStatusFilter(
   const set = new Set(statusFilter);
   return results.filter((r) => {
     if (set.has("DPP_BERBEDA") && r.status === "DPP Berbeda") return true;
-    if (set.has("DPP_NILAI_LAIN_BERBEDA") && r.status === "DPP Nilai Lain Berbeda") return true;
+    if (set.has("DPP_NILAI_LAIN_BERBEDA") && r.status === "DPP NL Berbeda") return true;
     if (set.has("PPN_BERBEDA") && r.status === "PPN Berbeda") return true;
     if (set.has("DUA_BERBEDA") && r.status.includes("&")) return true;
     return false;

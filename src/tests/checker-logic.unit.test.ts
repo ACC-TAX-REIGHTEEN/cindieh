@@ -63,7 +63,7 @@ describe("checkRowAccuracy - Benchmark DPP", () => {
     expect(res).not.toBeNull();
     expect(res?.dppNilaiLainExpected).toBe(110000);
     expect(res?.dppNilaiLainDiff).toBe(-10000);
-    expect(res?.status).toBe("DPP Nilai Lain Berbeda");
+    expect(res?.status).toBe("DPP NL Berbeda");
   });
 
   it("flags mismatch when PPN differs", () => {
@@ -91,7 +91,7 @@ describe("checkRowAccuracy - Benchmark DPP", () => {
 
     const res = checkRowAccuracy(row, "DPP", 0);
     expect(res).not.toBeNull();
-    expect(res?.status).toBe("DPP Nilai Lain & PPN Berbeda");
+    expect(res?.status).toBe("DPP NL & PPN Berbeda");
   });
 
   it("respects upper and lower tolerance parameter boundaries (+10 and -10)", () => {
@@ -213,9 +213,9 @@ describe("applyCheckerStatusFilter", () => {
 
   const list = [
     makeMockResult("DPP Berbeda"),
-    makeMockResult("DPP Nilai Lain Berbeda"),
+    makeMockResult("DPP NL Berbeda"),
     makeMockResult("PPN Berbeda"),
-    makeMockResult("DPP Nilai Lain & PPN Berbeda"),
+    makeMockResult("DPP NL & PPN Berbeda"),
   ];
 
   it("returns all items when filter is empty or ALL", () => {
@@ -230,7 +230,7 @@ describe("applyCheckerStatusFilter", () => {
 
     const resDua = applyCheckerStatusFilter(list, ["DUA_BERBEDA"]);
     expect(resDua).toHaveLength(1);
-    expect(resDua[0].status).toBe("DPP Nilai Lain & PPN Berbeda");
+    expect(resDua[0].status).toBe("DPP NL & PPN Berbeda");
   });
 });
 
@@ -257,7 +257,7 @@ describe("formatCheckSummary", () => {
       ppnDiff: -1,
       tolerance: 0,
       benchmark: "DPP" as const,
-      status: "DPP Nilai Lain & PPN Berbeda",
+      status: "DPP NL & PPN Berbeda",
     };
 
     expect(formatCheckSummary([mockResult])).toBe("Ditemukan 1 faktur dengan nilai tidak sesuai.");

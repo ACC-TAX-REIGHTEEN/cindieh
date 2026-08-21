@@ -344,7 +344,7 @@ export function injectComparerModal(): void {
 
   const optNilaiLain = document.createElement("option");
   optNilaiLain.value = "DPP_NILAI_LAIN";
-  optNilaiLain.textContent = "DPP Nilai Lain";
+  optNilaiLain.textContent = "DPP NL";
 
   const optPpn = document.createElement("option");
   optPpn.value = "PPN";
@@ -382,7 +382,7 @@ export function injectComparerModal(): void {
   const checkerFilterOptions: { value: string; label: string }[] = [
     { value: "ALL", label: "Semua Status" },
     { value: "DPP_BERBEDA", label: "DPP Berbeda" },
-    { value: "DPP_NILAI_LAIN_BERBEDA", label: "DPP Nilai Lain Berbeda" },
+    { value: "DPP_NILAI_LAIN_BERBEDA", label: "DPP NL Berbeda" },
     { value: "PPN_BERBEDA", label: "PPN Berbeda" },
     { value: "DUA_BERBEDA", label: "Dua Nilai Berbeda" },
   ];
@@ -813,11 +813,27 @@ function renderResults(): void {
     session.refLainEnabled ? "Selisih PPN" : "Status",
     session.refLainEnabled ? "Status" : "",
   ].filter((h) => h !== "");
-  for (const h of headers) {
+  const getColClass = (i: number): string => {
+    if (i === 0) return "ch-col-no";
+    if (session.refLainEnabled) {
+      if (i === 1 || i === 2) return "ch-col-ref";
+      if (i === 3) return "ch-col-buyer";
+      if (i >= 4 && i <= 8) return "ch-col-num";
+      return "ch-col-status";
+    } else {
+      if (i === 1) return "ch-col-ref";
+      if (i === 2) return "ch-col-buyer";
+      if (i >= 3 && i <= 7) return "ch-col-num";
+      return "ch-col-status";
+    }
+  };
+
+  headers.forEach((h, i) => {
     const th = document.createElement("th");
     th.textContent = h;
+    th.className = getColClass(i);
     headerRow.appendChild(th);
-  }
+  });
   thead.appendChild(headerRow);
   table.appendChild(thead);
 
@@ -829,10 +845,15 @@ function renderResults(): void {
     }
 
     const isNotFound = r.status === "TIDAK_DITEMUKAN";
-    if (!isNotFound) {
-      tr.style.cursor = "pointer";
-      tr.title = "Klik dua kali untuk mencari referensi ini di Coretax";
-    }
+    tr.style.cursor = "pointer";
+    tr.title = isNotFound
+      ? "Klik 1x untuk melihat teks lengkap"
+      : "Klik 1x untuk melihat teks lengkap, klik 2x untuk mencari di Coretax";
+
+    tr.addEventListener("click", (e: MouseEvent) => {
+      if ((e.target as HTMLElement).tagName === "BUTTON" || (e.target as HTMLElement).tagName === "INPUT") return;
+      tr.classList.toggle("ch-comparer-row-expanded");
+    });
 
     const formatNum = (n: number | null): string => {
       if (n === null) return "-";
@@ -869,6 +890,9 @@ function renderResults(): void {
     cells.forEach((c, i) => {
       const td = document.createElement("td");
       td.textContent = c;
+      td.title = String(c);
+      const colCls = getColClass(i);
+      td.className = colCls;
       const numCols = session.refLainEnabled ? [0, 4, 5, 6, 7, 8] : [0, 3, 4, 5, 6, 7];
       if (numCols.includes(i)) {
         td.classList.add("ch-comparer-num");
@@ -976,9 +1000,9 @@ function renderCheckerResults(): void {
           "Tanggal",
           "Nama Pembeli",
           "DPP",
-          "DPP Nilai Lain",
+          "DPP NL",
           "PPN",
-          "Selisih DPP Nilai Lain",
+          "Selisih DPP NL",
           "Selisih PPN",
           "Status",
         ]
@@ -989,7 +1013,7 @@ function renderCheckerResults(): void {
             "Tanggal",
             "Nama Pembeli",
             "DPP",
-            "DPP Nilai Lain",
+            "DPP NL",
             "PPN",
             "Selisih DPP",
             "Selisih PPN",
@@ -1001,21 +1025,32 @@ function renderCheckerResults(): void {
             "Tanggal",
             "Nama Pembeli",
             "DPP",
-            "DPP Nilai Lain",
+            "DPP NL",
             "PPN",
             "Selisih DPP",
-            "Selisih DPP Nilai Lain",
+            "Selisih DPP NL",
             "Status",
           ];
+
+  const getCheckerColClass = (i: number, headerName?: string): string => {
+    if (i === 0) return "ch-col-no";
+    if (i === 1) return "ch-col-ref";
+    if (i === 2) return "ch-col-date";
+    if (i === 3) return "ch-col-buyer";
+    if (headerName && (headerName.includes("NL") || headerName.includes("Nilai Lain"))) return "ch-col-num-wide";
+    if (i >= 4 && i <= 8) return "ch-col-num";
+    return "ch-col-status";
+  };
 
   const thead = document.createElement("thead");
   const headerRow = document.createElement("tr");
 
-  for (const h of headers) {
+  headers.forEach((h, i) => {
     const th = document.createElement("th");
     th.textContent = h;
+    th.className = getCheckerColClass(i, h);
     headerRow.appendChild(th);
-  }
+  });
   thead.appendChild(headerRow);
   table.appendChild(thead);
 
@@ -1023,10 +1058,15 @@ function renderCheckerResults(): void {
   pageRows.forEach((r, idx) => {
     const tr = document.createElement("tr");
     const searchKey = r.reference || r.taxInvoiceNumber;
-    if (searchKey) {
-      tr.style.cursor = "pointer";
-      tr.title = "Klik dua kali untuk mencari referensi ini di Coretax";
-    }
+    tr.style.cursor = "pointer";
+    tr.title = searchKey
+      ? "Klik 1x untuk melihat teks lengkap, klik 2x untuk mencari di Coretax"
+      : "Klik 1x untuk melihat teks lengkap";
+
+    tr.addEventListener("click", (e: MouseEvent) => {
+      if ((e.target as HTMLElement).tagName === "BUTTON" || (e.target as HTMLElement).tagName === "INPUT") return;
+      tr.classList.toggle("ch-comparer-row-expanded");
+    });
 
     if (checkerSession.viewedRefs.has(searchKey)) {
       tr.classList.add("ch-comparer-row-viewed");
@@ -1069,6 +1109,9 @@ function renderCheckerResults(): void {
     cells.forEach((c, i) => {
       const td = document.createElement("td");
       td.textContent = c;
+      td.title = String(c);
+      const colCls = getCheckerColClass(i, headers[i]);
+      td.className = colCls;
       if ([0, 4, 5, 6, 7, 8].includes(i)) {
         td.classList.add("ch-comparer-num");
       }
@@ -1224,9 +1267,9 @@ function handleCheckerExportResults(): void {
           "Nama Pembeli",
           "NPWP/NIK Pembeli",
           "DPP",
-          "DPP Nilai Lain",
+          "DPP NL",
           "PPN",
-          "Selisih DPP Nilai Lain",
+          "Selisih DPP NL",
           "Selisih PPN",
           "Status",
         ]
@@ -1238,7 +1281,7 @@ function handleCheckerExportResults(): void {
             "Nama Pembeli",
             "NPWP/NIK Pembeli",
             "DPP",
-            "DPP Nilai Lain",
+            "DPP NL",
             "PPN",
             "Selisih DPP",
             "Selisih PPN",
@@ -1251,10 +1294,10 @@ function handleCheckerExportResults(): void {
             "Nama Pembeli",
             "NPWP/NIK Pembeli",
             "DPP",
-            "DPP Nilai Lain",
+            "DPP NL",
             "PPN",
             "Selisih DPP",
-            "Selisih DPP Nilai Lain",
+            "Selisih DPP NL",
             "Status",
           ];
 

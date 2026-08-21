@@ -627,6 +627,7 @@ button.p-button.ch-icon-btn .p-button-icon {
     width: 100%;
     border-collapse: collapse;
     font-size: 16px;
+    table-layout: fixed;
 }
 
 .ch-comparer-table th {
@@ -636,6 +637,8 @@ button.p-button.ch-icon-btn .p-button-icon {
     font-weight: 600;
     border-bottom: 2px solid var(--ch-border-light);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     position: sticky;
     top: 0;
     z-index: 1;
@@ -645,6 +648,62 @@ button.p-button.ch-icon-btn .p-button-icon {
     padding: 8px 12px;
     border-bottom: 1px solid var(--ch-border-light);
     vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    height: 38px;
+    max-height: 38px;
+    box-sizing: border-box;
+}
+
+/* Specific Column Widths */
+.ch-comparer-table th.ch-col-no,
+.ch-comparer-table td.ch-col-no {
+    width: 45px;
+    text-align: right;
+}
+
+.ch-comparer-table th.ch-col-date,
+.ch-comparer-table td.ch-col-date {
+    width: 95px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.ch-comparer-table th.ch-col-ref,
+.ch-comparer-table td.ch-col-ref {
+    width: 120px;
+}
+
+.ch-comparer-table th.ch-col-buyer,
+.ch-comparer-table td.ch-col-buyer {
+    width: 220px;
+    min-width: 180px;
+}
+
+.ch-comparer-table th.ch-col-num,
+.ch-comparer-table td.ch-col-num {
+    width: 100px;
+    text-align: right;
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.ch-comparer-table th.ch-col-num-wide,
+.ch-comparer-table td.ch-col-num-wide {
+    width: 130px;
+    text-align: right;
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.ch-comparer-table th.ch-col-status,
+.ch-comparer-table td.ch-col-status {
+    width: 125px;
 }
 
 .ch-comparer-table th.ch-comparer-num,
@@ -675,6 +734,10 @@ button.p-button.ch-icon-btn .p-button-icon {
     background: var(--ch-primary-hover);
 }
 
+.ch-comparer-table tbody tr {
+    cursor: pointer;
+}
+
 .ch-comparer-table tbody tr:hover {
     background: var(--ch-paper-alt);
 }
@@ -686,6 +749,15 @@ button.p-button.ch-icon-btn .p-button-icon {
 
 .ch-comparer-row-viewed:hover {
     background: var(--ch-viewed-tint-hover) !important;
+}
+
+/* Expanded row on single click */
+.ch-comparer-table tbody tr.ch-comparer-row-expanded td {
+    white-space: normal !important;
+    overflow: visible !important;
+    word-break: break-word !important;
+    height: auto !important;
+    max-height: none !important;
 }
 
 /* Tolerance input & status filter */
