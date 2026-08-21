@@ -20,7 +20,7 @@ import {
   updatePanelIdle,
   updatePanelProgress,
 } from "./ui-badge";
-import { injectComparerModal, openComparerModal, runPendingCompare } from "./ui-comparer";
+import { injectComparerModal, openComparerModal, runPendingCompare, runPendingCheck } from "./ui-comparer";
 import { injectGridFilters, injectMultiInvoiceFilter, injectToolbarFilter, splitInvoiceNumbers } from "./ui-filters";
 import {
   injectExportButton,
@@ -183,6 +183,11 @@ const pageMessageDispatcher = createMessageDispatcher({
       if (contentState.pendingCompare) {
         contentState.pendingCompare = false;
         runPendingCompare();
+      }
+
+      if (contentState.pendingCheck) {
+        contentState.pendingCheck = false;
+        runPendingCheck();
       }
 
       // Auto-export if a pending format was requested before scrape started.

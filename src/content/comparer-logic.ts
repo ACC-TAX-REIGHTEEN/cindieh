@@ -41,11 +41,11 @@ export function createComparerSession(): ComparerSession {
 
 // ── Pagination ─────────────────────────────────────────
 
-export interface PaginationState {
+export interface PaginationState<T = ComparisonResult> {
   totalPages: number;
   currentPage: number;
   startIndex: number;
-  pageRows: ComparisonResult[];
+  pageRows: T[];
 }
 
 /**
@@ -54,11 +54,11 @@ export interface PaginationState {
  * Returns a clamped currentPage so callers never need to guard
  * against out-of-range values.
  */
-export function computePagination(
-  results: ComparisonResult[],
+export function computePagination<T>(
+  results: readonly T[],
   pageSize: number,
   currentPage: number,
-): PaginationState {
+): PaginationState<T> {
   const totalPages = Math.max(1, Math.ceil(results.length / pageSize));
   const clampedPage = Math.min(Math.max(1, currentPage), totalPages);
   const startIndex = (clampedPage - 1) * pageSize;

@@ -40,6 +40,7 @@ export interface ContentState {
   lastExportMeta: LastExportMeta | null;
   pendingExportFormat: "xlsx" | "csv" | "pdf" | null;
   pendingCompare: boolean;
+  pendingCheck: boolean;
   lastState: ScrapeState | null;
   exportMode: ExportMode;
 }
@@ -52,6 +53,7 @@ export function createContentState(): ContentState {
     lastExportMeta: null,
     pendingExportFormat: null,
     pendingCompare: false,
+    pendingCheck: false,
     lastState: null,
     exportMode: "cleaned",
   };

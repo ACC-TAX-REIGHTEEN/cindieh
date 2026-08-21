@@ -1,15 +1,15 @@
 // ============================================================
-// UI-COMPARER.TS — Modal for paste & compare feature
+// UI-COMPARER.TS — Modal for paste & compare & accuracy check
 // ============================================================
-// Thin view over a ComparerSession (comparer-logic.ts): builds the
-// modal DOM, wires events, and renders session state. All comparison
-// decision logic — run, re-run, "Periksa" decision tree — lives in
-// comparer-logic.ts where it is pure and testable.
+// Thin view over a ComparerSession (comparer-logic.ts) and
+// CheckerSession (checker-logic.ts): builds the modal DOM with
+// tab navigation, wires events, and renders session state.
 // ============================================================
 
 import { parsePastedData, type ComparisonResult } from "./comparer";
 import { downloadXLSXFile } from "./exporter";
 import { contentState, startScrape } from "./main-actions";
+import { isOutputTaxPage } from "./page-context";
 import {
   applyStatusFilter,
   buildStatusSummary,
@@ -23,14 +23,45 @@ import {
   runComparison as runSessionComparison,
   type ComparerSession,
 } from "./comparer-logic";
+import {
+  applyCheckerStatusFilter,
+  checkAllRowsAccuracy,
+  createCheckerSession,
+  formatCheckSummary,
+  type BenchmarkType,
+  type CheckerSession,
+} from "./checker-logic";
 
 const PAGE_SIZE = 10;
 
-// ── Session ───────────────────────────────────────────
-// Session state lives in comparer-logic's factory; the view only reads
-// and mutates it through comparer-logic's orchestration functions.
+// ── Sessions ───────────────────────────────────────────
 
 const session: ComparerSession = createComparerSession();
+const checkerSession: CheckerSession = createCheckerSession();
+
+// ── Switch Tabs ───────────────────────────────────────
+
+function switchTab(tab: "compare" | "check"): void {
+
+  const tabCompareBtn = document.getElementById("ch-tab-compare");
+  const tabCheckerBtn = document.getElementById("ch-tab-checker");
+  const viewCompare = document.getElementById("ch-comparer-view-compare");
+  const viewChecker = document.getElementById("ch-comparer-view-checker");
+
+  if (tabCompareBtn && tabCheckerBtn && viewCompare && viewChecker) {
+    if (tab === "compare") {
+      tabCompareBtn.classList.add("ch-comparer-tab-active");
+      tabCheckerBtn.classList.remove("ch-comparer-tab-active");
+      viewCompare.classList.remove("ch-hidden");
+      viewChecker.classList.add("ch-hidden");
+    } else {
+      tabCheckerBtn.classList.add("ch-comparer-tab-active");
+      tabCompareBtn.classList.remove("ch-comparer-tab-active");
+      viewChecker.classList.remove("ch-hidden");
+      viewCompare.classList.add("ch-hidden");
+    }
+  }
+}
 
 // ── Inject the comparer modal ──────────────────────────
 
@@ -49,21 +80,40 @@ export function injectComparerModal(): void {
   const header = document.createElement("div");
   header.className = "ch-comparer-header";
 
-  const title = document.createElement("h3");
-  title.textContent = "Bandingkan Data Penjualan";
+  const tabsContainer = document.createElement("div");
+  tabsContainer.className = "ch-comparer-tabs";
+
+  const tabCompareBtn = document.createElement("button");
+  tabCompareBtn.id = "ch-tab-compare";
+  tabCompareBtn.type = "button";
+  tabCompareBtn.className = "ch-comparer-tab ch-comparer-tab-active";
+  tabCompareBtn.textContent = "Bandingkan Data Penjualan";
+
+  const tabCheckerBtn = document.createElement("button");
+  tabCheckerBtn.id = "ch-tab-checker";
+  tabCheckerBtn.type = "button";
+  tabCheckerBtn.className = "ch-comparer-tab";
+  tabCheckerBtn.textContent = "Pengecekan Keakuratan Nilai";
+
+  tabsContainer.appendChild(tabCompareBtn);
+  tabsContainer.appendChild(tabCheckerBtn);
 
   const closeBtn = document.createElement("button");
   closeBtn.className = "ch-comparer-close";
-  // Static glyph — set via textContent, no HTML parsing needed.
   closeBtn.textContent = "×";
   closeBtn.setAttribute("aria-label", "Tutup");
 
-  header.appendChild(title);
+  header.appendChild(tabsContainer);
   header.appendChild(closeBtn);
 
   // Body
   const body = document.createElement("div");
   body.className = "ch-comparer-body";
+
+  // ── View 1: Bandingkan Data Penjualan ─────────────────
+  const viewCompare = document.createElement("div");
+  viewCompare.id = "ch-comparer-view-compare";
+  viewCompare.className = "ch-comparer-view";
 
   // Paste section (collapsible)
   const pasteSection = document.createElement("div");
@@ -240,7 +290,6 @@ export function injectComparerModal(): void {
 
   filterWrap.appendChild(filterToggle);
   filterWrap.appendChild(filterMenu);
-  // Hidden until the results table is rendered
   filterWrap.classList.add("ch-hidden");
 
   const rightGroup = document.createElement("div");
@@ -259,10 +308,154 @@ export function injectComparerModal(): void {
   results.id = "ch-comparer-results";
   results.className = "ch-comparer-results ch-hidden";
 
-  body.appendChild(pasteSection);
-  body.appendChild(btnRow);
-  body.appendChild(statusMsg);
-  body.appendChild(results);
+  viewCompare.appendChild(pasteSection);
+  viewCompare.appendChild(btnRow);
+  viewCompare.appendChild(statusMsg);
+  viewCompare.appendChild(results);
+
+  // ── View 2: Pengecekan Keakuratan Nilai ────────────────
+  const viewChecker = document.createElement("div");
+  viewChecker.id = "ch-comparer-view-checker";
+  viewChecker.className = "ch-comparer-view ch-hidden";
+
+  const checkerBtnRow = document.createElement("div");
+  checkerBtnRow.className = "ch-comparer-btn-row";
+
+  const checkerCheckBtn = document.createElement("button");
+  checkerCheckBtn.id = "ch-checker-check-btn";
+  checkerCheckBtn.className = "ch-comparer-btn ch-comparer-btn-primary";
+  checkerCheckBtn.textContent = "Periksa";
+
+  const benchmarkWrap = document.createElement("div");
+  benchmarkWrap.className = "ch-checker-benchmark-wrap";
+
+  const benchmarkLabel = document.createElement("label");
+  benchmarkLabel.className = "ch-checker-benchmark-label";
+  benchmarkLabel.htmlFor = "ch-checker-benchmark-select";
+  benchmarkLabel.textContent = "Acuan:";
+
+  const benchmarkSelect = document.createElement("select");
+  benchmarkSelect.id = "ch-checker-benchmark-select";
+  benchmarkSelect.className = "ch-checker-benchmark-select";
+
+  const optDpp = document.createElement("option");
+  optDpp.value = "DPP";
+  optDpp.textContent = "DPP";
+
+  const optNilaiLain = document.createElement("option");
+  optNilaiLain.value = "DPP_NILAI_LAIN";
+  optNilaiLain.textContent = "DPP Nilai Lain";
+
+  const optPpn = document.createElement("option");
+  optPpn.value = "PPN";
+  optPpn.textContent = "PPN";
+
+  benchmarkSelect.appendChild(optDpp);
+  benchmarkSelect.appendChild(optNilaiLain);
+  benchmarkSelect.appendChild(optPpn);
+
+  benchmarkWrap.appendChild(benchmarkLabel);
+  benchmarkWrap.appendChild(benchmarkSelect);
+
+  const checkerToleranceInput = document.createElement("input");
+  checkerToleranceInput.id = "ch-checker-tolerance";
+  checkerToleranceInput.type = "number";
+  checkerToleranceInput.min = "0";
+  checkerToleranceInput.step = "1";
+  checkerToleranceInput.placeholder = "Toleransi";
+  checkerToleranceInput.className = "ch-comparer-tolerance-input";
+  checkerToleranceInput.title = "Toleransi selisih parameter yang tidak perlu ditampilkan (default 0)";
+
+  const checkerLeftGroup = document.createElement("div");
+  checkerLeftGroup.className = "ch-comparer-btn-left";
+  checkerLeftGroup.appendChild(checkerCheckBtn);
+  checkerLeftGroup.appendChild(benchmarkWrap);
+  checkerLeftGroup.appendChild(checkerToleranceInput);
+
+  const checkerExportBtn = document.createElement("button");
+  checkerExportBtn.id = "ch-checker-export-btn";
+  checkerExportBtn.className = "ch-comparer-btn ch-comparer-btn-primary";
+  checkerExportBtn.textContent = "Export XLSX";
+  checkerExportBtn.title = "Ekspor hasil pengecekan ke file Excel";
+
+  // Status filter dropdown for Pengecekan
+  const checkerFilterOptions: { value: string; label: string }[] = [
+    { value: "ALL", label: "Semua Status" },
+    { value: "DPP_BERBEDA", label: "DPP Berbeda" },
+    { value: "DPP_NILAI_LAIN_BERBEDA", label: "DPP Nilai Lain Berbeda" },
+    { value: "PPN_BERBEDA", label: "PPN Berbeda" },
+    { value: "DUA_BERBEDA", label: "Dua Nilai Berbeda" },
+  ];
+
+  const checkerFilterWrap = document.createElement("div");
+  checkerFilterWrap.id = "ch-checker-filter-wrap";
+  checkerFilterWrap.className = "ch-comparer-filter-wrap ch-hidden";
+
+  const checkerFilterToggle = document.createElement("button");
+  checkerFilterToggle.type = "button";
+  checkerFilterToggle.id = "ch-checker-filter-toggle";
+  checkerFilterToggle.className = "ch-comparer-filter-toggle";
+  checkerFilterToggle.title = "Filter berdasarkan status";
+
+  const checkerFilterToggleLabel = document.createElement("span");
+  checkerFilterToggleLabel.className = "ch-comparer-filter-toggle-label";
+  checkerFilterToggleLabel.textContent = "Semua Status";
+
+  const checkerFilterToggleIcon = document.createElement("span");
+  checkerFilterToggleIcon.className = "pi pi-chevron-down";
+  checkerFilterToggleIcon.setAttribute("aria-hidden", "true");
+
+  checkerFilterToggle.appendChild(checkerFilterToggleLabel);
+  checkerFilterToggle.appendChild(checkerFilterToggleIcon);
+
+  const checkerFilterMenu = document.createElement("div");
+  checkerFilterMenu.id = "ch-checker-filter-menu";
+  checkerFilterMenu.className = "ch-comparer-filter-menu ch-hidden";
+
+  const checkerFilterCheckboxes: HTMLInputElement[] = [];
+  for (const opt of checkerFilterOptions) {
+    const item = document.createElement("label");
+    item.className = "ch-comparer-filter-item";
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = opt.value;
+    if (opt.value === "ALL") cb.checked = true;
+    checkerFilterCheckboxes.push(cb);
+
+    const span = document.createElement("span");
+    span.textContent = opt.label;
+
+    item.appendChild(cb);
+    item.appendChild(span);
+    checkerFilterMenu.appendChild(item);
+  }
+
+  checkerFilterWrap.appendChild(checkerFilterToggle);
+  checkerFilterWrap.appendChild(checkerFilterMenu);
+
+  const checkerRightGroup = document.createElement("div");
+  checkerRightGroup.className = "ch-comparer-btn-right";
+  checkerRightGroup.appendChild(checkerFilterWrap);
+  checkerRightGroup.appendChild(checkerExportBtn);
+
+  checkerBtnRow.appendChild(checkerLeftGroup);
+  checkerBtnRow.appendChild(checkerRightGroup);
+
+  const checkerStatusMsg = document.createElement("div");
+  checkerStatusMsg.id = "ch-checker-status";
+  checkerStatusMsg.className = "ch-comparer-status";
+
+  const checkerResults = document.createElement("div");
+  checkerResults.id = "ch-checker-results";
+  checkerResults.className = "ch-comparer-results ch-hidden";
+
+  viewChecker.appendChild(checkerBtnRow);
+  viewChecker.appendChild(checkerStatusMsg);
+  viewChecker.appendChild(checkerResults);
+
+  body.appendChild(viewCompare);
+  body.appendChild(viewChecker);
 
   modal.appendChild(header);
   modal.appendChild(body);
@@ -270,6 +463,9 @@ export function injectComparerModal(): void {
   document.body.appendChild(overlay);
 
   // ── Event wiring ──────────────────────────────────
+
+  tabCompareBtn.addEventListener("click", () => switchTab("compare"));
+  tabCheckerBtn.addEventListener("click", () => switchTab("check"));
 
   closeBtn.addEventListener("click", closeComparerModal);
   overlay.addEventListener("click", (e) => {
@@ -280,8 +476,6 @@ export function injectComparerModal(): void {
 
   clearBtn.addEventListener("click", () => {
     textarea.value = "";
-    // Always keep the textarea visible after clearing so the user can paste
-    // new data immediately (do NOT hide it).
     textarea.classList.remove("ch-hidden");
     const toggleIcon = document.getElementById("ch-comparer-toggle-icon");
     if (toggleIcon) toggleIcon.className = "pi pi-chevron-up";
@@ -289,40 +483,34 @@ export function injectComparerModal(): void {
     results.innerHTML = "";
     statusMsg.textContent = "";
     statusMsg.className = "ch-comparer-status";
-    // Hide the status filter again until results are shown
     const filterWrap = document.getElementById("ch-comparer-filter-wrap");
     if (filterWrap) filterWrap.classList.add("ch-hidden");
   });
 
   exportBtn.addEventListener("click", handleExportResults);
 
-  // Tolerance input: update tolerance and re-run comparison if results exist
   toleranceInput.addEventListener("change", () => {
     const val = parseInt(toleranceInput.value, 10);
     session.tolerance = isNaN(val) || val < 0 ? 0 : val;
     rerunFromTextarea();
   });
 
-  // Ref Lain checkbox
   refLainCheckbox.addEventListener("change", () => {
     session.refLainEnabled = refLainCheckbox.checked;
     rerunFromTextarea();
   });
 
-  // Daily checkbox: toggle daily mode and show/hide the date input
   dailyCheckbox.addEventListener("change", () => {
     session.dailyEnabled = dailyCheckbox.checked;
     dailyDatesInput.classList.toggle("ch-hidden", !session.dailyEnabled);
     rerunFromTextarea();
   });
 
-  // Daily dates input: parse dates (1-31, comma separated)
   dailyDatesInput.addEventListener("change", () => {
     session.dailyDates = parseDailyDates(dailyDatesInput.value);
     rerunFromTextarea();
   });
 
-  // Status filter dropdown: custom dropdown with checkboxes
   const applyFilter = () => {
     const checked = filterCheckboxes.filter((cb) => cb.checked).map((cb) => cb.value);
     if (checked.includes("ALL")) {
@@ -347,12 +535,10 @@ export function injectComparerModal(): void {
   filterCheckboxes.forEach((cb) => {
     cb.addEventListener("change", () => {
       if (cb.value === "ALL" && cb.checked) {
-        // Selecting "Semua Status" unchecks the others
         filterCheckboxes.forEach((other) => {
           if (other.value !== "ALL") other.checked = false;
         });
       } else if (cb.value !== "ALL" && cb.checked) {
-        // Selecting a specific status unchecks "Semua Status"
         const allCb = filterCheckboxes.find((c) => c.value === "ALL");
         if (allCb) allCb.checked = false;
       }
@@ -360,47 +546,104 @@ export function injectComparerModal(): void {
     });
   });
 
-  // Close the filter menu when clicking outside
   document.addEventListener("click", (e: MouseEvent) => {
     if (!filterWrap.contains(e.target as Node)) {
       filterMenu.classList.add("ch-hidden");
     }
+    if (!checkerFilterWrap.contains(e.target as Node)) {
+      checkerFilterMenu.classList.add("ch-hidden");
+    }
   });
 
-  // Toggle paste section visibility
   toggleBtn.addEventListener("click", () => {
     const isHidden = textarea.classList.contains("ch-hidden");
     textarea.classList.toggle("ch-hidden", !isHidden);
     toggleIcon.className = isHidden ? "pi pi-chevron-up" : "pi pi-chevron-down";
   });
 
-  // Keyboard: Ctrl+Enter to check
   textarea.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault();
       handleCheck();
     }
   });
+
+  // ── View 2 (Pengecekan) Event wiring ──────────────
+
+  const applyCheckerFilter = () => {
+    const checked = checkerFilterCheckboxes.filter((cb) => cb.checked).map((cb) => cb.value);
+    if (checked.includes("ALL") || checked.length === 0) {
+      checkerSession.statusFilter = [];
+      checkerFilterToggleLabel.textContent = "Semua Status";
+    } else {
+      checkerSession.statusFilter = checked.filter((v) => v !== "ALL");
+      checkerFilterToggleLabel.textContent = `${checkerSession.statusFilter.length} status`;
+    }
+    checkerSession.currentPage = 1;
+    renderCheckerResults();
+  };
+
+  checkerFilterToggle.addEventListener("click", (e: MouseEvent) => {
+    e.stopPropagation();
+    checkerFilterMenu.classList.toggle("ch-hidden");
+  });
+
+  checkerFilterCheckboxes.forEach((cb) => {
+    cb.addEventListener("change", () => {
+      if (cb.value === "ALL" && cb.checked) {
+        checkerFilterCheckboxes.forEach((other) => {
+          if (other.value !== "ALL") other.checked = false;
+        });
+      } else if (cb.value !== "ALL" && cb.checked) {
+        const allCb = checkerFilterCheckboxes.find((c) => c.value === "ALL");
+        if (allCb) allCb.checked = false;
+      }
+      applyCheckerFilter();
+    });
+  });
+
+  checkerCheckBtn.addEventListener("click", handleCheckerCheck);
+
+  benchmarkSelect.addEventListener("change", () => {
+    checkerSession.benchmark = benchmarkSelect.value as BenchmarkType;
+    rerunChecker();
+  });
+
+  checkerToleranceInput.addEventListener("change", () => {
+    const val = parseInt(checkerToleranceInput.value, 10);
+    checkerSession.tolerance = isNaN(val) || val < 0 ? 0 : val;
+    rerunChecker();
+  });
+
+  checkerExportBtn.addEventListener("click", handleCheckerExportResults);
 }
 
 // ── Open / Close ──────────────────────────────────────
 
-export function openComparerModal(): void {
+export function openComparerModal(targetTab: "compare" | "check" = "compare"): void {
   const overlay = document.getElementById("ch-comparer-overlay");
   if (overlay) {
     overlay.classList.remove("ch-hidden");
     overlay.style.display = "flex";
-    const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
-    if (textarea) {
-      textarea.focus();
-      // Auto-fill from clipboard if available
-      navigator.clipboard.readText().then((text) => {
-        if (text && !textarea.value) {
-          textarea.value = text;
-        }
-      }).catch(() => {
-        // Permission denied or not available — ignore
-      });
+
+    const tabCheckerBtn = document.getElementById("ch-tab-checker");
+    if (tabCheckerBtn) {
+      tabCheckerBtn.classList.toggle("ch-hidden", !isOutputTaxPage());
+    }
+
+    if (targetTab === "check" && isOutputTaxPage()) {
+      switchTab("check");
+    } else {
+      switchTab("compare");
+      const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
+      if (textarea) {
+        textarea.focus();
+        navigator.clipboard.readText().then((text) => {
+          if (text && !textarea.value) {
+            textarea.value = text;
+          }
+        }).catch(() => {});
+      }
     }
   }
 }
@@ -413,9 +656,7 @@ export function closeComparerModal(): void {
   }
 }
 
-// ── Check handler ─────────────────────────────────────
-// Delegates the decision tree to comparer-logic's prepareComparison;
-// maps the returned action onto DOM/UI behaviour.
+// ── Check handlers for Bandingkan ─────────────────────
 
 function handleCheck(): void {
   const statusMsg = document.getElementById("ch-comparer-status");
@@ -436,7 +677,6 @@ function handleCheck(): void {
   }
 
   if (decision.action === "needScrape") {
-    // No scraped data yet — scrape first, then run the comparison automatically.
     statusMsg.textContent = "Belum ada data. Mohon tunggu, sedang melakukan scraping data PPN Keluaran terlebih dahulu...";
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
     contentState.pendingCompare = true;
@@ -448,10 +688,6 @@ function handleCheck(): void {
   renderAfterComparison();
 }
 
-/**
- * Re-run the comparison after a control (tolerance, refLain, daily mode,
- * daily dates) changed. No-op unless a comparison is already showing.
- */
 function rerunFromTextarea(): void {
   if (session.results.length === 0) return;
   const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
@@ -460,11 +696,6 @@ function rerunFromTextarea(): void {
   if (result) renderAfterComparison();
 }
 
-/**
- * Re-run the comparison after a scrape completes (triggered when the user
- * clicked "Periksa" before any data was scraped). Uses the textarea content
- * and the freshly scraped data.
- */
 export function runPendingCompare(): void {
   const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
   const scrapedData = contentState.scrapedData;
@@ -477,7 +708,58 @@ export function runPendingCompare(): void {
   renderAfterComparison();
 }
 
-// ── Render results table ──────────────────────────────
+// ── Check handlers for Pengecekan ─────────────────────
+
+function handleCheckerCheck(): void {
+  const statusMsg = document.getElementById("ch-checker-status");
+  if (!statusMsg) return;
+
+  const scrapedData = contentState.scrapedData;
+  if (!scrapedData || scrapedData.length === 0) {
+    statusMsg.textContent = "Belum ada data. Mohon tunggu, sedang melakukan scraping data PPN Keluaran terlebih dahulu...";
+    statusMsg.className = "ch-comparer-status ch-comparer-status-info";
+    contentState.pendingCheck = true;
+    startScrape();
+    return;
+  }
+
+  checkerSession.results = checkAllRowsAccuracy(
+    scrapedData,
+    checkerSession.benchmark,
+    checkerSession.tolerance,
+  );
+  checkerSession.currentPage = 1;
+  renderCheckerAfterCheck();
+}
+
+function rerunChecker(): void {
+  const scrapedData = contentState.scrapedData;
+  if (!scrapedData || scrapedData.length === 0) return;
+
+  checkerSession.results = checkAllRowsAccuracy(
+    scrapedData,
+    checkerSession.benchmark,
+    checkerSession.tolerance,
+  );
+  checkerSession.currentPage = 1;
+  renderCheckerAfterCheck();
+}
+
+export function runPendingCheck(): void {
+  const scrapedData = contentState.scrapedData;
+  if (!scrapedData || scrapedData.length === 0) return;
+
+  openComparerModal("check");
+  checkerSession.results = checkAllRowsAccuracy(
+    scrapedData,
+    checkerSession.benchmark,
+    checkerSession.tolerance,
+  );
+  checkerSession.currentPage = 1;
+  renderCheckerAfterCheck();
+}
+
+// ── Render Bandingkan results table ───────────────────
 
 function renderAfterComparison(): void {
   renderResults();
@@ -488,7 +770,6 @@ function renderAfterComparison(): void {
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
   }
 
-  // Hide the paste textarea after checking (can be re-shown via toggle)
   const textareaEl = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
   const toggleIcon = document.getElementById("ch-comparer-toggle-icon");
   if (textareaEl) textareaEl.classList.add("ch-hidden");
@@ -502,7 +783,6 @@ function renderResults(): void {
   container.classList.remove("ch-hidden");
   container.innerHTML = "";
 
-  // Show the status filter once results are displayed
   const filterWrap = document.getElementById("ch-comparer-filter-wrap");
   if (filterWrap) filterWrap.classList.remove("ch-hidden");
 
@@ -511,7 +791,6 @@ function renderResults(): void {
     return;
   }
 
-  // Apply status filter and compute pagination via extracted pure functions.
   const filtered = applyStatusFilter(session.results, session.statusFilter);
   const { totalPages: filteredTotalPages, currentPage: clampedPage, startIndex: filteredStart, pageRows: filteredPageRows } =
     computePagination(filtered, PAGE_SIZE, session.currentPage);
@@ -520,7 +799,6 @@ function renderResults(): void {
   const table = document.createElement("table");
   table.className = "ch-comparer-table";
 
-  // Header
   const thead = document.createElement("thead");
   const headerRow = document.createElement("tr");
   const headers = [
@@ -543,11 +821,9 @@ function renderResults(): void {
   thead.appendChild(headerRow);
   table.appendChild(thead);
 
-  // Body
   const tbody = document.createElement("tbody");
   filteredPageRows.forEach((r, idx) => {
     const tr = document.createElement("tr");
-    // Highlight rows that have been viewed (double-clicked); no status colors.
     if (session.viewedRefs.has(r.reference)) {
       tr.classList.add("ch-comparer-row-viewed");
     }
@@ -593,7 +869,6 @@ function renderResults(): void {
     cells.forEach((c, i) => {
       const td = document.createElement("td");
       td.textContent = c;
-      // Right-align numeric columns and the No column
       const numCols = session.refLainEnabled ? [0, 4, 5, 6, 7, 8] : [0, 3, 4, 5, 6, 7];
       if (numCols.includes(i)) {
         td.classList.add("ch-comparer-num");
@@ -601,8 +876,6 @@ function renderResults(): void {
       tr.appendChild(td);
     });
 
-    // Double-click a row to search the reference in Coretax
-    // (disabled for "Tidak ditemukan" rows since there is nothing to search)
     if (!isNotFound) {
       tr.addEventListener("dblclick", () => {
         session.viewedRefs.add(r.reference);
@@ -616,7 +889,6 @@ function renderResults(): void {
   table.appendChild(tbody);
   container.appendChild(table);
 
-  // Pagination (based on filtered results)
   if (filteredTotalPages > 1) {
     const pagination = document.createElement("div");
     pagination.className = "ch-comparer-pagination";
@@ -646,6 +918,206 @@ function renderResults(): void {
       if (session.currentPage < filteredTotalPages) {
         session.currentPage++;
         renderResults();
+      }
+    });
+
+    pagination.appendChild(prevBtn);
+    pagination.appendChild(pageInfo);
+    pagination.appendChild(nextBtn);
+    container.appendChild(pagination);
+  }
+}
+
+// ── Render Pengecekan results table ───────────────────
+
+function renderCheckerAfterCheck(): void {
+  renderCheckerResults();
+
+  const statusMsg = document.getElementById("ch-checker-status");
+  if (statusMsg) {
+    statusMsg.textContent = formatCheckSummary(checkerSession.results);
+    statusMsg.className = "ch-comparer-status ch-comparer-status-info";
+  }
+}
+
+function renderCheckerResults(): void {
+  const container = document.getElementById("ch-checker-results");
+  if (!container) return;
+
+  container.classList.remove("ch-hidden");
+  container.innerHTML = "";
+
+  const filterWrap = document.getElementById("ch-checker-filter-wrap");
+  if (filterWrap) filterWrap.classList.remove("ch-hidden");
+
+  if (checkerSession.results.length === 0) {
+    if (filterWrap) filterWrap.classList.add("ch-hidden");
+    container.textContent = "Semua faktur sesuai.";
+    return;
+  }
+
+  const filtered = applyCheckerStatusFilter(checkerSession.results, checkerSession.statusFilter);
+  const { totalPages, currentPage, startIndex, pageRows } = computePagination(
+    filtered,
+    PAGE_SIZE,
+    checkerSession.currentPage,
+  );
+  checkerSession.currentPage = currentPage;
+
+  const table = document.createElement("table");
+  table.className = "ch-comparer-table";
+
+  const benchmark = checkerSession.benchmark;
+  const headers =
+    benchmark === "DPP"
+      ? [
+          "No",
+          "Referensi",
+          "Tanggal",
+          "Nama Pembeli",
+          "DPP",
+          "DPP Nilai Lain",
+          "PPN",
+          "Selisih DPP Nilai Lain",
+          "Selisih PPN",
+          "Status",
+        ]
+      : benchmark === "DPP_NILAI_LAIN"
+        ? [
+            "No",
+            "Referensi",
+            "Tanggal",
+            "Nama Pembeli",
+            "DPP",
+            "DPP Nilai Lain",
+            "PPN",
+            "Selisih DPP",
+            "Selisih PPN",
+            "Status",
+          ]
+        : [
+            "No",
+            "Referensi",
+            "Tanggal",
+            "Nama Pembeli",
+            "DPP",
+            "DPP Nilai Lain",
+            "PPN",
+            "Selisih DPP",
+            "Selisih DPP Nilai Lain",
+            "Status",
+          ];
+
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+
+  for (const h of headers) {
+    const th = document.createElement("th");
+    th.textContent = h;
+    headerRow.appendChild(th);
+  }
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  pageRows.forEach((r, idx) => {
+    const tr = document.createElement("tr");
+    const searchKey = r.reference || r.taxInvoiceNumber;
+    if (searchKey) {
+      tr.style.cursor = "pointer";
+      tr.title = "Klik dua kali untuk mencari referensi ini di Coretax";
+    }
+
+    if (checkerSession.viewedRefs.has(searchKey)) {
+      tr.classList.add("ch-comparer-row-viewed");
+    }
+
+    const formatNum = (n: number): string => n.toLocaleString("id-ID");
+
+    const formatDiffCell = (diff: number, tolerance: number): string => {
+      if (Math.abs(diff) <= tolerance) return "-";
+      return (diff > 0 ? "+" : "") + formatNum(diff);
+    };
+
+    let diffCol1 = "-";
+    let diffCol2 = "-";
+
+    if (r.benchmark === "DPP") {
+      diffCol1 = formatDiffCell(r.dppNilaiLainDiff, r.tolerance);
+      diffCol2 = formatDiffCell(r.ppnDiff, r.tolerance);
+    } else if (r.benchmark === "DPP_NILAI_LAIN") {
+      diffCol1 = formatDiffCell(r.dppDiff, r.tolerance);
+      diffCol2 = formatDiffCell(r.ppnDiff, r.tolerance);
+    } else {
+      diffCol1 = formatDiffCell(r.dppDiff, r.tolerance);
+      diffCol2 = formatDiffCell(r.dppNilaiLainDiff, r.tolerance);
+    }
+
+    const cells = [
+      String(startIndex + idx + 1),
+      r.reference || r.taxInvoiceNumber,
+      r.invoiceDate,
+      r.buyerName,
+      formatNum(r.dppSystem),
+      formatNum(r.dppNilaiLainSystem),
+      formatNum(r.ppnSystem),
+      diffCol1,
+      diffCol2,
+      r.status,
+    ];
+
+    cells.forEach((c, i) => {
+      const td = document.createElement("td");
+      td.textContent = c;
+      if ([0, 4, 5, 6, 7, 8].includes(i)) {
+        td.classList.add("ch-comparer-num");
+      }
+      tr.appendChild(td);
+    });
+
+    if (searchKey) {
+      tr.addEventListener("dblclick", () => {
+        checkerSession.viewedRefs.add(searchKey);
+        renderCheckerResults();
+        searchReference(searchKey);
+      });
+    }
+
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  container.appendChild(table);
+
+  if (totalPages > 1) {
+    const pagination = document.createElement("div");
+    pagination.className = "ch-comparer-pagination";
+
+    const prevBtn = document.createElement("button");
+    prevBtn.type = "button";
+    prevBtn.className = "ch-comparer-page-btn";
+    prevBtn.textContent = "Sebelumnya";
+    prevBtn.disabled = checkerSession.currentPage === 1;
+    prevBtn.addEventListener("click", () => {
+      if (checkerSession.currentPage > 1) {
+        checkerSession.currentPage--;
+        renderCheckerResults();
+      }
+    });
+
+    const pageInfo = document.createElement("span");
+    pageInfo.className = "ch-comparer-page-info";
+    pageInfo.textContent = `Halaman ${checkerSession.currentPage} dari ${totalPages}`;
+
+    const nextBtn = document.createElement("button");
+    nextBtn.type = "button";
+    nextBtn.className = "ch-comparer-page-btn";
+    nextBtn.textContent = "Berikutnya";
+    nextBtn.disabled = checkerSession.currentPage === totalPages;
+    nextBtn.addEventListener("click", () => {
+      if (checkerSession.currentPage < totalPages) {
+        checkerSession.currentPage++;
+        renderCheckerResults();
       }
     });
 
@@ -736,16 +1208,99 @@ function handleExportResults(): void {
     }
   });
 
-  // Generate XLSX file via the shared writer.
   downloadXLSXFile(rows, "perbandingan-faktur.xlsx", "Perbandingan");
+}
+
+function handleCheckerExportResults(): void {
+  if (checkerSession.results.length === 0) return;
+
+  const benchmark = checkerSession.benchmark;
+  const headers =
+    benchmark === "DPP"
+      ? [
+          "No",
+          "Referensi",
+          "Tanggal",
+          "Nama Pembeli",
+          "NPWP/NIK Pembeli",
+          "DPP",
+          "DPP Nilai Lain",
+          "PPN",
+          "Selisih DPP Nilai Lain",
+          "Selisih PPN",
+          "Status",
+        ]
+      : benchmark === "DPP_NILAI_LAIN"
+        ? [
+            "No",
+            "Referensi",
+            "Tanggal",
+            "Nama Pembeli",
+            "NPWP/NIK Pembeli",
+            "DPP",
+            "DPP Nilai Lain",
+            "PPN",
+            "Selisih DPP",
+            "Selisih PPN",
+            "Status",
+          ]
+        : [
+            "No",
+            "Referensi",
+            "Tanggal",
+            "Nama Pembeli",
+            "NPWP/NIK Pembeli",
+            "DPP",
+            "DPP Nilai Lain",
+            "PPN",
+            "Selisih DPP",
+            "Selisih DPP Nilai Lain",
+            "Status",
+          ];
+
+  const formatNum = (n: number): string => n.toLocaleString("id-ID");
+
+  const formatDiffCell = (diff: number, tolerance: number): string => {
+    if (Math.abs(diff) <= tolerance) return "";
+    return (diff > 0 ? "+" : "") + formatNum(diff);
+  };
+
+  const rows: string[][] = [headers];
+  checkerSession.results.forEach((r, idx) => {
+    let diffCol1 = "";
+    let diffCol2 = "";
+
+    if (r.benchmark === "DPP") {
+      diffCol1 = formatDiffCell(r.dppNilaiLainDiff, r.tolerance);
+      diffCol2 = formatDiffCell(r.ppnDiff, r.tolerance);
+    } else if (r.benchmark === "DPP_NILAI_LAIN") {
+      diffCol1 = formatDiffCell(r.dppDiff, r.tolerance);
+      diffCol2 = formatDiffCell(r.ppnDiff, r.tolerance);
+    } else {
+      diffCol1 = formatDiffCell(r.dppDiff, r.tolerance);
+      diffCol2 = formatDiffCell(r.dppNilaiLainDiff, r.tolerance);
+    }
+
+    rows.push([
+      String(idx + 1),
+      r.reference || r.taxInvoiceNumber,
+      r.invoiceDate,
+      r.buyerName,
+      r.buyerTIN,
+      formatNum(r.dppSystem),
+      formatNum(r.dppNilaiLainSystem),
+      formatNum(r.ppnSystem),
+      diffCol1,
+      diffCol2,
+      r.status,
+    ]);
+  });
+
+  downloadXLSXFile(rows, "pengecekan-nilai-faktur.xlsx", "Pengecekan");
 }
 
 // ── Search reference in Coretax ───────────────────────
 
-/**
- * Close the comparer modal, fill the reference search input with the
- * given reference, and trigger a search on the Coretax page.
- */
 function searchReference(reference: string): void {
   closeComparerModal();
 
@@ -758,8 +1313,6 @@ function searchReference(reference: string): void {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
-  // Dispatch the same event the Enter key handler uses to set the
-  // server filter and trigger the search.
   document.dispatchEvent(
     new CustomEvent("ch:search-reference", { detail: { reference } }),
   );

@@ -407,7 +407,7 @@ button.p-button.ch-icon-btn .p-button-icon {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 20px;
+    padding: 12px 20px;
     border-bottom: 1px solid var(--ch-border-light);
     background: var(--ch-paper);
 }
@@ -417,6 +417,61 @@ button.p-button.ch-icon-btn .p-button-icon {
     font-size: 18px;
     font-weight: 600;
     color: var(--ch-text-dark);
+}
+
+.ch-comparer-tabs {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ch-comparer-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 6px 4px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ch-text-muted);
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.ch-comparer-tab:hover {
+    color: var(--ch-text-dark);
+}
+
+.ch-comparer-tab-active {
+    color: var(--ch-primary);
+    border-bottom-color: var(--ch-primary);
+}
+
+.ch-checker-benchmark-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ch-checker-benchmark-label {
+    font-size: 16px;
+    color: var(--ch-text-dark);
+    font-weight: 500;
+}
+
+.ch-checker-benchmark-select {
+    padding: 8px 12px;
+    border: 1px solid var(--ch-border);
+    border-radius: 6px;
+    font-size: 16px;
+    color: var(--ch-text-dark);
+    background: var(--ch-white);
+    cursor: pointer;
+}
+
+.ch-checker-benchmark-select:focus {
+    border-color: var(--ch-blue-border);
+    box-shadow: 0 0 0 0.2rem rgba(62, 93, 138, 0.25);
+    outline: none;
 }
 
 .ch-comparer-close {
