@@ -1,15 +1,16 @@
 // ============================================================
-// BRIDGE.TS — Secure postMessage bridge between isolated
+// BRIDGE.TS — Token-validated postMessage bridge between isolated
 // world (content script) and MAIN world (scraper).
 // ============================================================
-// A random token is generated once in the ISOLATED world and
-// embedded into the scraper's <script> URL. The scraper reads
-// it back from its own <script> tag, so the token never lives
-// on `window` and cannot be read by other MAIN-world scripts.
-// Every cross-world message must carry this token, which
-// prevents a malicious page script (or another extension
-// injected into the MAIN world) from forging messages such as
-// DOWNLOAD_PDF_ITEM or START_SCRAPE.
+// A random token is generated in the ISOLATED world and passed
+// through the scraper's <script> URL and every bridge message.
+// It is not stored on `window`, but MAIN-world scripts can observe
+// it through the shared DOM and postMessage traffic. It correlates
+// bridge messages; it is not secret authentication against hostile
+// same-page scripts. Source/origin checks bind the window and origin,
+// not the JavaScript world; direction is a protocol field, not proof
+// of sender identity. Keep token validation and the two-worlds seam
+// (accepted limitations: docs/adr/0007).
 
 function generateToken(): string {
   try {
@@ -40,6 +41,8 @@ export interface Bridge {
   generateBridgeToken(): string;
   /** Post a message to the page (scraper) world with the bridge token attached. */
   postToScraper(msg: Record<string, unknown>): void;
+  getActiveRunId(): number;
+  isCurrentRunMessage(msg: Record<string, unknown>): boolean;
 }
 
 /**
@@ -52,6 +55,20 @@ export function createBridge(windowRef?: Window): Bridge {
   // globalThis.window (tests), while instances can pin an explicit stub.
   const w = (): Window => windowRef ?? globalThis.window;
   let bridgeToken = "";
+  let activeRunId = 0;
+  let runPage: string | undefined;
+
+  function getActiveRunId(): number {
+    return activeRunId;
+  }
+
+  function isCurrentRunMessage(msg: Record<string, unknown>): boolean {
+    // Native single-PDF downloads and readiness are not scrape operations.
+    if (msg.runId === undefined) {
+      return msg.type === "INJECTED_READY" || msg.type === "DOWNLOAD_PDF_ITEM";
+    }
+    return activeRunId > 0 && msg.runId === activeRunId && runPage === w().location.href;
+  }
 
   function setBridgeToken(t: string): void {
     bridgeToken = t;
@@ -68,13 +85,21 @@ export function createBridge(windowRef?: Window): Bridge {
 
   function postToScraper(msg: Record<string, unknown>): void {
     const win = w();
+    const startsRun = ["START_SCRAPE", "START_PDF_DOWNLOAD", "SCRAPE_BY_INVOICES"].includes(String(msg.type));
+    const cancelsRun = msg.type === "STOP_SCRAPE" || msg.type === "RESET_SCRAPER";
+    if (startsRun || cancelsRun) {
+      // Only the readiness resend explicitly reuses the current operation ID.
+      if (cancelsRun || activeRunId === 0 || msg.runId !== activeRunId) activeRunId++;
+      runPage = win.location.href;
+      msg = { ...msg, runId: activeRunId };
+    }
     win.postMessage(
       { ...msg, direction: "FROM_CONTENT", token: bridgeToken },
       win.location.origin,
     );
   }
 
-  return { setBridgeToken, getBridgeToken, generateBridgeToken, postToScraper };
+  return { setBridgeToken, getBridgeToken, generateBridgeToken, postToScraper, getActiveRunId, isCurrentRunMessage };
 }
 
 // ── Module singleton ──────────────────────────────────
@@ -89,3 +114,5 @@ export const setBridgeToken = bridge.setBridgeToken;
 export const getBridgeToken = bridge.getBridgeToken;
 export const generateBridgeToken = bridge.generateBridgeToken;
 export const postToScraper = bridge.postToScraper;
+export const getActiveRunId = bridge.getActiveRunId;
+export const isCurrentRunMessage = bridge.isCurrentRunMessage;

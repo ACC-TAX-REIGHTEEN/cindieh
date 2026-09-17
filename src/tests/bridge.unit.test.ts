@@ -22,6 +22,28 @@ describe("createBridge — token generation and messaging", () => {
     expect(token2).not.toBe(token1);
   });
 
+  it("rejects queued results after stop, navigation, and a replacement run", () => {
+    const win = { location: { origin: "https://coretaxdjp.pajak.go.id", href: "https://coretaxdjp.pajak.go.id/a" }, postMessage: vi.fn() };
+    const b = createBridge(win as unknown as Window);
+    b.postToScraper({ type: "START_SCRAPE" });
+    const first = b.getActiveRunId();
+    expect(b.isCurrentRunMessage({ type: "SCRAPE_COMPLETE", runId: first })).toBe(true);
+    b.postToScraper({ type: "START_SCRAPE", runId: first });
+    expect(b.getActiveRunId()).toBe(first);
+    win.location.href = "https://coretaxdjp.pajak.go.id/b";
+    expect(b.isCurrentRunMessage({ type: "SCRAPE_COMPLETE", runId: first })).toBe(false);
+    b.postToScraper({ type: "RESET_SCRAPER" });
+    b.postToScraper({ type: "START_SCRAPE" });
+    expect(b.isCurrentRunMessage({ type: "SCRAPE_COMPLETE", runId: first })).toBe(false);
+    const next = b.getActiveRunId();
+    expect(b.isCurrentRunMessage({ type: "DOWNLOAD_PDF_ITEM", runId: next })).toBe(true);
+    b.postToScraper({ type: "STOP_SCRAPE" });
+    expect(b.isCurrentRunMessage({ type: "DOWNLOAD_PDF_ITEM", runId: next })).toBe(false);
+    expect(b.isCurrentRunMessage({ type: "SCRAPE_COMPLETE" })).toBe(false);
+    expect(b.isCurrentRunMessage({ type: "INJECTED_READY" })).toBe(true);
+    expect(b.isCurrentRunMessage({ type: "DOWNLOAD_PDF_ITEM" })).toBe(true);
+  });
+
   it("allows setting token manually", () => {
     const b = createBridge();
     b.setBridgeToken("test-custom-token");
@@ -41,7 +63,7 @@ describe("createBridge — token generation and messaging", () => {
 
     expect(postMessageMock).toHaveBeenCalledTimes(1);
     expect(postMessageMock).toHaveBeenCalledWith(
-      { type: "START_SCRAPE", direction: "FROM_CONTENT", token: "active-token-123" },
+      { type: "START_SCRAPE", runId: 1, direction: "FROM_CONTENT", token: "active-token-123" },
       "https://coretaxdjp.pajak.go.id",
     );
   });
@@ -116,7 +138,7 @@ describe("module singleton — named exports delegate to one bridge", () => {
 
       expect(postMessageMock).toHaveBeenCalledTimes(1);
       expect(postMessageMock).toHaveBeenCalledWith(
-        { type: "START_SCRAPE", direction: "FROM_CONTENT", token: "singleton-active" },
+        { type: "START_SCRAPE", runId: expect.any(Number), direction: "FROM_CONTENT", token: "singleton-active" },
         "https://coretaxdjp.pajak.go.id",
       );
     } finally {

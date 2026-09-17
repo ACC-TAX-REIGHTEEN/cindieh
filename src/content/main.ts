@@ -10,14 +10,16 @@
 
 import { browserAPI } from "./browser-shim";
 import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode } from "../shared/export-preferences";
-import { isOutputTaxPage, isSupportedExportPage, type ExportSource } from "./page-context";
+import { isOutputTaxPage, isSupportedExportPage } from "./page-context";
 import { shouldProcessPageMessage, createMessageDispatcher } from "./postmessage-guard";
-import { generateBridgeToken, getBridgeToken, postToScraper } from "./bridge";
+import { generateBridgeToken, getBridgeToken, getActiveRunId, isCurrentRunMessage, postToScraper } from "./bridge";
+import { acceptScrapeResult, currentRunHandlers, invalidateScrapeResult, scrapeErrorMessage } from "./scrape-result";
+import type { ScrapeComplete } from "./scraper-types";
 import {
   injectBadge,
   updatePanelComplete,
   updatePanelError,
-  updatePanelIdle,
+
   updatePanelProgress,
 } from "./ui-badge";
 import { injectComparerModal, openComparerModal, runPendingCompare, runPendingCheck } from "./ui-comparer";
@@ -108,10 +110,9 @@ function injectScraper(): void {
   script.src = `${browserAPI.runtime.getURL("content/scraper.js")}?token=${encodeURIComponent(token)}`;
   script.onload = () => {
     debugLog("Scraper injected into page context");
-    // Deliberately keep the element: scraper.ts stripped `src` (and with it
-    // the token) as its first action, and the retained id makes injection
-    // one-time per page — SPA navigation never spawns a second scraper
-    // instance (ADR-0008).
+    // Keep the id as the one-time injection marker (ADR-0008). Scraper
+    // initialization removes src to reduce DOM exposure, not to guarantee
+    // secrecy: same-page scripts can observe the token in message traffic.
   };
   script.onerror = () => {
     // Load failed (CSP/network): drop the element so injection can be
@@ -129,7 +130,7 @@ function injectScraper(): void {
 const pageMessageDispatcher = createMessageDispatcher({
   direction: "FROM_PAGE",
   token: getBridgeToken,
-  handlers: {
+  handlers: currentRunHandlers({
     SCRAPE_PROGRESS: (msg) => {
       contentState.lastState = msg as unknown as ScrapeState;
       updatePanelProgress(
@@ -149,34 +150,19 @@ const pageMessageDispatcher = createMessageDispatcher({
       if (contentState.isRunning && scraperResendArmed) {
         scraperResendArmed = false;
         debugLog("Scraper ready; resending START_SCRAPE (was requested earlier)");
-        postToScraper({ type: "START_SCRAPE" });
+        postToScraper({ type: "START_SCRAPE", runId: getActiveRunId() });
       }
     },
 
     SCRAPE_COMPLETE: (msg) => {
-      const complete = msg as unknown as {
-        type: "SCRAPE_COMPLETE";
-        data?: Record<string, unknown>[] | null;
-        fields?: string[];
-        total?: number;
-        pages?: number;
-        elapsed?: string;
-        failureCount?: number;
-        filenameHint?: string;
-        source?: ExportSource;
-      };
-      contentState.isRunning = false;
-      contentState.scrapedData = complete.data || null;
-      // Only update fields if we got actual field data (PDF download sends empty fields)
-      if (complete.fields && complete.fields.length > 0) {
-        contentState.scrapedFields = complete.fields;
+      const complete = msg as unknown as ScrapeComplete;
+      if (!acceptScrapeResult(contentState, complete)) {
+        if (contentState.lastState?.type === "SCRAPE_ERROR") {
+          updatePanelError(contentState.lastState.message);
+        }
+        return;
       }
-      contentState.lastExportMeta = {
-        filenameHint: complete.filenameHint,
-        source: complete.source,
-      };
-      updatePanelComplete(complete.total || 0, complete.pages || 0, complete.elapsed || "0s", complete.failureCount);
-      contentState.lastState = complete as unknown as ScrapeState;
+      updatePanelComplete(complete.total || 0, complete.pages || 0, complete.elapsed || "0s");
 
       // If the user clicked "Periksa" before any data was scraped, run the
       // comparison automatically now that scraping is complete.
@@ -194,8 +180,8 @@ const pageMessageDispatcher = createMessageDispatcher({
       // The same interface the buttons use — one export decision tree.
       const pendingFormat = contentState.pendingExportFormat;
       if (pendingFormat) {
-        handleExportAction(pendingFormat);
         contentState.pendingExportFormat = null;
+        handleExportAction(pendingFormat);
       }
     },
 
@@ -209,11 +195,11 @@ const pageMessageDispatcher = createMessageDispatcher({
     },
 
     SCRAPE_ERROR: (msg) => {
-      contentState.isRunning = false;
-      contentState.lastState = msg as unknown as ScrapeState;
-      updatePanelError((msg.message as string) || "Error");
+      const message = scrapeErrorMessage(typeof msg.message === "string" ? msg.message : undefined);
+      invalidateScrapeResult(contentState, message);
+      updatePanelError(message);
     },
-  },
+  }, isCurrentRunMessage),
 });
 window.addEventListener("message", (event) => pageMessageDispatcher.handle(event));
 
@@ -263,9 +249,9 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
 document.addEventListener("ch:scrape-toggle", () => {
   if (contentState.isRunning) {
     postToScraper({ type: "STOP_SCRAPE" });
-    contentState.isRunning = false;
-    contentState.pendingExportFormat = null;
-    updatePanelIdle();
+    const message = "Proses dihentikan. Ekspor dan pemeriksaan otomatis dibatalkan. Jalankan ulang untuk memperoleh data lengkap.";
+    invalidateScrapeResult(contentState, message);
+    updatePanelError(message);
   } else {
     startScrape();
   }

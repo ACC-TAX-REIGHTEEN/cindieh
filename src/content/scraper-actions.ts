@@ -31,6 +31,8 @@ import type { CapturedRequest, ScrapeMessage } from "./scraper-types";
 // ctx object for both action functions and interceptRequest.
 
 export interface ScraperContext {
+  /** Abort in-flight requests and capture waits when this operation is cancelled. */
+  signal?: AbortSignal;
   // ── Orchestration (used by scraper-actions) ────────
 
   /** Returns true when a stop has been requested by the user. */
@@ -96,6 +98,10 @@ export interface ScraperContext {
   clearTimeout(handle: unknown): void;
 }
 
+function signalArgs(ctx: ScraperContext): [] | [AbortSignal] {
+  return ctx.signal ? [ctx.signal] : [];
+}
+
 // ── Pagination config ─────────────────────────────────
 // The Coretax rate-limit pacing lives here, local to the orchestration:
 // 500 rows/request for e-invoice, 1000 for SPT, with a slower inter-page
@@ -122,7 +128,7 @@ export function getPaginateConfig(source: ExportSource): { step: number; delayMs
  * Sends SCRAPE_PROGRESS updates via `ctx.sendToContent` on each page.
  * Stops early if `ctx.isStopRequested()` returns true.
  *
- * @returns Accumulated rows and total page count.
+ * @returns Accumulated rows and total page count. Throws on retry exhaustion.
  */
 export async function scrapePaginated(
   captured: CapturedRequest,
@@ -141,7 +147,8 @@ export async function scrapePaginated(
   while (keepGoing && !ctx.isStopRequested()) {
     page++;
     try {
-      const rows = await xhrRequestFn(captured, first, step, ctx.timeout);
+      const rows = await xhrRequestFn(captured, first, step, ctx.timeout, ...signalArgs(ctx));
+      if (ctx.isStopRequested()) break;
       const newRows = mergeRows(allData, seen, rows);
 
       const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
@@ -164,14 +171,11 @@ export async function scrapePaginated(
         await ctx.delay(delayMs);
       }
     } catch (err) {
+      if (ctx.isStopRequested()) break;
       errorCount++;
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errorCount >= ctx.maxErrors) {
-        keepGoing = false;
-        ctx.sendToContent({
-          type: "SCRAPE_ERROR",
-          message: `${ctx.maxErrors} error berturut-turut: ${errMsg}`,
-        });
+        throw new Error(`${ctx.maxErrors} error berturut-turut: ${errMsg}`);
       } else {
         await ctx.delay(2000);
       }
@@ -197,6 +201,7 @@ export async function downloadBulkWithholdingPdf(
   ctx: ScraperContext,
 ): Promise<number> {
   let failureCount = 0;
+  let consecutiveFailures = 0;
   const total = allData.length;
   debugLog(`Starting Bulk PDF download for ${total} items...`);
 
@@ -218,13 +223,20 @@ export async function downloadBulkWithholdingPdf(
     });
 
     try {
-      const base64 = await xhrDownloadWithholdingPdfFn(captured, row, ctx.timeout);
+      const base64 = await xhrDownloadWithholdingPdfFn(captured, row, ctx.timeout, ...signalArgs(ctx));
+      if (ctx.isStopRequested()) break;
       ctx.emitPdfDownload(base64, row, "WITHHOLDING_SLIPS");
-      await ctx.delay(800);
+      consecutiveFailures = 0;
     } catch (err) {
+      if (ctx.isStopRequested()) break;
       failureCount++;
+      consecutiveFailures++;
       debugError(`Gagal unduh PDF idx ${i}:`, err);
+      if (consecutiveFailures >= ctx.maxErrors) {
+        throw new Error(`${ctx.maxErrors} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`);
+      }
     }
+    await ctx.delay(800);
   }
 
   return failureCount;
@@ -243,6 +255,7 @@ export async function startScraping(
   ctx: ScraperContext,
 ): Promise<void> {
   debugLog("▶ Starting scrape...");
+  if (ctx.isStopRequested()) return;
 
   try {
     ctx.sendToContent({
@@ -254,6 +267,7 @@ export async function startScraping(
     });
 
     const captured = await interceptRequest();
+    if (ctx.isStopRequested()) return;
     const startTime = Date.now();
 
     const { step } = getPaginateConfig(captured.source);
@@ -281,6 +295,7 @@ export async function startScraping(
     if (captured.source === "WITHHOLDING_SLIPS") {
       failureCount = await downloadBulkWithholdingPdf(captured, allData, page, totalElapsed, ctx);
     }
+    if (ctx.isStopRequested()) return;
 
     ctx.sendToContent({
       type: "SCRAPE_COMPLETE",
@@ -291,9 +306,11 @@ export async function startScraping(
       elapsed: totalElapsed,
       filenameHint: filenameHint || undefined,
       source: captured.source,
+      partial: failureCount > 0,
       failureCount,
     });
   } catch (err) {
+    if (ctx.isStopRequested()) return;
     const errMsg = err instanceof Error ? err.message : String(err);
     debugError("❌ Error:", errMsg);
     ctx.sendToContent({ type: "SCRAPE_ERROR", message: errMsg });
@@ -313,9 +330,11 @@ export async function startPdfDownload(
   lastCaptured: CapturedRequest,
   ctx: ScraperContext,
 ): Promise<void> {
+  if (ctx.isStopRequested()) return;
   const source = lastCaptured.source;
   const startTime = Date.now();
   let failureCount = 0;
+  let consecutiveFailures = 0;
   const total = data.length;
 
   debugLog(`▶ Starting Bulk PDF download for ${total} efaktur items (source: ${source})...`);
@@ -353,14 +372,26 @@ export async function startPdfDownload(
     });
 
     try {
-      const base64 = await xhrDownloadEfakturPdfFn(lastCaptured, row, source, ctx.timeout);
+      const base64 = await xhrDownloadEfakturPdfFn(lastCaptured, row, source, ctx.timeout, ...signalArgs(ctx));
+      if (ctx.isStopRequested()) return;
       ctx.emitPdfDownload(base64, row, source);
-      await ctx.delay(800);
+      consecutiveFailures = 0;
     } catch (err) {
+      if (ctx.isStopRequested()) return;
       failureCount++;
+      consecutiveFailures++;
       debugError(`Gagal unduh PDF efaktur idx ${i} (${ref}):`, err);
+      if (consecutiveFailures >= ctx.maxErrors) {
+        ctx.sendToContent({
+          type: "SCRAPE_ERROR",
+          message: `${ctx.maxErrors} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`,
+        });
+        return;
+      }
     }
+    await ctx.delay(800);
   }
+  if (ctx.isStopRequested()) return;
 
   const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
   debugLog(
@@ -375,6 +406,7 @@ export async function startPdfDownload(
     pages: 0,
     elapsed: totalElapsed,
     source,
+    partial: failureCount > 0,
     failureCount,
   });
 }
@@ -402,6 +434,7 @@ export async function scrapeByInvoices(
   const startTime = Date.now();
   const allData: Record<string, unknown>[] = [];
   const seen = new Set<string>();
+  const failedInvoices: string[] = [];
   let consecutiveFailures = 0;
 
   for (let i = 0; i < invoiceNumbers.length; i++) {
@@ -424,6 +457,7 @@ export async function scrapeByInvoices(
           status: `Mencoba ulang: ${num} (percobaan ${attempt + 1}/${MAX_INVOICE_RETRIES + 1})`,
         });
         await ctx.delay(backoffMs);
+        if (ctx.isStopRequested()) return;
       } else {
         const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
         ctx.sendToContent({
@@ -436,13 +470,15 @@ export async function scrapeByInvoices(
       }
 
       try {
-        const rows = await xhrRequestByInvoiceFn(lastCaptured, num, ctx.timeout);
+        const rows = await xhrRequestByInvoiceFn(lastCaptured, num, ctx.timeout, ...signalArgs(ctx));
+        if (ctx.isStopRequested()) return;
         mergeRows(allData, seen, rows);
         consecutiveFailures = 0;
         success = true;
         await ctx.delay(50);
         break;
       } catch (err) {
+        if (ctx.isStopRequested()) return;
         const errMsg = err instanceof Error ? err.message : String(err);
         if (attempt < MAX_INVOICE_RETRIES) {
           debugLog(`Gagal mencari ${num} (percobaan ${attempt + 1}), akan dicoba ulang: ${errMsg}`);
@@ -452,7 +488,9 @@ export async function scrapeByInvoices(
       }
     }
 
+    if (ctx.isStopRequested()) return;
     if (!success) {
+      failedInvoices.push(num);
       consecutiveFailures++;
       if (consecutiveFailures >= ctx.maxErrors) {
         ctx.sendToContent({
@@ -462,8 +500,10 @@ export async function scrapeByInvoices(
         debugError(`scrapeByInvoices: aborted after ${ctx.maxErrors} consecutive failures`);
         return;
       }
+      await ctx.delay(50);
     }
   }
+  if (ctx.isStopRequested()) return;
 
   const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
   const fieldSet = collectFields(allData);
@@ -476,5 +516,8 @@ export async function scrapeByInvoices(
     pages: invoiceNumbers.length,
     elapsed: totalElapsed,
     source: lastCaptured.source,
+    partial: failedInvoices.length > 0,
+    failedInvoices,
+    failureCount: failedInvoices.length,
   });
 }

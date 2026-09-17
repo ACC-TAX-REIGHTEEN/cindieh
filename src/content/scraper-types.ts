@@ -34,7 +34,13 @@ export interface ScrapeComplete {
   elapsed: string;
   filenameHint?: string;
   source: ExportSource;
-  failureCount?: number; // total failures in bulk download
+  /** Incomplete results must not trigger pending exports or comparisons. */
+  partial?: boolean;
+  /** Reserved for explicitly reported cancellation; actions currently emit no completion on stop. */
+  cancelled?: boolean;
+  /** Invoice numbers whose targeted lookup exhausted all retries. */
+  failedInvoices?: string[];
+  failureCount?: number; // exhausted invoice lookups or failed PDF downloads
 }
 
 export interface ScrapeError {
@@ -42,17 +48,20 @@ export interface ScrapeError {
   message: string;
 }
 
-export type ScrapeMessage = ScrapeProgress | ScrapeComplete | ScrapeError | { type: "INJECTED_READY" };
+export type ScrapeMessage = (ScrapeProgress | ScrapeComplete | ScrapeError | { type: "INJECTED_READY" }) & {
+  /** Correlation only; not authentication. Native downloads/readiness are unscoped. */
+  runId?: number;
+};
 
 /** Messages the isolated world sends INTO the scraper (direction FROM_CONTENT). */
-export type FromContentMessage =
+export type FromContentMessage = (
   | { type: "START_SCRAPE" }
   | { type: "STOP_SCRAPE" }
   | { type: "RESET_SCRAPER" }
   | { type: "START_PDF_DOWNLOAD"; data: Record<string, unknown>[] }
   | { type: "SCRAPE_BY_INVOICES"; invoiceNumbers: string[] }
   | { type: "SET_SERVER_FILTER"; field: string; value: unknown }
-  | { type: "CLEAR_FILTERS"; fields: string[] };
+  | { type: "CLEAR_FILTERS"; fields: string[] }) & { runId?: number };
 
 // Extend XHR for intercepted properties
 export interface InterceptedXHR extends XMLHttpRequest {

@@ -3,18 +3,22 @@
 The bridge token is exposed twice while crossing from the isolated world into the MAIN world, and both exposures are accepted:
 
 1. **postMessage payload** — `postToScraper` (`bridge.ts`) attaches the token as a plaintext `token` field on every message sent into the page, and `sendToContent`/`emitPdfDownload` (`scraper.ts`) do the same on the way back. Any MAIN-world script that has installed `window.addEventListener("message", ...)` can read it from `event.data.token`.
-2. **Script URL** — `injectScraper` (`main.ts`) passes the token to the scraper via `?token=` on the injected `<script src>`. Between `appendChild` and the moment `scraper.ts` strips `src`/`id` and removes the element, a MAIN-world script watching DOM mutations can read the token off the attribute.
+2. **Script URL** — `injectScraper` (`main.ts`) passes the token to the scraper via `?token=` on the injected `<script src>`. The token is observable in the shared DOM until scraper initialization removes `src`. The element and its id remain as the one-time injection marker (ADR-0008); load failure removes the element to allow retry. Script loading and scheduling determine the attribute's lifetime; there is no guaranteed sub-frame exposure window.
 
 Both are inherent to the two-worlds architecture, not accidents to be fixed away:
 
-- The MAIN world has no `browser.runtime`, so `chrome.runtime.sendMessage` is unavailable there; `postMessage` is the only sanctioned channel between the worlds.
+- The MAIN-world scraper has no extension runtime API; `postMessage` remains the chosen channel between the worlds.
 - The token has to reach the scraper somehow, and the script URL is the documented mechanism that keeps it off `window`.
 
-Threat model: reading the token requires already running arbitrary script in the MAIN world — at which point page content, XHR/fetch, and DOM are readable anyway, and the token grants nothing beyond what that script could already do. The token's actual job is preventing *unrelated* MAIN-world scripts (other extensions, page-injected code) from forging `START_SCRAPE` / `DOWNLOAD_PDF_ITEM`; those scripts' capabilities are unchanged by seeing the token, and the per-message validation in `shouldProcessPageMessage` still binds every message to the correct world and direction.
+Threat model: MAIN-world code shares the DOM and page message traffic and can observe the token. The token therefore is not secret authentication against hostile same-page scripts, including other extensions' page-injected code. Existing access to page data does not imply that invoking extension-side handlers adds no capability; the bridge must not be described as granting nothing beyond page access.
 
-Mitigations that remain load-bearing:
+The token correlates messages with the current bridge and rejects messages with missing or mismatched tokens. `shouldProcessPageMessage` also checks source, origin, and direction: source/origin bind the window and origin, not the JavaScript world, and direction is a protocol field rather than proof of sender identity. These checks do not establish that a message came from the intended scraper or content script in the presence of hostile same-page code.
 
-- The token is never stored on `window`; the scraper reads it from its own `<script>` element and immediately removes `src` (the exposure window is sub-frame). The element itself is retained (id only) as the one-time injection marker — see ADR-0008.
+Decision: retain the two-worlds architecture, token validation, and guard-then-dispatch seam with this limitation accepted. This is not a claim of protection against hostile same-page message forgery.
+
+Required validation and exposure hygiene:
+
+- Do not store the token on `window`. The scraper removes `src` during initialization but retains the element and id as the one-time injection marker (ADR-0008). This reduces DOM exposure; it does not guarantee secrecy or erase exposure through subsequent messages.
 - `shouldProcessPageMessage` validates `event.source`, origin, token, and direction for every message — do not weaken it, and do not reintroduce ad-hoc message listeners (ADR-0002).
 - Do not log the token, persist it, or expose it via any debug hook.
 

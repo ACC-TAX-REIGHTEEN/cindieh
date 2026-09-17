@@ -9,6 +9,54 @@ import { buildEfakturDownloadUrl, buildEfakturPdfBody } from "./scraper-helpers"
 import { unwrapPdfData, isSuccessfulPdfResponse } from "./scraper-pdf";
 import type { CapturedRequest } from "./scraper-types";
 
+/** Settle once and release the signal listener, including synchronous setup failures. */
+function withXhr<T>(
+  signal: AbortSignal | undefined,
+  setup: (
+    xhr: XMLHttpRequest,
+    resolve: (value: T) => void,
+    reject: (reason: unknown) => void,
+  ) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const abortError = () => new DOMException("Permintaan dibatalkan.", "AbortError");
+    if (signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+
+    const xhr = new XMLHttpRequest() as XMLHttpRequest & { __isCindiehBulk?: boolean };
+    xhr.__isCindiehBulk = true;
+    let settled = false;
+    const cleanup = () => {
+      settled = true;
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const fail = (reason: unknown) => {
+      if (settled) return;
+      cleanup();
+      reject(reason);
+    };
+    const onAbort = () => {
+      if (settled) return;
+      // Settle first: abort() can synchronously dispatch XHR events.
+      fail(abortError());
+      xhr.abort();
+    };
+    xhr.onabort = () => fail(abortError());
+    signal?.addEventListener("abort", onAbort, { once: true });
+    try {
+      setup(xhr, (value) => {
+        if (settled) return;
+        cleanup();
+        resolve(value);
+      }, fail);
+    } catch (error) {
+      fail(error);
+    }
+  });
+}
+
 /**
  * Parse a captured request body defensively. Returns {} for empty or invalid
  * rawBody so callers fall back to defaults instead of throwing a raw
@@ -33,9 +81,9 @@ export function makeXhrRequest(
   captured: CapturedRequest,
   bodyOverrides: Record<string, unknown>,
   timeout: number,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>[]> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
+  return withXhr(signal, (xhr, resolve, reject) => {
     xhr.open("POST", captured.url, true);
     for (const [k, v] of Object.entries(captured.headers)) {
       xhr.setRequestHeader(k, v);
@@ -71,8 +119,9 @@ export function xhrRequest(
   first: number,
   rows: number,
   timeout: number,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>[]> {
-  return makeXhrRequest(captured, { First: first, Rows: rows }, timeout);
+  return makeXhrRequest(captured, { First: first, Rows: rows }, timeout, signal);
 }
 
 /**
@@ -82,6 +131,7 @@ export function xhrRequestByInvoice(
   captured: CapturedRequest,
   invoiceNumber: string,
   timeout: number,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>[]> {
   let filterKey: "Filters" | "filters" = "Filters";
   try {
@@ -107,6 +157,7 @@ export function xhrRequestByInvoice(
       ],
     },
     timeout,
+    signal,
   );
 }
 
@@ -118,10 +169,9 @@ export function xhrDownloadWithholdingPdf(
   captured: CapturedRequest,
   row: Record<string, unknown>,
   timeout: number,
+  signal?: AbortSignal,
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest() as XMLHttpRequest & { __isCindiehBulk?: boolean };
-    xhr.__isCindiehBulk = true;
+  return withXhr(signal, (xhr, resolve, reject) => {
     const url = captured.url.replace("GetMyWithholdingSlip", "DownloadWithholdingSlips/download-pdf-document");
     xhr.open("POST", url, true);
 
@@ -180,10 +230,9 @@ export function xhrDownloadEfakturPdf(
   row: Record<string, unknown>,
   source: string,
   timeout: number,
+  signal?: AbortSignal,
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest() as XMLHttpRequest & { __isCindiehBulk?: boolean };
-    xhr.__isCindiehBulk = true;
+  return withXhr(signal, (xhr, resolve, reject) => {
     const url = buildEfakturDownloadUrl(captured.url);
     xhr.open("POST", url, true);
 

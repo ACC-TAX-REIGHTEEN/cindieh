@@ -14,9 +14,12 @@ import {
   scrapePaginated,
   getPaginateConfig,
   scrapeByInvoices,
+  startScraping,
+  startPdfDownload,
 } from "../content/scraper-actions";
 import type { ScraperContext } from "../content/scraper-actions";
-import { xhrRequest, xhrRequestByInvoice } from "../content/scraper-xhr";
+import { createScrapeRuns } from "../content/scraper-run";
+import { xhrRequest, xhrRequestByInvoice, xhrDownloadEfakturPdf, xhrDownloadWithholdingPdf } from "../content/scraper-xhr";
 import type { CapturedRequest } from "../content/scraper-types";
 
 const mockedXhrRequest = vi.mocked(xhrRequest);
@@ -144,16 +147,12 @@ describe("scrapePaginated", () => {
     const delaySpy = ctx.delay as ReturnType<typeof vi.fn>;
     const sendSpy = ctx.sendToContent as ReturnType<typeof vi.fn>;
 
-    const { allData, page } = await scrapePaginated(makeCaptured(), 10, ctx);
-
-    expect(allData).toEqual([]);
-    expect(page).toBe(3);
+    await expect(scrapePaginated(makeCaptured(), 10, ctx)).rejects.toThrow("3 error berturut-turut");
     // First two errors back off; the third aborts.
     expect(delaySpy).toHaveBeenCalledWith(2000);
     expect(delaySpy).toHaveBeenCalledTimes(2);
-    expect(sendSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "SCRAPE_ERROR", message: expect.stringContaining("3 error berturut-turut") }),
-    );
+    // Only the orchestrator emits the terminal error.
+    expect(sendSpy).not.toHaveBeenCalled();
   });
 
   it("stops early when ctx.isStopRequested returns true", async () => {
@@ -165,6 +164,41 @@ describe("scrapePaginated", () => {
     expect(page).toBe(0);
     expect(allData).toEqual([]);
     expect(mockedXhrRequest).not.toHaveBeenCalled();
+  });
+
+  it("cancels an in-flight scrape without publishing an error or corrupting its replacement", async () => {
+    const runs = createScrapeRuns();
+    const old = runs.start(1)!;
+    let requestSignal: AbortSignal | undefined;
+    let began!: () => void;
+    const requestStarted = new Promise<void>((resolve) => { began = resolve; });
+    mockedXhrRequest.mockImplementationOnce((_captured, _first, _rows, _timeout, signal) => {
+      requestSignal = signal;
+      began();
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(new DOMException("Dibatalkan", "AbortError")), { once: true });
+      });
+    });
+    const oldCtx = makeCtx({ signal: old.signal, isStopRequested: () => !old.isCurrent() });
+    const oldWork = startScraping(async () => makeCaptured(), oldCtx).finally(() => old.finish());
+    await requestStarted;
+    expect(requestSignal).toBe(old.signal);
+
+    runs.cancel();
+    const replacement = runs.start(3)!;
+    mockedXhrRequest.mockResolvedValueOnce([{ Reference: "NEW" }]);
+    const newCtx = makeCtx({ signal: replacement.signal, isStopRequested: () => !replacement.isCurrent() });
+    await oldWork;
+    expect(requestSignal?.aborted).toBe(true);
+    expect(replacement.isCurrent()).toBe(true);
+    expect(oldCtx.sendToContent).not.toHaveBeenCalledWith(expect.objectContaining({ type: "SCRAPE_ERROR" }));
+    expect(oldCtx.sendToContent).not.toHaveBeenCalledWith(expect.objectContaining({ type: "SCRAPE_COMPLETE" }));
+
+    await startScraping(async () => makeCaptured(), newCtx);
+    expect(newCtx.sendToContent).toHaveBeenCalledWith(expect.objectContaining({
+      type: "SCRAPE_COMPLETE", data: [{ Reference: "NEW" }], partial: false,
+    }));
+    replacement.finish();
   });
 
   it("passes First/Rows and timeout through to the XHR call", async () => {
@@ -201,7 +235,7 @@ describe("scrapeByInvoices", () => {
     expect(mockedXhrRequestByInvoice).toHaveBeenCalledTimes(2);
     expect(delaySpy).toHaveBeenCalledWith(50);
     expect(ctx.sendToContent).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "SCRAPE_COMPLETE", data: [{ Reference: "R1" }, { Reference: "R2" }] }),
+      expect.objectContaining({ type: "SCRAPE_COMPLETE", data: [{ Reference: "R1" }, { Reference: "R2" }], partial: false, failedInvoices: [], failureCount: 0 }),
     );
   });
 
@@ -278,7 +312,7 @@ describe("scrapeByInvoices", () => {
     // A fails (1 consecutive), B succeeds (resets to 0), C fails (1) — the
     // counter never reaches maxErrors, so the run completes instead of aborting.
     expect(ctx.sendToContent).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "SCRAPE_COMPLETE", data: [{ Reference: "B1" }] }),
+      expect.objectContaining({ type: "SCRAPE_COMPLETE", data: [{ Reference: "B1" }], partial: true, failedInvoices: ["A", "C"], failureCount: 2 }),
     );
     const messages = (ctx.sendToContent as ReturnType<typeof vi.fn>).mock.calls.map(
       (c) => c[0],
@@ -286,10 +320,10 @@ describe("scrapeByInvoices", () => {
     expect(messages.some((m) => m.type === "SCRAPE_ERROR")).toBe(false);
   });
 
-  it("stops mid-way when stop is requested and completes with partial data", async () => {
+  it("does not emit completion or accept an invoice response after cancellation", async () => {
     let stop = false;
     mockedXhrRequestByInvoice.mockImplementationOnce(async () => {
-      stop = true; // noticed at the next iteration's stop check
+      stop = true;
       return [{ Reference: "R1" }];
     });
     const ctx = makeCtx({ isStopRequested: () => stop });
@@ -297,8 +331,127 @@ describe("scrapeByInvoices", () => {
     await scrapeByInvoices(["A", "B"], makeCaptured(), ctx);
 
     expect(mockedXhrRequestByInvoice).toHaveBeenCalledTimes(1);
-    expect(ctx.sendToContent).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "SCRAPE_COMPLETE", data: [{ Reference: "R1" }] }),
+    expect(ctx.sendToContent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "SCRAPE_COMPLETE" }),
     );
+  });
+
+  it("does not retry when cancelled during backoff", async () => {
+    let stop = false;
+    mockedXhrRequestByInvoice.mockRejectedValue(new Error("failure"));
+    const ctx = makeCtx({
+      isStopRequested: () => stop,
+      delay: vi.fn(async () => { stop = true; }),
+    });
+    await scrapeByInvoices(["A", "B"], makeCaptured(), ctx);
+    expect(mockedXhrRequestByInvoice).toHaveBeenCalledTimes(1);
+    expect(ctx.sendToContent).not.toHaveBeenCalledWith(expect.objectContaining({ type: "SCRAPE_COMPLETE" }));
+    expect(ctx.sendToContent).not.toHaveBeenCalledWith(expect.objectContaining({ type: "SCRAPE_ERROR" }));
+  });
+
+  it("marks exhausted lookups partial even when no rows were recovered", async () => {
+    mockedXhrRequestByInvoice.mockRejectedValue(new Error("failure"));
+    const ctx = makeCtx();
+    await scrapeByInvoices(["A"], makeCaptured(), ctx);
+    expect(ctx.sendToContent).toHaveBeenCalledWith(expect.objectContaining({
+      type: "SCRAPE_COMPLETE", data: [], partial: true, failedInvoices: ["A"], failureCount: 1,
+    }));
+  });
+
+  it("treats a successful empty lookup as success, not a failed invoice", async () => {
+    mockedXhrRequestByInvoice.mockResolvedValue([]);
+    const ctx = makeCtx();
+    await scrapeByInvoices(["A"], makeCaptured(), ctx);
+    expect(ctx.sendToContent).toHaveBeenCalledWith(expect.objectContaining({
+      type: "SCRAPE_COMPLETE", data: [], partial: false, failedInvoices: [], failureCount: 0,
+    }));
+  });
+});
+
+ describe("startScraping", () => {
+  beforeEach(() => { vi.resetAllMocks(); });
+
+  it("emits one error and no completion when pagination fails after collecting data", async () => {
+    mockedXhrRequest.mockResolvedValueOnce(Array.from({ length: 500 }, (_, i) => ({ Id: i })))
+      .mockRejectedValue(new Error("failure"));
+    const ctx = makeCtx();
+    await startScraping(async () => makeCaptured(), ctx);
+    const messages = vi.mocked(ctx.sendToContent).mock.calls.map(([msg]) => msg);
+    expect(messages.filter(msg => msg.type === "SCRAPE_ERROR")).toHaveLength(1);
+    expect(messages.some(msg => msg.type === "SCRAPE_COMPLETE")).toBe(false);
+    expect(mockedXhrRequest).toHaveBeenCalledTimes(4);
+    expect(ctx.emitPdfDownload).not.toHaveBeenCalled();
+  });
+
+  it("does not request pages if cancelled during capture", async () => {
+    let stop = false;
+    const ctx = makeCtx({ isStopRequested: () => stop });
+    await startScraping(async () => { stop = true; return makeCaptured(); }, ctx);
+    expect(mockedXhrRequest).not.toHaveBeenCalled();
+    expect(ctx.sendToContent).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])("suppresses late pagination results/errors after cancellation (reject: %s)", async (reject) => {
+    let stop = false;
+    mockedXhrRequest.mockImplementation(async () => {
+      stop = true;
+      if (reject) throw new Error("late failure");
+      return [{ Id: 1 }];
+    });
+    const ctx = makeCtx({ isStopRequested: () => stop });
+    await startScraping(async () => makeCaptured(), ctx);
+    expect(mockedXhrRequest).toHaveBeenCalledTimes(1);
+    expect(ctx.sendToContent).toHaveBeenCalledTimes(1);
+  });
+});
+
+ describe("bulk PDF actions", () => {
+  beforeEach(() => { vi.resetAllMocks(); });
+
+  it.each(["OUTPUT_TAX", "WITHHOLDING_SLIPS"] as const)("paces failures and stops at the consecutive failure limit for %s", async (source) => {
+    const rows = [{ Id: 1 }, { Id: 2 }, { Id: 3 }];
+    const ctx = makeCtx({ maxErrors: 2 });
+    const download = vi.mocked(source === "OUTPUT_TAX" ? xhrDownloadEfakturPdf : xhrDownloadWithholdingPdf);
+    download.mockRejectedValue(new Error("HTTP 401 saat download PDF"));
+    if (source === "OUTPUT_TAX") {
+      await startPdfDownload(rows, makeCaptured(source), ctx);
+    } else {
+      mockedXhrRequest.mockResolvedValue(rows);
+      await startScraping(async () => makeCaptured(source), ctx);
+    }
+    expect(download).toHaveBeenCalledTimes(2);
+    expect(ctx.delay).toHaveBeenCalledWith(800);
+    expect(ctx.emitPdfDownload).not.toHaveBeenCalled();
+    expect(ctx.sendToContent).toHaveBeenCalledWith(expect.objectContaining({ type: "SCRAPE_ERROR" }));
+    expect(ctx.sendToContent).not.toHaveBeenCalledWith(expect.objectContaining({ type: "SCRAPE_COMPLETE" }));
+  });
+
+  it.each(["OUTPUT_TAX", "WITHHOLDING_SLIPS"] as const)("does not emit a late PDF or completion after cancellation for %s", async (source) => {
+    let stop = false;
+    const rows = [{ Id: 1 }, { Id: 2 }];
+    const ctx = makeCtx({ isStopRequested: () => stop });
+    const download = vi.mocked(source === "OUTPUT_TAX" ? xhrDownloadEfakturPdf : xhrDownloadWithholdingPdf);
+    download.mockImplementation(async () => { stop = true; return "pdf"; });
+    if (source === "OUTPUT_TAX") {
+      await startPdfDownload(rows, makeCaptured(source), ctx);
+    } else {
+      mockedXhrRequest.mockResolvedValue(rows);
+      await startScraping(async () => makeCaptured(source), ctx);
+    }
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(ctx.emitPdfDownload).not.toHaveBeenCalled();
+    expect(ctx.sendToContent).not.toHaveBeenCalledWith(expect.objectContaining({ type: "SCRAPE_COMPLETE" }));
+  });
+
+  it("reports isolated PDF failures as partial and resets the consecutive counter", async () => {
+    vi.mocked(xhrDownloadEfakturPdf).mockRejectedValueOnce(new Error("fail"))
+      .mockResolvedValueOnce("pdf").mockRejectedValueOnce(new Error("fail"));
+    const ctx = makeCtx({ maxErrors: 2 });
+    await startPdfDownload([{ Id: 1 }, { Id: 2 }, { Id: 3 }], makeCaptured(), ctx);
+    expect(ctx.emitPdfDownload).toHaveBeenCalledTimes(1);
+    expect(ctx.delay).toHaveBeenCalledTimes(3);
+    expect(ctx.sendToContent).toHaveBeenCalledWith(expect.objectContaining({
+      type: "SCRAPE_COMPLETE", partial: true, failureCount: 2,
+    }));
   });
 });

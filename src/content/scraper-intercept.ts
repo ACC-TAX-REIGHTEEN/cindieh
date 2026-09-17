@@ -110,6 +110,13 @@ const TRIGGER_DELAY_MS = 500;
  */
 export function interceptRequest(ctx: ScraperContext): Promise<CapturedRequest> {
   return new Promise<CapturedRequest>((resolve, reject) => {
+    const signal = ctx.signal;
+    const abortError = () => new DOMException("Permintaan dibatalkan.", "AbortError");
+    if (signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+
     // Fast path: reuse cached request
     if (isCacheValid(ctx)) {
       debugLog("Using cached request from history.");
@@ -117,33 +124,50 @@ export function interceptRequest(ctx: ScraperContext): Promise<CapturedRequest> 
       return;
     }
 
-    let resolved = false;
+    let settled = false;
+    let unsubscribe: (() => void) | undefined;
+    const handles: unknown[] = [];
+    const cleanup = () => {
+      settled = true;
+      for (const handle of handles) ctx.clearTimeout(handle);
+      unsubscribe?.();
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      if (settled) return;
+      cleanup();
+      reject(abortError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
 
-    // Register capture subscriber
-    const unsubscribe = ctx.subscribeCapture((req) => {
-      if (resolved) return;
-      resolved = true;
-      ctx.clearTimeout(timeoutHandle);
-      resolve(req);
-    });
-
-    // Schedule trigger click
-    ctx.setTimeout(() => {
-      triggerXhrCapture(ctx);
-    }, TRIGGER_DELAY_MS);
-
-    // Schedule timeout rejection
-    const timeoutHandle = ctx.setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
+    try {
+      unsubscribe = ctx.subscribeCapture((req) => {
+        if (settled) return;
+        cleanup();
+        resolve(req);
+      });
+      // A context may deliver a capture synchronously while subscribing.
+      if (settled) {
         unsubscribe();
-        reject(
-          new Error(
-            "Tidak ada request tertangkap (Timeout). Silakan muat ulang data atau klik tombol filter/cari di halaman.",
-          ),
-        );
+        return;
       }
-    }, CAPTURE_TIMEOUT_MS);
+
+      handles.push(ctx.setTimeout(() => {
+        if (!settled) triggerXhrCapture(ctx);
+      }, TRIGGER_DELAY_MS));
+
+      handles.push(ctx.setTimeout(() => {
+        if (settled) return;
+        cleanup();
+        reject(new Error(
+          "Tidak ada request tertangkap (Timeout). Silakan muat ulang data atau klik tombol filter/cari di halaman.",
+        ));
+      }, CAPTURE_TIMEOUT_MS));
+    } catch (error) {
+      if (settled) return;
+      cleanup();
+      reject(error);
+    }
   });
 }
 

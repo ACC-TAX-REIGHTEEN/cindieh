@@ -37,6 +37,7 @@ type ClearTimerFn = (h: unknown) => void;
  * but do NOT auto-fire — tests control timer execution manually.
  */
 function makeCtx(opts: {
+  signal?: AbortSignal;
   lastCaptured?: CapturedRequest | null;
   lastCapturedTime?: number;
   visibleGridSource?: CapturedRequest["source"] | null;
@@ -58,6 +59,7 @@ function makeCtx(opts: {
   const clickedElements: Element[] = [];
 
   return {
+    signal: opts.signal,
     // ── Orchestration stubs (not exercised by intercept tests) ────
     isStopRequested: vi.fn(() => false),
     sendToContent: vi.fn(),
@@ -239,6 +241,74 @@ describe("triggerXhrCapture", () => {
 // ── interceptRequest ──────────────────────────────────────────────────────────
 
 describe("interceptRequest", () => {
+  it.each([false, true])("rejects pre-aborted signals without capture or clicks (cache=%s)", async (cached) => {
+    const controller = new AbortController();
+    controller.abort();
+    const ctx = makeCtx({
+      signal: controller.signal,
+      lastCaptured: cached ? makeCapture() : null,
+      lastCapturedTime: Date.now(),
+      currentPageSource: "OUTPUT_TAX",
+    });
+    await expect(interceptRequest(ctx)).rejects.toMatchObject({ name: "AbortError" });
+    expect(ctx.subscribeCapture).not.toHaveBeenCalled();
+    expect(ctx._timeouts).toHaveLength(0);
+    expect(ctx._clickedElements).toHaveLength(0);
+  });
+
+  it("cancels both timers and the subscription without clicking or accepting stale capture", async () => {
+    const controller = new AbortController();
+    const add = vi.spyOn(controller.signal, "addEventListener");
+    const remove = vi.spyOn(controller.signal, "removeEventListener");
+    const ctx = makeCtx({ signal: controller.signal, queryElementResult: {} as Element });
+    const promise = interceptRequest(ctx);
+    const staleCapture = ctx._subscribers[0];
+    controller.abort();
+    for (const timer of ctx._timeouts) timer.fn();
+    staleCapture(makeCapture());
+    await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+    expect(ctx._clearTimeoutHandles).toEqual([0, 1]);
+    expect(ctx._unsubscribeCalls).toBe(1);
+    expect(ctx._subscribers).toHaveLength(0);
+    expect(ctx._clickedElements).toHaveLength(0);
+    expect(remove).toHaveBeenCalledExactlyOnceWith("abort", add.mock.calls[0][1]);
+  });
+
+  it.each(["capture", "timeout"] as const)("cleans up on %s and ignores subsequent abort", async (event) => {
+    const controller = new AbortController();
+    const remove = vi.spyOn(controller.signal, "removeEventListener");
+    const ctx = makeCtx({ signal: controller.signal });
+    const promise = interceptRequest(ctx);
+    if (event === "capture") {
+      ctx._subscribers[0](makeCapture());
+      await expect(promise).resolves.toBeDefined();
+    } else {
+      ctx._timeouts[1].fn();
+      await expect(promise).rejects.toThrow("Timeout");
+    }
+    controller.abort();
+    ctx._timeouts[0].fn();
+    expect(ctx._clearTimeoutHandles).toEqual([0, 1]);
+    expect(ctx._unsubscribeCalls).toBe(1);
+    expect(remove).toHaveBeenCalledOnce();
+    expect(ctx.queryElement).not.toHaveBeenCalled();
+  });
+
+  it("cleans up a synchronous capture without scheduling timers", async () => {
+    const controller = new AbortController();
+    const remove = vi.spyOn(controller.signal, "removeEventListener");
+    const ctx = makeCtx({ signal: controller.signal });
+    const unsubscribe = vi.fn();
+    const captured = makeCapture();
+    ctx.subscribeCapture = (fn) => {
+      fn(captured);
+      return unsubscribe;
+    };
+    await expect(interceptRequest(ctx)).resolves.toBe(captured);
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledOnce();
+    expect(ctx._timeouts).toHaveLength(0);
+  });
   it("resolves immediately with cached request when cache is valid", async () => {
     const captured = makeCapture("OUTPUT_TAX");
     const ctx = makeCtx({
@@ -298,8 +368,11 @@ describe("interceptRequest", () => {
     ctx._subscribers[0](makeCapture());
 
     await promise;
-    // The timeout should have been cancelled
-    expect(ctx._clearTimeoutHandles.length).toBe(1);
+    expect(ctx._clearTimeoutHandles).toEqual([0, 1]);
+    expect(ctx._unsubscribeCalls).toBe(1);
+    expect(ctx._subscribers).toHaveLength(0);
+    ctx._timeouts[0].fn();
+    expect(ctx.queryElement).not.toHaveBeenCalled();
   });
 
   it("rejects with a descriptive error message on timeout", async () => {

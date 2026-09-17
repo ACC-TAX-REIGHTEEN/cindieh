@@ -1,6 +1,6 @@
 # Cindieh
 
-The domain of the Cindieh extension: bulk capture, export, and comparison of tax data inside the Indonesian DJP Coretax portal, built as two JavaScript worlds (isolated + MAIN) that talk only over a token-authenticated message channel.
+The domain of the Cindieh extension: bulk capture, export, and comparison of tax data inside the Indonesian DJP Coretax portal, built as two JavaScript worlds (isolated + MAIN) that talk only over a token-validated message channel.
 
 ## Language
 
@@ -125,7 +125,7 @@ The two JavaScript worlds the extension runs in — the content script (isolated
 _Avoid_: content script side, page side
 
 **Bridge token**:
-The random secret generated in the isolated world and smuggled to the scraper through the script URL. Every cross-world message must carry it; it is the security boundary of the whole extension.
+The random value generated in the isolated world and passed to the scraper through the script URL. Every cross-world message must carry it to correlate messages with the bridge. MAIN-world scripts can observe it through the shared DOM and postMessage traffic, so it is not secret authentication against hostile same-page scripts. Source/origin checks bind the window and origin, not the JavaScript world; direction is a protocol field, not proof of sender identity. The two-worlds seam and token validation remain required with these accepted limitations (ADR-0007).
 _Avoid_: secret, token, security key
 
 **Grid request**:

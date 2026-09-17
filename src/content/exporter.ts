@@ -61,12 +61,37 @@ export function downloadTextFile(content: string, filename: string, mimeType: st
   downloadFile(content, filename, mimeType);
 }
 
+export interface AoaXLSXOptions {
+  /** Zero-based column index to Excel number format. Only numeric cells are formatted. */
+  numberFormats?: Readonly<Record<number, string>>;
+}
+
+export const RESULT_NUMBER_FORMAT = "#,##0.##########";
+export const RESULT_DIFFERENCE_FORMAT = "+#,##0.##########;-#,##0.##########;0";
+
+export function buildAoaWorkbook(
+  rows: readonly (readonly unknown[])[],
+  sheetName = "Sheet1",
+  options: AoaXLSXOptions = {},
+): XLSX.WorkBook {
+  const worksheet = XLSX.utils.aoa_to_sheet(rows as unknown[][]);
+  for (const [column, format] of Object.entries(options.numberFormats ?? {})) {
+    for (let row = 1; row < rows.length; row++) {
+      const cell = worksheet[XLSX.utils.encode_cell({ r: row, c: Number(column) })];
+      if (cell?.t === "n") cell.z = format;
+    }
+  }
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  return workbook;
+}
+
 /**
  * Trigger a browser download for an XLSX spreadsheet generated from a 2D
  * array of rows (AOA — "array of arrays").
  *
  * Deliberately separate from exportXLSX (json_to_sheet): this path feeds
- * pre-built 2D string grids — e.g. the comparer results table in
+ * pre-built typed 2D grids — e.g. the comparer results table in
  * ui-comparer.ts — whose rows are already shaped and labeled. json_to_sheet
  * would add nothing but overhead there. Keep the two writers distinct; they
  * serve different data shapes.
@@ -75,10 +100,9 @@ export function downloadXLSXFile(
   rows: readonly (readonly unknown[])[],
   filename: string,
   sheetName = "Sheet1",
+  options: AoaXLSXOptions = {},
 ): void {
-  const worksheet = XLSX.utils.aoa_to_sheet(rows as unknown[][]);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  const workbook = buildAoaWorkbook(rows, sheetName, options);
 
   const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
   downloadFile(

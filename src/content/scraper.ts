@@ -37,22 +37,22 @@ import {
   createPdfDownloadSession,
 } from "./scraper-pdf";
 import { createMessageDispatcher } from "./postmessage-guard";
+import { createScrapeRuns } from "./scraper-run";
 
 (() => {
   const TIMEOUT = 30000;
   const MAX_ERRORS = 3;
 
-  // ── Bridge token (anti-spoofing) ───────────────────
-  // Read the token that the content script embedded into THIS script's
-  // own <script src> URL. Other MAIN-world scripts cannot read it because
-  // they don't have access to our specific <script> element's src.
+  // ── Bridge correlation token ──────────────────────
+  // Shared DOM and message traffic expose this token to MAIN-world scripts.
+  // It correlates this bridge, not a secret authentication boundary (ADR-0007).
   let bridgeToken = "";
   try {
     const selfScript = document.getElementById("__ch_scraper_injected__") as HTMLScriptElement | null;
     if (selfScript && selfScript.src) {
       const url = new URL(selfScript.src, location.href);
       bridgeToken = url.searchParams.get("token") || "";
-      // Strip the token from src immediately (exposure window is sub-frame).
+      // Reduce DOM exposure without assuming a guaranteed exposure duration.
       // The element itself stays in the DOM as the one-time injection marker:
       // injectScraper's getElementById guard then prevents a second scraper
       // instance on SPA navigation (zombie interceptors). See ADR-0008.
@@ -62,8 +62,7 @@ import { createMessageDispatcher } from "./postmessage-guard";
     bridgeToken = "";
   }
 
-  let isRunning = false;
-  let stopRequested = false;
+  const runs = createScrapeRuns();
 
   // ── Shared scraper context ─────────────────────────
   // Passed to action functions so they don't need to close over
@@ -71,7 +70,7 @@ import { createMessageDispatcher } from "./postmessage-guard";
 
   const ctx: ScraperContext = {
     // ── Orchestration ──────────────────────────────────
-    isStopRequested: () => stopRequested,
+    isStopRequested: () => false,
     sendToContent,
     emitPdfDownload: (base64, item, source) => {
       try {
@@ -108,6 +107,33 @@ import { createMessageDispatcher } from "./postmessage-guard";
     clearTimeout: (h) => window.clearTimeout(h as number),
   };
 
+  function runAction(msg: Record<string, unknown>, action: (runCtx: ScraperContext) => Promise<void>): void {
+    if (!Number.isSafeInteger(msg.runId) || (msg.runId as number) <= 0) return;
+    const run = runs.start(msg.runId as number);
+    if (!run) return;
+    const page = location.href;
+    const isCurrent = () => run.isCurrent() && location.href === page;
+    const runCtx: ScraperContext = {
+      ...ctx,
+      signal: run.signal,
+      isStopRequested: () => !isCurrent(),
+      sendToContent: (message) => {
+        if (isCurrent()) sendToContent({ ...message, runId: run.id });
+      },
+      emitPdfDownload: (base64, item, source) => {
+        if (!isCurrent()) return;
+        window.postMessage({
+          ...buildPdfDownloadMessage({ base64, item, source, token: bridgeToken }),
+          runId: run.id,
+        }, window.location.origin);
+      },
+      clickElement: (el) => { if (isCurrent()) ctx.clickElement(el); },
+    };
+    void action(runCtx).catch((err: unknown) => {
+      runCtx.sendToContent({ type: "SCRAPE_ERROR", message: err instanceof Error ? err.message : String(err) });
+    }).finally(() => run.finish());
+  }
+
   // ── Message listener: content script → scraper ─────
   // One guard-then-dispatch seam (FROM_CONTENT) for every message the
   // isolated world sends in. New message types register in the table.
@@ -116,26 +142,19 @@ import { createMessageDispatcher } from "./postmessage-guard";
     direction: "FROM_CONTENT",
     token: bridgeToken,
     handlers: {
-      START_SCRAPE: () => {
-        if (isRunning) return;
-        stopRequested = false;
-        isRunning = true;
-        startScraping(interceptRequest, ctx).finally(() => {
-          isRunning = false;
-          debugLog("⏹ Scraping finished. isRunning=false");
-        });
+      START_SCRAPE: (msg) => {
+        runAction(msg, (runCtx) => startScraping(() => makeInterceptRequest(runCtx), runCtx));
       },
 
       STOP_SCRAPE: () => {
-        stopRequested = true;
+        runs.cancel();
       },
 
       RESET_SCRAPER: () => {
         // Called on SPA navigation to prevent stale state from leaking
         // into the new page. Resets running flags, captured request cache,
         // filter state, and pending capture subscribers.
-        stopRequested = true;
-        isRunning = false;
+        runs.cancel();
         lastCaptured = null;
         lastCapturedTime = 0;
         captureSubscribers.length = 0;
@@ -147,24 +166,22 @@ import { createMessageDispatcher } from "./postmessage-guard";
       },
 
       START_PDF_DOWNLOAD: (msg) => {
-        if (isRunning) return;
+        if (runs.isRunning()) return;
         if (!lastCaptured) {
           sendToContent({
             type: "SCRAPE_ERROR",
             message: "Tidak ada data request yang tersimpan. Silakan jalankan ekspor terlebih dahulu.",
+            runId: msg.runId as number,
           });
           return;
         }
-        stopRequested = false;
-        isRunning = true;
-        startPdfDownload(msg.data as Record<string, unknown>[], lastCaptured, ctx).finally(() => {
-          isRunning = false;
-        });
+        const captured = lastCaptured;
+        runAction(msg, (runCtx) => startPdfDownload(msg.data as Record<string, unknown>[], captured, runCtx));
       },
 
       SCRAPE_BY_INVOICES: (msg) => {
         debugLog("RECEIVED SCRAPE_BY_INVOICES:", msg.invoiceNumbers);
-        if (isRunning) {
+        if (runs.isRunning()) {
           debugLog("SCRAPE_BY_INVOICES blocked: already running");
           return;
         }
@@ -172,14 +189,12 @@ import { createMessageDispatcher } from "./postmessage-guard";
           sendToContent({
             type: "SCRAPE_ERROR",
             message: "Tidak ada request tersimpan.",
+            runId: msg.runId as number,
           });
           return;
         }
-        stopRequested = false;
-        isRunning = true;
-        scrapeByInvoices(msg.invoiceNumbers as string[], lastCaptured, ctx).finally(() => {
-          isRunning = false;
-        });
+        const captured = lastCaptured;
+        runAction(msg, (runCtx) => scrapeByInvoices(msg.invoiceNumbers as string[], captured, runCtx));
       },
 
       SET_SERVER_FILTER: (msg) => {
@@ -586,9 +601,7 @@ import { createMessageDispatcher } from "./postmessage-guard";
   // ── Request interceptor ────────────────────────────
   // Delegates to the extracted, testable module in scraper-intercept.ts.
 
-  function interceptRequest(): Promise<CapturedRequest> {
-    return makeInterceptRequest(ctx);
-  }
+
 
   // Signal that the injected script is ready
   sendToContent({ type: "INJECTED_READY" });

@@ -6,8 +6,14 @@
 // tab navigation, wires events, and renders session state.
 // ============================================================
 
-import { parsePastedData, type ComparisonResult } from "./comparer";
-import { downloadXLSXFile } from "./exporter";
+import type { ComparisonResult } from "./comparer";
+import { downloadXLSXFile, RESULT_NUMBER_FORMAT, RESULT_DIFFERENCE_FORMAT } from "./exporter";
+import {
+  buildComparisonExportRows,
+  buildCheckerExportRows,
+  formatResultNumber as formatNum,
+  formatResultDifference as formatDiffCell,
+} from "./comparer-export";
 import { contentState, startScrape } from "./main-actions";
 import { isOutputTaxPage } from "./page-context";
 import {
@@ -17,7 +23,6 @@ import {
   createComparerSession,
   formatStatusSummary,
   getStatusLabel,
-  parseDailyDates,
   prepareComparison,
   rerunComparison,
   runComparison as runSessionComparison,
@@ -232,6 +237,7 @@ export function injectComparerModal(): void {
   exportBtn.className = "ch-comparer-btn ch-comparer-btn-primary";
   exportBtn.textContent = "Export XLSX";
   exportBtn.title = "Ekspor hasil perbandingan ke file Excel";
+  exportBtn.disabled = true;
 
   // Status filter dropdown (next to Export) — custom dropdown with checkboxes
   const filterOptions: { value: string; label: string }[] = [
@@ -385,6 +391,7 @@ export function injectComparerModal(): void {
     { value: "DPP_NILAI_LAIN_BERBEDA", label: "DPP NL Berbeda" },
     { value: "PPN_BERBEDA", label: "PPN Berbeda" },
     { value: "DUA_BERBEDA", label: "Dua Nilai Berbeda" },
+    { value: "DATA_TIDAK_LENGKAP", label: "Data tidak lengkap" },
   ];
 
   const checkerFilterWrap = document.createElement("div");
@@ -476,6 +483,11 @@ export function injectComparerModal(): void {
 
   clearBtn.addEventListener("click", () => {
     textarea.value = "";
+    session.results = [];
+    session.currentPage = 1;
+    session.viewedRefs.clear();
+    contentState.pendingCompare = false;
+    exportBtn.disabled = true;
     textarea.classList.remove("ch-hidden");
     const toggleIcon = document.getElementById("ch-comparer-toggle-icon");
     if (toggleIcon) toggleIcon.className = "pi pi-chevron-up";
@@ -507,7 +519,6 @@ export function injectComparerModal(): void {
   });
 
   dailyDatesInput.addEventListener("change", () => {
-    session.dailyDates = parseDailyDates(dailyDatesInput.value);
     rerunFromTextarea();
   });
 
@@ -670,13 +681,14 @@ function handleCheck(): void {
 
   const decision = prepareComparison(session, textareaValue, scrapedData, datesValue);
 
+  contentState.pendingCompare = false;
   if (decision.action === "error") {
-    statusMsg.textContent = decision.message;
-    statusMsg.className = "ch-comparer-status ch-comparer-status-error";
+    renderComparisonError(decision.message);
     return;
   }
 
   if (decision.action === "needScrape") {
+    renderResults();
     statusMsg.textContent = "Belum ada data. Mohon tunggu, sedang melakukan scraping data PPN Keluaran terlebih dahulu...";
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
     contentState.pendingCompare = true;
@@ -690,22 +702,33 @@ function handleCheck(): void {
 
 function rerunFromTextarea(): void {
   if (session.results.length === 0) return;
-  const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
-  const scrapedData = contentState.scrapedData;
-  const result = rerunComparison(session, textarea ? textarea.value : "", scrapedData);
-  if (result) renderAfterComparison();
+  runPendingCompare();
 }
 
 export function runPendingCompare(): void {
   const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
-  const scrapedData = contentState.scrapedData;
-  if (!textarea || !textarea.value.trim() || !scrapedData || scrapedData.length === 0) return;
+  const datesInput = document.getElementById("ch-comparer-daily-dates") as HTMLInputElement;
+  const result = rerunComparison(
+    session, textarea ? textarea.value : "", contentState.scrapedData,
+    datesInput ? datesInput.value : "",
+  );
+  if (result.action === "error") {
+    renderComparisonError(result.message);
+  } else {
+    renderAfterComparison();
+  }
+}
 
-  const pastedRows = parsePastedData(textarea.value, session.refLainEnabled);
-  if (pastedRows.length === 0) return;
-
-  runSessionComparison(session, pastedRows, scrapedData);
-  renderAfterComparison();
+function renderComparisonError(message: string): void {
+  renderResults();
+  const statusMsg = document.getElementById("ch-comparer-status");
+  if (statusMsg) {
+    statusMsg.textContent = message;
+    statusMsg.className = "ch-comparer-status ch-comparer-status-error";
+  }
+  document.getElementById("ch-comparer-textarea")?.classList.remove("ch-hidden");
+  const toggleIcon = document.getElementById("ch-comparer-toggle-icon");
+  if (toggleIcon) toggleIcon.className = "pi pi-chevron-up";
 }
 
 // ── Check handlers for Pengecekan ─────────────────────
@@ -777,6 +800,8 @@ function renderAfterComparison(): void {
 }
 
 function renderResults(): void {
+  const exportBtn = document.getElementById("ch-comparer-export-btn") as HTMLButtonElement;
+  if (exportBtn) exportBtn.disabled = session.results.length === 0;
   const container = document.getElementById("ch-comparer-results");
   if (!container) return;
 
@@ -784,10 +809,10 @@ function renderResults(): void {
   container.innerHTML = "";
 
   const filterWrap = document.getElementById("ch-comparer-filter-wrap");
-  if (filterWrap) filterWrap.classList.remove("ch-hidden");
+  if (filterWrap) filterWrap.classList.toggle("ch-hidden", session.results.length === 0);
 
   if (session.results.length === 0) {
-    container.textContent = "Tidak ada data untuk ditampilkan.";
+    container.classList.add("ch-hidden");
     return;
   }
 
@@ -855,10 +880,6 @@ function renderResults(): void {
       tr.classList.toggle("ch-comparer-row-expanded");
     });
 
-    const formatNum = (n: number | null): string => {
-      if (n === null) return "-";
-      return n.toLocaleString("id-ID");
-    };
 
     const statusLabel = getStatusLabel(r.status);
 
@@ -1072,12 +1093,6 @@ function renderCheckerResults(): void {
       tr.classList.add("ch-comparer-row-viewed");
     }
 
-    const formatNum = (n: number): string => n.toLocaleString("id-ID");
-
-    const formatDiffCell = (diff: number, tolerance: number): string => {
-      if (Math.abs(diff) <= tolerance) return "-";
-      return (diff > 0 ? "+" : "") + formatNum(diff);
-    };
 
     let diffCol1 = "-";
     let diffCol2 = "-";
@@ -1179,167 +1194,25 @@ function handleExportResults(): void {
 
   if (session.results.length === 0) return;
 
-  const headers = session.refLainEnabled
-    ? [
-        "No",
-        "Referensi",
-        "Referensi Lain",
-        "Nama Pembeli",
-        "Tanggal",
-        "NIK/NPWP",
-        "Nomor Faktur Pajak",
-        "DPP Coretax",
-        "DPP Baru",
-        "PPN Coretax",
-        "PPN Baru",
-        "Selisih PPN",
-        "Status",
-      ]
-    : [
-        "No",
-        "Referensi",
-        "Nama Pembeli",
-        "Tanggal",
-        "NIK/NPWP",
-        "Nomor Faktur Pajak",
-        "DPP Coretax",
-        "DPP Baru",
-        "PPN Coretax",
-        "PPN Baru",
-        "Selisih PPN",
-        "Status",
-      ];
-
-  const formatNum = (n: number | null): string => {
-    if (n === null) return "";
-    return n.toLocaleString("id-ID");
-  };
-
-  const rows: string[][] = [headers];
-  session.results.forEach((r, idx) => {
-    if (session.refLainEnabled) {
-      rows.push([
-        String(idx + 1),
-        r.reference,
-        r.refLain,
-        r.buyerName,
-        r.invoiceDate,
-        r.buyerTIN,
-        r.taxInvoiceNumber,
-        formatNum(r.dppSistem),
-        formatNum(r.dppExcel),
-        formatNum(r.ppnSistem),
-        formatNum(r.ppnExcel),
-        formatNum(r.ppnSelisih),
-        r.status,
-      ]);
-    } else {
-      rows.push([
-        String(idx + 1),
-        r.reference,
-        r.buyerName,
-        r.invoiceDate,
-        r.buyerTIN,
-        r.taxInvoiceNumber,
-        formatNum(r.dppSistem),
-        formatNum(r.dppExcel),
-        formatNum(r.ppnSistem),
-        formatNum(r.ppnExcel),
-        formatNum(r.ppnSelisih),
-        r.status,
-      ]);
-    }
+  const rows = buildComparisonExportRows(session.results, session.refLainEnabled);
+  const firstAmount = session.refLainEnabled ? 7 : 6;
+  downloadXLSXFile(rows, "perbandingan-faktur.xlsx", "Perbandingan", {
+    numberFormats: Object.fromEntries(
+      Array.from({ length: 5 }, (_, i) => [firstAmount + i, RESULT_NUMBER_FORMAT]),
+    ),
   });
-
-  downloadXLSXFile(rows, "perbandingan-faktur.xlsx", "Perbandingan");
 }
 
 function handleCheckerExportResults(): void {
   if (checkerSession.results.length === 0) return;
 
-  const benchmark = checkerSession.benchmark;
-  const headers =
-    benchmark === "DPP"
-      ? [
-          "No",
-          "Referensi",
-          "Tanggal",
-          "Nama Pembeli",
-          "NPWP/NIK Pembeli",
-          "DPP",
-          "DPP NL",
-          "PPN",
-          "Selisih DPP NL",
-          "Selisih PPN",
-          "Status",
-        ]
-      : benchmark === "DPP_NILAI_LAIN"
-        ? [
-            "No",
-            "Referensi",
-            "Tanggal",
-            "Nama Pembeli",
-            "NPWP/NIK Pembeli",
-            "DPP",
-            "DPP NL",
-            "PPN",
-            "Selisih DPP",
-            "Selisih PPN",
-            "Status",
-          ]
-        : [
-            "No",
-            "Referensi",
-            "Tanggal",
-            "Nama Pembeli",
-            "NPWP/NIK Pembeli",
-            "DPP",
-            "DPP NL",
-            "PPN",
-            "Selisih DPP",
-            "Selisih DPP NL",
-            "Status",
-          ];
-
-  const formatNum = (n: number): string => n.toLocaleString("id-ID");
-
-  const formatDiffCell = (diff: number, tolerance: number): string => {
-    if (Math.abs(diff) <= tolerance) return "";
-    return (diff > 0 ? "+" : "") + formatNum(diff);
-  };
-
-  const rows: string[][] = [headers];
-  checkerSession.results.forEach((r, idx) => {
-    let diffCol1 = "";
-    let diffCol2 = "";
-
-    if (r.benchmark === "DPP") {
-      diffCol1 = formatDiffCell(r.dppNilaiLainDiff, r.tolerance);
-      diffCol2 = formatDiffCell(r.ppnDiff, r.tolerance);
-    } else if (r.benchmark === "DPP_NILAI_LAIN") {
-      diffCol1 = formatDiffCell(r.dppDiff, r.tolerance);
-      diffCol2 = formatDiffCell(r.ppnDiff, r.tolerance);
-    } else {
-      diffCol1 = formatDiffCell(r.dppDiff, r.tolerance);
-      diffCol2 = formatDiffCell(r.dppNilaiLainDiff, r.tolerance);
-    }
-
-    rows.push([
-      String(idx + 1),
-      r.reference || r.taxInvoiceNumber,
-      r.invoiceDate,
-      r.buyerName,
-      r.buyerTIN,
-      formatNum(r.dppSystem),
-      formatNum(r.dppNilaiLainSystem),
-      formatNum(r.ppnSystem),
-      diffCol1,
-      diffCol2,
-      r.status,
-    ]);
+  const rows = buildCheckerExportRows(checkerSession.results, checkerSession.benchmark);
+  downloadXLSXFile(rows, "pengecekan-nilai-faktur.xlsx", "Pengecekan", {
+    numberFormats: {
+      5: RESULT_NUMBER_FORMAT, 6: RESULT_NUMBER_FORMAT, 7: RESULT_NUMBER_FORMAT,
+      8: RESULT_DIFFERENCE_FORMAT, 9: RESULT_DIFFERENCE_FORMAT,
+    },
   });
-
-  downloadXLSXFile(rows, "pengecekan-nilai-faktur.xlsx", "Pengecekan");
 }
 
 // ── Search reference in Coretax ───────────────────────

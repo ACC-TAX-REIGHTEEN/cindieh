@@ -137,8 +137,8 @@ export function parseDailyDates(raw: string): number[] {
   if (!trimmed) return [];
   return trimmed
     .split(/[,;\s]+/)
-    .map((s) => parseInt(s, 10))
-    .filter((n) => !isNaN(n) && n >= 1 && n <= 31);
+    .map((s) => /^\d+$/.test(s) ? Number(s) : NaN)
+    .filter((n) => Number.isInteger(n) && n >= 1 && n <= 31);
 }
 
 // ── Status label i18n ──────────────────────────────────
@@ -188,21 +188,27 @@ export function runComparison(
   return session.results;
 }
 
+export type RerunResult =
+  | { action: "run"; results: ComparisonResult[] }
+  | { action: "error"; message: string };
+
 /**
- * Re-run the comparison from the raw textarea content after a control
- * (tolerance, refLain, daily mode, daily dates) changed. No-op when the
- * paste area is empty or scraped data is missing.
+ * Re-run with the same validation as "Periksa", using the raw date input.
+ * Errors invalidate previous results so stale success cannot be exported.
+ * Unlike prepareComparison, a rerun never requests a scrape.
  */
 export function rerunComparison(
   session: ComparerSession,
   textareaValue: string,
   scrapedData: Record<string, unknown>[] | null,
-): ComparisonResult[] | null {
-  const text = textareaValue.trim();
-  if (!text || !scrapedData || scrapedData.length === 0) return null;
-  const pastedRows = parsePastedData(text, session.refLainEnabled);
-  if (pastedRows.length === 0) return null;
-  return runComparison(session, pastedRows, scrapedData);
+  dailyDatesInputValue: string,
+): RerunResult {
+  const decision = prepareComparison(session, textareaValue, scrapedData, dailyDatesInputValue);
+  if (decision.action === "error") return decision;
+  if (decision.action === "needScrape") {
+    return { action: "error", message: "Belum ada data Coretax. Silakan lakukan scraping terlebih dahulu." };
+  }
+  return { action: "run", results: runComparison(session, decision.pastedRows, decision.scrapedData) };
 }
 
 export type PrepareResult =
@@ -214,12 +220,12 @@ export type PrepareResult =
  * Decide what the "Periksa" button must do for the current session and
  * inputs. Ordering is deliberate and load-bearing:
  *   1. daily-dates validation runs before anything else (before scraping);
- *   2. when results already exist, re-run them first (the paste area may
- *      be hidden — its current content is the source of truth);
+ *   2. current textarea content is the source of truth, even when hidden;
  *   3. empty input is an error; unparseable input is an error;
  *   4. no scraped data means scrape first.
- * Mutates only `session.dailyDates` (mirrors handleCheck). The view maps
- * the returned action to DOM/UI behaviour.
+ * Invalidates previous results, pagination and highlights before validation.
+ * Updates dailyDates only from fully valid input (clears them otherwise).
+ * The view maps the returned action to DOM/UI behaviour.
  */
 export function prepareComparison(
   session: ComparerSession,
@@ -227,36 +233,30 @@ export function prepareComparison(
   scrapedData: Record<string, unknown>[] | null,
   dailyDatesInputValue: string,
 ): PrepareResult {
+  session.results = [];
+  session.currentPage = 1;
+  session.viewedRefs.clear();
+  session.dailyDates = [];
+
   if (session.dailyEnabled) {
     const raw = dailyDatesInputValue.trim();
     if (!raw) {
       return { action: "error", message: "Silakan masukkan tanggal (1-31) terlebih dahulu." };
     }
     const parsed = parseDailyDates(raw);
-    if (parsed.length === 0) {
+    if (parsed.length === 0 || parsed.length !== raw.split(/[,;\s]+/).length) {
       return { action: "error", message: "Format tanggal tidak valid. Gunakan angka 1-31, pisahkan dengan koma." };
     }
     session.dailyDates = parsed;
   }
 
-  // If results already exist, re-run the comparison with the current
-  // tolerance (the textarea may be hidden after the first check).
-  if (session.results.length > 0) {
-    const text = textareaValue.trim();
-    if (text && scrapedData && scrapedData.length > 0) {
-      const pastedRows = parsePastedData(text, session.refLainEnabled);
-      if (pastedRows.length > 0) {
-        return { action: "run", pastedRows, scrapedData };
-      }
-    }
-  }
 
   const text = textareaValue.trim();
   if (!text) {
     return { action: "error", message: "Silakan paste data dari Excel terlebih dahulu." };
   }
 
-  const pastedRows = parsePastedData(text, session.refLainEnabled);
+  const pastedRows = parsePastedData(textareaValue, session.refLainEnabled);
   if (pastedRows.length === 0) {
     return {
       action: "error",

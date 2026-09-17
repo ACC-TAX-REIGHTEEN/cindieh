@@ -15,17 +15,17 @@ export interface CheckResult {
   buyerTIN: string;
   reference: string;
 
-  dppSystem: number;
-  dppNilaiLainSystem: number;
-  ppnSystem: number;
+  dppSystem: number | null;
+  dppNilaiLainSystem: number | null;
+  ppnSystem: number | null;
 
-  dppExpected: number;
-  dppNilaiLainExpected: number;
-  ppnExpected: number;
+  dppExpected: number | null;
+  dppNilaiLainExpected: number | null;
+  ppnExpected: number | null;
 
-  dppDiff: number;
-  dppNilaiLainDiff: number;
-  ppnDiff: number;
+  dppDiff: number | null;
+  dppNilaiLainDiff: number | null;
+  ppnDiff: number | null;
 
   tolerance: number;
   benchmark: BenchmarkType;
@@ -54,55 +54,70 @@ export function createCheckerSession(): CheckerSession {
 
 /**
  * Check accuracy of DPP, DPP Nilai Lain, and PPN for a single scraped row.
- * Returns CheckResult if any checked field differs beyond tolerance, or null if accurate.
+ * Returns a mismatch or "Data tidak lengkap" result; null means verified accurate.
+ * Missing/invalid values remain null. Incomplete rows have no expected values or diffs.
  */
 export function checkRowAccuracy(
   row: Record<string, unknown>,
   benchmark: BenchmarkType,
   tolerance = 0,
 ): CheckResult | null {
-  const dppSystem = parseNumericField(row.SellingPrice) ?? 0;
-  const dppNilaiLainSystem = parseNumericField(row.OtherTaxBase) ?? 0;
-  const ppnSystem = parseNumericField(row.VAT) ?? 0;
+  const dppSystem = parseNumericField(row.SellingPrice);
+  const dppNilaiLainSystem = parseNumericField(row.OtherTaxBase);
+  const ppnSystem = parseNumericField(row.VAT);
 
-  let dppExpected = dppSystem;
-  let dppNilaiLainExpected = dppNilaiLainSystem;
-  let ppnExpected = ppnSystem;
+  let dppExpected: number | null = null;
+  let dppNilaiLainExpected: number | null = null;
+  let ppnExpected: number | null = null;
 
   let dppMismatch = false;
   let dppNilaiLainMismatch = false;
   let ppnMismatch = false;
 
-  if (benchmark === "DPP") {
-    dppExpected = dppSystem;
-    dppNilaiLainExpected = Math.round((dppSystem * 11) / 12);
-    ppnExpected = Math.round(dppSystem * 0.11);
+  if (dppSystem !== null && dppNilaiLainSystem !== null && ppnSystem !== null &&
+      Number.isFinite(tolerance) && tolerance >= 0) {
+    if (benchmark === "DPP") {
+      dppExpected = dppSystem;
+      dppNilaiLainExpected = Math.round((dppSystem * 11) / 12);
+      ppnExpected = Math.round(dppSystem * 0.11);
 
-    dppNilaiLainMismatch = Math.abs(dppNilaiLainSystem - dppNilaiLainExpected) > tolerance;
-    ppnMismatch = Math.abs(ppnSystem - ppnExpected) > tolerance;
-  } else if (benchmark === "DPP_NILAI_LAIN") {
-    dppNilaiLainExpected = dppNilaiLainSystem;
-    dppExpected = Math.round((dppNilaiLainSystem * 12) / 11);
-    ppnExpected = Math.round(dppNilaiLainSystem * 0.12);
+      dppNilaiLainMismatch = Math.abs(dppNilaiLainSystem - dppNilaiLainExpected) > tolerance;
+      ppnMismatch = Math.abs(ppnSystem - ppnExpected) > tolerance;
+    } else if (benchmark === "DPP_NILAI_LAIN") {
+      dppNilaiLainExpected = dppNilaiLainSystem;
+      dppExpected = Math.round((dppNilaiLainSystem * 12) / 11);
+      ppnExpected = Math.round(dppNilaiLainSystem * 0.12);
 
-    dppMismatch = Math.abs(dppSystem - dppExpected) > tolerance;
-    ppnMismatch = Math.abs(ppnSystem - ppnExpected) > tolerance;
-  } else {
-    // benchmark === "PPN"
-    ppnExpected = ppnSystem;
-    dppExpected = Math.round(ppnSystem / 0.11);
-    dppNilaiLainExpected = Math.round(ppnSystem / 0.12);
+      dppMismatch = Math.abs(dppSystem - dppExpected) > tolerance;
+      ppnMismatch = Math.abs(ppnSystem - ppnExpected) > tolerance;
+    } else {
+      // benchmark === "PPN"
+      ppnExpected = ppnSystem;
+      dppExpected = Math.round(ppnSystem / 0.11);
+      dppNilaiLainExpected = Math.round(ppnSystem / 0.12);
 
-    dppMismatch = Math.abs(dppSystem - dppExpected) > tolerance;
-    dppNilaiLainMismatch = Math.abs(dppNilaiLainSystem - dppNilaiLainExpected) > tolerance;
+      dppMismatch = Math.abs(dppSystem - dppExpected) > tolerance;
+      dppNilaiLainMismatch = Math.abs(dppNilaiLainSystem - dppNilaiLainExpected) > tolerance;
+    }
   }
 
-  if (!dppMismatch && !dppNilaiLainMismatch && !ppnMismatch) {
+  const incomplete = dppSystem === null || dppNilaiLainSystem === null || ppnSystem === null ||
+    dppExpected === null || dppNilaiLainExpected === null || ppnExpected === null ||
+    ![dppExpected, dppNilaiLainExpected, ppnExpected,
+      dppSystem - dppExpected, dppNilaiLainSystem - dppNilaiLainExpected, ppnSystem - ppnExpected]
+      .every(Number.isFinite);
+  if (incomplete) {
+    dppExpected = dppNilaiLainExpected = ppnExpected = null;
+  }
+
+  if (!incomplete && !dppMismatch && !dppNilaiLainMismatch && !ppnMismatch) {
     return null;
   }
 
   let status = "";
-  if (benchmark === "DPP") {
+  if (incomplete) {
+    status = "Data tidak lengkap";
+  } else if (benchmark === "DPP") {
     if (dppNilaiLainMismatch && ppnMismatch) {
       status = "DPP NL & PPN Berbeda";
     } else if (dppNilaiLainMismatch) {
@@ -155,9 +170,9 @@ export function checkRowAccuracy(
     dppNilaiLainExpected,
     ppnExpected,
 
-    dppDiff: dppSystem - dppExpected,
-    dppNilaiLainDiff: dppNilaiLainSystem - dppNilaiLainExpected,
-    ppnDiff: ppnSystem - ppnExpected,
+    dppDiff: dppSystem !== null && dppExpected !== null ? dppSystem - dppExpected : null,
+    dppNilaiLainDiff: dppNilaiLainSystem !== null && dppNilaiLainExpected !== null ? dppNilaiLainSystem - dppNilaiLainExpected : null,
+    ppnDiff: ppnSystem !== null && ppnExpected !== null ? ppnSystem - ppnExpected : null,
 
     tolerance,
     benchmark,
@@ -166,7 +181,7 @@ export function checkRowAccuracy(
 }
 
 /**
- * Check accuracy across all scraped rows. Returns only mismatched rows beyond tolerance.
+ * Check all scraped rows. Returns mismatched and incomplete rows, never verified matches.
  */
 export function checkAllRowsAccuracy(
   scrapedData: Record<string, unknown>[],
@@ -196,6 +211,7 @@ export function applyCheckerStatusFilter(
   }
   const set = new Set(statusFilter);
   return results.filter((r) => {
+    if (set.has("DATA_TIDAK_LENGKAP") && r.status === "Data tidak lengkap") return true;
     if (set.has("DPP_BERBEDA") && r.status === "DPP Berbeda") return true;
     if (set.has("DPP_NILAI_LAIN_BERBEDA") && r.status === "DPP NL Berbeda") return true;
     if (set.has("PPN_BERBEDA") && r.status === "PPN Berbeda") return true;
@@ -207,6 +223,11 @@ export function applyCheckerStatusFilter(
 export function formatCheckSummary(results: CheckResult[]): string {
   if (results.length === 0) {
     return "Semua faktur sesuai.";
+  }
+  const incomplete = results.filter((r) => r.status === "Data tidak lengkap").length;
+  if (incomplete > 0) {
+    const mismatched = results.length - incomplete;
+    return `Ditemukan ${mismatched.toLocaleString("id-ID")} faktur dengan nilai tidak sesuai dan ${incomplete.toLocaleString("id-ID")} faktur dengan data tidak lengkap.`;
   }
   return `Ditemukan ${results.length.toLocaleString("id-ID")} faktur dengan nilai tidak sesuai.`;
 }

@@ -12,12 +12,12 @@ Tech: TypeScript (strict), esbuild bundling, SheetJS (`xlsx`), vanilla DOM/CSS �
 
 ## Two-worlds architecture
 
-The extension runs in two JavaScript worlds on the Coretax page that communicate **only** through token-authenticated `postMessage`:
+The extension runs in two JavaScript worlds on the Coretax page that communicate **only** through token-validated `postMessage`:
 
-- **Isolated world** — `src/content/main.ts`: the content script (has `browser.runtime`). Injects in-page UI, fires browser downloads, relays messages. All extension UI lives in-page; there is **no browser-action popup** in the manifest (the popup only sets the export-mode preference via `storage.local`).
+- **Isolated world** — `src/content/main.ts`: the content script (has `browser.runtime`). Injects in-page UI, fires browser downloads, relays messages. Workflow UI lives in-page; the manifest also declares an action popup (`popup/popup.html`) that sets the export-mode preference via `storage.local`.
 - **MAIN world** — `src/content/scraper.ts`: injected into the page via a `<script>` tag pointing at the web-accessible `content/scraper.js`. It sits next to the portal's own code, so it can intercept XHR/fetch, read request bodies (filters), and **capture** API responses for scraping and PDF download. It has no browser API.
 
-The **bridge token** makes this safe: `bridge.ts` generates a random token once, in the isolated world, and smuggles it to the scraper through the script's URL query param so it never sits on `window`. Message direction and token are validated by `postmessage-guard.ts` (`shouldProcessPageMessage` checks `event.source`, the origin, the token, and that `direction` matches the world — `FROM_PAGE` from the scraper, `FROM_CONTENT` into the scraper).
+The **bridge token** correlates messages with the current bridge: `bridge.ts` generates it in the isolated world and passes it through the script URL without storing it on `window`. MAIN-world code can still observe it through the shared DOM and `postMessage` traffic; it is not secret authentication against hostile same-page scripts. `shouldProcessPageMessage` checks source, origin, token, and direction. Source/origin bind the window and origin, not the JavaScript world; `FROM_PAGE` and `FROM_CONTENT` are protocol fields, not proof of sender identity. Keep the two-worlds seam and token validation with these accepted limitations (ADR-0007).
 
 Key message types:
 - isolated → MAIN: `START_SCRAPE`, `STOP_SCRAPE`, `SCRAPE_BY_INVOICES`, `SET_SERVER_FILTER`, `RESET_SCRAPER`, `START_PDF_DOWNLOAD`
@@ -47,9 +47,8 @@ Key message types:
 | `bridge.ts`, `postmessage-guard.ts` | Cross-world messaging: token generation + the guard-then-dispatch seam (`createMessageDispatcher`), pure and exported for tests |
 | `browser-shim.ts` | Picks `browser`/`chrome` runtime |
 | `debug.ts` | Logging; suppressed in production builds unless `enableDebug()` |
-| `background.ts` | Minimal MV3 background (install logging) |
 
-`src/background/background.ts` is the only background file. `build.cjs` bundles three entries (`content/main`, `content/scraper`, `background/background`).
+Outside `src/content/`: `src/background/background.ts` is the minimal MV3 background (install logging), and `src/popup/popup.ts` manages the export-mode preference. `build.cjs` bundles four entries (`content/main`, `content/scraper`, `background/background`, `popup/popup`).
 
 ## Conventions
 
@@ -62,7 +61,7 @@ Existing code follows these patterns — new code should match them:
 - Section banner comments (`===== NAME =====` / `── ... ──`) mark file and region intent.
 
 ## Gotchas- **Coretax is an Angular SPA** — DOM re-renders constantly. `main.ts` observes mutations and debounces injection (`GRID_FILTER_INJECT_DELAY_MS`) to avoid fighting the framework. Injection logic should respect that pattern.
-- **Bridge token is the security boundary.** Never store it on `window`, log it, or weaken `shouldProcessPageMessage`. A forged `DOWNLOAD_PDF_ITEM`/`START_SCRAPE` is exactly what the token prevents.
+- **Bridge validation is required, not same-page authentication.** Never store the token on `window`, log it, or weaken `shouldProcessPageMessage`. Shared DOM/message exposure means it does not prevent hostile same-page forgery. Removing the script's `src` during initialization reduces DOM exposure without a guaranteed sub-frame lifetime; retain the element/id as the injection marker (ADR-0008).
 - **Extension-owned XHRs are flagged** `__isCindiehBulk` (see `InterceptedXHR` in `scraper-types.ts`) so the interceptor does not re-capture them and double-fire `DOWNLOAD_PDF_ITEM`. Keep that flag working when adding download paths.
 - **Coretax API responses** wrap rows as `{ Payload: { Data: [...] } }`. Parse defensively; the scraper already treats `Payload.Data` as the row array.
 - **Dates**: `tax-date.ts` (`formatDate`, `extractYear`, `extractMonth`, `extractYMD`) converts ISO strings to Indonesian `DD/MM/YYYY`; it is timezone-aware, and existing tests pin behaviour across `+07/+08/+09/Z` offsets. Do not "simplify" it, and put new date/period parsing there instead of hand-rolling regexes.

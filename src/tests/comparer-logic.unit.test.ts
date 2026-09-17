@@ -364,31 +364,60 @@ describe("runComparison", () => {
 // ── rerunComparison ───────────────────────────────────────────────────────────
 
 describe("rerunComparison", () => {
-  it("re-runs from textarea content when scraped data exists", () => {
+  const paste = "REF-001\t\t100\t10\n";
+  const scraped = [
+    { Reference: "REF-001", SellingPrice: 100, VAT: 10 },
+    { Reference: "REF-002", SellingPrice: 100, VAT: 10, TaxInvoiceDate: "2026-07-05" },
+  ];
+
+  it("re-runs with the raw dates and keeps reverse checking enabled", () => {
     const session = createComparerSession();
-    const results = rerunComparison(
-      session,
-      "REF-001\tREF-002\t100\t10\n",
-      [{ Reference: "REF-001", SellingPrice: 100, VAT: 10 }],
-    );
-    expect(results).not.toBeNull();
-    expect(results).toHaveLength(1);
+    session.dailyDates = [3];
+    const outcome = rerunComparison(session, paste, scraped, "5");
+    expect(outcome.action).toBe("run");
+    if (outcome.action !== "run") throw new Error(outcome.message);
+    expect(outcome.results).toBe(session.results);
+    expect(outcome.results.map((r) => r.status)).toEqual(["COCOK", "HANYA_CORETAX"]);
+    expect(session.dailyDates).toEqual([5]);
   });
 
-  it("returns null when the textarea is empty", () => {
+  it.each(["", "  ", "99", "abc", "5,99", "5,abc", "5.5", "5x", "1e1"])(
+    "invalidates stale success for invalid daily dates: %j", (dates) => {
+      const session = createComparerSession();
+      rerunComparison(session, paste, scraped, "5");
+      session.currentPage = 3;
+      session.viewedRefs.add("REF-001");
+      const outcome = rerunComparison(session, paste, scraped, dates);
+      expect(outcome.action).toBe("error");
+      expect(session.results).toEqual([]);
+      expect(session.dailyDates).toEqual([]);
+      expect(session.currentPage).toBe(1);
+      expect(session.viewedRefs.size).toBe(0);
+    },
+  );
+
+  it.each(["", "  ", "garbage", "\tREF\t100\t10\t5"])(
+    "errors and clears stale results for invalid paste: %j", (text) => {
+      const session = createComparerSession();
+      session.results = [...RESULTS];
+      expect(rerunComparison(session, text, scraped, "5").action).toBe("error");
+      expect(session.results).toEqual([]);
+    },
+  );
+
+  it.each([null, []])("errors and clears stale results without scraped data", (data) => {
     const session = createComparerSession();
-    expect(rerunComparison(session, "  ", [{ Reference: "REF-001" }])).toBeNull();
+    session.results = [...RESULTS];
+    expect(rerunComparison(session, paste, data, "5").action).toBe("error");
+    expect(session.results).toEqual([]);
   });
 
-  it("returns null when scraped data is missing or empty", () => {
+  it("only disables reverse checking when daily mode is explicitly disabled", () => {
     const session = createComparerSession();
-    expect(rerunComparison(session, "REF-001\t100\t10\n", null)).toBeNull();
-    expect(rerunComparison(session, "REF-001\t100\t10\n", [])).toBeNull();
-  });
-
-  it("returns null when the text is unparseable", () => {
-    const session = createComparerSession();
-    expect(rerunComparison(session, "garbage", [{ Reference: "REF-001" }])).toBeNull();
+    session.dailyEnabled = false;
+    const outcome = rerunComparison(session, paste, scraped, "invalid");
+    expect(outcome.action).toBe("run");
+    expect(session.results.map((r) => r.status)).toEqual(["COCOK"]);
   });
 });
 
@@ -422,6 +451,20 @@ describe("prepareComparison", () => {
     if (result.action === "error") {
       expect(result.message).toContain("Format tanggal tidak valid");
     }
+  });
+
+  it.each(["5,abc", "5,99", "5x", "5.5"])("rejects partially invalid dates: %j", (dates) => {
+    const session = createComparerSession();
+    session.results = [...RESULTS];
+    session.dailyDates = [5];
+    expect(prepareComparison(session, VALID_PASTE, SCRAPED, dates).action).toBe("error");
+    expect(session.results).toEqual([]);
+    expect(session.dailyDates).toEqual([]);
+  });
+
+  it("preserves leading empty TSV cells during preparation", () => {
+    const session = createComparerSession();
+    expect(prepareComparison(session, "\tREF\t100\t10\t5", SCRAPED, "5").action).toBe("error");
   });
 
   it("updates session.dailyDates when daily validation passes", () => {

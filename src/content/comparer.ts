@@ -48,8 +48,10 @@ export interface ComparisonResult {
  *   "162.932"    → 162932
  */
 export function parseIndonesianNumber(value: string): number {
-  const cleaned = value.trim().replace(/\./g, "").replace(/,/g, ".");
-  return parseFloat(cleaned);
+  const trimmed = value.trim();
+  if (!/^[+-]?(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d+)?$/.test(trimmed)) return NaN;
+  const num = Number(trimmed.replace(/\./g, "").replace(/,/g, "."));
+  return Number.isFinite(num) ? num : NaN;
 }
 
 /**
@@ -65,17 +67,16 @@ export function parseIndonesianNumber(value: string): number {
  * Skips empty lines and invalid rows.
  */
 export function parsePastedData(text: string, refLainMode = false): PastedRow[] {
-  const lines = text.trim().split(/\n/);
+  const lines = text.split(/\r?\n/);
   const results: PastedRow[] = [];
 
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    // Split by any run of whitespace (tabs and/or 2+ spaces).
-    // Excel copy-paste can produce mixed delimiters like "  \t" (spaces + tab),
-    // so we treat any whitespace run as a single separator to avoid empty tokens.
-    const parts = trimmed.split(/\s+/);
+    // TSV cell boundaries must survive trimming, including empty edge cells.
+    // Only non-TSV rows use the legacy multiple-space delimiter.
+    const parts = line.includes("\t") ? line.split("\t") : trimmed.split(/ {2,}/);
     if (refLainMode) {
       if (parts.length < 4) continue;
       const reference = parts[0].trim();
@@ -105,10 +106,10 @@ export function parsePastedData(text: string, refLainMode = false): PastedRow[] 
  */
 export function parseNumericField(value: unknown): number | null {
   if (value == null) return null;
-  if (typeof value === "number") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "string") {
     const num = parseIndonesianNumber(value);
-    return isNaN(num) ? null : num;
+    return Number.isFinite(num) ? num : null;
   }
   return null;
 }

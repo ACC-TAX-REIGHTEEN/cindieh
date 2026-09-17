@@ -27,6 +27,32 @@ describe("parseIndonesianNumber", () => {
 });
 
 describe("parsePastedData", () => {
+  it("preserves empty Ref Lain cells and spaces inside TSV values", () => {
+    expect(parsePastedData("REF 001\t\t1.000\t110\r\nREF 002\tINTERNAL REF 2\t0\t0", true)).toEqual([
+      { reference: "REF 001", refLain: "", dpp: 1000, ppn: 110 },
+      { reference: "REF 002", refLain: "INTERNAL REF 2", dpp: 0, ppn: 0 },
+    ]);
+  });
+
+  it.each([
+    "\t100\t10\t5",
+    "REF\t\t10\t5",
+    "REF\t100\t\t5",
+    "REF\t100\t",
+  ])("does not shift empty required TSV cells: %j", (text) => {
+    expect(parsePastedData(text)).toEqual([]);
+  });
+
+  it("does not shift an empty first cell in four-column mode", () => {
+    expect(parsePastedData("\tREF\t100\t10\t5", true)).toEqual([]);
+  });
+
+  it("preserves single spaces in non-TSV references", () => {
+    expect(parsePastedData("REF 001  OTHER REF 001  1.000  110", true)).toEqual([
+      { reference: "REF 001", refLain: "OTHER REF 001", dpp: 1000, ppn: 110 },
+    ]);
+    expect(parsePastedData("REF 100 10")).toEqual([]);
+  });
   it("parses tab-separated rows (3 columns, refLain disabled)", () => {
     const text = "SZ-0447/07/26\t568.000\t62.480\nHH-0357/07/26\t1.481.203\t162.932";
     const rows = parsePastedData(text);
@@ -94,6 +120,16 @@ describe("parsePastedData", () => {
 });
 
 describe("parseNumericField", () => {
+  it.each([NaN, Infinity, -Infinity, "Infinity", "1e309", "100abc", "1,2,3", "12.34", "", "  ", true, {}, []])(
+    "rejects invalid or non-finite values: %j", (value) => {
+      expect(parseNumericField(value)).toBeNull();
+    },
+  );
+
+  it("preserves numeric and string zero", () => {
+    expect(parseNumericField(0)).toBe(0);
+    expect(parseNumericField("0,00")).toBe(0);
+  });
   it("parses number values", () => {
     expect(parseNumericField(568000)).toBe(568000);
   });

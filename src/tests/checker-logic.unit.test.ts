@@ -174,7 +174,65 @@ describe("checkRowAccuracy - Benchmark PPN", () => {
   });
 });
 
+describe.each(["DPP", "DPP_NILAI_LAIN", "PPN"] as const)("incomplete data - %s", (benchmark) => {
+  it.each([undefined, null, "", "  ", "abc", "100abc", "0oops", "1,2,3", NaN, Infinity, -Infinity, "Infinity", true])(
+    "reports invalid amounts rather than success: %j", (invalid) => {
+      for (const field of ["SellingPrice", "OtherTaxBase", "VAT"]) {
+        const result = checkRowAccuracy({ SellingPrice: 0, OtherTaxBase: 0, VAT: 0, [field]: invalid }, benchmark);
+        expect(result).not.toBeNull();
+        expect(result?.status).toBe("Data tidak lengkap");
+        expect(result?.dppExpected).toBeNull();
+        expect(result?.dppNilaiLainExpected).toBeNull();
+        expect(result?.ppnExpected).toBeNull();
+        expect(result?.dppDiff).toBeNull();
+        expect(result?.dppNilaiLainDiff).toBeNull();
+        expect(result?.ppnDiff).toBeNull();
+        const systemField = field === "SellingPrice" ? "dppSystem" : field === "OtherTaxBase" ? "dppNilaiLainSystem" : "ppnSystem";
+        expect(result?.[systemField]).toBeNull();
+      }
+    },
+  );
+
+  it("does not report an empty row as accurate", () => {
+    expect(checkRowAccuracy({}, benchmark)?.status).toBe("Data tidak lengkap");
+  });
+
+  it("preserves genuine zero and valid localized amounts", () => {
+    expect(checkRowAccuracy({ SellingPrice: 0, OtherTaxBase: "0", VAT: "0,00" }, benchmark)).toBeNull();
+    expect(checkRowAccuracy({ SellingPrice: "120.000", OtherTaxBase: "110.000", VAT: "13.200" }, benchmark)).toBeNull();
+  });
+
+  it("preserves valid system values on incomplete rows", () => {
+    expect(checkRowAccuracy({ SellingPrice: 120000, OtherTaxBase: null, VAT: 13200 }, benchmark)).toMatchObject({
+      dppSystem: 120000, dppNilaiLainSystem: null, ppnSystem: 13200, status: "Data tidak lengkap",
+    });
+  });
+
+  it("rejects non-finite calculated amounts", () => {
+    const result = checkRowAccuracy({ SellingPrice: Number.MAX_VALUE, OtherTaxBase: Number.MAX_VALUE, VAT: Number.MAX_VALUE }, benchmark);
+    expect(result?.status).toBe("Data tidak lengkap");
+    expect(result?.dppDiff).toBeNull();
+  });
+
+  it.each([NaN, Infinity, -1])("does not report success for invalid tolerance: %j", (tolerance) => {
+    expect(checkRowAccuracy({ SellingPrice: 0, OtherTaxBase: 0, VAT: 0 }, benchmark, tolerance)?.status).toBe("Data tidak lengkap");
+  });
+});
+
 describe("checkAllRowsAccuracy", () => {
+  it("includes incomplete rows in results, filtering and the summary", () => {
+    const results = checkAllRowsAccuracy([
+      { TaxInvoiceNumber: "missing" },
+      { TaxInvoiceNumber: "zero", SellingPrice: 0, OtherTaxBase: 0, VAT: 0 },
+      { TaxInvoiceNumber: "mismatch", SellingPrice: 120000, OtherTaxBase: 100000, VAT: 13200 },
+    ], "DPP");
+    expect(results).toHaveLength(2);
+    expect(applyCheckerStatusFilter(results, ["DATA_TIDAK_LENGKAP"]).map((r) => r.taxInvoiceNumber)).toEqual(["missing"]);
+    expect(applyCheckerStatusFilter(results, ["ALL"])).toHaveLength(2);
+    expect(applyCheckerStatusFilter(results, ["DPP_NILAI_LAIN_BERBEDA"])).toHaveLength(1);
+    expect(formatCheckSummary(results)).toBe("Ditemukan 1 faktur dengan nilai tidak sesuai dan 1 faktur dengan data tidak lengkap.");
+    expect(formatCheckSummary(results.slice(0, 1))).toBe("Ditemukan 0 faktur dengan nilai tidak sesuai dan 1 faktur dengan data tidak lengkap.");
+  });
   it("filters out matching rows and returns only mismatched rows", () => {
     const scrapedData = [
       { TaxInvoiceNumber: "001", SellingPrice: 120000, OtherTaxBase: 110000, VAT: 13200 }, // Match
