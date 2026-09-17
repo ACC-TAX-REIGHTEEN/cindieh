@@ -16,6 +16,7 @@ import {
   scrapeByInvoices,
   startScraping,
   startPdfDownload,
+  consecutiveFailuresExhausted,
 } from "../content/scraper-actions";
 import type { ScraperContext } from "../content/scraper-actions";
 import { createScrapeRuns } from "../content/scraper-run";
@@ -148,11 +149,28 @@ describe("scrapePaginated", () => {
     const sendSpy = ctx.sendToContent as ReturnType<typeof vi.fn>;
 
     await expect(scrapePaginated(makeCaptured(), 10, ctx)).rejects.toThrow("3 error berturut-turut");
+
     // First two errors back off; the third aborts.
     expect(delaySpy).toHaveBeenCalledWith(2000);
     expect(delaySpy).toHaveBeenCalledTimes(2);
     // Only the orchestrator emits the terminal error.
     expect(sendSpy).not.toHaveBeenCalled();
+  });
+
+  it("breaks the loop once consecutive failures reach maxErrors", () => {
+    const ctx = makeCtx({ maxErrors: 3 });
+    expect(consecutiveFailuresExhausted(ctx, ctx.maxErrors - 1)).toBe(false);
+    expect(consecutiveFailuresExhausted(ctx, ctx.maxErrors)).toBe(true);
+  });
+
+  it("keeps loop-local counters in sync with the shared breaker", () => {
+    const ctx = makeCtx({ maxErrors: 3 });
+    let consecutiveFailures = 0;
+    for (let i = 0; i < ctx.maxErrors + 1; i++) {
+      consecutiveFailures++;
+      if (consecutiveFailuresExhausted(ctx, consecutiveFailures)) break;
+    }
+    expect(consecutiveFailures).toBe(ctx.maxErrors);
   });
 
   it("stops early when ctx.isStopRequested returns true", async () => {

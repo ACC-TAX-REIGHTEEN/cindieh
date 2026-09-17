@@ -9,6 +9,7 @@
 
 import type { CapturedRequest } from "./scraper-types";
 import { debugLog, debugWarn } from "./debug";
+import { abortError } from "./scraper-actions";
 import type { ScraperContext } from "./scraper-actions";
 
 // ── Context
@@ -111,7 +112,6 @@ const TRIGGER_DELAY_MS = 500;
 export function interceptRequest(ctx: ScraperContext): Promise<CapturedRequest> {
   return new Promise<CapturedRequest>((resolve, reject) => {
     const signal = ctx.signal;
-    const abortError = () => new DOMException("Permintaan dibatalkan.", "AbortError");
     if (signal?.aborted) {
       reject(abortError());
       return;

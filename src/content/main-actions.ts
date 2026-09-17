@@ -13,7 +13,7 @@
 import { type ExportData, type ExportMode, exportXLSX, exportCSV } from "./exporter";
 import { isEfakturPage, type ExportSource } from "./page-context";
 import type { ScrapeProgress, ScrapeComplete, ScrapeError } from "./scraper-types";
-import { showPanel, updatePanelProgress, updatePanelIdle } from "./ui-badge";
+import { showPanel, updatePanelProgress, updatePanelError, updatePanelIdle } from "./ui-badge";
 import { getMultiInvoiceNumbers } from "./ui-filters";
 import { postToScraper } from "./bridge";
 import { debugLog, debugWarn } from "./debug";
@@ -90,6 +90,8 @@ export interface ActionDeps {
   showPanel: () => void;
   updatePanelProgress: (total: number, page: number, elapsed: string, status: string) => void;
   updatePanelIdle: () => void;
+  /** Render the panel in its error state (used by the stop path to report cancellation). */
+  updatePanelError: (message: string) => void;
   getMultiInvoiceNumbers: () => string[];
   /** True on efaktur pages (PPN Keluaran/Masukan/Retur) — the only pages where the No. Faktur filter applies. */
   isEfakturPage: () => boolean;
@@ -99,12 +101,21 @@ export interface ActionDeps {
   triggerSearch: () => void;
 }
 
+/**
+ * Shown when a stop (button or re-export) cancels a running operation:
+ * the aborted run's results are rejected, so the panel must not promise
+ * reusable data.
+ */
+export const SCRAPE_CANCELLED_MESSAGE =
+  "Proses dihentikan. Ekspor dan pemeriksaan otomatis dibatalkan. Jalankan ulang untuk memperoleh data lengkap.";
+
 /** Build a production ActionDeps that calls the real browser globals. */
 export function createActionDeps(): ActionDeps {
   return {
     postToScraper,
     showPanel,
     updatePanelProgress,
+    updatePanelError,
     updatePanelIdle,
     getMultiInvoiceNumbers,
     isEfakturPage: () => isEfakturPage(),
@@ -230,7 +241,9 @@ export function handleExportAction(
     deps.postToScraper({ type: "STOP_SCRAPE" });
     state.isRunning = false;
     state.pendingExportFormat = null;
-    deps.updatePanelIdle();
+    // The aborted run emits no completion, so surface cancellation like the
+    // panel toggle does instead of implying idle, reusable data.
+    deps.updatePanelError(SCRAPE_CANCELLED_MESSAGE);
     return true;
   }
 

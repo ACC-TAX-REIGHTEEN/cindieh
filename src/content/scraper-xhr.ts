@@ -6,6 +6,7 @@
 // ============================================================
 
 import { buildEfakturDownloadUrl, buildEfakturPdfBody } from "./scraper-helpers";
+import { abortError } from "./scraper-actions";
 import { unwrapPdfData, isSuccessfulPdfResponse } from "./scraper-pdf";
 import type { CapturedRequest } from "./scraper-types";
 
@@ -19,7 +20,6 @@ function withXhr<T>(
   ) => void,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
-    const abortError = () => new DOMException("Permintaan dibatalkan.", "AbortError");
     if (signal?.aborted) {
       reject(abortError());
       return;

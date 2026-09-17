@@ -8,6 +8,7 @@ vi.mock("../content/ui-badge", () => ({
   showPanel: vi.fn(),
   updatePanelProgress: vi.fn(),
   updatePanelIdle: vi.fn(),
+  updatePanelError: vi.fn(),
 }));
 vi.mock("../content/ui-filters", () => ({
   getMultiInvoiceNumbers: () => mockInvoiceNumbers,
@@ -20,6 +21,7 @@ import {
   startScrape,
   applyMultiInvoiceFilter,
   triggerSearch,
+  SCRAPE_CANCELLED_MESSAGE,
   type ContentState,
   type ActionDeps,
 } from "../content/main-actions";
@@ -33,6 +35,7 @@ function makeDeps(overrides: Partial<ActionDeps> = {}): ActionDeps {
     showPanel: vi.fn(),
     updatePanelProgress: vi.fn(),
     updatePanelIdle: vi.fn(),
+    updatePanelError: vi.fn(),
     getMultiInvoiceNumbers: vi.fn(() => []),
     isEfakturPage: vi.fn(() => true),
     exportXLSX: vi.fn(),
@@ -164,6 +167,11 @@ describe("handleExportAction — already running", () => {
     expect(deps.postToScraper).toHaveBeenCalledWith({ type: "STOP_SCRAPE" });
   });
 
+  it("renders the cancellation message on the panel", () => {
+    handleExportAction("xlsx", state, deps);
+    expect(deps.updatePanelError).toHaveBeenCalledWith(SCRAPE_CANCELLED_MESSAGE);
+  });
+
   it("sets isRunning to false", () => {
     handleExportAction("xlsx", state, deps);
     expect(state.isRunning).toBe(false);
@@ -174,9 +182,10 @@ describe("handleExportAction — already running", () => {
     expect(state.pendingExportFormat).toBeNull();
   });
 
-  it("calls updatePanelIdle", () => {
+  it("reports the cancellation instead of rendering an idle panel", () => {
     handleExportAction("xlsx", state, deps);
-    expect(deps.updatePanelIdle).toHaveBeenCalledOnce();
+    expect(deps.updatePanelError).toHaveBeenCalledWith(SCRAPE_CANCELLED_MESSAGE);
+    expect(deps.updatePanelIdle).not.toHaveBeenCalled();
   });
 
   it("returns true for all formats when running", () => {

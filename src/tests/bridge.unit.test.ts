@@ -44,6 +44,26 @@ describe("createBridge — token generation and messaging", () => {
     expect(b.isCurrentRunMessage({ type: "DOWNLOAD_PDF_ITEM" })).toBe(true);
   });
 
+  it("rejects a stale completion after the page URL changes without any new run", () => {
+    const win = {
+      location: { origin: "https://coretaxdjp.pajak.go.id", href: "https://coretaxdjp.pajak.go.id/a" },
+      postMessage: vi.fn(),
+    };
+    const b = createBridge(win as unknown as Window);
+    b.postToScraper({ type: "START_SCRAPE" });
+    const runId = b.getActiveRunId();
+    expect(b.isCurrentRunMessage({ type: "SCRAPE_COMPLETE", runId })).toBe(true);
+
+    // SPA navigation: only the URL changes (RESET_SCRAPER may not have arrived yet).
+    win.location.href = "https://coretaxdjp.pajak.go.id/b";
+    expect(b.isCurrentRunMessage({ type: "SCRAPE_COMPLETE", runId })).toBe(false);
+    expect(b.isCurrentRunMessage({ type: "SCRAPE_PROGRESS", runId })).toBe(false);
+
+    // Back on the original URL the run is current again.
+    win.location.href = "https://coretaxdjp.pajak.go.id/a";
+    expect(b.isCurrentRunMessage({ type: "SCRAPE_COMPLETE", runId })).toBe(true);
+  });
+
   it("allows setting token manually", () => {
     const b = createBridge();
     b.setBridgeToken("test-custom-token");

@@ -11,8 +11,8 @@ import { downloadXLSXFile, RESULT_NUMBER_FORMAT, RESULT_DIFFERENCE_FORMAT } from
 import {
   buildComparisonExportRows,
   buildCheckerExportRows,
-  formatResultNumber as formatNum,
-  formatResultDifference as formatDiffCell,
+  formatResultNumber,
+  formatResultDifference,
 } from "./comparer-export";
 import { contentState, startScrape } from "./main-actions";
 import { isOutputTaxPage } from "./page-context";
@@ -889,22 +889,22 @@ function renderResults(): void {
           r.reference,
           r.refLain,
           r.buyerName,
-          formatNum(r.dppSistem),
-          formatNum(r.dppExcel),
-          formatNum(r.ppnSistem),
-          formatNum(r.ppnExcel),
-          formatNum(r.ppnSelisih),
+          formatResultNumber(r.dppSistem),
+          formatResultNumber(r.dppExcel),
+          formatResultNumber(r.ppnSistem),
+          formatResultNumber(r.ppnExcel),
+          formatResultNumber(r.ppnSelisih),
           statusLabel,
         ]
       : [
           String(filteredStart + idx + 1),
           r.reference,
           r.buyerName,
-          formatNum(r.dppSistem),
-          formatNum(r.dppExcel),
-          formatNum(r.ppnSistem),
-          formatNum(r.ppnExcel),
-          formatNum(r.ppnSelisih),
+          formatResultNumber(r.dppSistem),
+          formatResultNumber(r.dppExcel),
+          formatResultNumber(r.ppnSistem),
+          formatResultNumber(r.ppnExcel),
+          formatResultNumber(r.ppnSelisih),
           statusLabel,
         ];
 
@@ -1098,14 +1098,14 @@ function renderCheckerResults(): void {
     let diffCol2 = "-";
 
     if (r.benchmark === "DPP") {
-      diffCol1 = formatDiffCell(r.dppNilaiLainDiff, r.tolerance);
-      diffCol2 = formatDiffCell(r.ppnDiff, r.tolerance);
+      diffCol1 = formatResultDifference(r.dppNilaiLainDiff, r.tolerance);
+      diffCol2 = formatResultDifference(r.ppnDiff, r.tolerance);
     } else if (r.benchmark === "DPP_NILAI_LAIN") {
-      diffCol1 = formatDiffCell(r.dppDiff, r.tolerance);
-      diffCol2 = formatDiffCell(r.ppnDiff, r.tolerance);
+      diffCol1 = formatResultDifference(r.dppDiff, r.tolerance);
+      diffCol2 = formatResultDifference(r.ppnDiff, r.tolerance);
     } else {
-      diffCol1 = formatDiffCell(r.dppDiff, r.tolerance);
-      diffCol2 = formatDiffCell(r.dppNilaiLainDiff, r.tolerance);
+      diffCol1 = formatResultDifference(r.dppDiff, r.tolerance);
+      diffCol2 = formatResultDifference(r.dppNilaiLainDiff, r.tolerance);
     }
 
     const cells = [
@@ -1113,9 +1113,9 @@ function renderCheckerResults(): void {
       r.reference || r.taxInvoiceNumber,
       r.invoiceDate,
       r.buyerName,
-      formatNum(r.dppSystem),
-      formatNum(r.dppNilaiLainSystem),
-      formatNum(r.ppnSystem),
+      formatResultNumber(r.dppSystem),
+      formatResultNumber(r.dppNilaiLainSystem),
+      formatResultNumber(r.ppnSystem),
       diffCol1,
       diffCol2,
       r.status,

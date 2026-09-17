@@ -37,6 +37,7 @@ import {
   triggerSearch,
   contentState,
   resetContentState,
+  SCRAPE_CANCELLED_MESSAGE,
   type ScrapeState,
 } from "./main-actions";
 
@@ -249,7 +250,7 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
 document.addEventListener("ch:scrape-toggle", () => {
   if (contentState.isRunning) {
     postToScraper({ type: "STOP_SCRAPE" });
-    const message = "Proses dihentikan. Ekspor dan pemeriksaan otomatis dibatalkan. Jalankan ulang untuk memperoleh data lengkap.";
+    const message = SCRAPE_CANCELLED_MESSAGE;
     invalidateScrapeResult(contentState, message);
     updatePanelError(message);
   } else {

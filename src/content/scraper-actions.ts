@@ -102,6 +102,21 @@ function signalArgs(ctx: ScraperContext): [] | [AbortSignal] {
   return ctx.signal ? [ctx.signal] : [];
 }
 
+/**
+ * Circuit breaker shared by the per-item action loops: true once
+ * `failures` consecutive item failures reach `ctx.maxErrors`. Callers
+ * report the exhaustion themselves (throw inside paginated scraping,
+ * SCRAPE_ERROR + return inside the PDF and targeted-lookup loops).
+ */
+export function consecutiveFailuresExhausted(ctx: ScraperContext, failures: number): boolean {
+  return failures >= ctx.maxErrors;
+}
+
+/** The DOMException the cancellation paths reject with. */
+export function abortError(): DOMException {
+  return new DOMException("Permintaan dibatalkan.", "AbortError");
+}
+
 // ── Pagination config ─────────────────────────────────
 // The Coretax rate-limit pacing lives here, local to the orchestration:
 // 500 rows/request for e-invoice, 1000 for SPT, with a slower inter-page
@@ -174,8 +189,8 @@ export async function scrapePaginated(
       if (ctx.isStopRequested()) break;
       errorCount++;
       const errMsg = err instanceof Error ? err.message : String(err);
-      if (errorCount >= ctx.maxErrors) {
-        throw new Error(`${ctx.maxErrors} error berturut-turut: ${errMsg}`);
+      if (consecutiveFailuresExhausted(ctx, errorCount)) {
+        throw new Error(`${errorCount} error berturut-turut: ${errMsg}`);
       } else {
         await ctx.delay(2000);
       }
@@ -232,8 +247,8 @@ export async function downloadBulkWithholdingPdf(
       failureCount++;
       consecutiveFailures++;
       debugError(`Gagal unduh PDF idx ${i}:`, err);
-      if (consecutiveFailures >= ctx.maxErrors) {
-        throw new Error(`${ctx.maxErrors} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`);
+      if (consecutiveFailuresExhausted(ctx, consecutiveFailures)) {
+        throw new Error(`${consecutiveFailures} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`);
       }
     }
     await ctx.delay(800);
@@ -380,14 +395,13 @@ export async function startPdfDownload(
       if (ctx.isStopRequested()) return;
       failureCount++;
       consecutiveFailures++;
-      debugError(`Gagal unduh PDF efaktur idx ${i} (${ref}):`, err);
-      if (consecutiveFailures >= ctx.maxErrors) {
-        ctx.sendToContent({
-          type: "SCRAPE_ERROR",
-          message: `${ctx.maxErrors} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`,
-        });
-        return;
-      }
+      debugError(`Gagal unduh PDF efaktur idx ${i} (${ref}):`, err);        if (consecutiveFailuresExhausted(ctx, consecutiveFailures)) {
+          ctx.sendToContent({
+            type: "SCRAPE_ERROR",
+            message: `${consecutiveFailures} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`,
+          });
+          return;
+        }
     }
     await ctx.delay(800);
   }
@@ -492,7 +506,7 @@ export async function scrapeByInvoices(
     if (!success) {
       failedInvoices.push(num);
       consecutiveFailures++;
-      if (consecutiveFailures >= ctx.maxErrors) {
+      if (consecutiveFailuresExhausted(ctx, consecutiveFailures)) {
         ctx.sendToContent({
           type: "SCRAPE_ERROR",
           message: `${ctx.maxErrors} kegagalan berturut-turut saat mencari faktur. Proses dihentikan.`,
