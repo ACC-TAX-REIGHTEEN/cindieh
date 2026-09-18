@@ -8,4 +8,10 @@ Load-failure handling: if the script fails to load (CSP/network), `main.ts`'s `o
 
 Security note: the token-in-`src` exposure window (appendChild → `scraper.ts` removing `src`) is unchanged by this decision; the element is retained only as the id marker and never holds the token after load.
 
-Status: accepted.
+## Update (2026-09-18): the `URL.createObjectURL` zombie risk is obsolete
+
+The historical text above is retained unchanged as the record of the original decision. One claim in it no longer describes the current code: `scraper.ts` no longer patches `URL.createObjectURL` at all. That patch was removed during the download-blocking audit (see ADR-0001): it shared the blob-anchor save corridor with the `HTMLAnchorElement.click` net — blocking either link of the `Blob → createObjectURL → a.click()` chain stops the save — and, unlike the other nets, it never self-reset, so it silently blocked every legitimate PDF blob on the page for the whole 5s processing window.
+
+Consequence for this decision: there is no `URL.createObjectURL` wrapper left to linger or to stack on SPA navigation, so that specific zombie-interceptor concern is moot. The decision itself is still load-bearing for the patches that remain (`fetch`, the three `XMLHttpRequest` prototype methods, `HTMLAnchorElement.click`, `window.open`): one scraper instance per page is what keeps those wrappers from chaining.
+
+Status: accepted; update noted above — no change to the decision.
