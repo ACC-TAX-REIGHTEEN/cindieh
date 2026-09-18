@@ -16,7 +16,7 @@ Berikut adalah konstanta dan jeda waktu yang diterapkan dalam kode ([`scraper-ac
 | **Batch Pagination SPT atau Returnsheets Portal** | `step = 1000`, `delayMs = 150` | [`getPaginateConfig()`](src/content/scraper-actions.ts) | 1.000 data/req (menyesuaikan batas maks UI Returnsheets PPN portal `1000`). |
 | **Bulk PDF Download** | `delay(800)` (800 ms) | [`downloadBulkWithholdingPdf()`](src/content/scraper-actions.ts) & [`startPdfDownload()`](src/content/scraper-actions.ts) | Jeda 800 ms antar unduhan berkas PDF (e-Faktur & Bukti Potong). |
 | **Scrape per Faktur Spesifik** | `delay(50)` (50 ms) | [`scrapeByInvoices()`](src/content/scraper-actions.ts) | Jeda 50 ms antar nomor faktur pada fitur pencarian dari daftar. |
-| **Retry & Backoff Faktur** | `MAX_INVOICE_RETRIES = 2`, `BACKOFF_BASE_MS = 1000` | [`scrapeByInvoices()`](src/content/scraper-actions.ts) | Maks 2x retry dengan *exponential backoff* (`1000ms`, `2000ms`) jika request gagal. |
+| **Retry & Backoff Faktur** | `MAX_INVOICE_RETRIES = 2`, `BACKOFF_BASE_MS = 1000` | [`scrapeByInvoices()`](src/content/scraper-actions.ts) | Maks 2x retry dengan *linear backoff* (`1000ms`, `2000ms` = `BACKOFF_BASE_MS` × percobaan) jika request gagal. |
 | **Request Timeout** | `TIMEOUT = 30000` (30 detik) | konstanta [`TIMEOUT`](src/content/scraper.ts) | Batas waktu maksimal tunggu respons XHR dari Coretax. |
 | **Circuit Breaker** | `MAX_ERRORS = 3` | konstanta [`MAX_ERRORS`](src/content/scraper.ts) | Hentikan scraping otomatis jika terjadi 3 error berturut-turut. |
 | **Recovery Delay** | `delay(2000)` (2 detik) | [`scrapePaginated()`](src/content/scraper-actions.ts) | Jeda pemulihan 2 detik jika terjadi 1 kali error sebelum mencoba lagi. |
