@@ -171,8 +171,8 @@ function setScrapeButtonState(isRunning: boolean): void {
 }
 
 /**
- * Show the floating stats panel (removes ch-hidden).
- * Called at the start of every operation to auto-show the panel (Req 4.6).
+ * Show the floating stats panel by adding ch-panel-open to its container.
+ * Called at the start of every operation to auto-show the panel.
  */
 export function showPanel(): void {
   statsEl?.closest("#ch-floating-info-container")?.classList.add("ch-panel-open");
@@ -266,4 +266,8 @@ export function destroyBadge(): void {
   if (container) container.remove();
   els = null;
   badgeEl = null;
+  // Also drop the stats reference: it points into the removed subtree, and
+  // leaving it set contradicted "nullify refs" (the panel guards on `els`,
+  // but showPanel() reads statsEl directly).
+  statsEl = null;
 }
