@@ -266,7 +266,7 @@ export function processData(exportData: ExportData): ExportData {
   }
 
   if (exportData.source === "SPT_B2" || (exportData.source && exportData.source.startsWith("PPH_21_"))) {
-    // Dump all fields for B2 dynamically
+    // Dump every field as-is — SPT B2 and the PPh 21 lampiran share this shape
     const processedData = exportData.data.map((row) => {
       const newRow: Record<string, unknown> = {};
       for (const f of exportData.fields) {
@@ -465,7 +465,7 @@ export function generateDynamicFilename(exportData: ExportData): string {
 
   const dataPeriods = extractPeriodsFromData();
 
-  // PRIORITY 2: USE DATA ROWS
+  // PRIORITY 2 (after filenameHint): USE DATA ROWS
   if (dataPeriods.length > 0 && source !== "OUTPUT_RETURN" && source !== "INPUT_RETURN") {
     if (dataPeriods.length === 1) {
       return `${prefix}${formatPeriod(dataPeriods[0])}`;

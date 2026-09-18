@@ -1,7 +1,8 @@
 // ============================================================
-// UI.TS — Inject export controls into the Coretax PPN page
+// UI.TS — Inject export controls into supported Coretax pages
 // ============================================================
-// Handles export button injection/removal and button placement.
+// Handles export button injection/removal and button placement for the
+// e-faktur (PPN), SPT, and withholding-slips pages.
 // ============================================================
 
 import {
@@ -49,7 +50,10 @@ let outsideClickHandler: ((e: MouseEvent) => void) | null = null;
 // ── Anchor Button Helpers ─────────────────────────────
 
 /**
- * Helper to find the "Upload Faktur" button or its container.
+ * Helper to find the page's anchor element that the export controls are placed
+ * next to. The anchor differs per page type: an action button (or the table
+ * header as fallback) on the e-faktur pages, a table header on the SPT and
+ * withholding pages.
  */
 function findAnchorButton(): HTMLElement | null {
   if (isInputTaxPage()) {
@@ -115,7 +119,9 @@ function moveButtonNextToAnchor(btn: HTMLElement, anchor: HTMLElement): boolean 
 // ── Export Button Injection ───────────────────────────
 
 /**
- * Inject the "Better Export" button into the toolbar.
+ * Inject the export controls into the toolbar: a single download button on the
+ * withholding page; elsewhere the XLSX/CSV dropdown, plus -- on e-faktur pages
+ * only -- the PDF, scrape, and comparer icon buttons.
  */
 export function injectExportButton(retries = MAX_RETRIES): void {
   // Check if buttons are already injected

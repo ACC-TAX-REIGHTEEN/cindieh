@@ -47,8 +47,8 @@ export interface Bridge {
 
 /**
  * Build an independent bridge instance. `windowRef` is injectable so tests
- * pass a stub instead of touching the global `window`; it defaults to the
- * global in the browser (the only place postToScraper is used).
+ * pass a stub instead of touching the global `window`; omitting it resolves the
+ * global lazily at call time, which is what production relies on.
  */
 export function createBridge(windowRef?: Window): Bridge {
   // Resolve lazily at call time: the singleton must pick up a stubbed

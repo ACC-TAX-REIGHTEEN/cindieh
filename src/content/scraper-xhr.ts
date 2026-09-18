@@ -246,7 +246,8 @@ export function xhrDownloadEfakturPdf(
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const res = JSON.parse(xhr.responseText);
-          // PDF data: res.Content (top-level) or res.Payload.Message.Data
+          // The PDF payload shape varies per endpoint; unwrapPdfData owns the
+          // list (Content, Payload.Content, Payload.Message.Data, Payload.Data, Data).
           const pdfData = unwrapPdfData(res);
           if (pdfData && typeof pdfData === "string" && pdfData.length > 100) {
             resolve(pdfData);

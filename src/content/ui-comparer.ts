@@ -155,7 +155,7 @@ export function injectComparerModal(): void {
   pasteSection.appendChild(pasteHeader);
   pasteSection.appendChild(textarea);
 
-  // Button row: Periksa (left) ... Ekspor Hasil XLSX (right)
+  // Button row: Periksa (left) ... Export XLSX (right)
   const btnRow = document.createElement("div");
   btnRow.className = "ch-comparer-btn-row";
 

@@ -168,7 +168,8 @@ export function getStatusLabel(status: ComparisonStatus): StatusLabel {
 // ── Session orchestration ─────────────────────────────
 // The state transitions the view used to hand-roll: run a fresh
 // comparison, re-run with current inputs, and prepare the "Periksa"
-// decision tree. All pure — the view only renders the outcome.
+// decision tree. No DOM access — the session object is mutated in place
+// (results, page, highlights) and the view only renders the outcome.
 
 /**
  * Run a comparison against already-parsed pasted rows and update the

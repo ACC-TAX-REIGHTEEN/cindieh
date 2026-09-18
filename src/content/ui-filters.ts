@@ -1,16 +1,17 @@
 // ============================================================
 // UI-FILTERS.TS — Grid, toolbar, and multi-invoice filters
 // ============================================================
-// Injects filter inputs into table headers (grid filter),
-// the toolbar (toolbar filter), and multi-invoice filter
-// for efaktur pages.
+// Injects filter inputs into table headers (grid filter) and
+// the toolbar (toolbar filter) on the PPN Keluaran page, plus
+// the No. Faktur (multi-invoice) filter on every efaktur page.
 // ============================================================
 
 import { isEfakturPage, isOutputTaxPage } from "./page-context";
 
-// Duplicated from ui.ts to avoid circular dependencies.
-// Both RETRY_DELAY_MS and MAX_RETRIES are used by
-// injectToolbarFilter and injectMultiInvoiceFilter.
+// MAX_RETRIES mirrors the value in ui.ts; it is repeated here because ui.ts
+// imports from this module (a shared constant would be circular).
+// RETRY_DELAY_MS is local to scheduleRetry, which both
+// injectToolbarFilter and injectMultiInvoiceFilter rely on.
 const RETRY_DELAY_MS = 1000;
 const MAX_RETRIES = 8;
 const TOOLBAR_FILTER_WIDTH = "180px";
@@ -302,8 +303,9 @@ export function injectMultiInvoiceFilter(retries = MAX_RETRIES): void {
     if (isVisible) {
       multiInvoicePanel.style.display = "none";
     } else {
-      // Position panel below the toggle button using fixed coordinates
-      // so we never need to mutate the parent element's CSS position.
+      // Position the panel below the toggle button with absolute page
+      // coordinates (the stylesheet uses position: absolute) so we never need
+      // to mutate the parent element's CSS position.
       const rect = toggleBtn.getBoundingClientRect();
       multiInvoicePanel.style.top = `${rect.bottom + window.scrollY + 4}px`;
       multiInvoicePanel.style.left = `${rect.left + window.scrollX}px`;

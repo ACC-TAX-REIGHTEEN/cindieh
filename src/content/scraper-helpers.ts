@@ -94,7 +94,7 @@ function stableStringify(value: unknown): string {
  * without a live XHR/portal. Rows already present (by dedupe key) are skipped;
  * new rows are appended to `allData` and their keys recorded in `seen`.
  *
- * @param allData  Accumulated rows (mutated in place, then returned).
+ * @param allData  Accumulated rows (mutated in place; the return value is `added`).
  * @param seen     Set of already-seen dedupe keys (mutated in place).
  * @param rows     New rows from the current page/request.
  * @returns        The rows that were actually added (newRows).

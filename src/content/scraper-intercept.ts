@@ -55,8 +55,8 @@ export function isCacheValid(ctx: ScraperContext): boolean {
  * button, or fall back to any visible Search/Refresh/Filter button.
  * If neither is found, logs a warning and does nothing.
  *
- * Extracted as a pure side-effect function so tests can verify which
- * branch is taken without needing a real DOM.
+ * Isolated behind `ctx` (queries + clicks go through the injected context)
+ * so tests can verify which branch is taken without needing a real DOM.
  */
 export function triggerXhrCapture(ctx: ScraperContext): void {
   const nextBtn = ctx.queryElement("button.p-paginator-next:not(.p-disabled)");

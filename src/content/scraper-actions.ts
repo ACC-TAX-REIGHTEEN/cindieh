@@ -105,8 +105,9 @@ function signalArgs(ctx: ScraperContext): [] | [AbortSignal] {
 /**
  * Circuit breaker shared by the per-item action loops: true once
  * `failures` consecutive item failures reach `ctx.maxErrors`. Callers
- * report the exhaustion themselves (throw inside paginated scraping,
- * SCRAPE_ERROR + return inside the PDF and targeted-lookup loops).
+ * report the exhaustion themselves: scrapePaginated and the withholding
+ * bulk loop throw (startScraping turns that into SCRAPE_ERROR), while the
+ * efaktur PDF loop and the targeted-lookup loop send SCRAPE_ERROR and return.
  */
 export function consecutiveFailuresExhausted(ctx: ScraperContext, failures: number): boolean {
   return failures >= ctx.maxErrors;
@@ -395,13 +396,14 @@ export async function startPdfDownload(
       if (ctx.isStopRequested()) return;
       failureCount++;
       consecutiveFailures++;
-      debugError(`Gagal unduh PDF efaktur idx ${i} (${ref}):`, err);        if (consecutiveFailuresExhausted(ctx, consecutiveFailures)) {
-          ctx.sendToContent({
-            type: "SCRAPE_ERROR",
-            message: `${consecutiveFailures} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`,
-          });
-          return;
-        }
+      debugError(`Gagal unduh PDF efaktur idx ${i} (${ref}):`, err);
+      if (consecutiveFailuresExhausted(ctx, consecutiveFailures)) {
+        ctx.sendToContent({
+          type: "SCRAPE_ERROR",
+          message: `${consecutiveFailures} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`,
+        });
+        return;
+      }
     }
     await ctx.delay(800);
   }
@@ -434,8 +436,8 @@ export async function startPdfDownload(
  * Caller is responsible for `isRunning` state.
  *
  * Each invoice number is retried up to MAX_INVOICE_RETRIES times with
- * exponential backoff before being skipped. If consecutive failures
- * exceed ctx.maxErrors the entire operation is aborted.
+ * linear backoff (1s, then 2s) before being skipped. If consecutive
+ * failures reach ctx.maxErrors the entire operation is aborted.
  */
 export async function scrapeByInvoices(
   invoiceNumbers: string[],
