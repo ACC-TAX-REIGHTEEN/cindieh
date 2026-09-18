@@ -6,8 +6,8 @@
 //
 // Responsibilities of this file:
 //   1. Read the bridge token from our own <script> src URL.
-//   2. Monkey-patch XHR / fetch / anchor to intercept Coretax
-//      requests and block duplicate native downloads.
+//   2. Monkey-patch XHR / fetch / anchor clicks / window.open to
+//      intercept Coretax requests and block duplicate native downloads.
 //   3. Maintain the captured-request cache and filter state.
 //   4. Listen for messages from the content script and delegate
 //      to the action functions in scraper-actions.ts.
@@ -23,8 +23,8 @@ import {
   isWithholdingPage,
 } from "./page-context";
 import { extractMasaPajak } from "./tax-date";
-import { debugLog, debugWarn, debugError } from "./debug";
-import type { CapturedRequest, ScrapeMessage, InterceptedXHR } from "./scraper-types";
+import { debugLog, debugError } from "./debug";
+import type { CapturedRequest, ScrapeMessage } from "./scraper-types";
 import {
   startScraping,
   startPdfDownload,
@@ -34,8 +34,13 @@ import {
 import { interceptRequest as makeInterceptRequest } from "./scraper-intercept";
 import {
   buildPdfDownloadMessage,
+  buildSabotagedResponseJson,
   createPdfDownloadSession,
+  wireNativeDownloadXhrListener,
 } from "./scraper-pdf";
+import { createFetchDownloadInterceptor } from "./scraper-fetch";
+import { createDownloadNets } from "./scraper-nets";
+import { createXhrPatches, type FilterState } from "./scraper-xhr-patches";
 import { createMessageDispatcher } from "./postmessage-guard";
 import { createScrapeRuns } from "./scraper-run";
 
@@ -295,7 +300,8 @@ import { createScrapeRuns } from "./scraper-run";
   // emission for the fetch/XHR interceptors below.
 
   // Maps invoice identifiers (TaxInvoiceNumber, LetterNumber) to row data
-  // so the fetch interceptor can resolve item metadata for PDF filenames.
+  // so the download interceptors (fetch and XHR) can resolve item metadata
+  // for PDF filenames.
   const invoiceRowMap = new Map<string, Record<string, unknown>>();
 
   const pdfSession = createPdfDownloadSession({
@@ -311,297 +317,123 @@ import { createScrapeRuns } from "./scraper-run";
     },
   });
 
-  const origOpen = XMLHttpRequest.prototype.open;
-  const origSend = XMLHttpRequest.prototype.send;
-  const origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
+  // ── Native-download safety nets ────────────────────
+  // The PRIMARY double-download block is the response sabotage itself
+  // (failure dummy in the fetch/XHR interceptors): the portal takes its
+  // error branch and never builds a file. These two patches are BACKUP
+  // nets for the corridor where the portal would save a PDF if the
+  // sabotage ever failed (defineProperty refusal, unparseable response,
+  // unexpected event order). Each covers one corridor:
+  //   1. Blob-anchor save:  Blob → createObjectURL → a.click()
+  //   2. Popup save:        window.open(blobUrl)
+  // createObjectURL is deliberately NOT patched: it sits on the same
+  // corridor as the anchor net (blocking either link of the chain stops
+  // the save), and unlike the anchor net it never self-resets, so it
+  // blocked every legitimate PDF blob on the page for the whole 5s window.
+  // The window.open net only blocks blob: opens for the same reason —
+  // blanket blocking silently killed unrelated user popups for 5s.
+  //
+  // Both net bodies live in the extracted, testable module
+  // (scraper-nets.ts) so their block/pass-through/self-reset behaviour has
+  // regression coverage; this file keeps only the adapter and the teardown
+  // call below.
 
-  const origAnchorClick = HTMLAnchorElement.prototype.click;
-  HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
-    if (pdfSession.isProcessing() && (this.download || this.href.startsWith("blob:"))) {
-      debugLog("[Cindieh] Memblokir download klik bawaan.");
-      pdfSession.clearProcessing();
-      return;
-    }
-    return origAnchorClick.apply(this);
-  };
-
-  const origCreateObjectURL = window.URL.createObjectURL;
-  window.URL.createObjectURL = function (obj: Blob | MediaSource) {
-    if (pdfSession.isProcessing() && obj instanceof Blob && obj.type === "application/pdf") {
-      debugLog("[Cindieh] Memblokir pembuatan blob URL bawaan.");
-      return "";
-    }
-    return origCreateObjectURL.call(window.URL, obj);
-  };
-
-  const origWindowOpen = window.open;
-  window.open = function (url?: string | URL, target?: string, features?: string) {
-    if (pdfSession.isProcessing()) {
-      debugLog("[Cindieh] Memblokir window.open bawaan.");
-      return null;
-    }
-    return origWindowOpen.call(window, url, target, features);
-  };
+  const downloadNets = createDownloadNets({
+    session: pdfSession,
+    anchorPrototype: HTMLAnchorElement.prototype,
+    windowTarget: window,
+    log: debugLog,
+  });
+  downloadNets.install();
 
   // ── Fetch Interceptor ──────────────────────────────
-  // Sole mechanism for DownloadInvoice/download-invoice-document.
-  // SECURITY: Only intercepts URLs matching the specific Coretax
-  // download endpoint. All other fetch requests pass through unchanged.
-
-  /**
-   * True when the fetch call is one the extension created itself for bulk
-   * download — flagged with __isCindiehBulk on the RequestInit or the
-   * Request object, mirroring InterceptedXHR on the XHR path.
-   */
-  function isBulkFetchRequest(...args: unknown[]): boolean {
-    const init = args[1] as (RequestInit & { __isCindiehBulk?: boolean }) | undefined;
-    if (init?.__isCindiehBulk) return true;
-    const req = args[0];
-    if (req && typeof req === "object") {
-      return (req as { __isCindiehBulk?: boolean }).__isCindiehBulk === true;
-    }
-    return false;
-  }
+  // The interceptor body lives in the extracted, testable module
+  // (scraper-fetch.ts) so its "issue the request exactly once" contract has
+  // regression coverage; this file keeps only the adapter. The XHR interceptor
+  // below stays the primary path — Coretax normally downloads via XHR.
+  // SECURITY: the interceptor only inspects URLs matching the specific
+  // Coretax download endpoint; all other fetch requests pass through.
 
   const origFetch = window.fetch;
-  window.fetch = async function (...args: unknown[]) {
-    const url =
-      typeof args[0] === "string" ? args[0] : (args[0] as Request)?.url;
-    // Guard mirrors the XHR interceptor: skip extension-owned bulk fetches
-    // (__isCindiehBulk) so they never double-fire DOWNLOAD_PDF_ITEM. Today the
-    // bulk paths use XHR only (xhrDownloadEfakturPdf / xhrDownloadWithholdingPdf),
-    // but keep this flag working if any of them moves to fetch.
-    if (
-      url?.includes("DownloadInvoice/download-invoice-document") &&
-      !isBulkFetchRequest(...args)
-    ) {
-      pdfSession.beginProcessing();
-      try {
-        const resp = await origFetch.apply(window, args as Parameters<typeof fetch>);
-        const json = await resp.clone().json();
-        const reqBody =
-          typeof args[0] === "object" && args[0] !== null && "body" in args[0]
-            ? await (args[0] as Request).clone().text()
-            : typeof args[1] === "string"
-              ? args[1]
-              : "";
-        const { intercepted } = pdfSession.handleNativeResponse(json, reqBody);
-        if (intercepted) {
-          // Block the native download: Coretax sees success but empty Content.
-          return new Response(JSON.stringify({ IsSuccessful: true, Content: "" }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        debugWarn(
-          "[Cindieh] Fetch interceptor: PDF data not found in response.",
-          "Response keys:",
-          Object.keys(json),
-        );
-        return resp;
-      } catch (err) {
-        debugError("[Cindieh] Fetch interceptor error:", err);
-        pdfSession.clearProcessing();
-        return origFetch.apply(window, args as Parameters<typeof fetch>);
-      }
-    }
-    return origFetch.apply(window, args as Parameters<typeof fetch>);
-  };
+  window.fetch = createFetchDownloadInterceptor({
+    originalFetch: origFetch,
+    session: pdfSession,
+    buildDummyResponse: buildSabotagedResponseJson,
+  });
+
+  // ── Filter state & request cache ──────────────────
+
+  const filterState: FilterState = {};
+  const captureSubscribers: ((req: CapturedRequest) => void)[] = [];
+  let lastCaptured: CapturedRequest | null = null;
+  let lastCapturedTime = 0;
+
+  // ── XHR prototype patches (P2/P3/P4) ───────────────
+  // The three patch bodies live in the extracted, testable module
+  // (scraper-xhr-patches.ts) so filter injection, grid capture, and the
+  // open()-time listener ordering have their own regression coverage. This
+  // file keeps only the adapter below and the teardown call, which restores
+  // all three methods at once.
+  //
+  // Listener ordering is load-bearing: our response reader is registered at
+  // open(), BEFORE the portal registers its own (which it does between open
+  // and send). Wiring it in send() instead let the portal read the real
+  // base64 first and save its own Coretax-named PDF alongside ours.
+
+  const xhrPatches = createXhrPatches({
+    xhrPrototype: XMLHttpRequest.prototype,
+    session: pdfSession,
+    wireNativeDownloadListener: (xhr) => wireNativeDownloadXhrListener(xhr, pdfSession),
+    getFilterState: () => filterState,
+    getPageSource: () => getPageExportSource(),
+    inferSource: (url) => inferCapturedSource(url),
+    invoiceRowMap,
+    onCaptured: (captured) => {
+      lastCaptured = captured;
+      lastCapturedTime = Date.now();
+      // Capture subscribers are one-shot: taken, then drained.
+      const subs = [...captureSubscribers];
+      captureSubscribers.length = 0;
+      subs.forEach((s) => s(captured));
+    },
+    logError: debugError,
+  });
+  xhrPatches.install();
 
   // ── Teardown ───────────────────────────────────────
   // Restore all monkey-patched globals on full page unload.
   // (SPA navigations keep the patch active intentionally.)
 
   function teardownInterceptors(): void {
-    try {
-      XMLHttpRequest.prototype.open = origOpen;
-      XMLHttpRequest.prototype.send = origSend;
-      XMLHttpRequest.prototype.setRequestHeader = origSetHeader;
-      HTMLAnchorElement.prototype.click = origAnchorClick;
-      window.URL.createObjectURL = origCreateObjectURL;
-      window.open = origWindowOpen;
-      window.fetch = origFetch;
-    } catch (err) {
-      debugError("[Cindieh] teardown failed:", err);
+    // Each surface is restored on its own so one refused assignment — say the
+    // portal redefined a prototype method as non-writable after we patched it —
+    // cannot strand the other patches for the rest of the page's life. Guarded
+    // by scraper-boot.unit.test.ts through a throwing property setter.
+    const restores: [name: string, restore: () => void][] = [
+      ["XHR prototype patches", () => xhrPatches.restore()],
+      ["download nets", () => downloadNets.restore()],
+      [
+        "fetch",
+        () => {
+          window.fetch = origFetch;
+        },
+      ],
+    ];
+
+    for (const [name, restore] of restores) {
+      try {
+        restore();
+      } catch (err) {
+        debugError(`[Cindieh] teardown failed for ${name}:`, err);
+      }
     }
   }
 
   window.addEventListener("pagehide", teardownInterceptors, { once: true });
 
-  // ── Filter state & request cache ──────────────────
-
-  const filterState: Record<string, { value: unknown; matchMode: string }> = {};
-  const captureSubscribers: ((req: CapturedRequest) => void)[] = [];
-  let lastCaptured: CapturedRequest | null = null;
-  let lastCapturedTime = 0;
-
-  // ── XHR prototype overrides ────────────────────────
-
-  XMLHttpRequest.prototype.open = function (
-    this: InterceptedXHR,
-    method: string,
-    url: string | URL,
-    ...args: unknown[]
-  ) {
-    this.__url = String(url);
-    this.__method = method;
-    this.__headers = {};
-    return origOpen.apply(this, [method, url, ...args] as Parameters<typeof origOpen>);
-  } as typeof XMLHttpRequest.prototype.open;
-
-  XMLHttpRequest.prototype.setRequestHeader = function (this: InterceptedXHR, ...args: [string, string]) {
-    if (this.__headers) this.__headers[args[0]] = args[1];
-    return origSetHeader.apply(this, args);
-  };
-
-  XMLHttpRequest.prototype.send = function (this: InterceptedXHR, body?: Document | XMLHttpRequestBodyInit | null) {
-    // ── XHR intercept: native 1-click download ─────────────
-    // Coretax triggers invoice PDF downloads via XHR (not fetch).
-    // We intercept here so the rename logic fires for both the
-    // extension's own bulk-download path AND the native UI button.
-    //
-    // Skip XHRs that the extension itself created for bulk download
-    // (__isCindiehBulk flag). Those are already handled by
-    // ctx.postMessage in scraper-actions.ts; intercepting them here
-    // would send DOWNLOAD_PDF_ITEM twice per file.
-    if (
-      this.__url?.includes("DownloadInvoice/download-invoice-document") &&
-      typeof body === "string" &&
-      !(this as InterceptedXHR & { __isCindiehBulk?: boolean }).__isCindiehBulk
-    ) {
-      pdfSession.beginProcessing();
-      const xhrDownloadBody = body;
-
-      this.addEventListener("load", function (this: XMLHttpRequest) {
-        try {
-          const res = JSON.parse(this.responseText) as Record<string, unknown>;
-          const { intercepted } = pdfSession.handleNativeResponse(res, xhrDownloadBody);
-          if (intercepted) {
-            debugLog("[Cindieh] XHR download intercepted, posting DOWNLOAD_PDF_ITEM");
-            // Block the native download: replace response so Coretax
-            // sees a success but with empty Content — same as fetch path.
-            Object.defineProperty(this, "responseText", {
-              get: () => JSON.stringify({ IsSuccessful: true, Content: "" }),
-              configurable: true,
-            });
-          } else {
-            debugWarn("[Cindieh] XHR download interceptor: PDF data not found in response.");
-          }
-        } catch (err) {
-          debugError("[Cindieh] XHR download interceptor error:", err);
-          pdfSession.clearProcessing();
-        }
-      });
-
-      return origSend.call(this, body);
-    }
-
-    let finalBody = body;
-    const pageSource = getPageExportSource();
-    const inferredSource = this.__url ? inferCapturedSource(this.__url) : null;
-    const isKnownSource = !!inferredSource;
-    let isPaginatedGridRequest = false;
-
-    if (typeof body === "string") {
-      try {
-        const parsed = JSON.parse(body) as Record<string, unknown>;
-        isPaginatedGridRequest = parsed.First !== undefined && parsed.Rows !== undefined;
-      } catch {
-        isPaginatedGridRequest = false;
-      }
-    }
-
-    const isTargetApi = isKnownSource || (!!pageSource && isPaginatedGridRequest);
-
-    // 1. Inject active filters into the request body
-    if (isTargetApi && typeof body === "string") {
-      try {
-        const parsed = JSON.parse(body);
-        const filterKey = "Filters" in parsed ? "Filters" : "filters";
-        if (!parsed[filterKey]) parsed[filterKey] = [];
-
-        if (Array.isArray(parsed[filterKey])) {
-          // Remove previously-injected extension filters to prevent duplicates
-          const extFields = ["Reference", "TaxInvoiceNumber"];
-          parsed[filterKey] = parsed[filterKey].filter(
-            (f: { PropertyName?: string }) => !extFields.includes(f.PropertyName || ""),
-          );
-
-          for (const [field, config] of Object.entries(filterState)) {
-            const values = Array.isArray(config.value) ? config.value : [config.value];
-            values.forEach((val: unknown, idx: number) => {
-              const filterEntry: Record<string, unknown> = {
-                PropertyName: field,
-                Value: val,
-                MatchMode: config.matchMode,
-                CaseSensitive: false,
-                AsString: false,
-              };
-              if (Array.isArray(config.value) && idx > 0) {
-                filterEntry.LogicalOperator = "OR";
-              }
-              parsed[filterKey].push(filterEntry);
-            });
-          }
-        }
-        finalBody = JSON.stringify(parsed);
-      } catch (e) {
-        debugError("Cindieh [Scraper]: Filter injection failed", e);
-      }
-    }
-
-    // 2. Capture the request for later scraping use
-    if (isTargetApi) {
-      const currentFinalBody = finalBody;
-      const capturedUrl = this.__url;
-      const capturedHeaders = this.__headers;
-      this.addEventListener("load", () => {
-        let respData: unknown = null;
-        try {
-          respData = JSON.parse((this as XMLHttpRequest).responseText);
-        } catch {}
-
-        if (!Array.isArray((respData as { Payload?: { Data?: unknown[] } })?.Payload?.Data)) {
-          return;
-        }
-
-        const captured: CapturedRequest = {
-          url: capturedUrl || "",
-          headers: { ...(capturedHeaders || {}) },
-          body: null,
-          rawBody: typeof currentFinalBody === "string" ? currentFinalBody : "",
-          response: respData,
-          initialData: (respData as { Payload: { Data: Record<string, unknown>[] } }).Payload.Data,
-          initialFirst: 0,
-          source: inferredSource || pageSource || "OUTPUT_TAX",
-        };
-
-        lastCaptured = captured;
-        lastCapturedTime = Date.now();
-
-        // Build invoice → row mapping so the fetch interceptor can
-        // resolve item metadata for PDF filenames.
-        invoiceRowMap.clear();
-        for (const row of captured.initialData) {
-          const taxNum = String(row.TaxInvoiceNumber || "").trim().toLowerCase();
-          const letterNum = String(row.LetterNumber || "").trim().toLowerCase();
-          if (taxNum) invoiceRowMap.set(taxNum, row);
-          if (letterNum && letterNum !== taxNum) invoiceRowMap.set(letterNum, row);
-        }
-
-        const subs = [...captureSubscribers];
-        captureSubscribers.length = 0;
-        subs.forEach((s) => s(captured));
-      });
-    }
-
-    return origSend.call(this, finalBody);
-  };
-
   // ── Request interceptor ────────────────────────────
-  // Delegates to the extracted, testable module in scraper-intercept.ts.
-
-
+  // Request interception for scraping delegates to the extracted,
+  // testable module in scraper-intercept.ts (wired in the dispatcher above).
 
   // Signal that the injected script is ready
   sendToContent({ type: "INJECTED_READY" });

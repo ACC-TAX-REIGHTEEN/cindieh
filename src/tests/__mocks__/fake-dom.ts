@@ -22,6 +22,8 @@ export class FakeEl {
   value = "";
   title = "";
   type = "";
+  /** Reflected property for <script> markers (scraper boot harness). */
+  src = "";
   htmlFor = "";
   rows = 0;
   placeholder = "";
@@ -111,6 +113,15 @@ export class FakeEl {
     return this.attributes[key] ?? null;
   }
 
+  removeAttribute(key: string): void {
+    delete this.attributes[key];
+    // Mirror the DOM: removing an attribute also clears the reflected property
+    // (scraper.ts relies on this for its <script src> injection marker).
+    if (key in this) {
+      (this as unknown as Record<string, unknown>)[key] = "";
+    }
+  }
+
   addEventListener(type: string, fn: FakeListener): void {
     if (!this.listeners[type]) this.listeners[type] = [];
     this.listeners[type].push(fn);
@@ -159,10 +170,17 @@ export class FakeDoc {
   byId = new Map<string, FakeEl>();
   buttons: FakeEl[] = [];
   body: FakeEl;
+  /** Injection target for <script> tags (main-boot harness). */
+  head: FakeEl;
+  documentElement: FakeEl;
+  /** main.ts branches on this at import time; "loading" keeps init on `load`. */
+  readyState = "loading";
   listeners = new Map<string, Set<FakeListener>>();
 
   constructor() {
     this.body = new FakeEl("body", this);
+    this.head = new FakeEl("head", this);
+    this.documentElement = new FakeEl("html", this);
   }
 
   createElement(tag: string): FakeEl {
@@ -181,6 +199,11 @@ export class FakeDoc {
 
   querySelectorAll(sel: string): FakeEl[] {
     return sel === "button" ? this.buttons : [];
+  }
+
+  /** Subtree lookup over body/head; returns null when the stub has no match. */
+  querySelector(sel: string): FakeEl | null {
+    return this.body.querySelector(sel) ?? this.head.querySelector(sel);
   }
 
   register(el: FakeEl): void {

@@ -70,7 +70,14 @@ export interface InterceptedXHR extends XMLHttpRequest {
   __headers?: Record<string, string>;
   /** Set to true on XHR instances created by the extension's own bulk
    *  download path (xhrDownloadEfakturPdf / xhrDownloadWithholdingPdf).
-   *  The native-download XHR interceptor in scraper.ts checks this flag
-   *  so it doesn't double-fire DOWNLOAD_PDF_ITEM for extension-owned XHRs. */
+   *  The native-download XHR interceptor (scraper-xhr-patches.ts) checks this
+   *  flag so it doesn't double-fire DOWNLOAD_PDF_ITEM for extension-owned XHRs. */
   __isCindiehBulk?: boolean;
+  /** Set by prepareNativeDownloadXhr (scraper-pdf.ts) at send() time when
+   *  this XHR is a NATIVE invoice download: the open()-time response
+   *  listener stays inert until this flag exists. */
+  __downloadArmed?: boolean;
+  /** The raw request body stashed by prepareNativeDownloadXhr for row
+   *  resolution when the download response arrives. */
+  __downloadBody?: string;
 }
