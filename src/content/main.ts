@@ -11,7 +11,7 @@
 import { browserAPI } from "./browser-shim";
 import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode } from "../shared/export-preferences";
 import { isOutputTaxPage, isSupportedExportPage } from "./page-context";
-import { shouldProcessPageMessage, createMessageDispatcher } from "./postmessage-guard";
+import { createMessageDispatcher } from "./postmessage-guard";
 import { generateBridgeToken, getBridgeToken, getActiveRunId, isCurrentRunMessage, postToScraper } from "./bridge";
 import { acceptScrapeResult, currentRunHandlers, invalidateScrapeResult, scrapeErrorMessage } from "./scrape-result";
 import type { ScrapeComplete } from "./scraper-types";
@@ -30,7 +30,12 @@ import {
 } from "./ui";
 import { handlePdfDownload } from "./downloader";
 import { registerShortcuts } from "./shortcuts";
-import { debugLog, debugError } from "./debug";
+import { applyDebugPreference, debugLog, debugError, DEBUG_STORAGE_KEY } from "./debug";
+import {
+  initDebugForPageWorld,
+  mirrorDebugToPageWorld,
+  normalizeDebugPreference,
+} from "./debug-preference";
 import {
   handleExportAction,
   startScrape,
@@ -55,10 +60,30 @@ async function loadExportModePreference(): Promise<void> {
 
 browserAPI.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return;
-  const change = changes[EXPORT_MODE_STORAGE_KEY];
-  if (!change) return;
-  contentState.exportMode = normalizeExportMode(change.newValue);
+
+  const modeChange = changes[EXPORT_MODE_STORAGE_KEY];
+  if (modeChange) contentState.exportMode = normalizeExportMode(modeChange.newValue);
+
+  // Debug switch: apply in this tab right away so flipping the popup toggle
+  // doesn't require reloading the portal page. `?chdebug` still wins. The page
+  // mirror is rewritten too, so the MAIN-world scraper picks the switch up as
+  // soon as its script is (re)injected — it resolves its flag at module load and
+  // cannot read extension storage. `newValue` is undefined when the key was
+  // removed, which normalizes to "no preference" and cleans the mirror up.
+  const debugChange = changes[DEBUG_STORAGE_KEY];
+  if (debugChange) {
+    const storedDebug = normalizeDebugPreference(debugChange.newValue);
+    applyDebugPreference(storedDebug);
+    mirrorDebugToPageWorld(storedDebug);
+  }
 });
+
+// Apply the popup's debug switch on startup and mirror it into the page world.
+// The read is async, so log lines emitted synchronously right after this still
+// use the build default; `injectScraper()` awaits this promise instead, so the
+// scraper can never load before the mirror is written.
+const debugPreferenceReady = initDebugForPageWorld();
+
 debugLog("Cindieh aktif");
 
 let lastUrl = location.href;
@@ -98,7 +123,14 @@ observer.observe(document.body, { subtree: true, childList: true });
 
 // ── Inject the scraper script into MAIN world ───────
 
-function injectScraper(): void {
+async function injectScraper(): Promise<void> {
+  if (document.getElementById("__ch_scraper_injected__")) return;
+
+  // The scraper reads its log flag at module load and cannot see extension
+  // storage, so the mirrored switch has to be in the page's storage BEFORE its
+  // script runs — this await is what makes the popup switch reach it at all.
+  await debugPreferenceReady;
+  // Re-check: two injections can overlap across the await above.
   if (document.getElementById("__ch_scraper_injected__")) return;
 
   // A fresh scraper instance is being created — allow exactly one
@@ -210,7 +242,7 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
   const target = e.target as HTMLInputElement;
   if (!target) return;
 
-  // Reference filter (existing)
+  // Reference filter
   if (target.id === "ch-toolbar-filter-reference" || target.id === "ch-grid-filter-reference") {
     if (e.key === "Enter") {
       debugLog("Reference filter triggered via Enter");
@@ -318,7 +350,7 @@ function onNavigate(): void {
   if (isSupportedExportPage()) {
     debugLog("Supported page detected, ensuring injection...");
     injectBadge();
-    injectScraper();
+    void injectScraper();
     injectExportButton();
     injectMultiInvoiceFilter();
     injectComparerModal();
@@ -338,7 +370,7 @@ function init(): void {
   void loadExportModePreference();
   debugLog("Extension starting up on page...", window.location.href);
   injectBadge();
-  injectScraper();
+  void injectScraper();
   registerShortcuts(() => contentState.isRunning);
 
   if (isSupportedExportPage()) {
@@ -370,5 +402,3 @@ if (document.readyState === "complete") {
 } else {
   window.addEventListener("load", init);
 }
-
-export { shouldProcessPageMessage };
