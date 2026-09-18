@@ -245,6 +245,37 @@ describe("handleExportAction — data already scraped", () => {
     expect(result).toBe(true);
   });
 
+  it("reports the pdf flow's decline instead of always claiming success", () => {
+    // The boolean used to be constant `true`, which made it useless; the
+    // confirmation flow's decline is now propagated.
+    vi.stubGlobal("confirm", vi.fn(() => false));
+    vi.stubGlobal("alert", vi.fn());
+    try {
+      const state = createContentState();
+      state.scrapedData = Array.from({ length: 11 }, (_, i) => ({ TaxInvoiceNumber: `INV-${i}` }));
+      state.scrapedFields = ["TaxInvoiceNumber"];
+      const deps = makeDeps();
+
+      const declined = handleExportAction("pdf", state, deps);
+
+      expect(declined).toBe(false);
+      expect(state.isRunning).toBe(false);
+      expect(deps.postToScraper).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "START_PDF_DOWNLOAD" }),
+      );
+
+      // Same rows, confirmation accepted: it starts and reports so.
+      vi.stubGlobal("confirm", vi.fn(() => true));
+      const acceptedState = createContentState();
+      acceptedState.scrapedData = state.scrapedData;
+      acceptedState.scrapedFields = state.scrapedFields;
+      const accepted = handleExportAction("pdf", acceptedState, makeDeps());
+      expect(accepted).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("posts START_PDF_DOWNLOAD for pdf format when data exists", () => {
     const deps = makeDeps();
     handleExportAction("pdf", makeStateWithData(), deps);

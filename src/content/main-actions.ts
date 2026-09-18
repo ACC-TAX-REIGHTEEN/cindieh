@@ -20,7 +20,10 @@ import { debugLog, debugWarn } from "./debug";
 
 // ── Types ────────────────────────────────────────────
 
-/** The last scrape message, persisted for reconnection. */
+/**
+ * The most recent scrape outcome, retained so main.ts can re-surface it —
+ * e.g. showing a prior error after a result is rejected or invalidated.
+ */
 export type ScrapeState = ScrapeProgress | ScrapeComplete | ScrapeError;
 
 export interface LastExportMeta {
@@ -226,7 +229,9 @@ export function startPdfDownload(
  *
  * - If already running: stops scrape, resets pending format, returns true.
  * - If data is available: exports immediately (PDF runs its filter +
- *   confirmation flow internally), returns true.
+ *   confirmation flow internally), returns true — or false when that flow
+ *   declined it (no invoice matched the filter, or the user cancelled the
+ *   confirmation), so the caller can tell "nothing started" from "running".
  * - If no data (XLSX/CSV with multi-invoice filter): starts targeted scrape, returns true.
  * - Otherwise: sets pendingExportFormat and calls startScrape(), returns true.
  *
@@ -248,10 +253,11 @@ export function handleExportAction(
   }
 
   if (state.scrapedData && state.scrapedFields) {
-    // PDF runs its own filtering + confirmation flow.
+    // PDF runs its own filtering + confirmation flow, and it reports whether it
+    // actually started (nothing matched the filter, or the confirmation was
+    // cancelled). Propagate that instead of reporting success unconditionally.
     if (format === "pdf") {
-      startPdfDownload(state.scrapedData, state, deps);
-      return true;
+      return startPdfDownload(state.scrapedData, state, deps);
     }
 
     // XLSX / CSV: export immediately
@@ -274,7 +280,7 @@ export function handleExportAction(
   if (format !== "pdf" && deps.isEfakturPage()) {
     const nums = deps.getMultiInvoiceNumbers();
     if (nums.length > 0) {
-      debugLog("[BC] sending SCRAPE_BY_INVOICES", nums);
+      debugLog("[Cindieh] sending SCRAPE_BY_INVOICES", nums);
       state.isRunning = true;
       deps.showPanel();
       state.pendingExportFormat = format;
