@@ -8,11 +8,11 @@ Skrip console untuk menyelidiki laporan: **pencarian referensi dengan ≤ 6 kara
 2. `postToScraper({ type: "SET_SERVER_FILTER", field: "Reference", value, matchMode: "startswith" })` → `scraper.ts` menyimpan `filterState.Reference` dengan mode tersebut.
 3. `triggerSearch()` mengklik tombol cari portal setelah 100 ms.
 4. Request grid milik portal lewat patch XHR `injectFilters()` (`scraper-xhr-patches.ts`) menyuntikkan filter `Reference` bermode `startswith` ke body, lalu portal merender hasilnya.
-5. Bila hasilnya 0 baris, `scraper.ts` mengubah mode ke `contains`, mengirim `REFERENCE_FILTER_FALLBACK`, dan `main.ts` mengklik tombol cari sekali lagi (lihat `docs/adr/0011-reference-search-prefix-first.md`).
+5. Bila hasilnya 0 baris, `scraper.ts` mengirim `REFERENCE_SEARCH_NOT_FOUND` dan panel melaporkan "tidak ditemukan" — pencarian berhenti, tanpa pencarian ulang (lihat `docs/adr/0012-reference-search-stops-on-empty-prefix.md`).
 
 Jadi durasi pencarian = waktu server menjawab query filter + waktu portal merender + waktu ekstensi mengklik. Skrip ini memisahkan ketiganya.
 
-> Catatan: langkah 2 dan 4 sudah memakai `startswith` **sejak perbaikan 24 September 2026**. Skrip ini sengaja tetap mengukur `contains` sebagai pembanding — mode itulah yang masih dipakai sebagai fallback, dan pengukuran aslinya yang membuat perubahannya diputuskan.
+> Catatan: langkah 2 dan 4 sudah memakai `startswith` **sejak perbaikan 24 September 2026**. Skrip ini sengaja tetap mengukur `contains` sebagai pembanding — pengukuran aslinya yang membuat perubahan diputuskan, dan sejak ADR-0012 mode itu tidak pernah dikirim ekstensi lagi.
 
 ## Cara pakai
 
@@ -40,7 +40,7 @@ Arti kolom: `durasi ms` pada jalur ekstensi = jendela pengukuran (Enter → requ
 
 - **"LAMBAT DI SERVER DJP"** → request terisolasi juga lambat. Bukan bug ekstensi; ini sisi server/portal. Langkah berikutnya: pindah ke match mode cepat (lihat temuan di bawah) atau cari via prefix lalu saring lokal.
 - **"SERVER CEPAT"** → biaya ada di jalur portal/ekstensi (klik tombol, render Angular, atau retry). Periksa kolom `request grid` (lebih dari 1 = portal mengirim beberapa request) dan kolom `ms request` vs `durasi ms`.
-- **"ADA JALAN CEPAT"** → salah satu match mode alternatif jauh lebih cepat pada nilai panjang. Ini kandidat perbaikan di `SET_SERVER_FILTER`, dengan fallback ke `contains` bila hasilnya 0 baris.
+- **"ADA JALAN CEPAT"** → salah satu match mode alternatif jauh lebih cepat pada nilai panjang. Kandidat perbaikan di `SET_SERVER_FILTER`; sejak ADR-0012 ekstensi tidak lagi mengirim fallback `contains` bila hasilnya 0 baris.
 - **`hasil cocok = TIDAK`** → filter referensi tampak tidak diterapkan pada request portal (ada baris hasil yang tidak memuat nilai yang dicari).
 
 ## Hasil diagnostik 24 September 2026 (portal Coretax)
@@ -60,9 +60,9 @@ Kesimpulan yang bisa dipertanggungjawabkan:
 
 1. **Lambatnya di server DJP, bukan di kode Cindieh.** Jalur ekstensi pada run 3 = 96 592 ms sementara request identik lewat iframe bersih = 96 895 ms; selisihnya di bawah 1 s (≈ 0,3 %), yaitu delay klik 100 ms + render Angular + jitter jaringan. Overhead ekstensi/portal tidak terukur di skala ini — **bukan** tempat masalahnya.
 2. **Yang menentukan adalah `MatchMode`, bukan panjang nilai.** `contains` adalah jalur lambat dan biayanya liar: 5 karakter pernah 24,8 s (run 3), 6 karakter pernah 61,8 s (run 2), tapi 6 karakter juga pernah 0,19–0,21 s (run 1 & 3). Sementara `startswith` konsisten 0,09–0,26 s di semua panjang dan ketiga run. Jadi "≤ 6 cepat, > 6 lambat" hanyalah gejala: nilai pendek kadang kebetulan lewat jalur cepat.
-3. **Kandidat perbaikan: `startswith`, bukan `equals`.** Pada nilai 7 karakter, `equals` selalu mengembalikan **0 baris** ("EE-0300" baru awalan dari referensi lengkap), sedangkan `startswith` mengembalikan baris yang benar dalam 0,135–0,149 s. Perbaikannya: kirim `MatchMode: "startswith"`, lalu fallback ke `contains` bila 0 baris (atau saring hasil di sisi ekstensi).
+3. **Kandidat perbaikan: `startswith`, bukan `equals`.** Pada nilai 7 karakter, `equals` selalu mengembalikan **0 baris** ("EE-0300" baru awalan dari referensi lengkap), sedangkan `startswith` mengembalikan baris yang benar dalam 0,135–0,149 s. Perbaikan yang diterapkan: kirim `MatchMode: "startswith"`; sejak ADR-0012 hasil 0 baris dilaporkan "tidak ditemukan", bukan diulang dengan `contains`.
 
-**Verifikasi setelah perbaikan (24 September 2026):** pencarian referensi lewat Cindieh di portal Coretax dikonfirmasi **sudah cepat** oleh pengguna pada portal asli. Perbaikannya: mode `startswith` lebih dulu, `contains` hanya sebagai fallback sekali-jalan (lihat [ADR-0011](../docs/adr/0011-reference-search-prefix-first.md)).
+**Verifikasi setelah perbaikan (24 September 2026):** pencarian referensi lewat Cindieh di portal Coretax dikonfirmasi **sudah cepat** oleh pengguna pada portal asli. Perbaikannya: mode `startswith` selalu, tanpa fallback `contains` (lihat [ADR-0012](../docs/adr/0012-reference-search-stops-on-empty-prefix.md)).
 
 Temuan sampingan: filter `Reference` di server tampak **case-sensitive** (nilai huruf kecil → 0 baris). `main.ts` sudah mengirim `value.toUpperCase()` — jangan hapus normalisasi itu, dan replika di skrip ini meniru hal yang sama. Kolom `request lain` tetap 0 di ketiga run, jadi `getSingleReferenceData … timer ended` yang muncul di console portal bukan request jaringan (cache internal portal, ~300 ms lalu ~45 ms pada pencarian berikutnya).
 

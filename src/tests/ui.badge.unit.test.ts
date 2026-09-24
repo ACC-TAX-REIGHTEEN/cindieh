@@ -203,10 +203,10 @@ describe("panel state transitions", () => {
     vi.mocked(getExportDropdownBtnEl).mockReturnValue(asBtn(dropdownBtn));
 
     updatePanelStatus(
-      'Referensi "EE-0300" tidak ditemukan sebagai awalan. Mencari ulang dengan pencocokan lebih luas.',
+      'Referensi "EE-0300" tidak ditemukan.',
     );
 
-    expect(doc.getElementById("ch-f-status")!.textContent).toContain("pencocokan lebih luas");
+    expect(doc.getElementById("ch-f-status")!.textContent).toContain("tidak ditemukan");
     expect(badge.classList.contains("ch-panel-open")).toBe(true);
     // Progress numbers and running markers are untouched: this is not a scrape.
     expect(doc.getElementById("ch-f-total")!.textContent).toBe("0");

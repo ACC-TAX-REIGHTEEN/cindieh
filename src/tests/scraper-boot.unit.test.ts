@@ -351,7 +351,7 @@ describe("scraper boot — wiring through the real prototypes", () => {
     ]);
   });
 
-  it("widens an empty reference prefix search to contains and asks for a retry", async () => {
+  it("reports a miss and stops when the reference prefix search returns nothing", async () => {
     const env = await bootScraper();
 
     env.dispatchFromContent({
@@ -361,33 +361,33 @@ describe("scraper boot — wiring through the real prototypes", () => {
       matchMode: "startswith",
     });
 
-    // First search: the fast prefix mode, and the server found nothing.
-    const first = new env.FakeXhr();
-    env.callOpen(first, GRID_URL);
-    env.callSend(first, JSON.stringify({ First: 0, Rows: 10 }));
-    first.responseText = JSON.stringify({ Payload: { Data: [] } });
-    first.fire("load");
+    // The prefix search, and the server found nothing.
+    const grid = new env.FakeXhr();
+    env.callOpen(grid, GRID_URL);
+    env.callSend(grid, JSON.stringify({ First: 0, Rows: 10 }));
+    grid.responseText = JSON.stringify({ Payload: { Data: [] } });
+    grid.fire("load");
 
     expect(sentFilters(env)[0]).toMatchObject({
       PropertyName: "Reference",
       Value: "EE-0300",
       MatchMode: "startswith",
     });
-    expect(env.messages.find((m) => m.type === "REFERENCE_FILTER_FALLBACK")).toMatchObject({
+    expect(env.messages.find((m) => m.type === "REFERENCE_SEARCH_NOT_FOUND")).toMatchObject({
       value: "EE-0300",
       direction: "FROM_PAGE",
       token: TOKEN,
     });
 
-    // The retry the content script is about to click already carries the wide
-    // mode — the scraper flips the filter before it asks for the click.
+    // The search ends there: the stored filter keeps the prefix mode it was
+    // set with (ADR-0012), so a later request still carries startswith.
     const retry = new env.FakeXhr();
     env.callOpen(retry, GRID_URL);
     env.callSend(retry, JSON.stringify({ First: 0, Rows: 10 }));
-    expect(sentFilters(env)[0]).toMatchObject({ MatchMode: "contains" });
+    expect(sentFilters(env)[0]).toMatchObject({ MatchMode: "startswith" });
   });
 
-  it("widens a reference search at most once, and never when rows came back", async () => {
+  it("emits the not-found notice exactly once per empty search, never when rows came back", async () => {
     const env = await bootScraper();
     env.dispatchFromContent({
       type: "SET_SERVER_FILTER",
@@ -404,12 +404,12 @@ describe("scraper boot — wiring through the real prototypes", () => {
       grid.fire("load");
     };
 
-    capture([ROW]); // the prefix match was enough
-    expect(env.messages.filter((m) => m.type === "REFERENCE_FILTER_FALLBACK")).toHaveLength(0);
+    capture([ROW]); // the prefix match was enough — no notice
+    expect(env.messages.filter((m) => m.type === "REFERENCE_SEARCH_NOT_FOUND")).toHaveLength(0);
 
-    capture([]); // empty → widen (one-shot)
-    capture([]); // still empty with contains → no second retry
-    expect(env.messages.filter((m) => m.type === "REFERENCE_FILTER_FALLBACK")).toHaveLength(1);
+    capture([]); // empty → the search stops with a miss report
+    capture([]); // a later empty capture must not repeat the notice
+    expect(env.messages.filter((m) => m.type === "REFERENCE_SEARCH_NOT_FOUND")).toHaveLength(1);
   });
 
   it("still rejects a filter message with the wrong direction", async () => {

@@ -61,11 +61,11 @@ export type ScrapeMessage = (
   | ScrapeError
   | { type: "INJECTED_READY" }
   /**
-   * The scraper widened a reference search that came back empty (see
-   * reference-search.ts). Not a scrape: the content script only has to ask the
-   * portal's search button again, exactly like it did for the first request.
+   * A reference prefix search came back empty and the search stops there (see
+   * reference-search.ts and ADR-0012). Not a scrape: the content script only
+   * reports the miss in the panel; the portal grid keeps the empty result.
    */
-  | { type: "REFERENCE_FILTER_FALLBACK"; value: unknown }
+  | { type: "REFERENCE_SEARCH_NOT_FOUND"; value: unknown }
 ) & {
   /** Correlation only; not authentication. Native downloads/readiness are unscoped. */
   runId?: number;

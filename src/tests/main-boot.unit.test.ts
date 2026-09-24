@@ -517,10 +517,10 @@ describe("main boot — the switch while the page is open", () => {
 
 // ── Reference search ──────────────────────────────────
 
-// The two halves of the measured fix (tools/README.md, 24 Sep 2026): the search
-// asks for the fast prefix mode, and when the scraper reports that the prefix
-// found nothing, the content script asks the portal to search again — the
-// scraper has already flipped the filter to `contains` by then.
+// The one half of the measured fix (tools/README.md, 24 Sep 2026) that remains
+// after ADR-0012: the search asks for the fast prefix mode, and when the
+// scraper reports that the prefix found nothing, the panel says so and the
+// search stops — no wide-match retry click.
 
 describe("main boot — reference search", () => {
   /** Open the output-tax page with the extension on, and land a portal Cari button. */
@@ -551,7 +551,7 @@ describe("main boot — reference search", () => {
     ]);
   });
 
-  it("asks the portal to search again when the scraper widens the filter", async () => {
+  it("reports not found in the panel and does not search again when the prefix match is empty", async () => {
     const { env, cari } = await bootOutputTax();
 
     env.fireDoc("keyup", { key: "Enter", target: { id: "ch-grid-filter-reference", value: "EE-0300" } });
@@ -562,29 +562,28 @@ describe("main boot — reference search", () => {
       source: env.win,
       origin: PORTAL_ORIGIN,
       data: {
-        type: "REFERENCE_FILTER_FALLBACK",
+        type: "REFERENCE_SEARCH_NOT_FOUND",
         value: "EE-0300",
         direction: "FROM_PAGE",
         token: env.token(),
       },
     });
 
-    // The wait can be minutes long, so the panel says why instead of looking hung.
-    expect(env.doc.getElementById("ch-f-status")!.textContent).toContain("pencocokan lebih luas");
-
+    // The search ends with the miss report: the empty grid already rendered,
+    // and nothing asks the portal to run the minutes-long wide match.
+    expect(env.doc.getElementById("ch-f-status")!.textContent).toContain('tidak ditemukan');
     vi.advanceTimersByTime(SEARCH_CLICK_DELAY_MS);
-    expect(cari.click).toHaveBeenCalledTimes(2);
-    // No second filter message: the scraper flipped the mode itself.
+    expect(cari.click).toHaveBeenCalledTimes(1);
     expect(env.messages.filter((m) => m.data.type === "SET_SERVER_FILTER")).toHaveLength(1);
   });
 
-  it("ignores a fallback message with the wrong token", async () => {
+  it("ignores a not-found notice with the wrong token", async () => {
     const { env, cari } = await bootOutputTax();
 
     env.fire("message", {
       source: env.win,
       origin: PORTAL_ORIGIN,
-      data: { type: "REFERENCE_FILTER_FALLBACK", value: "EE-0300", direction: "FROM_PAGE", token: "spoofed" },
+      data: { type: "REFERENCE_SEARCH_NOT_FOUND", value: "EE-0300", direction: "FROM_PAGE", token: "spoofed" },
     });
     vi.advanceTimersByTime(SEARCH_CLICK_DELAY_MS);
 

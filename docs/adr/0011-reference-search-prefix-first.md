@@ -1,6 +1,6 @@
 # Reference search asks for a prefix match first and widens only on an empty result
 
-Status: accepted.
+Status: superseded — [ADR-0012](0012-reference-search-stops-on-empty-prefix.md) keeps the prefix-first half and removes the widening. The measurements below are the evidence both decisions rest on.
 
 The Coretax grid server prices the Reference filter by `MatchMode`, not by the length of the value. Measured on the live portal on 24 September 2026 with the same grid parameters (three runs, `tools/README.md`): `contains` took up to 96.9 s for a value that `startswith` answered in 0.149 s, and a *shorter* value could be the slow one (5 characters `contains` = 24.8 s while 6 characters `contains` = 0.21 s in the same run). `equals` was fast but returned zero rows, because a reference a user types is normally a prefix of the stored one (`EE-0300` of `EE-0300/09/26`). The regression users reported as "short values are instant, long values are slow" was therefore a symptom of `contains`, not of value length.
 

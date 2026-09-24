@@ -63,13 +63,13 @@ export function createBridge(windowRef?: Window): Bridge {
   }
 
   function isCurrentRunMessage(msg: Record<string, unknown>): boolean {
-    // Native single-PDF downloads, readiness, and the reference-search fallback
-    // are not scrape operations.
+    // Native single-PDF downloads, readiness, and the reference-search miss
+    // report are not scrape operations.
     if (msg.runId === undefined) {
       return (
         msg.type === "INJECTED_READY" ||
         msg.type === "DOWNLOAD_PDF_ITEM" ||
-        msg.type === "REFERENCE_FILTER_FALLBACK"
+        msg.type === "REFERENCE_SEARCH_NOT_FOUND"
       );
     }
     return activeRunId > 0 && msg.runId === activeRunId && runPage === w().location.href;

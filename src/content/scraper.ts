@@ -44,11 +44,7 @@ import { createXhrPatches, type FilterState } from "./scraper-xhr-patches";
 import { createMessageDispatcher } from "./postmessage-guard";
 import { createScrapeRuns } from "./scraper-run";
 import { readPacingFromPageWorld } from "./page-pacing";
-import {
-  REFERENCE_FIELD,
-  REFERENCE_WIDE_MATCH_MODE,
-  shouldWidenReferenceSearch,
-} from "./reference-search";
+import { REFERENCE_FIELD, REFERENCE_FAST_MATCH_MODE } from "./reference-search";
 
 (() => {
   const TIMEOUT = 30000;
@@ -224,6 +220,8 @@ import {
           // Invalidate cache when filter changes to ensure a fresh request
           lastCaptured = null;
           lastCapturedTime = 0;
+          // A new search re-arms the not-found latch below (ADR-0012).
+          reportedMisses.delete(field);
           filterState[field] = {
             value,
             // Arrays are identity lookups (No. Faktur); a string takes the
@@ -380,6 +378,9 @@ import {
 
   const filterState: FilterState = {};
   const captureSubscribers: ((req: CapturedRequest) => void)[] = [];
+  // Fields whose empty prefix response already sent a not-found notice; each
+  // new SET_SERVER_FILTER re-arms it, so one search reports at most once.
+  const reportedMisses = new Set<string>();
   let lastCaptured: CapturedRequest | null = null;
   let lastCapturedTime = 0;
 
@@ -404,9 +405,22 @@ import {
     inferSource: (url) => inferCapturedSource(url),
     invoiceRowMap,
     onCaptured: (captured) => {
-      lastCaptured = captured;
-      lastCapturedTime = Date.now();
-      widenReferenceSearchIfEmpty(captured);
+      // An empty response to a Reference prefix search ends the search with a
+      // one-shot not-found notice — no wide-match retry (ADR-0012).
+      const referenceFilter = filterState[REFERENCE_FIELD];
+      if (
+        !runs.isRunning() &&
+        referenceFilter &&
+        !reportedMisses.has(REFERENCE_FIELD) &&
+        referenceFilter.matchMode === REFERENCE_FAST_MATCH_MODE &&
+        typeof referenceFilter.value === "string" &&
+        referenceFilter.value !== "" &&
+        captured.initialData.length === 0
+      ) {
+        reportedMisses.add(REFERENCE_FIELD);
+        debugLog("Reference prefix search found no rows");
+        sendToContent({ type: "REFERENCE_SEARCH_NOT_FOUND", value: referenceFilter.value });
+      }
       // Capture subscribers are one-shot: taken, then drained.
       const subs = [...captureSubscribers];
       captureSubscribers.length = 0;
@@ -415,36 +429,6 @@ import {
     logError: debugError,
   });
   xhrPatches.install();
-
-  /**
-   * Retry an empty reference prefix search with the wide match mode.
-   *
-   * `startswith` answers in a fraction of a second but misses references that
-   * merely contain the value; `contains` finds those but can take minutes. So
-   * the fast mode goes first and the slow one is paid for only when the fast one
-   * returned nothing — see reference-search.ts for the measurements.
-   */
-  function widenReferenceSearchIfEmpty(captured: CapturedRequest): void {
-    const config = filterState[REFERENCE_FIELD];
-    if (
-      !config ||
-      !shouldWidenReferenceSearch({
-        value: config.value,
-        matchMode: config.matchMode,
-        rowCount: captured.initialData.length,
-        rawBody: captured.rawBody,
-        runActive: runs.isRunning(),
-      })
-    ) {
-      return;
-    }
-
-    // Flip the mode first: the retry the content script is about to click must
-    // already carry it, and the flip is what makes this a one-shot.
-    config.matchMode = REFERENCE_WIDE_MATCH_MODE;
-    debugLog("Reference prefix search found no rows; retrying with contains");
-    sendToContent({ type: "REFERENCE_FILTER_FALLBACK", value: config.value });
-  }
 
   // ── Teardown ───────────────────────────────────────
   // Restore all monkey-patched globals on full page unload.

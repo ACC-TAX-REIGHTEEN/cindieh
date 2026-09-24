@@ -42,8 +42,8 @@ describe("createBridge — token generation and messaging", () => {
     expect(b.isCurrentRunMessage({ type: "SCRAPE_COMPLETE" })).toBe(false);
     expect(b.isCurrentRunMessage({ type: "INJECTED_READY" })).toBe(true);
     expect(b.isCurrentRunMessage({ type: "DOWNLOAD_PDF_ITEM" })).toBe(true);
-    // Unscoped too: the reference-search widening is not a scrape operation.
-    expect(b.isCurrentRunMessage({ type: "REFERENCE_FILTER_FALLBACK" })).toBe(true);
+    // Unscoped too: the reference-search miss report is not a scrape operation.
+    expect(b.isCurrentRunMessage({ type: "REFERENCE_SEARCH_NOT_FOUND" })).toBe(true);
   });
 
   it("rejects a stale completion after the page URL changes without any new run", () => {

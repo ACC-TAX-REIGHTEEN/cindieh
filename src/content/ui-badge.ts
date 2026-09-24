@@ -204,10 +204,9 @@ export function updatePanelProgress(total: number, page: number, elapsed: string
  * Write a one-line status into the open panel without touching progress
  * numbers or the buttons' running state.
  *
- * Used by waits that are not scrapes — the reference-search fallback can block
- * for a minute or more on the portal's slow `contains` query — so the panel can
- * explain the wait without claiming a scrape is running (which would flip the
- * export buttons into their stop state).
+ * Used by waits and notices that are not scrapes — a reference search that
+ * finds nothing, for one — so the panel can speak without claiming a scrape is
+ * running (which would flip the export buttons into their stop state).
  */
 export function updatePanelStatus(message: string): void {
   if (!els || !statsEl) return;

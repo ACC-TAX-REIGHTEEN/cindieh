@@ -322,16 +322,12 @@ const pageMessageDispatcher = createMessageDispatcher({
       updatePanelError(message);
     },
 
-    REFERENCE_FILTER_FALLBACK: (msg) => {
-      // The scraper already switched the Reference filter to the wide match
-      // mode, so the retry only needs the portal to ask again. It is slow by
-      // nature (see reference-search.ts), hence the status line — otherwise the
-      // wait looks like a hang.
-      debugLog("Reference prefix search empty; retrying with contains for", msg.value);
-      updatePanelStatus(
-        `Referensi "${String(msg.value)}" tidak ditemukan sebagai awalan. Mencari ulang dengan pencocokan lebih luas — proses ini bisa memakan waktu lama.`,
-      );
-      triggerSearch();
+    REFERENCE_SEARCH_NOT_FOUND: (msg) => {
+      // The prefix match is the only match (ADR-0012): when it comes back
+      // empty the search simply stops — no widening retry, no extra request.
+      // The portal grid keeps the empty result it already rendered.
+      debugLog("Reference prefix search found no rows for", msg.value);
+      updatePanelStatus(`Referensi "${String(msg.value)}" tidak ditemukan.`);
     },
   }, isCurrentRunMessage),
 });
@@ -343,10 +339,9 @@ window.addEventListener("message", (event) => pageMessageDispatcher.handle(event
  * Run a reference search: set the server filter, then let the portal render the
  * result.
  *
- * The fast prefix mode goes first; `contains` can take minutes on the same data
- * and the scraper widens to it only when the prefix match came back empty (see
- * reference-search.ts). The value is uppercased because the server's Reference
- * filter is case-sensitive.
+ * The prefix match is the only match mode (ADR-0012): when it returns nothing,
+ * the panel reports the miss and the search stops. The value is uppercased
+ * because the server's Reference filter is case-sensitive.
  */
 function searchReference(value: string): void {
   postToScraper({

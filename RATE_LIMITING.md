@@ -21,7 +21,7 @@ Berikut adalah konstanta dan jeda waktu yang diterapkan dalam kode ([`scraper-ac
 | **Request Timeout** | `TIMEOUT = 30000` (30 detik) | konstanta [`TIMEOUT`](src/content/scraper.ts) | Batas waktu maksimal tunggu respons XHR dari Coretax. |
 | **Circuit Breaker** | `MAX_ERRORS = 3` | konstanta [`MAX_ERRORS`](src/content/scraper.ts) | Hentikan scraping otomatis jika terjadi 3 error berturut-turut. |
 | **Recovery Delay** | `delay(2000)` (2 detik) | [`scrapePaginated()`](src/content/scraper-actions.ts) | Jeda pemulihan 2 detik jika terjadi 1 kali error sebelum mencoba lagi. |
-| **Pencarian Referensi** | 1 request grid per pencarian, +1 request hanya bila hasil kosong | [`shouldWidenReferenceSearch()`](src/content/reference-search.ts) | Pencarian mengirim mode `startswith`; hanya bila server mengembalikan 0 baris, ekstensi mengulang **sekali** dengan `contains` (lihat [ADR-0011](docs/adr/0011-reference-search-prefix-first.md)). Tidak pernah paralel, dan tidak ada request tambahan bila hasil pertama sudah ditemukan. |
+| **Pencarian Referensi** | 1 request grid per pencarian, tanpa request susulan | [`REFERENCE_FAST_MATCH_MODE`](src/content/reference-search.ts) | Pencarian selalu mengirim mode `startswith`. Bila hasilnya 0 baris, pencarian **berhenti** dengan pemberitahuan "tidak ditemukan" — tidak ada pencarian ulang (lihat [ADR-0012](docs/adr/0012-reference-search-stops-on-empty-prefix.md)). Tidak pernah paralel. |
 
 > **Catatan Preset Kecepatan**: preset dari popup sengaja tidak bisa menaikkan kecepatan. Nilai `step` tidak pernah ikut berubah — preset hanya mengalikan jeda (batched pagination, unduhan PDF massal, dan pencarian per faktur), sehingga batas aman di dokumen ini tetap berlaku sebagai lantai, bukan sekadar nilai bawaan.
 
