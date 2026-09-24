@@ -32,7 +32,7 @@ Karena body request disalin dari request portal sendiri, request uji memakai par
 
 Perekam juga mencatat **semua** XHR/fetch di jendela waktu (kolom `request lain`), bukan hanya request grid — portal mengirim lookup tambahan (`getSingleReferenceData …`) tepat setelah grid dimuat, dan itu bisa jadi tempat waktu tunggu bersembunyi.
 
-Variabel uji: panjang 5, 6, 7, dan panjang penuh; `MatchMode` `contains`, `startswith`, dan `equals` (hanya pada nilai panjang) — `startswith`/`equals` diuji sebagai **kandidat perbaikan**, bukan sebagai perilaku sekarang. Nilai selalu dinormalkan ke huruf besar karena `main.ts` mengirim `value.toUpperCase()`; satu probe tambahan memakai huruf asli sebagai kontrol untuk menguji sensitivitas huruf di server.
+Variabel uji: panjang 5, 6, 7, dan panjang penuh; `MatchMode` `contains`, `startswith`, dan `equals` (hanya pada nilai panjang) — `startswith` dulu diuji sebagai **kandidat perbaikan** dan sejak 24 September 2026 justru menjadi mode yang dipakai ekstensi, sementara `equals` tetap sekadar kandidat; skrip mengukur keduanya bersama `contains` sebagai pembanding. Nilai selalu dinormalkan ke huruf besar karena `main.ts` mengirim `value.toUpperCase()`; satu probe tambahan memakai huruf asli sebagai kontrol untuk menguji sensitivitas huruf di server.
 
 Arti kolom: `durasi ms` pada jalur ekstensi = jendela pengukuran (Enter → request grid selesai → jeda singkat), bukan repaint terakhir — portal bisa menggambar spinner jauh sebelum data tiba (rinciannya ada di `hasil.ekstensi[].stabilMs`). Kolom `total` diambil dari field numerik pertama yang ditemukan di `Payload` dan **belum tentu jumlah baris**; pakai kolom `baris` (`Payload.Data.length`) sebagai acuan. `ttfb` terisi hanya bila iframe menyediakan Resource Timing.
 

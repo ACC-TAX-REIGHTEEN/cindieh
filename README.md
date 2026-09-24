@@ -1,6 +1,6 @@
 # Cindieh
 
-**Cindieh** adalah ekstensi browser yang dirancang untuk meningkatkan pengalaman penggunaan portal DJP Coretax. Ekstensi ini menyederhanakan proses pengambilan dan ekspor data pajak dalam jumlah besar ke file Excel/CSV terformat, unduhan PDF massal (dengan filter nomor faktur), pencarian faktur berdasarkan referensi, serta perbandingan data faktur antara catatan internal dan Coretax.
+**Cindieh** adalah ekstensi browser yang dirancang untuk meningkatkan pengalaman penggunaan portal DJP Coretax. Ekstensi ini menyederhanakan proses pengambilan dan ekspor data pajak dalam jumlah besar ke file Excel/CSV terformat, unduhan PDF massal (dengan filter nomor faktur), pencarian faktur berdasarkan referensi, serta perbandingan data faktur antara catatan internal dan Coretax, sekaligus pemeriksaan keakuratan nilai DPP/Nilai Lain/PPN pada faktur yang sudah tercatat di Coretax.
 
 ## Prinsip Desain & Otomatisasi Terukur
 
@@ -82,6 +82,40 @@ Cara kerja: cukup **copy dari Excel, lalu paste** ke panel Komparator. Tidak per
 - **Filter Status** — saring hasil berdasarkan satu atau lebih status sekaligus
 - **Export XLSX** — ekspor seluruh hasil perbandingan ke file yang bisa langsung dibuka di Excel
 - **Klik baris hasil** — langsung menutup panel dan menjalankan pencarian referensi tersebut di tabel PPN Keluaran Coretax, untuk validasi cepat tanpa perlu copy-paste manual
+
+### 5. Pengecekan Keakuratan Nilai (PPN Keluaran)
+
+Tab kedua di panel yang sama dengan Komparator. Fitur ini memeriksa apakah nilai **DPP**, **DPP Nilai Lain**, dan **PPN** pada faktur yang sudah tercatat di Coretax konsisten secara aritmetika — berguna untuk menemukan faktur yang nilai dasarnya terlanjur salah sebelum dilaporkan.
+
+Cara pakai: buka panel **Bandingkan** (ikon daftar di toolbar), pilih tab **Pengecekan Keakuratan Nilai**, pilih **Acuan**, isi **Toleransi** bila perlu, lalu klik **Periksa**. Bila data belum ada, Cindieh menarik data PPN Keluaran terlebih dahulu secara otomatis (sama seperti Komparator). Tab ini hanya muncul di halaman e-Faktur **PPN Keluaran**.
+
+**Acuan** menentukan nilai mana yang dianggap benar, nilai mana yang dihitung darinya, dan nilai mana yang diperiksa:
+
+| Acuan | Nilai yang dihitung dari acuan | Nilai yang diperiksa |
+|---|---|---|
+| **DPP** | DPP NL = 11/12 × DPP · PPN = 11% × DPP | DPP NL dan PPN |
+| **DPP NL** | DPP = 12/11 × DPP NL · PPN = 12% × DPP NL | DPP dan PPN |
+| **PPN** | DPP = PPN / 11% · DPP NL = PPN / 12% | DPP dan DPP NL |
+
+**Status hasil** — hanya faktur yang tidak sesuai atau datanya tidak lengkap yang masuk daftar; faktur yang sudah benar tidak ditampilkan:
+
+| Status | Keterangan |
+|---|---|
+| **DPP Berbeda** | Nilai DPP tidak sesuai dengan hasil hitung dari Acuan |
+| **DPP NL Berbeda** | Nilai DPP Nilai Lain tidak sesuai |
+| **PPN Berbeda** | Nilai PPN tidak sesuai |
+| **DPP & PPN Berbeda** dsb. | Dua nilai sekaligus tidak sesuai; nama status menyebut pasangan yang berbeda (mis. **DPP NL & PPN Berbeda**, **DPP & DPP NL Berbeda**) |
+| **Data tidak lengkap** | Salah satu dari DPP / DPP NL / PPN kosong atau tidak valid, sehingga tidak bisa dihitung |
+
+**Opsi tambahan:**
+- **Toleransi** — selisih yang masih dianggap cocok (untuk pembulatan); selisih di dalam toleransi ditampilkan sebagai `-`
+- **Filter Status** — saring hasil (Semua Status, DPP Berbeda, DPP NL Berbeda, PPN Berbeda, Dua Nilai Berbeda, Data tidak lengkap)
+- **Export XLSX** — ekspor hasil pengecekan ke `pengecekan-nilai-faktur.xlsx`
+- **Klik baris hasil** — klik 1× untuk melihat teks lengkap, klik 2× untuk mencari referensi tersebut di grid PPN Keluaran (sama seperti Komparator)
+- **Ringkasan** — "Semua faktur sesuai." bila tidak ada temuan, atau jumlah faktur yang berbeda dan yang datanya tidak lengkap
+- Hasil dipaginasi per halaman, dan angka besar tetap tersimpan sebagai angka di Excel (bukan teks)
+
+---
 
 ## Pengaturan (Popup)
 

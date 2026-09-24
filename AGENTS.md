@@ -46,7 +46,12 @@ Key message types:
 | `exporter.ts` | XLSX/CSV generation, `generateDynamicFilename`, `buildCSV`, `PREFIX_MAP` |
 | `downloader.ts` | Browser download orchestration with custom PDF naming |
 | `main-actions.ts` | Scrape/export action handlers + `ContentState` (module singleton; `createContentState()` factory for tests) |
-| `comparer.ts`, `comparer-logic.ts`, `ui-comparer.ts` | Paste-and-compare feature vs Coretax data |
+| `comparer.ts`, `comparer-logic.ts` | Paste-and-compare feature vs Coretax data (session + matching live in comparer-logic, ADR-0003) |
+| `checker-logic.ts` | Value-accuracy check (DPP / DPP Nilai Lain / PPN): per-row predicates, session, status filter, summary — the checker's pure half |
+| `comparer-export.ts` | Pure AOA row builders for both result grids (comparer + checker) and the shared number/difference formatters |
+| `ui-comparer.ts` | The panel that hosts BOTH tabs — "Bandingkan Data Penjualan" and "Pengecekan Keakuratan Nilai" (the checker tab is PPN-Keluaran-only) |
+| `scrape-result.ts` | Content-side acceptance of a scrape result: only a complete result may trigger a pending export, compare, or check |
+| `scraper-run.ts` | One scrape/bulk-PDF operation's identity + AbortController ownership (ADR-0010) |
 | `ui.ts`, `ui-filters.ts`, `ui-badge.ts`, `button-state.ts`, `shortcuts.ts` | In-page DOM injection and UI state |
 | `bridge.ts`, `postmessage-guard.ts` | Cross-world messaging: token generation + the guard-then-dispatch seam (`createMessageDispatcher`), pure and exported for tests |
 | `browser-shim.ts` | Picks `browser`/`chrome` runtime |

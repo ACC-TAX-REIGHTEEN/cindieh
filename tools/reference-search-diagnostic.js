@@ -779,7 +779,7 @@
           `ADA JALAN CEPAT: ${kandidatCepat
             .map((r) => `MatchMode "${r.matchMode}" (nilai "${r.nilai}") ${ms(r.durasiMs)}`)
             .join("; ")} vs median "contains" ${ms(mContains)}. ` +
-            `Ini kandidat perbaikan di ekstensi (ganti match mode), dengan fallback ke "contains" bila 0 baris.`,
+            `Kandidat cepat ini sekarang justru mode yang dipakai ekstensi: sejak ADR-0012 filter Reference selalu dikirim sebagai "startswith", dan TIDAK ada fallback ke "contains" bila hasilnya 0 baris (pencarian berhenti dengan pesan "tidak ditemukan").`,
         );
       }
       const nolBaris = kandidatCepat.filter((r) => (r.baris || 0) === 0);

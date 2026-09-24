@@ -114,6 +114,14 @@ _Avoid_: tolerance value, delta
 A reverse check: only Coretax invoices dated on the given days of month (1–31) are candidates for "Hanya di Coretax", so internal records are only compared against the days the Wajib Pajak actually recorded.
 _Avoid_: day filter, daily date mode
 
+**Pengecekan (Checker)**:
+The value-accuracy tab of the panel (next to the Comparer): every scraped PPN Keluaran row's DPP, DPP Nilai Lain, and PPN are tested against the chosen **Acuan**; only rows that differ or carry incomplete data are ever listed.
+_Avoid_: accuracy check, validation, audit
+
+**Acuan (Benchmark)**:
+The value a checker run treats as ground truth — **DPP**, **DPP NL**, or **PPN** (`BenchmarkType`) — which decides both the two derived values and the two columns compared.
+_Avoid_: reference, baseline
+
 ### Architecture
 
 **Scraper**:
