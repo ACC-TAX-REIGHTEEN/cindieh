@@ -43,6 +43,11 @@ import { createDownloadNets } from "./scraper-nets";
 import { createXhrPatches, type FilterState } from "./scraper-xhr-patches";
 import { createMessageDispatcher } from "./postmessage-guard";
 import { createScrapeRuns } from "./scraper-run";
+import {
+  REFERENCE_FIELD,
+  REFERENCE_WIDE_MATCH_MODE,
+  shouldWidenReferenceSearch,
+} from "./reference-search";
 
 (() => {
   const TIMEOUT = 30000;
@@ -217,7 +222,13 @@ import { createScrapeRuns } from "./scraper-run";
           lastCapturedTime = 0;
           filterState[field] = {
             value,
-            matchMode: Array.isArray(value) ? "equals" : "contains",
+            // Arrays are identity lookups (No. Faktur); a string takes the
+            // caller's mode, defaulting to the wide match older callers expect.
+            matchMode: Array.isArray(value)
+              ? "equals"
+              : typeof msg.matchMode === "string" && msg.matchMode
+                ? msg.matchMode
+                : "contains",
           };
         } else {
           delete filterState[field];
@@ -391,6 +402,7 @@ import { createScrapeRuns } from "./scraper-run";
     onCaptured: (captured) => {
       lastCaptured = captured;
       lastCapturedTime = Date.now();
+      widenReferenceSearchIfEmpty(captured);
       // Capture subscribers are one-shot: taken, then drained.
       const subs = [...captureSubscribers];
       captureSubscribers.length = 0;
@@ -399,6 +411,36 @@ import { createScrapeRuns } from "./scraper-run";
     logError: debugError,
   });
   xhrPatches.install();
+
+  /**
+   * Retry an empty reference prefix search with the wide match mode.
+   *
+   * `startswith` answers in a fraction of a second but misses references that
+   * merely contain the value; `contains` finds those but can take minutes. So
+   * the fast mode goes first and the slow one is paid for only when the fast one
+   * returned nothing — see reference-search.ts for the measurements.
+   */
+  function widenReferenceSearchIfEmpty(captured: CapturedRequest): void {
+    const config = filterState[REFERENCE_FIELD];
+    if (
+      !config ||
+      !shouldWidenReferenceSearch({
+        value: config.value,
+        matchMode: config.matchMode,
+        rowCount: captured.initialData.length,
+        rawBody: captured.rawBody,
+        runActive: runs.isRunning(),
+      })
+    ) {
+      return;
+    }
+
+    // Flip the mode first: the retry the content script is about to click must
+    // already carry it, and the flip is what makes this a one-shot.
+    config.matchMode = REFERENCE_WIDE_MATCH_MODE;
+    debugLog("Reference prefix search found no rows; retrying with contains");
+    sendToContent({ type: "REFERENCE_FILTER_FALLBACK", value: config.value });
+  }
 
   // ── Teardown ───────────────────────────────────────
   // Restore all monkey-patched globals on full page unload.

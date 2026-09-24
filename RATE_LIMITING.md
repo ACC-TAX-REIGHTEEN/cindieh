@@ -20,8 +20,11 @@ Berikut adalah konstanta dan jeda waktu yang diterapkan dalam kode ([`scraper-ac
 | **Request Timeout** | `TIMEOUT = 30000` (30 detik) | konstanta [`TIMEOUT`](src/content/scraper.ts) | Batas waktu maksimal tunggu respons XHR dari Coretax. |
 | **Circuit Breaker** | `MAX_ERRORS = 3` | konstanta [`MAX_ERRORS`](src/content/scraper.ts) | Hentikan scraping otomatis jika terjadi 3 error berturut-turut. |
 | **Recovery Delay** | `delay(2000)` (2 detik) | [`scrapePaginated()`](src/content/scraper-actions.ts) | Jeda pemulihan 2 detik jika terjadi 1 kali error sebelum mencoba lagi. |
+| **Pencarian Referensi** | 1 request grid per pencarian, +1 request hanya bila hasil kosong | [`shouldWidenReferenceSearch()`](src/content/reference-search.ts) | Pencarian mengirim mode `startswith`; hanya bila server mengembalikan 0 baris, ekstensi mengulang **sekali** dengan `contains` (lihat [ADR-0011](docs/adr/0011-reference-search-prefix-first.md)). Tidak pernah paralel, dan tidak ada request tambahan bila hasil pertama sudah ditemukan. |
 
 > **Catatan Eksekusi Sequential**: Seluruh eksekusi fetching bersifat berurutan (*serial/sequential*). Jeda `delayMs` (misal 100 ms) dihitung **setelah request sebelumnya selesai/berhasil diterima** dari server Coretax (`await request -> merge data -> await delay(100ms) -> request berikutnya`). Ekstensi tidak pernah mengirim request baru secara bersamaan/tumpang tindih (*no concurrent requests*).
+
+> **Catatan Pencarian Referensi**: pencarian referensi bukan scraping — ia hanya menyetel filter lalu membiarkan portal Coretax sendiri yang mengirim request grid-nya (tombol Cari portal diklik, request milik portal). Request itu **tidak dihitung** oleh `TIMEOUT`/`MAX_ERRORS` ekstensi, karena bukan XHR yang dibuat Cindieh. Pengulangan `startswith` → `contains` terjadi paling banyak sekali per pencarian, setelah request pertama selesai, dan pemakaian `startswith` lebih dulu justru **mengurangi** beban server: pada data yang sama, query awalan menjawab dalam ~0,15 detik sementara query `contains` bisa berjalan lebih dari satu menit (lihat [`tools/README.md`](tools/README.md)).
 
 ---
 

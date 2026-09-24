@@ -246,6 +246,12 @@ async function bootWithoutMarker() {
   return { doc, messages };
 }
 
+/** The filter entries of the most recent grid request the page sent. */
+function sentFilters(env: Awaited<ReturnType<typeof bootScraper>>): Record<string, unknown>[] {
+  const body = JSON.parse(String(env.sendCalls.at(-1)?.body)) as { filters?: Record<string, unknown>[] };
+  return body.filters ?? [];
+}
+
 beforeEach(() => {
   // The PDF session arms a 5s auto-reset timer; keep it inert.
   vi.useFakeTimers();
@@ -343,6 +349,67 @@ describe("scraper boot — wiring through the real prototypes", () => {
         AsString: false,
       },
     ]);
+  });
+
+  it("widens an empty reference prefix search to contains and asks for a retry", async () => {
+    const env = await bootScraper();
+
+    env.dispatchFromContent({
+      type: "SET_SERVER_FILTER",
+      field: "Reference",
+      value: "EE-0300",
+      matchMode: "startswith",
+    });
+
+    // First search: the fast prefix mode, and the server found nothing.
+    const first = new env.FakeXhr();
+    env.callOpen(first, GRID_URL);
+    env.callSend(first, JSON.stringify({ First: 0, Rows: 10 }));
+    first.responseText = JSON.stringify({ Payload: { Data: [] } });
+    first.fire("load");
+
+    expect(sentFilters(env)[0]).toMatchObject({
+      PropertyName: "Reference",
+      Value: "EE-0300",
+      MatchMode: "startswith",
+    });
+    expect(env.messages.find((m) => m.type === "REFERENCE_FILTER_FALLBACK")).toMatchObject({
+      value: "EE-0300",
+      direction: "FROM_PAGE",
+      token: TOKEN,
+    });
+
+    // The retry the content script is about to click already carries the wide
+    // mode — the scraper flips the filter before it asks for the click.
+    const retry = new env.FakeXhr();
+    env.callOpen(retry, GRID_URL);
+    env.callSend(retry, JSON.stringify({ First: 0, Rows: 10 }));
+    expect(sentFilters(env)[0]).toMatchObject({ MatchMode: "contains" });
+  });
+
+  it("widens a reference search at most once, and never when rows came back", async () => {
+    const env = await bootScraper();
+    env.dispatchFromContent({
+      type: "SET_SERVER_FILTER",
+      field: "Reference",
+      value: "EE-0300",
+      matchMode: "startswith",
+    });
+
+    const capture = (data: unknown[]): void => {
+      const grid = new env.FakeXhr();
+      env.callOpen(grid, GRID_URL);
+      env.callSend(grid, JSON.stringify({ First: 0, Rows: 10 }));
+      grid.responseText = JSON.stringify({ Payload: { Data: data } });
+      grid.fire("load");
+    };
+
+    capture([ROW]); // the prefix match was enough
+    expect(env.messages.filter((m) => m.type === "REFERENCE_FILTER_FALLBACK")).toHaveLength(0);
+
+    capture([]); // empty → widen (one-shot)
+    capture([]); // still empty with contains → no second retry
+    expect(env.messages.filter((m) => m.type === "REFERENCE_FILTER_FALLBACK")).toHaveLength(1);
   });
 
   it("still rejects a filter message with the wrong direction", async () => {

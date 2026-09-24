@@ -41,6 +41,7 @@ Key message types:
 | `scraper-nets.ts` | Backup nets against a duplicate native save: the blob-anchor and `window.open` corridors, with injected targets so they unit-test |
 | `scraper-xhr-patches.ts` | The XHR prototype patches (`open`/`send`/`setRequestHeader`): native-download arming, filter injection, grid capture; ships the pure `injectFilters`/`fillInvoiceRowIndex` helpers |
 | `page-context.ts` | URL → `ExportSource` mapping (`OUTPUT_TAX`, `INPUT_TAX`, `SPT_A2`, `PPH_21_L1A`, ...), filename-hint extraction from request filters |
+| `reference-search.ts` | Reference filter's match mode: prefix-first (`startswith`) with a one-shot widening to `contains` when the prefix returns no rows; pure predicates, no DOM (ADR-0011) |
 | `tax-date.ts` | Masa pajak period & date parsing: `extractYear`, `extractMonth`, `extractYMD`, `formatDate` |
 | `exporter.ts` | XLSX/CSV generation, `generateDynamicFilename`, `buildCSV`, `PREFIX_MAP` |
 | `downloader.ts` | Browser download orchestration with custom PDF naming |

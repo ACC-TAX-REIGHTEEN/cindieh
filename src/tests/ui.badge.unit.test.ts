@@ -27,6 +27,7 @@ import {
   updatePanelComplete,
   updatePanelError,
   updatePanelIdle,
+  updatePanelStatus,
   destroyBadge,
 } from "../content/ui-badge";
 import { getExportBtnEl, getExportDropdownBtnEl, getScrapeBtnEl } from "../content/button-state";
@@ -193,6 +194,23 @@ describe("panel state transitions", () => {
 
     expect(doc.getElementById("ch-f-status")!.textContent).toBe("3 error berturut-turut: Timeout di ...");
     expect(badge.classList.contains("ch-panel-open")).toBe(true);
+    expect(dropdownBtn.querySelector(".p-button-label")!.textContent).toBe("Ekspor");
+    expect(dropdownBtn.classList.contains("ch-btn-danger")).toBe(false);
+  });
+
+  it("updatePanelStatus explains a wait without claiming a scrape is running", () => {
+    const dropdownBtn = makeButton();
+    vi.mocked(getExportDropdownBtnEl).mockReturnValue(asBtn(dropdownBtn));
+
+    updatePanelStatus(
+      'Referensi "EE-0300" tidak ditemukan sebagai awalan. Mencari ulang dengan pencocokan lebih luas.',
+    );
+
+    expect(doc.getElementById("ch-f-status")!.textContent).toContain("pencocokan lebih luas");
+    expect(badge.classList.contains("ch-panel-open")).toBe(true);
+    // Progress numbers and running markers are untouched: this is not a scrape.
+    expect(doc.getElementById("ch-f-total")!.textContent).toBe("0");
+    expect(doc.getElementById("ch-f-pages")!.textContent).toBe("0");
     expect(dropdownBtn.querySelector(".p-button-label")!.textContent).toBe("Ekspor");
     expect(dropdownBtn.classList.contains("ch-btn-danger")).toBe(false);
   });

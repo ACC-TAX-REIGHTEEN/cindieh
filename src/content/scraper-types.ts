@@ -48,7 +48,18 @@ export interface ScrapeError {
   message: string;
 }
 
-export type ScrapeMessage = (ScrapeProgress | ScrapeComplete | ScrapeError | { type: "INJECTED_READY" }) & {
+export type ScrapeMessage = (
+  | ScrapeProgress
+  | ScrapeComplete
+  | ScrapeError
+  | { type: "INJECTED_READY" }
+  /**
+   * The scraper widened a reference search that came back empty (see
+   * reference-search.ts). Not a scrape: the content script only has to ask the
+   * portal's search button again, exactly like it did for the first request.
+   */
+  | { type: "REFERENCE_FILTER_FALLBACK"; value: unknown }
+) & {
   /** Correlation only; not authentication. Native downloads/readiness are unscoped. */
   runId?: number;
 };
@@ -60,7 +71,12 @@ export type FromContentMessage = (
   | { type: "RESET_SCRAPER" }
   | { type: "START_PDF_DOWNLOAD"; data: Record<string, unknown>[] }
   | { type: "SCRAPE_BY_INVOICES"; invoiceNumbers: string[] }
-  | { type: "SET_SERVER_FILTER"; field: string; value: unknown }
+  /**
+   * `matchMode` is optional so the popup's No. Faktur path and the older
+   * callers keep the previous behaviour (`contains` for strings, `equals` for
+   * arrays). The reference search sends `startswith` — see reference-search.ts.
+   */
+  | { type: "SET_SERVER_FILTER"; field: string; value: unknown; matchMode?: string }
   | { type: "CLEAR_FILTERS"; fields: string[] }) & { runId?: number };
 
 // Extend XHR for intercepted properties

@@ -22,6 +22,9 @@ const EXTENSION_ORIGIN = "chrome-extension://abcdefghijklmnop";
 const PORTAL_ORIGIN = "https://coretaxdjp.pajak.go.id";
 const SPT_URL = `${PORTAL_ORIGIN}/returnsheets-portal/value-added-tax-return`;
 const INPUT_TAX_URL = `${PORTAL_ORIGIN}/e-invoice-portal/input-tax`;
+const OUTPUT_TAX_URL = `${PORTAL_ORIGIN}/e-invoice-portal/output-tax`;
+/** `SEARCH_CLICK_DELAY_MS` in main-actions.ts: the click is deferred, not immediate. */
+const SEARCH_CLICK_DELAY_MS = 100;
 const EXPORT_MODE_KEY = "cindiehExportMode";
 const DEBUG_KEY = "cindieh:debug";
 const MIRROR_MARKER_KEY = "cindieh:debug:ext";
@@ -186,6 +189,10 @@ async function bootMain(options: { href?: string; pageStorage?: ReturnType<typeo
     fire,
     listenerCount,
     emitStorageChange,
+    /** Fire a document-level listener (main.ts registers its keyup seam there). */
+    fireDoc(type: string, event?: unknown): void {
+      for (const fn of [...(doc.listeners.get(type) ?? [])]) fn(event);
+    },
     /** Resolve the held-back storage read with the given stored keys. */
     async resolveStored(keys: Record<string, unknown> = {}): Promise<void> {
       stored.resolve(keys);
@@ -426,5 +433,82 @@ describe("main boot — the switch while the page is open", () => {
 
     expect(env.page.storage.setItem.mock.calls.length).toBe(writes);
     expect(env.page.storage.removeItem).not.toHaveBeenCalled();
+  });
+});
+
+// ── Reference search ──────────────────────────────────
+
+// The two halves of the measured fix (tools/README.md, 24 Sep 2026): the search
+// asks for the fast prefix mode, and when the scraper reports that the prefix
+// found nothing, the content script asks the portal to search again — the
+// scraper has already flipped the filter to `contains` by then.
+
+describe("main boot — reference search", () => {
+  /** Open the output-tax page with the extension on, and land a portal Cari button. */
+  async function bootOutputTax() {
+    const env = await bootMain({ href: OUTPUT_TAX_URL });
+    env.fire("load");
+    // Stored defaults only: this suite is about the reference search, not about
+    // which switch happens to gate the first paint.
+    await env.resolveStored({});
+
+    // triggerSearch() finds this through document.querySelectorAll("button").
+    const cari = { id: "", textContent: "Cari", querySelector: () => null, click: vi.fn() };
+    env.doc.buttons.push(cari as unknown as FakeEl);
+    return { env, cari };
+  }
+
+  it("sends the fast prefix mode from the grid filter and from the comparer event", async () => {
+    const { env } = await bootOutputTax();
+
+    env.fireDoc("keyup", { key: "Enter", target: { id: "ch-grid-filter-reference", value: " ee-0300 " } });
+    env.fireDoc("ch:search-reference", { detail: { reference: "ee-0301" } });
+
+    const filters = env.messages.filter((m) => m.data.type === "SET_SERVER_FILTER");
+    expect(filters.map((m) => m.data)).toEqual([
+      // Trimmed and uppercased: the server's Reference filter is case-sensitive.
+      expect.objectContaining({ field: "Reference", value: "EE-0300", matchMode: "startswith" }),
+      expect.objectContaining({ field: "Reference", value: "EE-0301", matchMode: "startswith" }),
+    ]);
+  });
+
+  it("asks the portal to search again when the scraper widens the filter", async () => {
+    const { env, cari } = await bootOutputTax();
+
+    env.fireDoc("keyup", { key: "Enter", target: { id: "ch-grid-filter-reference", value: "EE-0300" } });
+    vi.advanceTimersByTime(SEARCH_CLICK_DELAY_MS);
+    expect(cari.click).toHaveBeenCalledTimes(1);
+
+    env.fire("message", {
+      source: env.win,
+      origin: PORTAL_ORIGIN,
+      data: {
+        type: "REFERENCE_FILTER_FALLBACK",
+        value: "EE-0300",
+        direction: "FROM_PAGE",
+        token: env.token(),
+      },
+    });
+
+    // The wait can be minutes long, so the panel says why instead of looking hung.
+    expect(env.doc.getElementById("ch-f-status")!.textContent).toContain("pencocokan lebih luas");
+
+    vi.advanceTimersByTime(SEARCH_CLICK_DELAY_MS);
+    expect(cari.click).toHaveBeenCalledTimes(2);
+    // No second filter message: the scraper flipped the mode itself.
+    expect(env.messages.filter((m) => m.data.type === "SET_SERVER_FILTER")).toHaveLength(1);
+  });
+
+  it("ignores a fallback message with the wrong token", async () => {
+    const { env, cari } = await bootOutputTax();
+
+    env.fire("message", {
+      source: env.win,
+      origin: PORTAL_ORIGIN,
+      data: { type: "REFERENCE_FILTER_FALLBACK", value: "EE-0300", direction: "FROM_PAGE", token: "spoofed" },
+    });
+    vi.advanceTimersByTime(SEARCH_CLICK_DELAY_MS);
+
+    expect(cari.click).not.toHaveBeenCalled();
   });
 });

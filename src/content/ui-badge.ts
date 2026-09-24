@@ -200,6 +200,21 @@ export function updatePanelProgress(total: number, page: number, elapsed: string
   els.progressBar.style.width = `${Math.min(95, page * 10 || 5)}%`;
 }
 
+/**
+ * Write a one-line status into the open panel without touching progress
+ * numbers or the buttons' running state.
+ *
+ * Used by waits that are not scrapes — the reference-search fallback can block
+ * for a minute or more on the portal's slow `contains` query — so the panel can
+ * explain the wait without claiming a scrape is running (which would flip the
+ * export buttons into their stop state).
+ */
+export function updatePanelStatus(message: string): void {
+  if (!els || !statsEl) return;
+  statsEl.closest("#ch-floating-info-container")?.classList.add("ch-panel-open");
+  els.statusText.textContent = message;
+}
+
 export function updatePanelComplete(total: number, pages: number, elapsed: string, failureCount?: number): void {
   if (!els || !statsEl) return;
   isPanelRunning = false;
