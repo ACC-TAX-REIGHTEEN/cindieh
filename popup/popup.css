@@ -21,18 +21,22 @@ body {
 
 .popup-shell {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px;
 }
+
+/* ── Header ───────────────────────────────────────── */
 
 header {
   display: grid;
   gap: 2px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(27, 36, 54, 0.12);
 }
 
 h1 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.25;
 }
 
@@ -46,21 +50,76 @@ p {
   font-size: 11px;
 }
 
+/* ── Sections as cards ────────────────────────────── */
+
 .mode-group {
   display: grid;
-  gap: 8px;
+  /* summary + body only; the body owns the inner rhythm. */
+  gap: 0;
   margin: 0;
-  padding: 0;
-  border: 0;
+  padding: 0 10px;
+  border: 1px solid rgba(27, 36, 54, 0.14);
+  border-radius: 10px;
+  background: #F7F6F0;
 }
 
-.group-legend {
-  padding: 0;
-  color: #1B2436;
-  font-size: 11px;
+/* A collapsed section is just a one-line row. */
+.mode-group:not([open]) {
+  padding-bottom: 0;
+}
+
+/* Opened sections stand out a little more than collapsed ones. */
+.mode-group[open] {
+  border-color: rgba(27, 36, 54, 0.26);
+  background: #FCFBF7;
+}
+
+.mode-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 0;
+  color: #4A5468;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+/* WebKit keeps its own marker unless asked not to. */
+.mode-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* The fold affordance: a CSS triangle that rotates when open. */
+.mode-group > summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  transition: transform 0.15s;
+}
+
+.mode-group[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+/* Native details has no keyboard focus ring of its own; give the summary one. */
+.mode-group > summary:focus-visible {
+  outline: 2px solid rgba(194, 59, 34, 0.35);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.group-body {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 10px;
 }
 
 .group-hint {
@@ -74,16 +133,23 @@ p {
   font-size: 10px;
 }
 
+/* ── Option tiles (checkbox/radio cards) ──────────── */
+
 .mode-option {
   display: grid;
   grid-template-columns: 18px 1fr;
   gap: 10px;
   align-items: start;
-  padding: 10px;
-  border: 1px solid rgba(27, 36, 54, 0.20);
+  padding: 8px 10px;
+  border: 1px solid rgba(27, 36, 54, 0.14);
   border-radius: 8px;
-  background: #F6F5EF;
+  background: #FCFBF7;
   cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.mode-option:hover {
+  border-color: rgba(194, 59, 34, 0.45);
 }
 
 .mode-option:has(input:checked) {
@@ -95,6 +161,7 @@ input {
   width: 16px;
   height: 16px;
   margin: 2px 0 0;
+  flex: none;
   accent-color: #C23B22;
 }
 
@@ -115,7 +182,7 @@ small {
   line-height: 1.35;
 }
 
-/* ── Newer controls ───────────────────────────────── */
+/* ── Inline radios and checkboxes ─────────────────── */
 
 .radio-row,
 .button-row {
@@ -134,6 +201,14 @@ small {
   cursor: pointer;
 }
 
+.check-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+
+/* ── Text fields and selects ──────────────────────── */
+
 .field {
   display: grid;
   gap: 4px;
@@ -151,7 +226,7 @@ small {
   padding: 6px 8px;
   border: 1px solid rgba(27, 36, 54, 0.20);
   border-radius: 6px;
-  background: #F6F5EF;
+  background: #FCFBF7;
   color: #1B2436;
   font: inherit;
   font-size: 12px;
@@ -166,26 +241,22 @@ small {
 .field input,
 .field select {
   margin: 0;
-  width: 100%;
   height: auto;
 }
 
-.check-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 10px;
-}
+/* ── Buttons ──────────────────────────────────────── */
 
 .popup-button {
   flex: 1 1 auto;
   padding: 7px 10px;
   border: 1px solid rgba(27, 36, 54, 0.20);
   border-radius: 6px;
-  background: #F6F5EF;
+  background: #FCFBF7;
   color: #1B2436;
   font: inherit;
   font-size: 12px;
   cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
 }
 
 .popup-button:hover {
@@ -193,6 +264,11 @@ small {
   background: rgba(194, 59, 34, 0.08);
 }
 
+/* ── Footer status ────────────────────────────────── */
+
 .status {
   min-height: 16px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(27, 36, 54, 0.12);
+  font-size: 11px;
 }
