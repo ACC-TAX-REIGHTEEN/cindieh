@@ -10,10 +10,21 @@
     <main class="popup-shell">
       <header>
         <h1>Cindieh</h1>
-        <p>Format export</p>
+        <p id="portal-status" class="status-line">Memeriksa tab aktif…</p>
       </header>
 
+      <fieldset class="mode-group" aria-label="Status ekstensi">
+        <label class="mode-option">
+          <input id="extension-enabled" type="checkbox" />
+          <span>
+            <strong>Aktifkan Cindieh</strong>
+            <small>Matikan untuk menyembunyikan semua tombol dan panel dari portal.</small>
+          </span>
+        </label>
+      </fieldset>
+
       <fieldset class="mode-group" aria-label="Format export">
+        <legend class="group-legend">Format export</legend>
         <label class="mode-option">
           <input id="mode-cleaned" type="radio" name="export-mode" value="cleaned" />
           <span>
@@ -31,7 +42,121 @@
         </label>
       </fieldset>
 
-      <fieldset class="mode-group" aria-label="Log debug">
+      <fieldset class="mode-group" aria-label="Format file default">
+        <legend class="group-legend">Format file default</legend>
+        <p class="group-hint">
+          Ditandai centang di menu ekspor portal, jadi format yang biasa dipakai langsung
+          terlihat.
+        </p>
+        <div class="radio-row">
+          <label class="radio-inline">
+            <input id="format-xlsx" type="radio" name="export-format" value="xlsx" />
+            <span>XLSX</span>
+          </label>
+          <label class="radio-inline">
+            <input id="format-csv" type="radio" name="export-format" value="csv" />
+            <span>CSV</span>
+          </label>
+        </div>
+        <label class="mode-option">
+          <input id="one-click-export" type="checkbox" />
+          <span>
+            <strong>Ekspor sekali klik</strong>
+            <small>
+              Sekali klik langsung mengunduh format default. Tombol panah terpisah di
+              sebelahnya untuk memilih format lain; kalau dimatikan, satu tombol membuka
+              menu.
+            </small>
+          </span>
+        </label>
+      </fieldset>
+
+      <fieldset class="mode-group" aria-label="Nama file">
+        <legend class="group-legend">Nama file</legend>
+        <label class="field">
+          <span>Awalan nama file (XLSX/CSV)</span>
+          <input
+            id="filename-prefix"
+            type="text"
+            maxlength="24"
+            placeholder="mis. PTABC-"
+            autocomplete="off"
+          />
+        </label>
+        <p class="group-hint">Diletakkan di depan awalan bawaan, mis. <code>PTABC-FPK-072026.xlsx</code>.</p>
+      </fieldset>
+
+      <fieldset class="mode-group" aria-label="Kecepatan pengambilan data">
+        <legend class="group-legend">Kecepatan</legend>
+        <label class="field">
+          <span>Jeda antar request</span>
+          <select id="delay-preset">
+            <option value="normal">Normal</option>
+            <option value="hati-hati">Hati-hati (2&times; lebih lambat)</option>
+            <option value="sabar">Sabar (4&times; lebih lambat)</option>
+          </select>
+        </label>
+        <p class="group-hint">
+          Cindieh tidak pernah lebih cepat dari batas aman Coretax — pilihan ini hanya
+          memperlambat, untuk koneksi lemah atau saat server menolak (HTTP 429).
+        </p>
+      </fieldset>
+
+      <fieldset class="mode-group" aria-label="Konfirmasi unduhan massal">
+        <legend class="group-legend">Unduhan massal</legend>
+        <label class="field">
+          <span>Tanya konfirmasi jika lebih dari</span>
+          <input id="bulk-confirm" type="number" min="0" max="1000" step="1" />
+        </label>
+        <p class="group-hint">Isi 0 untuk tidak pernah bertanya.</p>
+      </fieldset>
+
+      <fieldset class="mode-group" aria-label="Default Komparator">
+        <legend class="group-legend">Default Komparator</legend>
+        <label class="field">
+          <span>Toleransi selisih DPP/PPN</span>
+          <input id="comparer-tolerance" type="number" min="0" step="1" placeholder="0" />
+        </label>
+        <label class="field">
+          <span>Tanggal (mode harian, 1–31)</span>
+          <input
+            id="comparer-daily-dates"
+            type="text"
+            autocomplete="off"
+            placeholder="mis. 15, 31"
+          />
+        </label>
+        <div class="check-grid" role="group" aria-label="Filter status default">
+          <label class="check-inline">
+            <input id="comparer-status-COCOK" type="checkbox" value="COCOK" />
+            <span>Cocok</span>
+          </label>
+          <label class="check-inline">
+            <input id="comparer-status-DPP_BERBEDA" type="checkbox" value="DPP_BERBEDA" />
+            <span>DPP Berbeda</span>
+          </label>
+          <label class="check-inline">
+            <input id="comparer-status-PPN_BERBEDA" type="checkbox" value="PPN_BERBEDA" />
+            <span>PPN Berbeda</span>
+          </label>
+          <label class="check-inline">
+            <input id="comparer-status-BERBEDA" type="checkbox" value="BERBEDA" />
+            <span>Berbeda</span>
+          </label>
+          <label class="check-inline">
+            <input id="comparer-status-TIDAK_DITEMUKAN" type="checkbox" value="TIDAK_DITEMUKAN" />
+            <span>Tidak ditemukan</span>
+          </label>
+          <label class="check-inline">
+            <input id="comparer-status-HANYA_CORETAX" type="checkbox" value="HANYA_CORETAX" />
+            <span>Hanya di Coretax</span>
+          </label>
+        </div>
+        <p class="group-hint">Semua tidak dicentang berarti semua status ditampilkan.</p>
+      </fieldset>
+
+      <fieldset class="mode-group" aria-label="Diagnostik">
+        <legend class="group-legend">Diagnostik</legend>
         <label class="mode-option">
           <input id="debug-logs" type="checkbox" />
           <span>
@@ -39,6 +164,25 @@
             <small>Tampilkan log [Cindieh] di console halaman, background, dan popup.</small>
           </span>
         </label>
+        <label class="mode-option">
+          <input id="notify-on-complete" type="checkbox" />
+          <span>
+            <strong>Notifikasi saat selesai</strong>
+            <small>Beritahu lewat notifikasi desktop setelah ekspor atau unduhan massal.</small>
+          </span>
+        </label>
+      </fieldset>
+
+      <fieldset class="mode-group" aria-label="Pemeliharaan">
+        <legend class="group-legend">Pemeliharaan</legend>
+        <div class="button-row">
+          <button id="clear-cache" type="button" class="popup-button">Bersihkan cache</button>
+          <button id="reset-preferences" type="button" class="popup-button">Reset preferensi</button>
+        </div>
+        <p class="group-hint">
+          Bersihkan cache membuang data yang sudah diambil di tab portal, sehingga ekspor
+          berikutnya mengambil ulang dari Coretax.
+        </p>
       </fieldset>
 
       <p id="status-text" class="status">Format dirapikan aktif</p>

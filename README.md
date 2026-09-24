@@ -83,6 +83,25 @@ Cara kerja: cukup **copy dari Excel, lalu paste** ke panel Komparator. Tidak per
 - **Export XLSX** — ekspor seluruh hasil perbandingan ke file yang bisa langsung dibuka di Excel
 - **Klik baris hasil** — langsung menutup panel dan menjalankan pencarian referensi tersebut di tabel PPN Keluaran Coretax, untuk validasi cepat tanpa perlu copy-paste manual
 
+## Pengaturan (Popup)
+
+Klik ikon Cindieh di toolbar browser untuk membuka pengaturan. Semua preferensi tersimpan di `storage.local` dan berlaku di tab portal yang sedang terbuka tanpa perlu reload.
+
+| Kontrol | Fungsi |
+|---|---|
+| **Aktifkan Cindieh** | Saklar utama. Saat dimatikan, seluruh tombol dan panel Cindieh dibersihkan dari halaman portal; menyalakannya kembali menyuntik ulang tanpa reload. |
+| **Format export** | *Dirapikan* (header Indonesia + kolom pilihan) atau *Asli* (field Coretax apa adanya). |
+| **Format file default** | XLSX atau CSV. Pilihan ini ditandai centang di menu ekspor portal, sehingga format yang biasa dipakai langsung terlihat. |
+| **Ekspor sekali klik** | Nonaktif secara default. Jika diaktifkan, sekali klik pada tombol ekspor portal langsung mengunduh format default, dan tombol panah terpisah di sebelahnya membuka pilihan format lain. |
+| **Awalan nama file** | Awalan tambahan di depan awalan bawaan untuk berkas XLSX/CSV, mis. `PTABC-` menghasilkan `PTABC-FPK-072026.xlsx`. Berguna saat mengelompokkan berkas per klien. Nama berkas PDF tidak diubah. |
+| **Kecepatan** | *Normal* / *Hati-hati* (2×) / *Sabar* (4×) jeda antar request. Pilihan ini hanya **memperlambat**; Cindieh tidak pernah lebih cepat dari batas aman Coretax (lihat [RATE_LIMITING.md](RATE_LIMITING.md)). |
+| **Unduhan massal** | Jumlah berkas yang memicu konfirmasi (bawaan 10). Isi `0` untuk tidak pernah bertanya. |
+| **Default Komparator** | Toleransi selisih DPP/PPN, tanggal mode harian, dan filter status yang otomatis terisi saat panel Komparator dibuka. |
+| **Log debug** | Menampilkan log `[Cindieh]` di console halaman, background, dan popup. |
+| **Notifikasi saat selesai** | Notifikasi desktop setelah ekspor atau unduhan massal selesai. Izin `notifications` diminta saat saklar ini dinyalakan (izin opsional — tidak diminta saat pemasangan). |
+| **Bersihkan cache** | Membuang data yang sudah diambil di tab portal, sehingga ekspor berikutnya mengambil ulang dari Coretax. |
+| **Reset preferensi** | Mengembalikan seluruh pengaturan di atas ke nilai bawaan. Format export dan Log debug tidak ikut direset. |
+
 ## Instalasi & Build
 
 ### 1. Persiapan

@@ -20,6 +20,11 @@ import {
   xhrDownloadEfakturPdf as xhrDownloadEfakturPdfFn,
 } from "./scraper-xhr";
 import type { CapturedRequest, ScrapeMessage } from "./scraper-types";
+import {
+  DEFAULT_DELAY_PRESET,
+  scaleDelay,
+  type DelayPreset,
+} from "../shared/extension-preferences";
 
 // ── Context interface ─────────────────────────────────
 // All dependencies on mutable closure state in scraper.ts are
@@ -49,6 +54,13 @@ export interface ScraperContext {
   timeout: number;
   /** Maximum consecutive XHR errors before aborting a paginated scrape. */
   maxErrors: number;
+  /**
+   * The active inter-request pacing preset. Optional so test contexts need not
+   * declare it; omitting it means the documented default ("normal"). The
+   * production context reads it from the popup's mirrored preference on every
+   * run, so a change takes effect without reloading the page.
+   */
+  getPacing?(): DelayPreset;
 
   // ── Request capture (used by scraper-intercept) ────
 
@@ -123,7 +135,10 @@ export function abortError(): DOMException {
 // 500 rows/request for e-invoice, 1000 for SPT, with a slower inter-page
 // delay for SPT.
 
-export function getPaginateConfig(source: ExportSource): { step: number; delayMs: number } {
+export function getPaginateConfig(
+  source: ExportSource,
+  preset: DelayPreset = DEFAULT_DELAY_PRESET,
+): { step: number; delayMs: number } {
   const isEInvoice =
     source === "OUTPUT_TAX" ||
     source === "INPUT_TAX" ||
@@ -132,9 +147,16 @@ export function getPaginateConfig(source: ExportSource): { step: number; delayMs
   const isSpt =
     source === "SPT_A2" || source === "SPT_B2" || source.startsWith("PPH_21_");
   return {
+    // `step` is fixed by the portal's own page-size caps and is never scaled.
     step: isEInvoice ? 500 : 1000,
-    delayMs: isSpt ? 150 : 100,
+    // Pacing only ever slows the run down (multiplier >= 1).
+    delayMs: scaleDelay(isSpt ? 150 : 100, preset),
   };
+}
+
+/** Read the active preset, falling back to the default for contexts without one. */
+function pacingOf(ctx: ScraperContext): DelayPreset {
+  return ctx.getPacing?.() ?? DEFAULT_DELAY_PRESET;
 }
 
 // ── Paginated scraping loop ───────────────────────────
@@ -158,7 +180,7 @@ export async function scrapePaginated(
   let keepGoing = true;
   let errorCount = 0;
   const startTime = Date.now();
-  const { delayMs } = getPaginateConfig(captured.source);
+  const { delayMs } = getPaginateConfig(captured.source, pacingOf(ctx));
 
   while (keepGoing && !ctx.isStopRequested()) {
     page++;
@@ -252,7 +274,7 @@ export async function downloadBulkWithholdingPdf(
         throw new Error(`${consecutiveFailures} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`);
       }
     }
-    await ctx.delay(800);
+    await ctx.delay(scaleDelay(800, pacingOf(ctx)));
   }
 
   return failureCount;
@@ -324,6 +346,8 @@ export async function startScraping(
       source: captured.source,
       partial: failureCount > 0,
       failureCount,
+      // A withholding run IS a bulk PDF download — same message, different job.
+      kind: captured.source === "WITHHOLDING_SLIPS" ? "pdf" : "scrape",
     });
   } catch (err) {
     if (ctx.isStopRequested()) return;
@@ -405,7 +429,7 @@ export async function startPdfDownload(
         return;
       }
     }
-    await ctx.delay(800);
+    await ctx.delay(scaleDelay(800, pacingOf(ctx)));
   }
   if (ctx.isStopRequested()) return;
 
@@ -424,6 +448,7 @@ export async function startPdfDownload(
     source,
     partial: failureCount > 0,
     failureCount,
+    kind: "pdf",
   });
 }
 
@@ -491,7 +516,7 @@ export async function scrapeByInvoices(
         mergeRows(allData, seen, rows);
         consecutiveFailures = 0;
         success = true;
-        await ctx.delay(50);
+        await ctx.delay(scaleDelay(50, pacingOf(ctx)));
         break;
       } catch (err) {
         if (ctx.isStopRequested()) return;
@@ -516,7 +541,7 @@ export async function scrapeByInvoices(
         debugError(`scrapeByInvoices: aborted after ${ctx.maxErrors} consecutive failures`);
         return;
       }
-      await ctx.delay(50);
+      await ctx.delay(scaleDelay(50, pacingOf(ctx)));
     }
   }
   if (ctx.isStopRequested()) return;
@@ -535,5 +560,6 @@ export async function scrapeByInvoices(
     partial: failedInvoices.length > 0,
     failedInvoices,
     failureCount: failedInvoices.length,
+    kind: "scrape",
   });
 }

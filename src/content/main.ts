@@ -16,18 +16,28 @@ import { generateBridgeToken, getBridgeToken, getActiveRunId, isCurrentRunMessag
 import { acceptScrapeResult, currentRunHandlers, invalidateScrapeResult, scrapeErrorMessage } from "./scrape-result";
 import type { ScrapeComplete } from "./scraper-types";
 import {
+  destroyBadge,
   injectBadge,
   updatePanelComplete,
   updatePanelError,
+  updatePanelIdle,
 
   updatePanelProgress,
   updatePanelStatus,
 } from "./ui-badge";
 import { injectComparerModal, openComparerModal, runPendingCompare, runPendingCheck } from "./ui-comparer";
-import { injectGridFilters, injectMultiInvoiceFilter, injectToolbarFilter, splitInvoiceNumbers } from "./ui-filters";
+import {
+  clearFilterTimers,
+  injectGridFilters,
+  injectMultiInvoiceFilter,
+  injectToolbarFilter,
+  splitInvoiceNumbers,
+} from "./ui-filters";
 import {
   injectExportButton,
   removeExportButton,
+  setExportFormatDefault,
+  setOneClickExport,
 } from "./ui";
 import { handlePdfDownload } from "./downloader";
 import { registerShortcuts } from "./shortcuts";
@@ -37,7 +47,16 @@ import {
   mirrorDebugToPageWorld,
   normalizeDebugPreference,
 } from "./debug-preference";
+import {
+  getPreferences,
+  preferencesFromChanges,
+  readPreferences,
+  RESET_SCRAPER_REQUEST_KEY,
+  setPreferences,
+} from "./preferences";
+import { mirrorPacingToPageWorld } from "./page-pacing";
 import { REFERENCE_FAST_MATCH_MODE, REFERENCE_FIELD } from "./reference-search";
+import { describeCompletion, publishCompletion } from "./completion-notice";
 import {
   handleExportAction,
   startScrape,
@@ -50,6 +69,36 @@ import {
 
 const DEBOUNCE_DELAY_MS = 300;
 const GRID_FILTER_INJECT_DELAY_MS = 1500;
+
+/**
+ * Elements other modules own but that a master-switch teardown must also
+ * remove. Kept as an id list because each one is a top-level element with a
+ * stable id; the grid filter is handled separately (its input sits inside a
+ * container the portal's table owns).
+ */
+const TEARDOWN_ELEMENT_IDS = [
+  "ch-comparer-overlay",
+  "ch-comparer-modal",
+  "ch-multi-invoice-toggle",
+  "ch-multi-invoice-filter",
+  "ch-toolbar-filter-reference",
+] as const;
+
+// ── Preferences (popup controls) ─────────────────────
+// `extensionEnabled` starts false so nothing is painted before the stored
+// preference is known — a disabled extension must never flash a toolbar into
+// the page, the same reason injectScraper() awaits the debug mirror. The
+// synchronous action paths read the snapshot in preferences.ts instead, which
+// readPreferences() has already seeded by the time any button can be clicked.
+let extensionEnabled = false;
+
+const preferencesReady = readPreferences().then((loaded) => {
+  extensionEnabled = loaded.enabled;
+  mirrorPacingToPageWorld(loaded.delayPreset);
+  setExportFormatDefault(loaded.exportFormat);
+  setOneClickExport(loaded.oneClickExport);
+  return loaded;
+});
 
 async function loadExportModePreference(): Promise<void> {
   try {
@@ -77,6 +126,31 @@ browserAPI.storage.onChanged.addListener((changes, areaName) => {
     const storedDebug = normalizeDebugPreference(debugChange.newValue);
     applyDebugPreference(storedDebug);
     mirrorDebugToPageWorld(storedDebug);
+  }
+
+  // "Bersihkan cache" from the popup: same storage seam as everything else the
+  // popup asks this tab to do (ADR-0002), so no messaging channel is needed.
+  if (changes[RESET_SCRAPER_REQUEST_KEY]) clearScraperCache();
+
+  const preferencePatch = preferencesFromChanges(changes);
+  if (Object.keys(preferencePatch).length === 0) return;
+  const applied = setPreferences(preferencePatch);
+
+  // Pacing is mirrored rather than carried on each command, because the delays
+  // are applied in the MAIN world, which cannot read extension storage.
+  if (preferencePatch.delayPreset !== undefined) mirrorPacingToPageWorld(applied.delayPreset);
+  if (preferencePatch.exportFormat !== undefined) setExportFormatDefault(applied.exportFormat);
+  if (preferencePatch.oneClickExport !== undefined) setOneClickExport(applied.oneClickExport);
+
+  // The master switch is applied last, so a tab that is being switched off is
+  // torn down with the rest of the new preferences already in place.
+  if (preferencePatch.enabled !== undefined) {
+    extensionEnabled = applied.enabled;
+    if (extensionEnabled) {
+      applyPageState();
+    } else {
+      teardownInjectedUi();
+    }
   }
 });
 
@@ -108,6 +182,9 @@ const observer = new MutationObserver(() => {
   }
 
   if (!isSupportedExportPage()) return;
+  // A disabled extension keeps tracking URL changes (so re-enabling works) but
+  // must not paint anything back into the page.
+  if (!extensionEnabled) return;
 
   // Debounce injections to avoid fighting with SPA/Angular rendering
   if (debounceTimer) clearTimeout(debounceTimer);
@@ -126,6 +203,7 @@ observer.observe(document.body, { subtree: true, childList: true });
 // ── Inject the scraper script into MAIN world ───────
 
 async function injectScraper(): Promise<void> {
+  if (!extensionEnabled) return;
   if (document.getElementById("__ch_scraper_injected__")) return;
 
   // The scraper reads its log flag at module load and cannot see extension
@@ -198,6 +276,15 @@ const pageMessageDispatcher = createMessageDispatcher({
         return;
       }
       updatePanelComplete(complete.total || 0, complete.pages || 0, complete.elapsed || "0s");
+
+      // Desktop notification is opt-in and raised by the background worker;
+      // see completion-notice.ts for why the hand-off goes through storage.
+      if (getPreferences().notifyOnComplete) {
+        void publishCompletion(
+          complete.kind ?? "scrape",
+          describeCompletion({ total: complete.total || 0, failureCount: complete.failureCount }),
+        );
+      }
 
       // If the user clicked "Periksa" before any data was scraped, run the
       // comparison automatically now that scraping is complete.
@@ -355,16 +442,16 @@ document.addEventListener("ch:search-reference", (e: Event) => {
 
 // ── Init & Navigation ───────────────────────────────
 
-function onNavigate(): void {
-  debugLog("Navigate event triggered. Current URL:", window.location.href);
-
-  // Reset content-script state so stale data from the previous page
-  // cannot leak into exports on the new page.
-  resetContentState(contentState, { preserveExportMode: true });
-
-  // Ask the scraper (MAIN world) to reset its own state too:
-  // captured request cache, filter state, running flags, etc.
-  postToScraper({ type: "RESET_SCRAPER" });
+/**
+ * Paint (or clear) everything this extension owns on the current page. Single
+ * entry point so init, SPA navigation, and the master switch cannot drift into
+ * three slightly different injection orders.
+ */
+function applyPageState(): void {
+  if (!extensionEnabled) {
+    teardownInjectedUi();
+    return;
+  }
 
   if (isSupportedExportPage()) {
     debugLog("Supported page detected, ensuring injection...");
@@ -385,27 +472,65 @@ function onNavigate(): void {
   }
 }
 
+/**
+ * Remove every surface this extension has painted into the page, for the popup's
+ * master switch. Deliberately removes all of them rather than the obvious ones:
+ * a half-removed toolbar is worse than none, because the buttons that remain
+ * still look clickable.
+ */
+function teardownInjectedUi(): void {
+  removeExportButton();
+  clearFilterTimers();
+  destroyBadge();
+  for (const id of TEARDOWN_ELEMENT_IDS) {
+    document.getElementById(id)?.remove();
+  }
+  const gridFilter = document.getElementById("ch-grid-filter-reference");
+  if (gridFilter) (gridFilter.closest(".ch-grid-filter-container") ?? gridFilter).remove();
+
+  // Drop the scraper's captured request too: with the extension off there is
+  // nothing that could reuse it, and a re-enable should start clean.
+  postToScraper({ type: "RESET_SCRAPER" });
+  debugLog("Cindieh dinonaktifkan; UI di halaman dibersihkan.");
+}
+
+/**
+ * "Bersihkan cache" from the popup: forget the captured request and the scraped
+ * rows so the next export cannot reuse anything captured before the click.
+ */
+function clearScraperCache(): void {
+  resetContentState(contentState, { preserveExportMode: true });
+  postToScraper({ type: "RESET_SCRAPER" });
+  updatePanelIdle();
+  debugLog("Cache scraper dibersihkan atas permintaan popup.");
+}
+
+function onNavigate(): void {
+  debugLog("Navigate event triggered. Current URL:", window.location.href);
+
+  // Reset content-script state so stale data from the previous page
+  // cannot leak into exports on the new page.
+  resetContentState(contentState, { preserveExportMode: true });
+
+  // Ask the scraper (MAIN world) to reset its own state too:
+  // captured request cache, filter state, running flags, etc.
+  postToScraper({ type: "RESET_SCRAPER" });
+
+  void preferencesReady.then(applyPageState);
+}
+
 function init(): void {
   void loadExportModePreference();
   debugLog("Extension starting up on page...", window.location.href);
-  injectBadge();
-  void injectScraper();
   registerShortcuts(() => contentState.isRunning);
 
-  if (isSupportedExportPage()) {
-    debugLog("Page match found on init.");
-    injectExportButton();
-    injectMultiInvoiceFilter();
-    injectComparerModal();
-    if (isOutputTaxPage()) {
-      injectToolbarFilter();
-      setTimeout(() => {
-        injectGridFilters();
-      }, GRID_FILTER_INJECT_DELAY_MS);
-    }
-  } else {
-    debugLog("Page match not found on init.");
-  }
+  // First paint waits for the stored preferences, so a disabled extension never
+  // paints at all. preferencesReady resolves even when storage is unavailable
+  // (defaults), so this can never strand the page with no UI forever.
+  void preferencesReady.then(() => {
+    debugLog("Preferensi diterapkan; mode:", extensionEnabled ? "aktif" : "nonaktif");
+    applyPageState();
+  });
 
   window.addEventListener("unhandledrejection", (event) => {
     debugError("Unhandled rejection:", event.reason);

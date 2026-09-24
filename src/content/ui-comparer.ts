@@ -15,8 +15,10 @@ import {
   formatResultDifference,
 } from "./comparer-export";
 import { contentState, startScrape } from "./main-actions";
+import { getPreferences } from "./preferences";
 import { isOutputTaxPage } from "./page-context";
 import {
+  applyComparerDefaults,
   applyStatusFilter,
   buildStatusSummary,
   computePagination,
@@ -231,6 +233,8 @@ export function injectComparerModal(): void {
 
   leftGroup.appendChild(dailyWrap);
   leftGroup.appendChild(dailyDatesInput);
+
+  applyStoredComparerDefaults(toleranceInput, dailyDatesInput);
 
   const exportBtn = document.createElement("button");
   exportBtn.id = "ch-comparer-export-btn";
@@ -538,6 +542,16 @@ export function injectComparerModal(): void {
     renderResults();
   };
 
+  // Seed the status filter from the stored defaults. An empty list is the
+  // session's own "all statuses", so the checkbox row stays untouched then.
+  if (session.statusFilter.length > 0) {
+    const wanted = new Set<string>(session.statusFilter);
+    filterCheckboxes.forEach((cb) => {
+      cb.checked = cb.value === "ALL" ? false : wanted.has(cb.value);
+    });
+    filterToggleLabel.textContent = `${session.statusFilter.length} status`;
+  }
+
   filterToggle.addEventListener("click", (e: MouseEvent) => {
     e.stopPropagation();
     filterMenu.classList.toggle("ch-hidden");
@@ -627,6 +641,25 @@ export function injectComparerModal(): void {
   });
 
   checkerExportBtn.addEventListener("click", handleCheckerExportResults);
+}
+
+// ── Stored defaults ───────────────────────────────────
+
+/**
+ * Apply the popup's Comparer defaults to the session and the two inputs that
+ * mirror it. Called while the modal is being built, because the panel owns these
+ * controls per session and re-injecting the modal must not lose them.
+ */
+function applyStoredComparerDefaults(
+  toleranceInput: HTMLInputElement,
+  dailyDatesInput: HTMLInputElement,
+): void {
+  const defaults = getPreferences().comparerDefaults;
+  applyComparerDefaults(session, defaults);
+  // An empty box, not "0": the panel shows the tolerance as an optional value.
+  toleranceInput.value = session.tolerance > 0 ? String(session.tolerance) : "";
+  dailyDatesInput.value = defaults.dailyDates;
+  dailyDatesInput.classList.toggle("ch-hidden", !session.dailyEnabled);
 }
 
 // ── Open / Close ──────────────────────────────────────

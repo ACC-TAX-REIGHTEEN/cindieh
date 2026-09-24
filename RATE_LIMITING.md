@@ -12,6 +12,7 @@ Berikut adalah konstanta dan jeda waktu yang diterapkan dalam kode ([`scraper-ac
 
 | Fitur / Parameter | Nilai / Konfigurasi | Lokasi Kode | Keterangan |
 |---|---|---|---|
+| **Preset Kecepatan (popup)** | `×1` / `×2` / `×4` | [`scaleDelay()`](src/shared/extension-preferences.ts) | Preset *Normal* / *Hati-hati* / *Sabar* mengalikan **semua** jeda di bawah. Pengali selalu ≥ 1: pengaturan ini hanya bisa **memperlambat**, tidak pernah mempercepat. |
 | **Batch Pagination e-Invoice** | `step = 500`, `delayMs = 100` | [`getPaginateConfig()`](src/content/scraper-actions.ts) | 500 data/req (menyesuaikan batas maks UI e-Invoice portal `500`). |
 | **Batch Pagination SPT atau Returnsheets Portal** | `step = 1000`, `delayMs = 150` | [`getPaginateConfig()`](src/content/scraper-actions.ts) | 1.000 data/req (menyesuaikan batas maks UI Returnsheets PPN portal `1000`). |
 | **Bulk PDF Download** | `delay(800)` (800 ms) | [`downloadBulkWithholdingPdf()`](src/content/scraper-actions.ts) & [`startPdfDownload()`](src/content/scraper-actions.ts) | Jeda 800 ms antar unduhan berkas PDF (e-Faktur & Bukti Potong). |
@@ -21,6 +22,8 @@ Berikut adalah konstanta dan jeda waktu yang diterapkan dalam kode ([`scraper-ac
 | **Circuit Breaker** | `MAX_ERRORS = 3` | konstanta [`MAX_ERRORS`](src/content/scraper.ts) | Hentikan scraping otomatis jika terjadi 3 error berturut-turut. |
 | **Recovery Delay** | `delay(2000)` (2 detik) | [`scrapePaginated()`](src/content/scraper-actions.ts) | Jeda pemulihan 2 detik jika terjadi 1 kali error sebelum mencoba lagi. |
 | **Pencarian Referensi** | 1 request grid per pencarian, +1 request hanya bila hasil kosong | [`shouldWidenReferenceSearch()`](src/content/reference-search.ts) | Pencarian mengirim mode `startswith`; hanya bila server mengembalikan 0 baris, ekstensi mengulang **sekali** dengan `contains` (lihat [ADR-0011](docs/adr/0011-reference-search-prefix-first.md)). Tidak pernah paralel, dan tidak ada request tambahan bila hasil pertama sudah ditemukan. |
+
+> **Catatan Preset Kecepatan**: preset dari popup sengaja tidak bisa menaikkan kecepatan. Nilai `step` tidak pernah ikut berubah — preset hanya mengalikan jeda (batched pagination, unduhan PDF massal, dan pencarian per faktur), sehingga batas aman di dokumen ini tetap berlaku sebagai lantai, bukan sekadar nilai bawaan.
 
 > **Catatan Eksekusi Sequential**: Seluruh eksekusi fetching bersifat berurutan (*serial/sequential*). Jeda `delayMs` (misal 100 ms) dihitung **setelah request sebelumnya selesai/berhasil diterima** dari server Coretax (`await request -> merge data -> await delay(100ms) -> request berikutnya`). Ekstensi tidak pernah mengirim request baru secara bersamaan/tumpang tindih (*no concurrent requests*).
 
@@ -69,7 +72,7 @@ $$\text{Total Waktu Nyata} = \underbrace{\text{delayMs}}_{\text{100 ms (Kode)}} 
 ## 4. Pedoman Bagi Pengembang (Developer Guidelines)
 
 1. **JANGAN menaikkan `step` di atas 500 (e-Invoice) atau 1000 (Returnsheets/SPT)** sesuai dengan batas UI resmi portal Coretax terkait.
-2. **JANGAN mengurangi `delayMs` di bawah 100ms** karena hambatan utama adalah Network RTT & Server Processing Time Coretax.
+2. **JANGAN mengurangi `delayMs` di bawah 100ms** karena hambatan utama adalah Network RTT & Server Processing Time Coretax. Kontrol preset kecepatan di popup mengikuti aturan ini: pengali `DELAY_PRESET_MULTIPLIER` tidak boleh ada yang < 1.
 3. **JANGAN menghapus `delay(800)`** pada pengunduhan PDF massal untuk menghindari penolakan *bulk request* dari server.
 4. **Pertahankan mekanisme *Circuit Breaker*** (`MAX_ERRORS = 3`) agar ekstensi tidak melakukan spamming request saat server DJP sedang mengalami gangguan (*down/maintenance*).
 5. **Selalu hormati respon error HTTP 429 / 504** dengan memberikan jeda pemulihan (*backoff*) yang cukup.

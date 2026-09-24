@@ -13,6 +13,7 @@ import {
   getPageExportSource,
   inferCapturedSource,
   extractFilenameHintFromBody,
+  describePortalPage,
 } from "../content/page-context";
 
 // ── URL predicate helpers ────────────────────────────────────────────────────
@@ -288,5 +289,34 @@ describe("extractFilenameHintFromBody — edge cases", () => {
   it("handles lowercase filter key 'filters'", () => {
     const body = JSON.stringify({ filters: [{ PropertyName: "Period", Value: "202601" }] });
     expect(extractFilenameHintFromBody(body, "OUTPUT_TAX")).toBe("202601");
+  });
+});
+
+describe("describePortalPage — the popup's status line", () => {
+  it("names the specific supported page", () => {
+    expect(describePortalPage(URLS.outputTax)).toBe("Terhubung: e-Faktur PPN Keluaran");
+    expect(describePortalPage(URLS.inputTax)).toBe("Terhubung: e-Faktur PPN Masukan");
+    expect(describePortalPage(URLS.outputReturn)).toBe("Terhubung: Retur PPN Keluaran");
+    expect(describePortalPage(URLS.inputReturn)).toBe("Terhubung: Retur PPN Masukan");
+    expect(describePortalPage(URLS.withholding)).toBe("Terhubung: Bukti Potong");
+  });
+
+  it("separates the two SPT products", () => {
+    expect(describePortalPage(URLS.sptVat)).toBe("Terhubung: SPT Masa PPN");
+    expect(describePortalPage(URLS.sptPph)).toBe("Terhubung: SPT PPh 21/26");
+  });
+
+  it("tells 'portal page we do not support' apart from 'not the portal'", () => {
+    // Different advice: one is a supported-page gap, the other is a wrong tab.
+    expect(describePortalPage(URLS.unrelated)).toBe("Portal Coretax — halaman ini belum didukung.");
+    expect(describePortalPage("https://example.com/")).toBe(
+      "Buka portal Coretax untuk memakai fitur ekspor.",
+    );
+  });
+
+  it("treats an unreadable/absent tab URL as 'not the portal'", () => {
+    // The popup gets no url for tabs the extension has no host permission for.
+    expect(describePortalPage(undefined)).toBe("Buka portal Coretax untuk memakai fitur ekspor.");
+    expect(describePortalPage("")).toBe("Buka portal Coretax untuk memakai fitur ekspor.");
   });
 });

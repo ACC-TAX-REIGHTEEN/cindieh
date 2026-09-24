@@ -16,6 +16,11 @@ import {
 } from "./page-context";
 
 import { getExportButtonLabel } from "./ui-badge";
+import {
+  DEFAULT_EXPORT_FORMAT,
+  EXPORT_FORMATS,
+  type StoredExportFormat,
+} from "../shared/extension-preferences";
 
 import { clearFilterTimers, removeMultiInvoiceFilter, scheduleRetry } from "./ui-filters";
 import { injectComparerModal } from "./ui-comparer";
@@ -39,6 +44,117 @@ import {
 const MAX_RETRIES = 8;
 
 let isInjected = false;
+
+// ── Default export format ─────────────────────────────
+// The popup stores which of the two formats the user normally wants. The
+// toolbar's default shape stays ONE compact dropdown — an always-on split
+// main-button + caret consumed too much room beside the portal's own buttons —
+// so the preference is surfaced INSIDE the menu instead: the stored format
+// carries a check mark. Same information, no extra toolbar space. The split
+// lives on as the opt-in one-click mode further down.
+
+let defaultExportFormat: StoredExportFormat = DEFAULT_EXPORT_FORMAT;
+
+/** Class on the menu item the popup marks as the user's usual format. */
+export const DEFAULT_EXPORT_ITEM_CLASS = "ch-export-dropdown-item-default";
+
+/** Trailing check icon appended to that item. */
+const DEFAULT_ITEM_CHECK_CLASS = "ch-export-item-check";
+
+/** The document event each format's export path listens for (see main.ts). */
+const FORMAT_EXPORT_EVENT: Record<StoredExportFormat, string> = {
+  xlsx: "ch:export-xlsx",
+  csv: "ch:export-csv",
+};
+
+/**
+ * Apply the stored default: move the check mark onto that format's item. Called
+ * at startup (before the toolbar exists — the injection then marks the items it
+ * builds) and again on every storage change, so an open tab follows the popup
+ * without reloading the portal. The marker is rewritten in place; re-injecting
+ * would fight Angular for the same node.
+ */
+export function setExportFormatDefault(format: StoredExportFormat): void {
+  defaultExportFormat = format;
+  markDefaultExportItem(document, format);
+  // One-click mode names the format it will export in the button's tooltip.
+  syncExportButtonMode();
+}
+
+/** Move the check marker inside `root`'s menu items (a detached menu is fine). */
+function markDefaultExportItem(root: ParentNode, format: StoredExportFormat): void {
+  for (const kind of EXPORT_FORMATS) {
+    const item = root.querySelector<HTMLElement>(`#ch-export-${kind}-item`);
+    if (!item) continue;
+
+    const isDefault = kind === format;
+    item.classList.toggle(DEFAULT_EXPORT_ITEM_CLASS, isDefault);
+    item.querySelector(`.${DEFAULT_ITEM_CHECK_CLASS}`)?.remove();
+
+    if (isDefault) {
+      item.setAttribute("aria-current", "true");
+      const check = document.createElement("span");
+      check.className = `${DEFAULT_ITEM_CHECK_CLASS} pi pi-check`;
+      check.setAttribute("aria-hidden", "true");
+      item.appendChild(check);
+    } else {
+      item.removeAttribute("aria-current");
+    }
+  }
+}
+
+// ── One-click export (opt-in) ─────────────────────────
+// Off by default. When the popup turns it on, a plain click on the toolbar
+// button exports the stored default format instead of opening the menu, and the
+// chevron splits off into its own caret button — the only way to keep the other
+// format reachable. Both shapes are built once and switched in place, because a
+// preference must never trigger a re-injection.
+
+let oneClickExport = false;
+
+/** The injected dropdown nodes, while they are in the page and switchable. */
+interface DropdownNodes {
+  exportBtn: HTMLButtonElement;
+  caretBtn: HTMLButtonElement;
+  caret: HTMLElement;
+  menu: HTMLElement;
+}
+
+let dropdownNodes: DropdownNodes | null = null;
+
+/**
+ * Apply the stored one-click preference. Called at startup (the injection then
+ * builds that shape) and on every storage change, so an open tab switches
+ * without reloading the portal.
+ */
+export function setOneClickExport(enabled: boolean): void {
+  oneClickExport = enabled;
+  syncExportButtonMode();
+}
+
+/** Paint the active mode onto the injected dropdown, in place. */
+function syncExportButtonMode(): void {
+  const nodes = dropdownNodes;
+  if (!nodes) return;
+  const { exportBtn, caretBtn, caret, menu } = nodes;
+
+  // The two modes do different things with a click on the same button, so a
+  // switch always starts from a closed menu.
+  menu.classList.add("ch-hidden");
+
+  // The chevron follows whichever control opens the menu: the caret button when
+  // the main button exports, the main button itself otherwise. Moving only when
+  // needed keeps this a no-op for an already-correct toolbar.
+  const chevronParent = oneClickExport ? caretBtn : exportBtn;
+  if (caret.parentElement !== chevronParent) chevronParent.appendChild(caret);
+
+  caretBtn.classList.toggle("ch-hidden", !oneClickExport);
+  if (oneClickExport) {
+    exportBtn.title = `Ekspor langsung ke ${defaultExportFormat.toUpperCase()}`;
+  } else {
+    exportBtn.removeAttribute("title");
+  }
+}
 
 /**
  * Document-level click handler that closes the export dropdown. Tracked
@@ -144,6 +260,7 @@ export function injectExportButton(retries = MAX_RETRIES): void {
         const compareBtn = getCompareBtnEl();
         if (compareBtn) compareBtn.remove();
         resetAllButtonRefs();
+        dropdownNodes = null;
       } else if (!isButtonPlacedCorrectly(exportDropdownBtn)) {
         const inputTaxAnchor = isInputTaxPage() ? document.getElementById("CreditInvoiceButtonButton") : null;
         if (inputTaxAnchor && inputTaxAnchor.offsetParent !== null && moveButtonNextToAnchor(exportDropdownBtn, inputTaxAnchor)) {
@@ -161,6 +278,7 @@ export function injectExportButton(retries = MAX_RETRIES): void {
         const compareBtn = getCompareBtnEl();
         if (compareBtn) compareBtn.remove();
         resetAllButtonRefs();
+        dropdownNodes = null;
       } else {
         return;
       }
@@ -282,6 +400,8 @@ export function injectExportButton(retries = MAX_RETRIES): void {
     exportLabel.className = "p-button-label";
     exportLabel.textContent = getExportButtonLabel("dropdown", false);
 
+    // The chevron is part of the one button: it is the affordance that says
+    // "this opens a menu", not a second hit area.
     const caret = document.createElement("span");
     caret.className = "p-button-icon p-button-icon-right pi pi-chevron-down";
     caret.setAttribute("aria-hidden", "true");
@@ -290,6 +410,18 @@ export function injectExportButton(retries = MAX_RETRIES): void {
     exportBtn.appendChild(exportLabel);
     exportBtn.appendChild(caret);
     exportDropdown.appendChild(exportBtn);
+
+    // The caret button exists in both modes but is hidden (and holds no chevron)
+    // until one-click mode moves the chevron into it, so `ch-hidden` costs no
+    // toolbar space and switching modes never rebuilds the DOM.
+    const caretBtn = document.createElement("button");
+    caretBtn.id = "ch-export-dropdown-caret";
+    caretBtn.type = "button";
+    caretBtn.className =
+      "p-element btn ct-btn-group p-button p-component ch-btn-highlight ch-export-dropdown-caret ch-hidden";
+    caretBtn.title = "Pilih format ekspor lain";
+    caretBtn.setAttribute("aria-label", "Pilih format ekspor lain");
+    exportDropdown.appendChild(caretBtn);
 
     // Dropdown menu
     const menu = document.createElement("div");
@@ -320,6 +452,10 @@ export function injectExportButton(retries = MAX_RETRIES): void {
     menu.appendChild(csvItem);
     exportDropdown.appendChild(menu);
 
+    // Mark the format the popup stores as the user's usual pick. The menu is
+    // still detached here, so mark by root rather than by id lookup.
+    markDefaultExportItem(exportDropdown, defaultExportFormat);
+
     // Insert the export dropdown
     if (insertMode === "before") {
       containerNode.insertBefore(exportDropdown, anchorEl);
@@ -327,11 +463,26 @@ export function injectExportButton(retries = MAX_RETRIES): void {
       containerNode.appendChild(exportDropdown);
     }
 
-    // Toggle dropdown menu on button click
+    // One button, one behaviour: open the menu and pick the format inside it —
+    // unless the popup opted into one-click export, in which case a plain click
+    // exports the stored default and only the caret opens the menu.
     exportBtn.addEventListener("click", (e: MouseEvent) => {
+      e.stopPropagation();
+      if (!oneClickExport) {
+        menu.classList.toggle("ch-hidden");
+        return;
+      }
+      menu.classList.add("ch-hidden");
+      document.dispatchEvent(new CustomEvent(FORMAT_EXPORT_EVENT[defaultExportFormat]));
+    });
+
+    caretBtn.addEventListener("click", (e: MouseEvent) => {
       e.stopPropagation();
       menu.classList.toggle("ch-hidden");
     });
+
+    dropdownNodes = { exportBtn, caretBtn, caret, menu };
+    syncExportButtonMode();
 
     // Menu item handlers
     xlsxItem.addEventListener("click", (e: MouseEvent) => {
@@ -467,4 +618,5 @@ export function removeExportButton(): void {
   if (scrapeBtn) scrapeBtn.remove();
   if (compareBtn) compareBtn.remove();
   resetAllButtonRefs();
+  dropdownNodes = null;
 }

@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import type { ExportSource } from "./page-context";
 import { debugWarn } from "./debug";
 import { extractYear, extractMonth, formatDate, extractYMD, getCurrentYearMonthWIB } from "./tax-date";
+import { normalizeFilenamePrefix } from "../shared/extension-preferences";
 
 export type ExportMode = "cleaned" | "raw";
 
@@ -14,6 +15,12 @@ export interface ExportData {
   filenameHint?: string;
   source?: ExportSource;
   mode?: ExportMode;
+  /**
+   * User-chosen prefix (popup) placed in front of the per-source prefix in the
+   * generated XLSX/CSV filename. Sanitized here as well as at the storage
+   * boundary, because tests and other callers construct ExportData directly.
+   */
+  filenamePrefix?: string;
 }
 
 function downloadFile(content: string | BlobPart, filename: string, mimeType: string): void {
@@ -364,10 +371,14 @@ export const PREFIX_MAP: Record<ExportSource | "default", string> = {
 export function generateDynamicFilename(exportData: ExportData): string {
   const { data: originalData, filenameHint, source } = exportData;
   const isA2 = source === "SPT_A2";
-  const prefix =
+  const basePrefix =
     source && Object.prototype.hasOwnProperty.call(PREFIX_MAP, source)
       ? PREFIX_MAP[source as ExportSource]
       : PREFIX_MAP["default"];
+  // The user's own prefix goes in FRONT of the per-source one, so `PTABC-FPK-072026`
+  // still ends with the prefix the README documents. Bulk PDF filenames keep
+  // their documented shape (see downloader.ts) and are not affected.
+  const prefix = `${normalizeFilenamePrefix(exportData.filenamePrefix)}${basePrefix}`;
 
   const formatPeriod = (p: string) => {
     // 1. Handle internal format YYYY_MM

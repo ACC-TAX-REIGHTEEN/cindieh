@@ -86,6 +86,30 @@ export function isSupportedExportPage(url = location.href): boolean {
 	);
 }
 
+/**
+ * Human label for the page in the given URL, for the popup's status line.
+ * Distinguishes "a portal page Cindieh does not support" from "not the portal at
+ * all", because those need different advice. Pure — the popup passes the active
+ * tab's URL in.
+ */
+export function describePortalPage(url: string | undefined): string {
+  if (!url) return "Buka portal Coretax untuk memakai fitur ekspor.";
+  if (isOutputTaxPage(url)) return "Terhubung: e-Faktur PPN Keluaran";
+  if (isInputTaxPage(url)) return "Terhubung: e-Faktur PPN Masukan";
+  if (isOutputReturnPage(url)) return "Terhubung: Retur PPN Keluaran";
+  if (isInputReturnPage(url)) return "Terhubung: Retur PPN Masukan";
+  if (isSptPage(url)) {
+    return normalizeUrl(url).includes("article-21-26")
+      ? "Terhubung: SPT PPh 21/26"
+      : "Terhubung: SPT Masa PPN";
+  }
+  if (isWithholdingPage(url)) return "Terhubung: Bukti Potong";
+  if (normalizeUrl(url).includes("coretaxdjp.pajak.go.id")) {
+    return "Portal Coretax — halaman ini belum didukung.";
+  }
+  return "Buka portal Coretax untuk memakai fitur ekspor.";
+}
+
 export function getPageExportSource(url = location.href): ExportSource | null {
 	if (isOutputTaxPage(url)) return "OUTPUT_TAX";
 	if (isInputTaxPage(url)) return "INPUT_TAX";

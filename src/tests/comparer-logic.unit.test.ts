@@ -13,6 +13,7 @@ import {
   runComparison,
   rerunComparison,
   prepareComparison,
+  applyComparerDefaults,
 } from "../content/comparer-logic";
 import type { ComparisonResult, ComparisonStatus } from "../content/comparer";
 
@@ -509,5 +510,56 @@ describe("prepareComparison", () => {
     if (result.action === "error") {
       expect(result.message).toContain("Referensi, DPP, PPN");
     }
+  });
+});
+
+// ── Stored comparer defaults ─────────────────────────────────────────────────
+// The popup's Comparer settings seed the session so the panel does not have to
+// be filled in by hand on every visit.
+
+describe("applyComparerDefaults", () => {
+  const DEFAULTS = { tolerance: 150, dailyDates: "15, 31", statusFilter: ["BERBEDA", "COCOK"] as const };
+
+  it("copies tolerance, the daily dates and the status filter onto the session", () => {
+    const session = createComparerSession();
+
+    applyComparerDefaults(session, { ...DEFAULTS, statusFilter: [...DEFAULTS.statusFilter] });
+
+    expect(session.tolerance).toBe(150);
+    expect(session.dailyDates).toEqual([15, 31]);
+    // Canonical order, matching what the panel's own applyFilter would produce.
+    expect(session.statusFilter).toEqual(["COCOK", "BERBEDA"]);
+  });
+
+  it("parses the daily dates with the panel's own parser", () => {
+    const session = createComparerSession();
+
+    // Junk days are dropped exactly as the panel would drop them, so a seeded
+    // session can never hold a value the panel itself would have rejected.
+    applyComparerDefaults(session, { tolerance: 0, dailyDates: "1, 40, abc, 31", statusFilter: [] });
+
+    expect(session.dailyDates).toEqual([1, 31]);
+  });
+
+  it("leaves an empty status filter meaning 'all statuses'", () => {
+    const session = createComparerSession();
+
+    applyComparerDefaults(session, { tolerance: 0, dailyDates: "", statusFilter: [] });
+
+    expect(session.statusFilter).toEqual([]);
+    expect(session.dailyDates).toEqual([]);
+    expect(session.tolerance).toBe(0);
+  });
+
+  it("does not share the stored array with the session", () => {
+    const stored = ["COCOK"] as const;
+    const session = createComparerSession();
+
+    applyComparerDefaults(session, { tolerance: 0, dailyDates: "", statusFilter: [...stored] });
+    session.statusFilter.push("BERBEDA");
+
+    // The caller's array is untouched: a later save must not inherit the
+    // session's mutations.
+    expect(stored).toEqual(["COCOK"]);
   });
 });

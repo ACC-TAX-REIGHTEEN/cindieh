@@ -28,6 +28,9 @@ const SEARCH_CLICK_DELAY_MS = 100;
 const EXPORT_MODE_KEY = "cindiehExportMode";
 const DEBUG_KEY = "cindieh:debug";
 const MIRROR_MARKER_KEY = "cindieh:debug:ext";
+const ENABLED_KEY = "cindiehEnabled";
+const DELAY_PRESET_KEY = "cindiehDelayPreset";
+const PACING_STORAGE_KEY = "cindieh:pacing";
 
 // ── Doubles ───────────────────────────────────────────
 
@@ -232,6 +235,82 @@ afterEach(() => {
 });
 
 // ── The async gate & mirror ordering ──────────────────
+
+// ── Popup preferences ─────────────────────────────────
+
+describe("main boot — popup preferences", () => {
+  const badge = (env: Awaited<ReturnType<typeof bootMain>>) =>
+    env.doc.getElementById("ch-floating-info-container");
+
+  it("paints nothing at all while the master switch reads as off", async () => {
+    const env = await bootMain();
+
+    env.fire("load");
+    await env.resolveStored({ [ENABLED_KEY]: false });
+
+    // Not "paints then removes": the first paint waits for the stored value, so
+    // a disabled extension never flashes a toolbar into the page.
+    expect(badge(env)).toBeNull();
+    expect(env.script()).toBeNull();
+    // The pacing mirror IS written either way. It is not part of the UI, and
+    // writing it now is what lets a later re-enable pace correctly without a
+    // reload — the scraper reads it when a run starts.
+    expect(env.page.map.get(PACING_STORAGE_KEY)).toBe("normal");
+  });
+
+  it("paints on open when the switch is on, then removes it when the popup flips it off", async () => {
+    const env = await bootMain();
+
+    env.fire("load");
+    await env.resolveStored({ [ENABLED_KEY]: true });
+    expect(badge(env)).not.toBeNull();
+
+    env.emitStorageChange({ [ENABLED_KEY]: { newValue: false } });
+
+    expect(badge(env)).toBeNull();
+    // The scraper keeps its prototype patches (see AGENTS.md), so it has to be
+    // told to drop the captured request instead.
+    expect(env.messages.some((m) => m.data.type === "RESET_SCRAPER")).toBe(true);
+  });
+
+  it("restores the toolbar when the switch is turned back on, without a reload", async () => {
+    const env = await bootMain();
+
+    env.fire("load");
+    await env.resolveStored({ [ENABLED_KEY]: false });
+    expect(badge(env)).toBeNull();
+
+    env.emitStorageChange({ [ENABLED_KEY]: { newValue: true } });
+
+    expect(badge(env)).not.toBeNull();
+  });
+
+  it("mirrors the pacing preset into page storage and follows a later change", async () => {
+    const env = await bootMain();
+
+    env.fire("load");
+    await env.resolveStored({ [DELAY_PRESET_KEY]: "sabar" });
+
+    // The MAIN world cannot read extension storage; page storage is the channel.
+    expect(env.page.map.get(PACING_STORAGE_KEY)).toBe("sabar");
+
+    env.emitStorageChange({ [DELAY_PRESET_KEY]: { newValue: "normal" } });
+
+    expect(env.page.map.get(PACING_STORAGE_KEY)).toBe("normal");
+  });
+
+  it("ignores a storage area that is not `local`", async () => {
+    const env = await bootMain();
+
+    env.fire("load");
+    await env.resolveStored({ [ENABLED_KEY]: true });
+
+    env.emitStorageChange({ [ENABLED_KEY]: { newValue: false } }, "sync");
+
+    // Nothing in this extension reads `sync`; a change there must not act.
+    expect(badge(env)).not.toBeNull();
+  });
+});
 
 describe("main boot — async debug gate", () => {
   it("holds scraper injection until the stored switch has been read", async () => {

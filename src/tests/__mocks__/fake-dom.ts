@@ -66,7 +66,20 @@ export class FakeEl {
     };
   }
 
+  /**
+   * Mirror the DOM contract that appending an already-parented node MOVES it
+   * instead of cloning it — the in-place toolbar reshaping in ui.ts depends on
+   * a node appearing under exactly one parent.
+   */
+  private detachFromPreviousParent(child: FakeEl): void {
+    const previous = child.parentElement;
+    if (!previous) return;
+    const idx = previous.children.indexOf(child);
+    if (idx > -1) previous.children.splice(idx, 1);
+  }
+
   appendChild(child: FakeEl): FakeEl {
+    this.detachFromPreviousParent(child);
     this.children.push(child);
     child.parentElement = this;
     child.nextSibling = null;
@@ -81,6 +94,7 @@ export class FakeEl {
     if (!ref) return this.appendChild(child);
     const idx = this.children.indexOf(ref);
     if (idx === -1) return this.appendChild(child);
+    this.detachFromPreviousParent(child);
     this.children.splice(idx, 0, child);
     child.parentElement = this;
     this.doc.register(child);

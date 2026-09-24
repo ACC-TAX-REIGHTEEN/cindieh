@@ -7,9 +7,14 @@
 // build), and an install event afterwards does log — which is the line a
 // developer actually goes looking for when the switch seems dead.
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  COMPLETION_STORAGE_KEY,
+  buildCompletionRecord,
+} from "../content/completion-notice";
 
 const DEBUG_KEY = "cindieh:debug";
 const WORKER_URL = "chrome-extension://abcdefghijklmnop/background/background.js";
+const ICON_URL = "chrome-extension://abcdefghijklmnop/icons/icon128.png";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -19,13 +24,30 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+type StorageChangeListener = (
+  changes: Record<string, { newValue?: unknown }>,
+  areaName: string,
+) => void;
+
 function makeFakeBrowser(
   store: Map<string, unknown>,
   options: { readThrows?: boolean; heldRead?: { promise: Promise<Record<string, unknown>> } } = {},
 ) {
   const onInstalled: Array<() => void> = [];
+  const onChanged: StorageChangeListener[] = [];
+  const notifications = {
+    // Typed so the assertions can read the (id, options) the worker passed.
+    create: vi.fn(
+      async (
+        id: string,
+        options: { type: string; iconUrl: string; title: string; message: string },
+      ) => `${id}:${options.type}`,
+    ),
+  };
   return {
     onInstalled,
+    onChanged,
+    notifications,
     api: {
       storage: {
         local: {
@@ -37,13 +59,20 @@ function makeFakeBrowser(
             return store.has(key) ? { [key]: store.get(key) } : {};
           }),
         },
+        onChanged: {
+          addListener: (fn: StorageChangeListener) => {
+            onChanged.push(fn);
+          },
+        },
       },
+      notifications,
       runtime: {
         onInstalled: {
           addListener: (fn: () => void) => {
             onInstalled.push(fn);
           },
         },
+        getURL: (assetPath: string) => `chrome-extension://abcdefghijklmnop/${assetPath}`,
       },
     },
   };
@@ -73,9 +102,15 @@ async function bootBackground(
   return {
     store,
     onInstalled: fake.onInstalled,
+    onChanged: fake.onChanged,
+    notifications: fake.notifications,
     log,
     debug,
     settle,
+    /** Fire a storage change as the browser would when a key is written. */
+    emitChange(key: string, newValue: unknown, areaName = "local"): void {
+      for (const fn of fake.onChanged) fn({ [key]: { newValue } }, areaName);
+    },
     /** Release a held read (see holdRead) with the stored keys to apply. */
     async resolveRead(keys: Record<string, unknown> = {}): Promise<void> {
       held.resolve(keys);
@@ -144,5 +179,71 @@ describe("background boot", () => {
     expect(env.debug.isDebugEnabled()).toBe(false);
     env.onInstalled[0]();
     expect(env.log).not.toHaveBeenCalled();
+  });
+});
+
+describe("background — completion notifications", () => {
+  it("registers one storage listener", async () => {
+    const env = await bootBackground();
+
+    expect(env.onChanged).toHaveLength(1);
+  });
+
+  it("announces a fresh completion with the extension icon", async () => {
+    const env = await bootBackground();
+
+    env.emitChange(
+      COMPLETION_STORAGE_KEY,
+      buildCompletionRecord("scrape", "120 data diproses, tanpa kegagalan."),
+    );
+    await env.settle();
+
+    expect(env.notifications.create).toHaveBeenCalledOnce();
+    const [, options] = env.notifications.create.mock.calls[0];
+    expect(options.title).toBe("Ekspor data selesai");
+    expect(options.message).toBe("120 data diproses, tanpa kegagalan.");
+    expect(options.iconUrl).toBe(ICON_URL);
+  });
+
+  it("labels a bulk PDF completion as a download", async () => {
+    const env = await bootBackground();
+
+    env.emitChange(COMPLETION_STORAGE_KEY, buildCompletionRecord("pdf", "8 data diproses."));
+    await env.settle();
+
+    const [, options] = env.notifications.create.mock.calls[0];
+    expect(options.title).toBe("Unduhan PDF selesai");
+  });
+
+  it("drops a record left over from an earlier session", async () => {
+    const env = await bootBackground();
+    const stale = buildCompletionRecord("scrape", "lama.", Date.now() - 5 * 60_000);
+
+    env.emitChange(COMPLETION_STORAGE_KEY, stale);
+    await env.settle();
+
+    // The tab that wrote it is long gone; announcing it now would be a toast
+    // for something the user never watched finish.
+    expect(env.notifications.create).not.toHaveBeenCalled();
+  });
+
+  it("ignores another storage area and unrecognizable payloads", async () => {
+    const env = await bootBackground();
+
+    env.emitChange(COMPLETION_STORAGE_KEY, buildCompletionRecord("scrape", "x"), "sync");
+    env.emitChange(COMPLETION_STORAGE_KEY, { kind: "nonsense", id: 1, at: Date.now() });
+    env.emitChange(COMPLETION_STORAGE_KEY, null);
+    await env.settle();
+
+    expect(env.notifications.create).not.toHaveBeenCalled();
+  });
+
+  it("contains a rejected create instead of leaking an unhandled rejection", async () => {
+    const env = await bootBackground();
+    env.notifications.create.mockRejectedValueOnce(new Error("permission revoked"));
+
+    env.emitChange(COMPLETION_STORAGE_KEY, buildCompletionRecord("scrape", "x"));
+
+    await expect(env.settle()).resolves.toBeUndefined();
   });
 });

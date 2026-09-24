@@ -10,7 +10,11 @@
 }
 
 body {
-  min-width: 280px;
+  min-width: 320px;
+  max-width: 360px;
+  /* The popup grew past a comfortable height; scroll rather than clip. */
+  max-height: 560px;
+  overflow-y: auto;
   margin: 0;
   background: #ECEAE1;
 }
@@ -38,12 +42,36 @@ p {
   font-size: 12px;
 }
 
+.status-line {
+  font-size: 11px;
+}
+
 .mode-group {
   display: grid;
   gap: 8px;
   margin: 0;
   padding: 0;
   border: 0;
+}
+
+.group-legend {
+  padding: 0;
+  color: #1B2436;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.group-hint {
+  color: #4A5468;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.group-hint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
 }
 
 .mode-option {
@@ -85,6 +113,84 @@ small {
   color: #4A5468;
   font-size: 11px;
   line-height: 1.35;
+}
+
+/* ── Newer controls ───────────────────────────────── */
+
+.radio-row,
+.button-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.radio-inline,
+.check-inline {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.field > span {
+  color: #1B2436;
+}
+
+.field input[type="text"],
+.field input[type="number"],
+.field select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid rgba(27, 36, 54, 0.20);
+  border-radius: 6px;
+  background: #F6F5EF;
+  color: #1B2436;
+  font: inherit;
+  font-size: 12px;
+}
+
+.field input:focus,
+.field select:focus {
+  outline: 2px solid rgba(194, 59, 34, 0.35);
+  outline-offset: 1px;
+}
+
+.field input,
+.field select {
+  margin: 0;
+  width: 100%;
+  height: auto;
+}
+
+.check-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+
+.popup-button {
+  flex: 1 1 auto;
+  padding: 7px 10px;
+  border: 1px solid rgba(27, 36, 54, 0.20);
+  border-radius: 6px;
+  background: #F6F5EF;
+  color: #1B2436;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.popup-button:hover {
+  border-color: #C23B22;
+  background: rgba(194, 59, 34, 0.08);
 }
 
 .status {

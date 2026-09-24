@@ -26,6 +26,10 @@ import {
   type ActionDeps,
 } from "../content/main-actions";
 import type { ExportData } from "../content/exporter";
+import {
+  DEFAULT_BULK_CONFIRM_THRESHOLD,
+  shouldConfirmBulkDownload,
+} from "../shared/extension-preferences";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -38,6 +42,11 @@ function makeDeps(overrides: Partial<ActionDeps> = {}): ActionDeps {
     updatePanelError: vi.fn(),
     getMultiInvoiceNumbers: vi.fn(() => []),
     isEfakturPage: vi.fn(() => true),
+    // The real predicate over the documented default threshold, so the cases
+    // below exercise the shipped decision instead of a stub that always says yes.
+    shouldConfirmBulkDownload: vi.fn((count: number) =>
+      shouldConfirmBulkDownload(count, DEFAULT_BULK_CONFIRM_THRESHOLD),
+    ),
     exportXLSX: vi.fn(),
     exportCSV: vi.fn(),
     triggerSearch: vi.fn(),
@@ -478,6 +487,36 @@ describe("startPdfDownload", () => {
     const deps = makeDeps();
 
     startPdfDownload(many, createContentState(), deps);
+
+    expect(globalThis.confirm).toHaveBeenCalledOnce();
+  });
+
+  it("does not ask at exactly the threshold — only ABOVE it counts", () => {
+    const exactly = Array.from({ length: 10 }, (_, i) => ({ TaxInvoiceNumber: `INV-${i}` }));
+
+    startPdfDownload(exactly, createContentState(), makeDeps());
+
+    expect(globalThis.confirm).not.toHaveBeenCalled();
+  });
+
+  it("stays silent when the preference turns confirmation off (threshold 0)", () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ TaxInvoiceNumber: `INV-${i}` }));
+    const deps = makeDeps({ shouldConfirmBulkDownload: vi.fn(() => false) });
+
+    const started = startPdfDownload(many, createContentState(), deps);
+
+    expect(globalThis.confirm).not.toHaveBeenCalled();
+    expect(started).toBe(true);
+    expect(deps.postToScraper).toHaveBeenCalledOnce();
+  });
+
+  it("asks once the count passes a lowered threshold", () => {
+    const few = Array.from({ length: 3 }, (_, i) => ({ TaxInvoiceNumber: `INV-${i}` }));
+    const deps = makeDeps({
+      shouldConfirmBulkDownload: vi.fn((count: number) => shouldConfirmBulkDownload(count, 2)),
+    });
+
+    startPdfDownload(few, createContentState(), deps);
 
     expect(globalThis.confirm).toHaveBeenCalledOnce();
   });

@@ -321,6 +321,15 @@ button.p-button.ch-btn-highlight.ch-btn-danger:hover {
     vertical-align: middle;
 }
 
+/* Caret half of the opt-in one-click export button: the main button exports,
+   this one opens the menu. Hidden (via .ch-hidden) in the default mode, where
+   the chevron lives inside the main button instead. */
+button.p-button.ch-export-dropdown-caret {
+    margin-left: 2px;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+}
+
 .ch-export-dropdown-menu {
     position: absolute;
     top: calc(100% + 4px);
@@ -347,6 +356,17 @@ button.p-button.ch-btn-highlight.ch-btn-danger:hover {
     cursor: pointer;
     text-align: left;
     transition: background 0.15s;
+}
+
+/* The format the popup stores as the user's usual pick. */
+.ch-export-dropdown-item-default {
+    font-weight: 600;
+}
+
+.ch-export-item-check {
+    margin-left: auto;
+    color: var(--ch-blue-border);
+    font-size: 12px;
 }
 
 .ch-export-dropdown-item:hover {

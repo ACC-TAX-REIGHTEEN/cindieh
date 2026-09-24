@@ -41,6 +41,13 @@ export interface ScrapeComplete {
   /** Invoice numbers whose targeted lookup exhausted all retries. */
   failedInvoices?: string[];
   failureCount?: number; // exhausted invoice lookups or failed PDF downloads
+  /**
+   * What produced this completion. A bulk PDF run and a data scrape both end in
+   * SCRAPE_COMPLETE with the same shape, so the content script needs this to
+   * label its "selesai" notification — the counts alone cannot tell them apart.
+   * Absent means a data scrape (the behaviour before this field existed).
+   */
+  kind?: "scrape" | "pdf";
 }
 
 export interface ScrapeError {

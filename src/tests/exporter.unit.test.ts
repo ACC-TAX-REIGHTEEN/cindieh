@@ -138,6 +138,67 @@ describe("generateDynamicFilename — prefix for each ExportSource", () => {
 });
 
 // ============================================================
+// generateDynamicFilename — user filename prefix (popup preference)
+// ============================================================
+describe("generateDynamicFilename — user filenamePrefix", () => {
+	it("places the user prefix in front of the per-source prefix", () => {
+		const exportData: ExportData = {
+			data: [],
+			fields: [],
+			source: "OUTPUT_TAX",
+			filenameHint: "202604",
+			filenamePrefix: "PTABC-",
+		};
+
+		// The per-source prefix still ends the name, so the README's documented
+		// shape (`FPK-042026`) remains recognizable inside it.
+		expect(generateDynamicFilename(exportData)).toBe("PTABC-FPK-042026");
+	});
+
+	it("leaves the filename untouched when no prefix is set", () => {
+		const base: ExportData = { data: [], fields: [], source: "OUTPUT_TAX", filenameHint: "202604" };
+
+		expect(generateDynamicFilename({ ...base, filenamePrefix: "" })).toBe(
+			generateDynamicFilename(base),
+		);
+		expect(generateDynamicFilename({ ...base, filenamePrefix: undefined })).toBe(
+			generateDynamicFilename(base),
+		);
+	});
+
+	it("sanitizes a prefix that did not come through storage", () => {
+		// ExportData is constructed in several places (tests, direct callers), so
+		// the filename must not trust the value just because the popup sanitizes.
+		const exportData: ExportData = {
+			data: [],
+			fields: [],
+			source: "OUTPUT_TAX",
+			filenameHint: "202604",
+			filenamePrefix: "A/B:C?",
+		};
+
+		// The illegal characters are dropped, not replaced: the user owns the
+		// separator (the placeholder suggests `PTABC-`), and inventing one would
+		// make `AB` + `C` and `ABC` produce different names from the same intent.
+		expect(generateDynamicFilename(exportData)).toBe("ABCFPK-042026");
+	});
+
+	it("applies the prefix to the data-derived and fallback filenames too", () => {
+		const withRows: ExportData = {
+			data: [{ TaxInvoiceYear: "2026", TaxInvoicePeriod: "04" }],
+			fields: [],
+			source: "OUTPUT_TAX",
+			filenamePrefix: "X-",
+		};
+
+		expect(generateDynamicFilename(withRows).startsWith("X-FPK-")).toBe(true);
+		expect(generateDynamicFilename({ data: [], fields: [], filenamePrefix: "X-" }).startsWith("X-FPK-")).toBe(
+			true,
+		);
+	});
+});
+
+// ============================================================
 // generateDynamicFilename — filenameHint handling
 // ============================================================
 describe("generateDynamicFilename — filenameHint formats", () => {

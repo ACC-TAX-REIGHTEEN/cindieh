@@ -43,6 +43,7 @@ import { createDownloadNets } from "./scraper-nets";
 import { createXhrPatches, type FilterState } from "./scraper-xhr-patches";
 import { createMessageDispatcher } from "./postmessage-guard";
 import { createScrapeRuns } from "./scraper-run";
+import { readPacingFromPageWorld } from "./page-pacing";
 import {
   REFERENCE_FIELD,
   REFERENCE_WIDE_MATCH_MODE,
@@ -96,6 +97,9 @@ import {
     delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     timeout: TIMEOUT,
     maxErrors: MAX_ERRORS,
+    // Read per run, not at module load: the popup's pacing choice then applies
+    // to the next export in an already-open tab, without a reload.
+    getPacing: readPacingFromPageWorld,
 
     // ── Request capture ────────────────────────────────
     getLastCaptured: () => lastCaptured,

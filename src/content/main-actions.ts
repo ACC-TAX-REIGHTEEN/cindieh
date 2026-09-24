@@ -17,6 +17,8 @@ import { showPanel, updatePanelProgress, updatePanelError, updatePanelIdle } fro
 import { getMultiInvoiceNumbers } from "./ui-filters";
 import { postToScraper } from "./bridge";
 import { debugLog, debugWarn } from "./debug";
+import { getPreferences } from "./preferences";
+import { shouldConfirmBulkDownload } from "../shared/extension-preferences";
 
 // ── Types ────────────────────────────────────────────
 
@@ -98,6 +100,12 @@ export interface ActionDeps {
   getMultiInvoiceNumbers: () => string[];
   /** True on efaktur pages (PPN Keluaran/Masukan/Retur) — the only pages where the No. Faktur filter applies. */
   isEfakturPage: () => boolean;
+  /**
+   * Whether a bulk download of `count` files must be confirmed first. Injected
+   * because the answer comes from the popup preference, which is read
+   * synchronously from the preferences snapshot.
+   */
+  shouldConfirmBulkDownload: (count: number) => boolean;
   exportXLSX: (data: ExportData) => void;
   exportCSV: (data: ExportData) => void;
   /** Find and click the Coretax search/refresh button. */
@@ -122,6 +130,8 @@ export function createActionDeps(): ActionDeps {
     updatePanelIdle,
     getMultiInvoiceNumbers,
     isEfakturPage: () => isEfakturPage(),
+    shouldConfirmBulkDownload: (count) =>
+      shouldConfirmBulkDownload(count, getPreferences().bulkConfirmThreshold),
     exportXLSX,
     exportCSV,
     triggerSearch: () => triggerSearch(),
@@ -202,6 +212,15 @@ export function startScrape(
  *
  * Accepts an optional ContentState + ActionDeps for testability.
  */
+/**
+ * Body of the pre-download confirmation. The threshold that decides WHETHER to
+ * ask lives in the popup preference; the wording lives here, next to the flow it
+ * interrupts.
+ */
+export function bulkDownloadConfirmMessage(count: number): string {
+  return `Anda akan mengunduh ${count} file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?`;
+}
+
 export function startPdfDownload(
   data: Record<string, unknown>[],
   state: ContentState = contentState,
@@ -212,10 +231,8 @@ export function startPdfDownload(
     globalThis.alert?.("Tidak ada faktur yang cocok dengan filter No. Faktur.\nKosongkan filter atau periksa nomor faktur.");
     return false;
   }
-  if (filtered.length > 10) {
-    const confirmed = globalThis.confirm?.(
-      `Anda akan mengunduh ${filtered.length} file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?`,
-    );
+  if (deps.shouldConfirmBulkDownload(filtered.length)) {
+    const confirmed = globalThis.confirm?.(bulkDownloadConfirmMessage(filtered.length));
     if (!confirmed) return false;
   }
   state.isRunning = true;
@@ -267,6 +284,7 @@ export function handleExportAction(
       filenameHint: state.lastExportMeta?.filenameHint,
       source: state.lastExportMeta?.source,
       mode: state.exportMode,
+      filenamePrefix: getPreferences().filenamePrefix,
     };
     if (format === "xlsx") {
       deps.exportXLSX(exportData);

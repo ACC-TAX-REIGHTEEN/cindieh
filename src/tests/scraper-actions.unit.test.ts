@@ -88,6 +88,21 @@ describe("getPaginateConfig", () => {
     expect(getPaginateConfig("PPH_21_L2").delayMs).toBe(150);
     expect(getPaginateConfig("OUTPUT_TAX").delayMs).toBe(100);
   });
+
+  it("defaults to the normal preset when no pacing is given", () => {
+    expect(getPaginateConfig("OUTPUT_TAX").delayMs).toBe(getPaginateConfig("OUTPUT_TAX", "normal").delayMs);
+  });
+
+  it("scales only the delay, never the page size", () => {
+    // The step is capped by the portal's own UI limits; a slower preset must
+    // not quietly change how many rows are requested at once.
+    for (const preset of ["normal", "hati-hati", "sabar"] as const) {
+      expect(getPaginateConfig("OUTPUT_TAX", preset).step).toBe(500);
+      expect(getPaginateConfig("SPT_A2", preset).step).toBe(1000);
+    }
+    expect(getPaginateConfig("OUTPUT_TAX", "hati-hati").delayMs).toBe(200);
+    expect(getPaginateConfig("SPT_A2", "sabar").delayMs).toBe(600);
+  });
 });
 
 // ── scrapePaginated ───────────────────────────────────────────────────────────
@@ -182,6 +197,31 @@ describe("scrapePaginated", () => {
     expect(page).toBe(0);
     expect(allData).toEqual([]);
     expect(mockedXhrRequest).not.toHaveBeenCalled();
+  });
+
+  it("waits the scaled inter-page delay for the active pacing preset", async () => {
+    // A full first page is what makes the loop pace, so the step has to match
+    // the row count; the short second page then ends the run.
+    mockedXhrRequest
+      .mockResolvedValueOnce([{ Reference: "R1" }, { Reference: "R2" }])
+      .mockResolvedValueOnce([{ Reference: "R3" }]);
+    const ctx = makeCtx({ getPacing: () => "sabar" });
+
+    await scrapePaginated(makeCaptured(), 2, ctx);
+
+    // OUTPUT_TAX is 100 ms at normal pacing; "sabar" is 4x.
+    expect(ctx.delay).toHaveBeenCalledWith(400);
+  });
+
+  it("keeps the code's own floor when nothing sets a pacing", async () => {
+    mockedXhrRequest
+      .mockResolvedValueOnce([{ Reference: "R1" }, { Reference: "R2" }])
+      .mockResolvedValueOnce([{ Reference: "R3" }]);
+    const ctx = makeCtx();
+
+    await scrapePaginated(makeCaptured(), 2, ctx);
+
+    expect(ctx.delay).toHaveBeenCalledWith(100);
   });
 
   it("cancels an in-flight scrape without publishing an error or corrupting its replacement", async () => {
@@ -471,5 +511,55 @@ describe("scrapeByInvoices", () => {
     expect(ctx.sendToContent).toHaveBeenCalledWith(expect.objectContaining({
       type: "SCRAPE_COMPLETE", partial: true, failureCount: 2,
     }));
+  });
+});
+
+// ── Pacing preset reaches every delay ────────────────────────────────────────
+// The preset lives in the popup and is applied inside the MAIN world, so each
+// delay site has to read it: a preset that only slowed the paginated loop would
+// leave the two heaviest paths (bulk PDF, per-invoice lookup) untouched.
+
+describe("pacing preset", () => {
+  beforeEach(() => {
+    mockedXhrRequest.mockReset();
+    mockedXhrRequestByInvoice.mockReset();
+  });
+
+  it("scales the bulk e-faktur PDF delay", async () => {
+    vi.mocked(xhrDownloadEfakturPdf).mockResolvedValue("pdf");
+    const ctx = makeCtx({ getPacing: () => "sabar" });
+
+    await startPdfDownload([{ Id: 1 }, { Id: 2 }], makeCaptured(), ctx);
+
+    expect(ctx.delay).toHaveBeenCalledWith(3200); // 800 ms x 4
+  });
+
+  it("scales the bulk withholding PDF delay", async () => {
+    vi.mocked(xhrDownloadWithholdingPdf).mockResolvedValue("pdf");
+    // The withholding flow scrapes first (one short page) and then downloads.
+    mockedXhrRequest.mockResolvedValue([{ Id: 1 }]);
+    const ctx = makeCtx({ getPacing: () => "hati-hati" });
+
+    await startScraping(async () => makeCaptured("WITHHOLDING_SLIPS"), ctx);
+
+    expect(ctx.delay).toHaveBeenCalledWith(1600); // 800 ms x 2
+  });
+
+  it("scales the per-invoice lookup delay", async () => {
+    mockedXhrRequestByInvoice.mockResolvedValue([{ Reference: "R1" }, { Reference: "R2" }]);
+    const ctx = makeCtx({ getPacing: () => "sabar" });
+
+    await scrapeByInvoices(["INV-1"], makeCaptured(), ctx);
+
+    expect(ctx.delay).toHaveBeenCalledWith(200); // 50 ms x 4
+  });
+
+  it("leaves the documented delays alone at the normal preset", async () => {
+    vi.mocked(xhrDownloadEfakturPdf).mockResolvedValue("pdf");
+    const ctx = makeCtx({ getPacing: () => "normal" });
+
+    await startPdfDownload([{ Id: 1 }], makeCaptured(), ctx);
+
+    expect(ctx.delay).toHaveBeenCalledWith(800);
   });
 });

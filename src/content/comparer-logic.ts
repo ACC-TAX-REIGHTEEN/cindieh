@@ -9,6 +9,7 @@
 
 import type { ComparisonResult, ComparisonStatus, PastedRow } from "./comparer";
 import { compareData, parsePastedData } from "./comparer";
+import { COMPARISON_STATUSES, type ComparerDefaults } from "../shared/extension-preferences";
 
 // ── Session state ──────────────────────────────────────
 
@@ -37,6 +38,27 @@ export function createComparerSession(): ComparerSession {
     refLainEnabled: true,
     viewedRefs: new Set(),
   };
+}
+
+/**
+ * Seed a session's option fields from the stored defaults (popup → Comparer).
+ * Pure: the daily-dates string goes through the same parser the panel uses, so a
+ * seeded value can never be one the panel itself would reject. The panel's own
+ * controls keep overriding these per session — this only removes retyping.
+ */
+export function applyComparerDefaults(
+  session: ComparerSession,
+  defaults: ComparerDefaults,
+): void {
+  session.tolerance = defaults.tolerance;
+  // Re-emit through the canonical status list for the same reason the storage
+  // normalizer does: the session's order is what the panel labels itself from,
+  // and a caller holding a hand-built defaults object would otherwise seed a
+  // differently-ordered filter than the stored one it mirrors.
+  session.statusFilter = COMPARISON_STATUSES.filter((status) =>
+    defaults.statusFilter.includes(status),
+  );
+  session.dailyDates = parseDailyDates(defaults.dailyDates);
 }
 
 // ── Pagination ─────────────────────────────────────────
