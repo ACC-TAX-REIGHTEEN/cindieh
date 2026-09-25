@@ -179,6 +179,19 @@ export function applyMultiInvoiceFilter(
 }
 
 /**
+ * The START_SCRAPE fields a requested export format implies. On a withholding
+ * page the same scrape normally ends in a bulk PDF download, so an XLSX/CSV
+ * request has to say "rows only" or the sheet would arrive trailing one PDF per
+ * slip. Exported because the INJECTED_READY resend in main.ts must repeat the
+ * same intent when the first message was sent before the scraper existed.
+ */
+export function scrapeIntentForFormat(
+  format: ContentState["pendingExportFormat"],
+): { skipPdf?: boolean } {
+  return format && format !== "pdf" ? { skipPdf: true } : {};
+}
+
+/**
  * Start a full scrape: show the panel, reset scraped data, and post
  * START_SCRAPE to the page world.
  *
@@ -188,6 +201,7 @@ export function applyMultiInvoiceFilter(
 export function startScrape(
   state: ContentState = contentState,
   deps: ActionDeps = createActionDeps(),
+  options: { skipPdf?: boolean } = {},
 ): void {
   deps.showPanel();
   state.isRunning = true;
@@ -202,7 +216,7 @@ export function startScrape(
     status: "Menunggu...",
   };
   deps.updatePanelProgress(0, 0, "0s", "Menangkap request dari Angular...");
-  deps.postToScraper({ type: "START_SCRAPE" });
+  deps.postToScraper({ type: "START_SCRAPE", ...options });
 }
 
 /**
@@ -311,6 +325,6 @@ export function handleExportAction(
   }
 
   state.pendingExportFormat = format;
-  startScrape(state, deps);
+  startScrape(state, deps, scrapeIntentForFormat(format));
   return true;
 }

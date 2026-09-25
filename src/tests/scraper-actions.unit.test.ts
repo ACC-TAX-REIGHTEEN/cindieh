@@ -514,6 +514,44 @@ describe("scrapeByInvoices", () => {
   });
 });
 
+// ── Data-only withholding scrape (skipPdf) ───────────────────────────────────
+// A withholding scrape normally ends by downloading every slip's PDF. The
+// XLSX/CSV export path asks the same scrape for rows only, so the flag has to
+// suppress the download and still report a complete (data) result.
+
+describe("data-only withholding scrape", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockedXhrRequest.mockReset();
+  });
+
+  it("collects the rows without downloading a single PDF", async () => {
+    mockedXhrRequest.mockResolvedValue([{ Id: 1 }, { Id: 2 }]);
+    const ctx = makeCtx();
+
+    await startScraping(async () => makeCaptured("WITHHOLDING_SLIPS"), ctx, { skipPdf: true });
+
+    expect(xhrDownloadWithholdingPdf).not.toHaveBeenCalled();
+    expect(ctx.emitPdfDownload).not.toHaveBeenCalled();
+    expect(ctx.sendToContent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "SCRAPE_COMPLETE", kind: "scrape", total: 2 }),
+    );
+  });
+
+  it("still bulk-downloads when the flag is absent", async () => {
+    mockedXhrRequest.mockResolvedValue([{ Id: 1 }]);
+    vi.mocked(xhrDownloadWithholdingPdf).mockResolvedValue("pdf");
+    const ctx = makeCtx();
+
+    await startScraping(async () => makeCaptured("WITHHOLDING_SLIPS"), ctx);
+
+    expect(xhrDownloadWithholdingPdf).toHaveBeenCalledTimes(1);
+    expect(ctx.sendToContent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "SCRAPE_COMPLETE", kind: "pdf" }),
+    );
+  });
+});
+
 // ── Pacing preset reaches every delay ────────────────────────────────────────
 // The preset lives in the popup and is applied inside the MAIN world, so each
 // delay site has to read it: a preset that only slowed the paginated loop would

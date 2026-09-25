@@ -23,7 +23,7 @@ Halaman yang didukung (ekspor XLSX/CSV):
 - **e-Faktur** — PPN Keluaran, PPN Masukan, Retur PPN Keluaran, Retur PPN Masukan
 - **SPT Masa PPN** — Lampiran A2 (PPN Keluaran) dan Lampiran B2 (PPN Masukan)
 - **SPT PPh 21/26** — Lampiran L1A, L1B, L2, L3
-- **Bukti Potong (Withholding Slips)** — khusus unduhan PDF massal (tanpa ekspor Excel/CSV)
+- **Bukti Potong (Withholding Slips)** — kolom: No Bukti Potong, Tanggal, Masa, Tahun, Nama Pemotong, NPWP Pemotong. Halaman ini juga punya tombol unduhan PDF massal tersendiri.
 
 Data yang dihasilkan sudah diformat untuk kemudahan pengguna:
 - Format tanggal dikonversi otomatis dari ISO string (`2026-07-01T00:00:00`) ke format Indonesia standar (`01/07/2026`)
@@ -42,6 +42,8 @@ Alih-alih mengklik tombol unduh satu per satu seperti di Coretax bawaan, Cindieh
 - **Bukti Potong:**
   Format nama: `MM-YYYY-NomorBuktiPotong-NamaPemotong.pdf`
   Contoh: `07-2026-BP-001-PT MITRA SEJAHTERA.pdf`
+
+**Bukti Potong:** di halaman ini tombol **Unduh PDF** berdiri sendiri di samping tombol **Ekspor**. Memilih ekspor XLSX/CSV **tidak** ikut mengunduh PDF — Cindieh hanya mengambil baris datanya, jadi Anda bisa mengambil spreadsheet tanpa mengunduh satu PDF per bukti potong. Mode *Asli* menampilkan seluruh field Coretax apa adanya bila kolom di atas belum cukup.
 
 **Filter No. Faktur (khusus e-Faktur):** di halaman e-Faktur, unduhan PDF bisa dibatasi ke nomor faktur tertentu. Klik tombol **"No. Faktur"** di toolbar, tempel daftar nomor faktur (satu per baris, atau dipisah koma/titik koma), lalu klik **Unduh PDF** — hanya faktur yang cocok yang akan diunduh. Filter ini hanya tersedia di halaman e-Faktur (PPN Keluaran, PPN Masukan, Retur) dan tidak muncul di halaman Bukti Potong.
 

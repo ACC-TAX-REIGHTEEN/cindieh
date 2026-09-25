@@ -112,7 +112,7 @@ describe("processData — OUTPUT_TAX (default hardcoded fields)", () => {
 
 // ── INPUT_TAX ─────────────────────────────────────────────────────────────────
 
-describe("processData � INPUT_TAX", () => {
+describe("processData � INPUT_TAX", () => {
   const row = {
     TaxInvoiceDate: "2026-03-10T00:00:00+07:00",
     TaxInvoicePeriod: "TD.00703",
@@ -384,6 +384,76 @@ describe("processData — PPH_21_L1A / L1B / L2 / L3 (dynamic fields)", () => {
       expect(result.data[0].PayDate).toBe("15/07/2026");
     });
   }
+});
+
+// ── WITHHOLDING_SLIPS ────────────────────────────────────────────────────────
+// Bukti Potong rows were PDF-only until now: the grid rows were already
+// captured, but cleaned mode had no mapping for them and fell through to the
+// OUTPUT_TAX columns, which produce an empty sheet. These cases pin the two
+// number spellings the rest of the code uses and the slip date as the only
+// period signal a withholding row carries.
+
+describe("processData — WITHHOLDING_SLIPS", () => {
+  const row = {
+    WithholdingSlipNumber: "BP-001",
+    WithholdingSlipsDate: "2026-07-15T00:00:00+07:00",
+    EmployerName: "PT Mitra Sejahtera",
+    TaxIdentificationNumber: "01234567890123",
+    RecordId: "rec-1",
+  };
+
+  it("emits Indonesian withholding export headers", () => {
+    const result = processData(makeExportData("WITHHOLDING_SLIPS", [row]));
+    expect(result.fields).toEqual([
+      "NO BUKTI POTONG",
+      "TANGGAL",
+      "MASA",
+      "TAHUN",
+      "NAMA PEMOTONG",
+      "NPWP PEMOTONG",
+    ]);
+  });
+
+  it("reads the slip number from either spelling the codebase uses", () => {
+    expect(processData(makeExportData("WITHHOLDING_SLIPS", [row])).data[0]["NO BUKTI POTONG"]).toBe("BP-001");
+
+    const plural = { ...row, WithholdingSlipsNumber: "BP-002" };
+    delete (plural as Record<string, unknown>).WithholdingSlipNumber;
+    expect(processData(makeExportData("WITHHOLDING_SLIPS", [plural])).data[0]["NO BUKTI POTONG"]).toBe("BP-002");
+  });
+
+  it("formats the slip date and derives MASA/TAHUN from it", () => {
+    const result = processData(makeExportData("WITHHOLDING_SLIPS", [row]));
+    expect(result.data[0].TANGGAL).toBe("15/07/2026");
+    expect(result.data[0].MASA).toBe("7");
+    expect(result.data[0].TAHUN).toBe("2026");
+  });
+
+  it("maps the withholding agent and drops unidentified fields", () => {
+    const result = processData(makeExportData("WITHHOLDING_SLIPS", [row]));
+    expect(result.data[0]["NAMA PEMOTONG"]).toBe("PT Mitra Sejahtera");
+    expect(result.data[0]["NPWP PEMOTONG"]).toBe("01234567890123");
+    expect(result.data[0]).not.toHaveProperty("RecordId");
+  });
+
+  it("leaves the period columns empty for a row without a slip date", () => {
+    const result = processData(
+      makeExportData("WITHHOLDING_SLIPS", [{ ...row, WithholdingSlipsDate: "" }]),
+    );
+    expect(result.data[0].TANGGAL).toBe("");
+    expect(result.data[0].MASA).toBe("");
+    expect(result.data[0].TAHUN).toBe("");
+  });
+
+  it("keeps every captured field when export mode is raw", () => {
+    const result = processData({ ...makeExportData("WITHHOLDING_SLIPS", [row]), mode: "raw" });
+    expect(result.data[0]).toHaveProperty("RecordId", "rec-1");
+    expect(result.data[0].WithholdingSlipsDate).toBe("15/07/2026");
+  });
+
+  it("processes an empty data array without throwing", () => {
+    expect(processData(makeExportData("WITHHOLDING_SLIPS", [])).data).toEqual([]);
+  });
 });
 
 // ── Multiple rows ─────────────────────────────────────────────────────────────

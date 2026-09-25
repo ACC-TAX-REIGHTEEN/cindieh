@@ -235,64 +235,65 @@ function moveButtonNextToAnchor(btn: HTMLElement, anchor: HTMLElement): boolean 
 // ── Export Button Injection ───────────────────────────
 
 /**
- * Inject the export controls into the toolbar: a single download button on the
- * withholding page; elsewhere the XLSX/CSV dropdown, plus -- on e-faktur pages
- * only -- the PDF, scrape, and comparer icon buttons.
+ * Drop every injected toolbar node and forget their references. Kept in one
+ * place so the injection guard and `removeExportButton` cannot drift into two
+ * different ideas of "the toolbar is gone".
+ */
+function clearInjectedToolbar(): void {
+  document.getElementById("ch-export-dropdown")?.remove();
+  document.getElementById("ch-export-btn")?.remove();
+  const pdfBtn = getPdfBtnEl();
+  if (pdfBtn) {
+    pdfBtn.remove();
+    setPdfBtnEl(null);
+  }
+  const scrapeBtn = getScrapeBtnEl();
+  if (scrapeBtn) scrapeBtn.remove();
+  const compareBtn = getCompareBtnEl();
+  if (compareBtn) compareBtn.remove();
+  resetAllButtonRefs();
+  dropdownNodes = null;
+}
+
+/**
+ * Inject the export controls into the toolbar. Every supported page gets the
+ * XLSX/CSV dropdown; withholding slips pair it with a bulk "Unduh PDF" button,
+ * and e-faktur pages pair it with the PDF, scrape and comparer icon buttons.
  */
 export function injectExportButton(retries = MAX_RETRIES): void {
-  // Check if buttons are already injected
+  // Check if buttons are already injected. A re-render that drops either the
+  // dropdown or the withholding page's PDF button invalidates the whole toolbar,
+  // so a rebuild never leaves a half-working pair behind.
   if (isInjected) {
     const exportDropdownBtn = document.getElementById("ch-export-dropdown-btn");
-    const singleBtn = document.getElementById("ch-export-btn");
+    const withholdingPdfBtn = document.getElementById("ch-export-btn");
 
-    // For non-withholding pages, check the export dropdown button
-    if (!isWithholdingPage()) {
-      if (!exportDropdownBtn || exportDropdownBtn.offsetParent === null) {
-        isInjected = false;
-        exportDropdownBtn?.remove();
-        const pdfBtn = getPdfBtnEl();
-        if (pdfBtn) {
-          pdfBtn.remove();
-          setPdfBtnEl(null);
-        }
-        const scrapeBtn = getScrapeBtnEl();
-        if (scrapeBtn) scrapeBtn.remove();
-        const compareBtn = getCompareBtnEl();
-        if (compareBtn) compareBtn.remove();
-        resetAllButtonRefs();
-        dropdownNodes = null;
-      } else if (!isButtonPlacedCorrectly(exportDropdownBtn)) {
-        const inputTaxAnchor = isInputTaxPage() ? document.getElementById("CreditInvoiceButtonButton") : null;
-        if (inputTaxAnchor && inputTaxAnchor.offsetParent !== null && moveButtonNextToAnchor(exportDropdownBtn, inputTaxAnchor)) {
-          return;
-        }
-        isInjected = false;
-        exportDropdownBtn.remove();
-        const pdfBtn = getPdfBtnEl();
-        if (pdfBtn) {
-          pdfBtn.remove();
-          setPdfBtnEl(null);
-        }
-        const scrapeBtn = getScrapeBtnEl();
-        if (scrapeBtn) scrapeBtn.remove();
-        const compareBtn = getCompareBtnEl();
-        if (compareBtn) compareBtn.remove();
-        resetAllButtonRefs();
-        dropdownNodes = null;
-      } else {
+    const dropdownMissing = !exportDropdownBtn || exportDropdownBtn.offsetParent === null;
+    const withholdingPdfMissing =
+      isWithholdingPage() && (!withholdingPdfBtn || withholdingPdfBtn.offsetParent === null);
+    // Placement keeps being judged on the withholding page's own button: that is
+    // the node this injection has always checked there, and findAnchorButton()
+    // resolves its anchor from a different selector list than the code below.
+    const placementTarget = isWithholdingPage() ? withholdingPdfBtn : exportDropdownBtn;
+
+    if (dropdownMissing || withholdingPdfMissing) {
+      isInjected = false;
+      clearInjectedToolbar();
+    } else if (placementTarget && !isButtonPlacedCorrectly(placementTarget)) {
+      // A misplaced dropdown on PPN Masukan can be nudged back beside its own
+      // anchor, which costs no rebuild.
+      const inputTaxAnchor = isInputTaxPage() ? document.getElementById("CreditInvoiceButtonButton") : null;
+      if (
+        inputTaxAnchor &&
+        inputTaxAnchor.offsetParent !== null &&
+        moveButtonNextToAnchor(exportDropdownBtn!, inputTaxAnchor)
+      ) {
         return;
       }
+      isInjected = false;
+      clearInjectedToolbar();
     } else {
-      // For withholding pages, check single button
-      if (!singleBtn || singleBtn.offsetParent === null) {
-        isInjected = false;
-        if (singleBtn) singleBtn.remove();
-      } else if (!isButtonPlacedCorrectly(singleBtn)) {
-        isInjected = false;
-        singleBtn.remove();
-      } else {
-        return;
-      }
+      return;
     }
   }
 
@@ -351,8 +352,11 @@ export function injectExportButton(retries = MAX_RETRIES): void {
 
   isInjected = true;
 
-  // For withholding pages: single "Download PDF" button
   if (isWithholding) {
+    // Withholding slips: the XLSX/CSV dropdown first (Ekspor leads on every
+    // page), then the bulk "Unduh PDF" button beside it.
+    buildExportDropdown(containerNode, anchorEl, insertMode);
+
     setExportBtnEl(document.createElement("button"));
     const exportBtn = getExportBtnEl()!;
     exportBtn.id = "ch-export-btn";
@@ -381,131 +385,9 @@ export function injectExportButton(retries = MAX_RETRIES): void {
       document.dispatchEvent(new CustomEvent("ch:scrape-toggle"));
     });
   } else {
-    // For non-withholding pages: a single export dropdown (XLSX + CSV)
-    const exportDropdown = document.createElement("div");
-    exportDropdown.id = "ch-export-dropdown";
-    exportDropdown.className = "ch-export-dropdown";
-
-    setExportDropdownBtnEl(document.createElement("button"));
-    const exportBtn = getExportDropdownBtnEl()!;
-    exportBtn.id = "ch-export-dropdown-btn";
-    exportBtn.type = "button";
-    exportBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
-
-    const exportIcon = document.createElement("span");
-    exportIcon.className = "p-button-icon p-button-icon-left pi pi-download";
-    exportIcon.setAttribute("aria-hidden", "true");
-
-    const exportLabel = document.createElement("span");
-    exportLabel.className = "p-button-label";
-    exportLabel.textContent = getExportButtonLabel("dropdown", false);
-
-    // The chevron is part of the one button: it is the affordance that says
-    // "this opens a menu", not a second hit area.
-    const caret = document.createElement("span");
-    caret.className = "p-button-icon p-button-icon-right pi pi-chevron-down";
-    caret.setAttribute("aria-hidden", "true");
-
-    exportBtn.appendChild(exportIcon);
-    exportBtn.appendChild(exportLabel);
-    exportBtn.appendChild(caret);
-    exportDropdown.appendChild(exportBtn);
-
-    // The caret button exists in both modes but is hidden (and holds no chevron)
-    // until one-click mode moves the chevron into it, so `ch-hidden` costs no
-    // toolbar space and switching modes never rebuilds the DOM.
-    const caretBtn = document.createElement("button");
-    caretBtn.id = "ch-export-dropdown-caret";
-    caretBtn.type = "button";
-    caretBtn.className =
-      "p-element btn ct-btn-group p-button p-component ch-btn-highlight ch-export-dropdown-caret ch-hidden";
-    caretBtn.title = "Pilih format ekspor lain";
-    caretBtn.setAttribute("aria-label", "Pilih format ekspor lain");
-    exportDropdown.appendChild(caretBtn);
-
-    // Dropdown menu
-    const menu = document.createElement("div");
-    menu.id = "ch-export-dropdown-menu";
-    menu.className = "ch-export-dropdown-menu ch-hidden";
-
-    const xlsxItem = document.createElement("button");
-    xlsxItem.type = "button";
-    xlsxItem.className = "ch-export-dropdown-item";
-    xlsxItem.id = "ch-export-xlsx-item";
-    const xlsxItemIcon = document.createElement("span");
-    xlsxItemIcon.className = "pi pi-file-excel";
-    xlsxItemIcon.setAttribute("aria-hidden", "true");
-    xlsxItem.appendChild(xlsxItemIcon);
-    xlsxItem.appendChild(document.createTextNode("Ekspor XLSX"));
-
-    const csvItem = document.createElement("button");
-    csvItem.type = "button";
-    csvItem.className = "ch-export-dropdown-item";
-    csvItem.id = "ch-export-csv-item";
-    const csvItemIcon = document.createElement("span");
-    csvItemIcon.className = "pi pi-file";
-    csvItemIcon.setAttribute("aria-hidden", "true");
-    csvItem.appendChild(csvItemIcon);
-    csvItem.appendChild(document.createTextNode("Ekspor CSV"));
-
-    menu.appendChild(xlsxItem);
-    menu.appendChild(csvItem);
-    exportDropdown.appendChild(menu);
-
-    // Mark the format the popup stores as the user's usual pick. The menu is
-    // still detached here, so mark by root rather than by id lookup.
-    markDefaultExportItem(exportDropdown, defaultExportFormat);
-
-    // Insert the export dropdown
-    if (insertMode === "before") {
-      containerNode.insertBefore(exportDropdown, anchorEl);
-    } else {
-      containerNode.appendChild(exportDropdown);
-    }
-
-    // One button, one behaviour: open the menu and pick the format inside it —
-    // unless the popup opted into one-click export, in which case a plain click
-    // exports the stored default and only the caret opens the menu.
-    exportBtn.addEventListener("click", (e: MouseEvent) => {
-      e.stopPropagation();
-      if (!oneClickExport) {
-        menu.classList.toggle("ch-hidden");
-        return;
-      }
-      menu.classList.add("ch-hidden");
-      document.dispatchEvent(new CustomEvent(FORMAT_EXPORT_EVENT[defaultExportFormat]));
-    });
-
-    caretBtn.addEventListener("click", (e: MouseEvent) => {
-      e.stopPropagation();
-      menu.classList.toggle("ch-hidden");
-    });
-
-    dropdownNodes = { exportBtn, caretBtn, caret, menu };
-    syncExportButtonMode();
-
-    // Menu item handlers
-    xlsxItem.addEventListener("click", (e: MouseEvent) => {
-      e.stopPropagation();
-      menu.classList.add("ch-hidden");
-      document.dispatchEvent(new CustomEvent("ch:export-xlsx"));
-    });
-
-    csvItem.addEventListener("click", (e: MouseEvent) => {
-      e.stopPropagation();
-      menu.classList.add("ch-hidden");
-      document.dispatchEvent(new CustomEvent("ch:export-csv"));
-    });
-
-    // Close menu when clicking outside. Replace any previous handler so
-    // repeated injections (Angular re-renders) don't stack listeners.
-    if (outsideClickHandler) document.removeEventListener("click", outsideClickHandler);
-    outsideClickHandler = (e: MouseEvent) => {
-      if (!exportDropdown.contains(e.target as Node)) {
-        menu.classList.add("ch-hidden");
-      }
-    };
-    document.addEventListener("click", outsideClickHandler);
+    // Non-withholding pages: the shared XLSX/CSV dropdown, joined below by the
+    // e-faktur controls.
+    buildExportDropdown(containerNode, anchorEl, insertMode);
 
     // Add PDF Download button for efaktur pages
     const isEfaktur = isOutputTax || isInputTax || isOutputReturn || isInputReturn;
@@ -593,6 +475,144 @@ export function injectExportButton(retries = MAX_RETRIES): void {
       injectComparerModal();
     }
   }
+}
+
+/**
+ * Build the XLSX/CSV export dropdown and its menu, then insert it beside the
+ * page's anchor. Shared by every supported page so the menu, the stored-format
+ * check mark and the opt-in one-click shape behave identically everywhere. The
+ * nodes are tracked in `dropdownNodes` so a preference change re-shapes them in
+ * place instead of re-injecting.
+ */
+function buildExportDropdown(
+  containerNode: HTMLElement,
+  anchorEl: HTMLElement,
+  insertMode: "before" | "append",
+): void {
+  const exportDropdown = document.createElement("div");
+  exportDropdown.id = "ch-export-dropdown";
+  exportDropdown.className = "ch-export-dropdown";
+
+  setExportDropdownBtnEl(document.createElement("button"));
+  const exportBtn = getExportDropdownBtnEl()!;
+  exportBtn.id = "ch-export-dropdown-btn";
+  exportBtn.type = "button";
+  exportBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight";
+
+  const exportIcon = document.createElement("span");
+  exportIcon.className = "p-button-icon p-button-icon-left pi pi-download";
+  exportIcon.setAttribute("aria-hidden", "true");
+
+  const exportLabel = document.createElement("span");
+  exportLabel.className = "p-button-label";
+  exportLabel.textContent = getExportButtonLabel("dropdown", false);
+
+  // The chevron is part of the one button: it is the affordance that says
+  // "this opens a menu", not a second hit area.
+  const caret = document.createElement("span");
+  caret.className = "p-button-icon p-button-icon-right pi pi-chevron-down";
+  caret.setAttribute("aria-hidden", "true");
+
+  exportBtn.appendChild(exportIcon);
+  exportBtn.appendChild(exportLabel);
+  exportBtn.appendChild(caret);
+  exportDropdown.appendChild(exportBtn);
+
+  // The caret button exists in both modes but is hidden (and holds no chevron)
+  // until one-click mode moves the chevron into it, so `ch-hidden` costs no
+  // toolbar space and switching modes never rebuilds the DOM.
+  const caretBtn = document.createElement("button");
+  caretBtn.id = "ch-export-dropdown-caret";
+  caretBtn.type = "button";
+  caretBtn.className =
+    "p-element btn ct-btn-group p-button p-component ch-btn-highlight ch-export-dropdown-caret ch-hidden";
+  caretBtn.title = "Pilih format ekspor lain";
+  caretBtn.setAttribute("aria-label", "Pilih format ekspor lain");
+  exportDropdown.appendChild(caretBtn);
+
+  // Dropdown menu
+  const menu = document.createElement("div");
+  menu.id = "ch-export-dropdown-menu";
+  menu.className = "ch-export-dropdown-menu ch-hidden";
+
+  const xlsxItem = document.createElement("button");
+  xlsxItem.type = "button";
+  xlsxItem.className = "ch-export-dropdown-item";
+  xlsxItem.id = "ch-export-xlsx-item";
+  const xlsxItemIcon = document.createElement("span");
+  xlsxItemIcon.className = "pi pi-file-excel";
+  xlsxItemIcon.setAttribute("aria-hidden", "true");
+  xlsxItem.appendChild(xlsxItemIcon);
+  xlsxItem.appendChild(document.createTextNode("Ekspor XLSX"));
+
+  const csvItem = document.createElement("button");
+  csvItem.type = "button";
+  csvItem.className = "ch-export-dropdown-item";
+  csvItem.id = "ch-export-csv-item";
+  const csvItemIcon = document.createElement("span");
+  csvItemIcon.className = "pi pi-file";
+  csvItemIcon.setAttribute("aria-hidden", "true");
+  csvItem.appendChild(csvItemIcon);
+  csvItem.appendChild(document.createTextNode("Ekspor CSV"));
+
+  menu.appendChild(xlsxItem);
+  menu.appendChild(csvItem);
+  exportDropdown.appendChild(menu);
+
+  // Mark the format the popup stores as the user's usual pick. The menu is
+  // still detached here, so mark by root rather than by id lookup.
+  markDefaultExportItem(exportDropdown, defaultExportFormat);
+
+  // Insert the export dropdown
+  if (insertMode === "before") {
+    containerNode.insertBefore(exportDropdown, anchorEl);
+  } else {
+    containerNode.appendChild(exportDropdown);
+  }
+
+  // One button, one behaviour: open the menu and pick the format inside it —
+  // unless the popup opted into one-click export, in which case a plain click
+  // exports the stored default and only the caret opens the menu.
+  exportBtn.addEventListener("click", (e: MouseEvent) => {
+    e.stopPropagation();
+    if (!oneClickExport) {
+      menu.classList.toggle("ch-hidden");
+      return;
+    }
+    menu.classList.add("ch-hidden");
+    document.dispatchEvent(new CustomEvent(FORMAT_EXPORT_EVENT[defaultExportFormat]));
+  });
+
+  caretBtn.addEventListener("click", (e: MouseEvent) => {
+    e.stopPropagation();
+    menu.classList.toggle("ch-hidden");
+  });
+
+  dropdownNodes = { exportBtn, caretBtn, caret, menu };
+  syncExportButtonMode();
+
+  // Menu item handlers
+  xlsxItem.addEventListener("click", (e: MouseEvent) => {
+    e.stopPropagation();
+    menu.classList.add("ch-hidden");
+    document.dispatchEvent(new CustomEvent("ch:export-xlsx"));
+  });
+
+  csvItem.addEventListener("click", (e: MouseEvent) => {
+    e.stopPropagation();
+    menu.classList.add("ch-hidden");
+    document.dispatchEvent(new CustomEvent("ch:export-csv"));
+  });
+
+  // Close menu when clicking outside. Replace any previous handler so
+  // repeated injections (Angular re-renders) don't stack listeners.
+  if (outsideClickHandler) document.removeEventListener("click", outsideClickHandler);
+  outsideClickHandler = (e: MouseEvent) => {
+    if (!exportDropdown.contains(e.target as Node)) {
+      menu.classList.add("ch-hidden");
+    }
+  };
+  document.addEventListener("click", outsideClickHandler);
 }
 
 // ── Export Button Removal ─────────────────────────────

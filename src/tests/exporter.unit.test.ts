@@ -300,6 +300,20 @@ describe("generateDynamicFilename — filenameHint formats", () => {
 		expect(filename).toBe("FPK-042026");
 	});
 
+	it("derives the withholding period from the slip date", () => {
+		// A withholding row carries no tax-period field, so the slip date is the
+		// only period signal the filename can be seeded from.
+		const exportData: ExportData = {
+			data: [
+				{ WithholdingSlipNumber: "BP-001", WithholdingSlipsDate: "2026-07-15T00:00:00+07:00" },
+				{ WithholdingSlipNumber: "BP-002", WithholdingSlipsDate: "2026-07-31T00:00:00+07:00" },
+			],
+			fields: ["WithholdingSlipNumber", "WithholdingSlipsDate"],
+			source: "WITHHOLDING_SLIPS",
+		};
+		expect(generateDynamicFilename(exportData)).toBe("BP-072026");
+	});
+
 	it("produces a range suffix when data rows span multiple periods", () => {
 		const exportData: ExportData = {
 			data: [

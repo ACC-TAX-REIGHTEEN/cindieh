@@ -241,6 +241,77 @@ export function processData(exportData: ExportData): ExportData {
       "API schema may have changed: no INPUT_RETURN fields matched in any row",
     );
   }
+  if (exportData.source === "WITHHOLDING_SLIPS") {
+    // Withholding slips are the one supported grid whose cleaned column set is
+    // not pinned by a settled field list. What the rest of the code does confirm:
+    // the slip number arrives as `WithholdingSlipNumber` for the bulk-PDF flow
+    // (scraper-xhr.ts) but as `WithholdingSlipsNumber` for the PDF filename
+    // builder (downloader.ts), the slip date is `WithholdingSlipsDate`, and the
+    // withholding agent is `EmployerName` / `TaxIdentificationNumber`. Each
+    // column therefore accepts either spelling of the number, and the slip date
+    // is what seeds TANGGAL as well as MASA/TAHUN — a withholding row carries no
+    // separate tax-period field (extractFilenameHintFromBody and
+    // extractPeriodsFromData both have nothing to read for this source). The
+    // usual schema-drift warning fires when a row matches none of them, and the
+    // "Asli" export mode dumps every captured field verbatim for anyone who
+    // needs more than these columns.
+    const withholdingColumns: {
+      label: string;
+      sources: string[];
+      format?: "date" | "month" | "year";
+    }[] = [
+      { label: "NO BUKTI POTONG", sources: ["WithholdingSlipsNumber", "WithholdingSlipNumber"] },
+      { label: "TANGGAL", sources: ["WithholdingSlipsDate"], format: "date" },
+      { label: "MASA", sources: ["WithholdingSlipsDate"], format: "month" },
+      { label: "TAHUN", sources: ["WithholdingSlipsDate"], format: "year" },
+      { label: "NAMA PEMOTONG", sources: ["EmployerName"] },
+      { label: "NPWP PEMOTONG", sources: ["TaxIdentificationNumber"] },
+    ];
+    const fields = withholdingColumns.map((column) => column.label);
+
+    // First non-empty value among the candidate spellings of one column.
+    const pick = (row: Record<string, unknown>, sources: string[]): unknown => {
+      for (const source of sources) {
+        const value = row[source];
+        if (value !== undefined && value !== null && value !== "") return value;
+      }
+      return undefined;
+    };
+
+    const processedData = exportData.data.map((row) => {
+      const newRow: Record<string, unknown> = {};
+      for (const column of withholdingColumns) {
+        const raw = pick(row, column.sources);
+        if (column.format === "date") {
+          newRow[column.label] = formatDate(raw);
+        } else if (column.format === "month") {
+          // MASA/TAHUN come from the slip date's own calendar digits, never via
+          // `Date` (see tax-date.ts) — extractMonth only understands period
+          // strings, so a full ISO date has to go through extractYMD.
+          const month = extractYMD(raw)?.month ?? "";
+          newRow[column.label] = month ? month.replace(/^0/, "") : "";
+        } else if (column.format === "year") {
+          newRow[column.label] = extractYMD(raw)?.year ?? "";
+        } else {
+          newRow[column.label] = raw;
+        }
+      }
+      return newRow;
+    });
+
+    const allUndefined = exportData.data.some((row) =>
+      withholdingColumns.every((column) => pick(row, column.sources) === undefined),
+    );
+    if (allUndefined) {
+      debugWarn("API schema may have changed: no WITHHOLDING_SLIPS fields matched in any row", {
+        expected: withholdingColumns.flatMap((column) => column.sources),
+        sampleRow: exportData.data[0],
+      });
+    }
+
+    return { data: processedData, fields, source: exportData.source };
+  }
+
   if (exportData.source === "SPT_A2") {
     // Hardcoded columns for SPT Masa PPN Lampiran A2 based on user request
     const a2Fields = ["DocumentDate", "Name", "TIN", "DocumentNumber", "TaxBase", "OtherTaxBase", "VAT", "STLG"];
@@ -459,7 +530,11 @@ export function generateDynamicFilename(exportData: ExportData): string {
       }
       // Fallback: Date fields (Last Resort - only if no period fields found)
       else {
-        const dateField = isA2 ? row["DocumentDate"] || row["Date"] || "" : row["TaxInvoiceDate"];
+        const dateField = isA2
+          ? row["DocumentDate"] || row["Date"] || ""
+          : source === "WITHHOLDING_SLIPS"
+            ? row["WithholdingSlipsDate"]
+            : row["TaxInvoiceDate"];
         const ymd = extractYMD(dateField);
         if (ymd) {
           y = ymd.year;

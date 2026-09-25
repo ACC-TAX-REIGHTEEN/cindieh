@@ -186,6 +186,14 @@ describe("panel state transitions", () => {
     expect(doc.getElementById("ch-f-status")!.textContent).toBe("7 PDF Berhasil");
   });
 
+  it("updatePanelComplete calls a data-only withholding run a data export", () => {
+    // The XLSX/CSV export path scrapes the withholding grid without downloading
+    // any PDF, so the panel must not claim PDFs it never fetched.
+    vi.mocked(isWithholdingPage).mockReturnValue(true);
+    updatePanelComplete(7, 1, "5.0s", undefined, "scrape");
+    expect(doc.getElementById("ch-f-status")!.textContent).toBe("7 Data Berhasil");
+  });
+
   it("updatePanelError surfaces the message, keeps the panel open, and restores buttons", () => {
     const dropdownBtn = makeButton();
     vi.mocked(getExportDropdownBtnEl).mockReturnValue(asBtn(dropdownBtn));

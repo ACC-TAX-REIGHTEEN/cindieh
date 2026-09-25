@@ -153,7 +153,9 @@ import { REFERENCE_FIELD, REFERENCE_FAST_MATCH_MODE } from "./reference-search";
     token: bridgeToken,
     handlers: {
       START_SCRAPE: (msg) => {
-        runAction(msg, (runCtx) => startScraping(() => makeInterceptRequest(runCtx), runCtx));
+        runAction(msg, (runCtx) =>
+          startScraping(() => makeInterceptRequest(runCtx), runCtx, { skipPdf: msg.skipPdf === true }),
+        );
       },
 
       STOP_SCRAPE: () => {

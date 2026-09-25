@@ -43,7 +43,7 @@ Tax return. The SPT portal (`returnsheets-portal`) hosts the PPN sheets — Lamp
 _Avoid_: return, tax return form (code constants: `SPT_A2`, `SPT_B2`, `PPH_21_L1A`, `PPH_21_L1B`, `PPH_21_L2`, `PPH_21_L3`)
 
 **Bukti Potong**:
-Withholding slip (PPh 21) — the portal's withholding-slips grid and its bulk PDFs.
+Withholding slip (PPh 21) — the portal's withholding-slips grid, which exports to XLSX/CSV like the other grids *and* has its own bulk PDFs.
 _Avoid_: withholding slip document (code constant: `WITHHOLDING_SLIPS`)
 
 **Referensi**:
@@ -83,6 +83,10 @@ _Avoid_: portal download, one-click download
 **Bulk download**:
 The extension firing the download requests itself for a set of grid rows (e-faktur or bukti potong). It already holds each row, so naming uses that row's data directly; it never re-resolves metadata from the grid capture.
 _Avoid_: bulk PDF, batch download
+
+**Data-only scrape**:
+A withholding-page scrape that collects the grid rows without the bulk PDF download it normally ends with (`START_SCRAPE` carrying `skipPdf`). It exists so an XLSX/CSV export can be produced without downloading one PDF per slip.
+_Avoid_: rows-only scrape, PDF-less scrape
 
 **No. Faktur filter**:
 The efaktur-only filter (toolbar toggle "No. Faktur" on the four e-invoice grids) that takes a list of invoice numbers — one per line, or comma/semicolon separated — and restricts which rows get PDF downloads, or which invoice numbers get a targeted scrape for XLSX/CSV export. Not available on withholding-slips or SPT pages.

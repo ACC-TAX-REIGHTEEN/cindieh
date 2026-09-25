@@ -252,3 +252,73 @@ describe("one-click export mode", () => {
     expect(menu.classList.contains("ch-hidden")).toBe(true);
   });
 });
+
+// ── Withholding page: dropdown beside the bulk PDF button ────────────────────
+// Bukti Potong used to carry a single "Unduh PDF" button. It now also offers the
+// XLSX/CSV export of the very rows its scrape already captures, so both controls
+// must be injected, wired to their own document events, and removed together.
+
+describe("withholding page toolbar", () => {
+  const WITHHOLDING_URL =
+    "https://coretaxdjp.pajak.go.id/withholding-slips-portal/my-withholding-slips/list";
+
+  beforeEach(() => {
+    vi.stubGlobal("location", { href: WITHHOLDING_URL });
+    vi.stubGlobal(
+      "CustomEvent",
+      class {
+        type: string;
+        constructor(type: string) {
+          this.type = type;
+        }
+      },
+    );
+    ({ doc } = stubFakeDom());
+    events = [];
+    Object.assign(doc, {
+      dispatchEvent: (event: { type: string }) => {
+        events.push(event.type);
+        return true;
+      },
+    });
+
+    // The withholding injection anchors on the grid's card/datatable header. The
+    // fake DOM cannot resolve that descendant selector, so hand it the header.
+    const header = doc.createElement("div");
+    header.className = "p-datatable-header";
+    doc.body.appendChild(header);
+    Object.assign(doc, {
+      querySelectorAll: (sel: string) => (sel.includes(".float-left") ? [header] : []),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("injects the export dropdown beside the bulk PDF button", () => {
+    injectExportButton();
+
+    expect(labelOf(el("ch-export-dropdown-btn"))).toBe("Ekspor");
+    expect(labelOf(el("ch-export-btn"))).toBe("Unduh PDF");
+  });
+
+  it("wires each control to its own document event", () => {
+    injectExportButton();
+
+    click(el("ch-export-xlsx-item"));
+    expect(events).toEqual(["ch:export-xlsx"]);
+
+    click(el("ch-export-btn"));
+    expect(events).toEqual(["ch:export-xlsx", "ch:scrape-toggle"]);
+  });
+
+  it("removes both controls together on navigation", () => {
+    injectExportButton();
+
+    removeExportButton();
+
+    expect(doc.getElementById("ch-export-dropdown")).toBeNull();
+    expect(doc.getElementById("ch-export-btn")).toBeNull();
+  });
+});

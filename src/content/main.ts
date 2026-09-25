@@ -61,6 +61,7 @@ import {
   handleExportAction,
   startScrape,
   triggerSearch,
+  scrapeIntentForFormat,
   contentState,
   resetContentState,
   SCRAPE_CANCELLED_MESSAGE,
@@ -263,7 +264,14 @@ const pageMessageDispatcher = createMessageDispatcher({
       if (contentState.isRunning && scraperResendArmed) {
         scraperResendArmed = false;
         debugLog("Scraper ready; resending START_SCRAPE (was requested earlier)");
-        postToScraper({ type: "START_SCRAPE", runId: getActiveRunId() });
+        // Repeat the original request's intent (see scrapeIntentForFormat): a
+        // data-only export on a withholding page must not turn into a bulk PDF
+        // download just because the first message arrived before the scraper did.
+        postToScraper({
+          type: "START_SCRAPE",
+          ...scrapeIntentForFormat(contentState.pendingExportFormat),
+          runId: getActiveRunId(),
+        });
       }
     },
 
@@ -275,7 +283,13 @@ const pageMessageDispatcher = createMessageDispatcher({
         }
         return;
       }
-      updatePanelComplete(complete.total || 0, complete.pages || 0, complete.elapsed || "0s");
+      updatePanelComplete(
+        complete.total || 0,
+        complete.pages || 0,
+        complete.elapsed || "0s",
+        undefined,
+        complete.kind,
+      );
 
       // Desktop notification is opt-in and raised by the background worker;
       // see completion-notice.ts for why the hand-off goes through storage.

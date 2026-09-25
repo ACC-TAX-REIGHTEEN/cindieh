@@ -73,7 +73,12 @@ export type ScrapeMessage = (
 
 /** Messages the isolated world sends INTO the scraper (direction FROM_CONTENT). */
 export type FromContentMessage = (
-  | { type: "START_SCRAPE" }
+  /**
+   * `skipPdf` asks for the grid rows only. It matters on withholding pages,
+   * where the same scrape normally ends by bulk-downloading every slip's PDF;
+   * an XLSX/CSV export wants the rows without that download.
+   */
+  | { type: "START_SCRAPE"; skipPdf?: boolean }
   | { type: "STOP_SCRAPE" }
   | { type: "RESET_SCRAPER" }
   | { type: "START_PDF_DOWNLOAD"; data: Record<string, unknown>[] }

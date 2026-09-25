@@ -214,7 +214,13 @@ export function updatePanelStatus(message: string): void {
   els.statusText.textContent = message;
 }
 
-export function updatePanelComplete(total: number, pages: number, elapsed: string, failureCount?: number): void {
+export function updatePanelComplete(
+  total: number,
+  pages: number,
+  elapsed: string,
+  failureCount?: number,
+  kind?: "scrape" | "pdf",
+): void {
   if (!els || !statsEl) return;
   isPanelRunning = false;
   statsEl.closest("#ch-floating-info-container")?.classList.add("ch-panel-open");
@@ -225,7 +231,9 @@ export function updatePanelComplete(total: number, pages: number, elapsed: strin
   if (failureCount && failureCount > 0) {
     const succeeded = total - failureCount;
     els.statusText.textContent = `${succeeded}/${total} berhasil, ${failureCount} gagal (PDF sudah tidak tersedia)`;
-  } else if (isWithholdingPage()) {
+  } else if (isWithholdingPage() && kind !== "scrape") {
+    // A withholding run is a PDF job unless the caller asked for data only — the
+    // XLSX/CSV export path — which must not claim PDFs it never fetched.
     els.statusText.textContent = `${total} PDF Berhasil`;
   } else {
     els.statusText.textContent = `${total} Data Berhasil`;

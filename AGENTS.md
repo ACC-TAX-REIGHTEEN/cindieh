@@ -20,7 +20,7 @@ The extension runs in two JavaScript worlds on the Coretax page that communicate
 The **bridge token** correlates messages with the current bridge: `bridge.ts` generates it in the isolated world and passes it through the script URL without storing it on `window`. MAIN-world code can still observe it through the shared DOM and `postMessage` traffic; it is not secret authentication against hostile same-page scripts. `shouldProcessPageMessage` checks source, origin, token, and direction. Source/origin bind the window and origin, not the JavaScript world; `FROM_PAGE` and `FROM_CONTENT` are protocol fields, not proof of sender identity. Keep the two-worlds seam and token validation with these accepted limitations (ADR-0007).
 
 Key message types:
-- isolated → MAIN: `START_SCRAPE`, `STOP_SCRAPE`, `SCRAPE_BY_INVOICES`, `SET_SERVER_FILTER`, `RESET_SCRAPER`, `START_PDF_DOWNLOAD`
+- isolated → MAIN: `START_SCRAPE` (carries `skipPdf` when the request is an XLSX/CSV export rather than a bulk PDF download — see `scrapeIntentForFormat`), `STOP_SCRAPE`, `SCRAPE_BY_INVOICES`, `SET_SERVER_FILTER`, `RESET_SCRAPER`, `START_PDF_DOWNLOAD`
 - MAIN → isolated: `INJECTED_READY`, `SCRAPE_PROGRESS`, `SCRAPE_COMPLETE`, `SCRAPE_ERROR`, `DOWNLOAD_PDF_ITEM`
 
 `main.ts` and `scraper.ts` each run one `createMessageDispatcher` (from `postmessage-guard.ts`) — a guard-then-dispatch seam per world, keyed by message `type`. New message types register in the handler table of the world that receives them. State is stored in `main-actions.ts` (`ContentState`) so the in-page panel survives content-script restarts and SPA navigation.
@@ -43,16 +43,16 @@ Key message types:
 | `page-context.ts` | URL → `ExportSource` mapping (`OUTPUT_TAX`, `INPUT_TAX`, `SPT_A2`, `PPH_21_L1A`, ...), filename-hint extraction from request filters |
 | `reference-search.ts` | Reference filter's match mode: the prefix match (`startswith`) is the only mode, and an empty result ends the search with a one-shot not-found notice — no widening retry (ADR-0012) |
 | `tax-date.ts` | Masa pajak period & date parsing: `extractYear`, `extractMonth`, `extractYMD`, `formatDate` |
-| `exporter.ts` | XLSX/CSV generation, `generateDynamicFilename`, `buildCSV`, `PREFIX_MAP` |
+| `exporter.ts` | XLSX/CSV generation, `generateDynamicFilename`, `buildCSV`, `PREFIX_MAP`, and the per-source cleaned column mappings (every source including `WITHHOLDING_SLIPS`; a withholding row spells its number `WithholdingSlipsNumber`/`WithholdingSlipNumber` and derives MASA/TAHUN from the slip date) |
 | `downloader.ts` | Browser download orchestration with custom PDF naming |
-| `main-actions.ts` | Scrape/export action handlers + `ContentState` (module singleton; `createContentState()` factory for tests) |
+| `main-actions.ts` | Scrape/export action handlers + `ContentState` (module singleton; `createContentState()` factory for tests); `scrapeIntentForFormat()` maps a requested format to the START_SCRAPE intent (rows-only for XLSX/CSV) |
 | `comparer.ts`, `comparer-logic.ts` | Paste-and-compare feature vs Coretax data (session + matching live in comparer-logic, ADR-0003) |
 | `checker-logic.ts` | Value-accuracy check (DPP / DPP Nilai Lain / PPN): per-row predicates, session, status filter, summary — the checker's pure half |
 | `comparer-export.ts` | Pure AOA row builders for both result grids (comparer + checker) and the shared number/difference formatters |
 | `ui-comparer.ts` | The panel that hosts BOTH tabs — "Bandingkan Data Penjualan" and "Pengecekan Keakuratan Nilai" (the checker tab is PPN-Keluaran-only) |
 | `scrape-result.ts` | Content-side acceptance of a scrape result: only a complete result may trigger a pending export, compare, or check |
 | `scraper-run.ts` | One scrape/bulk-PDF operation's identity + AbortController ownership (ADR-0010) |
-| `ui.ts`, `ui-filters.ts`, `ui-badge.ts`, `button-state.ts`, `shortcuts.ts` | In-page DOM injection and UI state |
+| `ui.ts`, `ui-filters.ts`, `ui-badge.ts`, `button-state.ts`, `shortcuts.ts` | In-page DOM injection and UI state; `ui.ts` builds the shared XLSX/CSV dropdown (`buildExportDropdown`) on every supported page — withholding slips pair it with their bulk "Unduh PDF" button |
 | `bridge.ts`, `postmessage-guard.ts` | Cross-world messaging: token generation + the guard-then-dispatch seam (`createMessageDispatcher`), pure and exported for tests |
 | `browser-shim.ts` | Picks `browser`/`chrome` runtime |
 | `debug.ts` | Logging; a release build stays silent unless opted in — precedence: `?chdebug` URL value, popup switch, page `cindieh:debug` storage flag, build default (see Gotchas) |

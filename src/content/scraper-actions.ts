@@ -287,10 +287,13 @@ export async function downloadBulkWithholdingPdf(
  * Caller is responsible for setting `isRunning` state before and after.
  *
  * @param interceptRequest - Promise factory that resolves with the captured XHR.
+ * @param options.skipPdf - On withholding pages, collect the rows without the
+ *   bulk PDF download that a withholding scrape otherwise performs.
  */
 export async function startScraping(
   interceptRequest: () => Promise<CapturedRequest>,
   ctx: ScraperContext,
+  options: { skipPdf?: boolean } = {},
 ): Promise<void> {
   debugLog("▶ Starting scrape...");
   if (ctx.isStopRequested()) return;
@@ -329,8 +332,12 @@ export async function startScraping(
       debugLog("Filename hint from DOM:", filenameHint);
     }
 
+    // A withholding scrape normally IS a bulk PDF download. An XLSX/CSV export
+    // asks for the rows only (skipPdf), so the same scrape can feed the sheet
+    // without firing one PDF request per slip.
+    const withholdingPdfRun = captured.source === "WITHHOLDING_SLIPS" && !options.skipPdf;
     let failureCount = 0;
-    if (captured.source === "WITHHOLDING_SLIPS") {
+    if (withholdingPdfRun) {
       failureCount = await downloadBulkWithholdingPdf(captured, allData, page, totalElapsed, ctx);
     }
     if (ctx.isStopRequested()) return;
@@ -347,7 +354,7 @@ export async function startScraping(
       partial: failureCount > 0,
       failureCount,
       // A withholding run IS a bulk PDF download — same message, different job.
-      kind: captured.source === "WITHHOLDING_SLIPS" ? "pdf" : "scrape",
+      kind: withholdingPdfRun ? "pdf" : "scrape",
     });
   } catch (err) {
     if (ctx.isStopRequested()) return;

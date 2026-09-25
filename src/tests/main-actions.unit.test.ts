@@ -21,6 +21,7 @@ import {
   startScrape,
   applyMultiInvoiceFilter,
   triggerSearch,
+  scrapeIntentForFormat,
   SCRAPE_CANCELLED_MESSAGE,
   type ContentState,
   type ActionDeps,
@@ -381,7 +382,26 @@ describe("handleExportAction — multi-invoice filter", () => {
     expect(deps.postToScraper).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: "SCRAPE_BY_INVOICES" }),
     );
-    expect(deps.postToScraper).toHaveBeenCalledWith({ type: "START_SCRAPE" });
+    // A data export asks for rows only — on this page that is what keeps the
+    // withholding scrape from firing one PDF request per slip.
+    expect(deps.postToScraper).toHaveBeenCalledWith({ type: "START_SCRAPE", skipPdf: true });
+  });
+});
+
+// ── scrapeIntentForFormat ────────────────────────────────────────────────────
+// The START_SCRAPE fields a requested format implies. main.ts repeats this
+// intent when it resends a request the scraper missed, so the mapping itself is
+// pinned here rather than only through the messages it produces.
+
+describe("scrapeIntentForFormat", () => {
+  it("asks for rows only for the sheet formats", () => {
+    expect(scrapeIntentForFormat("xlsx")).toEqual({ skipPdf: true });
+    expect(scrapeIntentForFormat("csv")).toEqual({ skipPdf: true });
+  });
+
+  it("leaves the bulk PDF step in place for a PDF request and for no request", () => {
+    expect(scrapeIntentForFormat("pdf")).toEqual({});
+    expect(scrapeIntentForFormat(null)).toEqual({});
   });
 });
 
@@ -394,9 +414,15 @@ describe("handleExportAction — no data, no filter → startScrape", () => {
     expect(state.pendingExportFormat).toBe("xlsx");
   });
 
-  it("posts START_SCRAPE", () => {
+  it("posts START_SCRAPE as a data-only request for a sheet format", () => {
     const deps = makeDeps();
     handleExportAction("xlsx", createContentState(), deps);
+    expect(deps.postToScraper).toHaveBeenCalledWith({ type: "START_SCRAPE", skipPdf: true });
+  });
+
+  it("keeps the plain START_SCRAPE for a PDF request", () => {
+    const deps = makeDeps();
+    handleExportAction("pdf", createContentState(), deps);
     expect(deps.postToScraper).toHaveBeenCalledWith({ type: "START_SCRAPE" });
   });
 
