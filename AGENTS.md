@@ -45,7 +45,7 @@ Key message types:
 | `tax-date.ts` | Masa pajak period & date parsing: `extractYear`, `extractMonth`, `extractYMD`, `formatDate` |
 | `exporter.ts` | XLSX/CSV generation, `generateDynamicFilename`, `buildCSV`, `PREFIX_MAP`, and the per-source cleaned column mappings (every source including `WITHHOLDING_SLIPS`; a withholding row spells its number `WithholdingSlipsNumber`/`WithholdingSlipNumber` and derives MASA/TAHUN from the slip date) |
 | `downloader.ts` | Browser download orchestration with custom PDF naming |
-| `main-actions.ts` | Scrape/export action handlers + `ContentState` (module singleton; `createContentState()` factory for tests); `scrapeIntentForFormat()` maps a requested format to the START_SCRAPE intent (rows-only for XLSX/CSV); `requestedInvoices` holds the No. Faktur numbers a targeted scrape was asked for |
+| `main-actions.ts` | Scrape/export action handlers + `ContentState` (module singleton; `createContentState()` factory for tests); `scrapeIntentForFormat()` maps a requested format to the START_SCRAPE intent (rows-only for XLSX/CSV); `requestedInvoices` holds the No. Faktur numbers a targeted scrape was asked for, while `startPdfDownload` diffs them against the captured rows and names the ones it will skip |
 | `comparer.ts`, `comparer-logic.ts` | Paste-and-compare feature vs Coretax data (session + matching live in comparer-logic, ADR-0003) |
 | `checker-logic.ts` | Value-accuracy check (DPP / DPP Nilai Lain / PPN): per-row predicates, session, status filter, summary — the checker's pure half |
 | `comparer-export.ts` | Pure AOA row builders for both result grids (comparer + checker) and the shared number/difference formatters |

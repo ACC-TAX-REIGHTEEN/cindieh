@@ -78,16 +78,44 @@ export function findMissingInvoices(
   return missing;
 }
 
+/** A one-line list of invoice numbers, capped so a long paste cannot flood a panel. */
+function listInvoices(numbers: readonly string[]): string {
+  const listed = numbers.slice(0, MAX_LISTED_MISSING_INVOICES).join(", ");
+  const rest = numbers.length - MAX_LISTED_MISSING_INVOICES;
+  return rest > 0 ? `${listed} (+${rest} nomor lain)` : listed;
+}
+
+function missingInvoicesNotice(
+  requestedCount: number,
+  missing: readonly string[],
+  reason: string,
+): string | null {
+  if (missing.length === 0) return null;
+  return `${missing.length} dari ${requestedCount} nomor faktur ${reason}: ${listInvoices(missing)}.`;
+}
+
 /** Panel notice for a short targeted scrape; null when nothing is missing. */
 export function missingInvoicesMessage(
   requestedCount: number,
   missing: readonly string[],
 ): string | null {
-  if (missing.length === 0) return null;
-  const listed = missing.slice(0, MAX_LISTED_MISSING_INVOICES).join(", ");
-  const rest = missing.length - MAX_LISTED_MISSING_INVOICES;
-  const suffix = rest > 0 ? ` (+${rest} nomor lain)` : "";
-  return `${missing.length} dari ${requestedCount} nomor faktur tidak ditemukan di Coretax: ${listed}${suffix}.`;
+  return missingInvoicesNotice(requestedCount, missing, "tidak ditemukan di Coretax");
+}
+
+/**
+ * The same notice for a bulk PDF download, where the numbers are missing from
+ * the rows already captured rather than from a fresh targeted lookup — those
+ * files will simply not be downloaded.
+ */
+export function skippedInvoicesMessage(
+  requestedCount: number,
+  skipped: readonly string[],
+): string | null {
+  return missingInvoicesNotice(
+    requestedCount,
+    skipped,
+    "tidak ada di data yang sudah diambil dan akan dilewati",
+  );
 }
 
 /**

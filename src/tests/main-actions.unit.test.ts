@@ -583,6 +583,55 @@ describe("startPdfDownload", () => {
     expect(deps.postToScraper).not.toHaveBeenCalled();
   });
 
+  it("names the filtered numbers the captured data has no row for, before starting", () => {
+    // Too few files to trigger the confirmation, so this is the only moment the
+    // user can still be told which requests the run will leave out.
+    const deps = makeDeps({ getMultiInvoiceNumbers: vi.fn(() => ["INV-001", "INV-404"]) });
+
+    const started = startPdfDownload(rows, createContentState(), deps);
+
+    expect(started).toBe(true);
+    expect(globalThis.alert).toHaveBeenCalledWith(
+      "1 dari 2 nomor faktur tidak ada di data yang sudah diambil dan akan dilewati: INV-404.",
+    );
+  });
+
+  it("folds the skipped numbers into the confirmation body when one is shown", () => {
+    const many = Array.from({ length: 15 }, (_, i) => ({ TaxInvoiceNumber: `INV-${i}` }));
+    // 12 matches clear the 10-file threshold, so the dialog appears at all; the
+    // filter can never match more rows than it names, which is why a broad
+    // request is what reaches this path.
+    const requested = [...Array.from({ length: 12 }, (_, i) => `INV-${i}`), "INV-404"];
+    const deps = makeDeps({ getMultiInvoiceNumbers: vi.fn(() => requested) });
+
+    startPdfDownload(many, createContentState(), deps);
+
+    expect(globalThis.confirm).toHaveBeenCalledOnce();
+    const body = vi.mocked(globalThis.confirm).mock.calls[0][0] as unknown as string;
+    expect(body).toContain(
+      "1 dari 13 nomor faktur tidak ada di data yang sudah diambil dan akan dilewati: INV-404.",
+    );
+    // The standing age warning is kept: "not in the captured rows" and "too old
+    // for Coretax to serve" are two different reasons a requested file is absent.
+    expect(body).toContain("Faktur yang sudah lama mungkin tidak bisa diunduh");
+    expect(globalThis.alert).not.toHaveBeenCalled();
+  });
+
+  it("says nothing when every filtered number has a row", () => {
+    const deps = makeDeps({ getMultiInvoiceNumbers: vi.fn(() => ["INV-001"]) });
+
+    startPdfDownload(rows, createContentState(), deps);
+
+    expect(globalThis.alert).not.toHaveBeenCalled();
+  });
+
+  it("does not report skipped numbers when the No. Faktur filter is empty", () => {
+    const started = startPdfDownload(rows, createContentState(), makeDeps());
+
+    expect(started).toBe(true);
+    expect(globalThis.alert).not.toHaveBeenCalled();
+  });
+
   it("returns false and alerts when the multi-invoice filter matches nothing", () => {
     const deps = makeDeps({
       getMultiInvoiceNumbers: vi.fn(() => ["NOPE"]),

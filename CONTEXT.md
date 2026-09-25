@@ -89,7 +89,7 @@ A withholding-page scrape that collects the grid rows without the bulk PDF downl
 _Avoid_: rows-only scrape, PDF-less scrape
 
 **No. Faktur filter**:
-The efaktur-only filter (toolbar toggle "No. Faktur" on the four e-invoice grids) that takes a list of invoice numbers — one per line, or comma/semicolon separated — and restricts which rows get PDF downloads, or which invoice numbers get a targeted scrape for XLSX/CSV export. Not available on withholding-slips or SPT pages.
+The efaktur-only filter (toolbar toggle "No. Faktur" on the four e-invoice grids) that takes a list of invoice numbers — one per line, or comma/semicolon separated — and restricts which rows get PDF downloads, or which invoice numbers get a targeted scrape for XLSX/CSV export. Not available on withholding-slips or SPT pages. A requested number that matches nothing carries no row, so it is reported rather than silently dropped: in the panel after a targeted export, and in the pre-download dialog (or its own alert) before a bulk PDF run.
 _Avoid_: invoice filter, multi-invoice filter
 
 **Pending export**:

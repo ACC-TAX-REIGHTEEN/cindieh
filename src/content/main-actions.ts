@@ -18,6 +18,7 @@ import { getMultiInvoiceNumbers } from "./ui-filters";
 import { postToScraper } from "./bridge";
 import { debugLog, debugWarn } from "./debug";
 import { getPreferences } from "./preferences";
+import { findMissingInvoices, skippedInvoicesMessage } from "./scrape-result";
 import { shouldConfirmBulkDownload } from "../shared/extension-preferences";
 
 // ── Types ────────────────────────────────────────────
@@ -238,9 +239,15 @@ export function startScrape(
  * Body of the pre-download confirmation. The threshold that decides WHETHER to
  * ask lives in the popup preference; the wording lives here, next to the flow it
  * interrupts.
+ *
+ * `skippedNotice` names the filtered numbers the captured data has no row for.
+ * It is added to the two standing lines rather than replacing them: "not in the
+ * captured rows" and "too old for Coretax to serve" are different reasons a
+ * requested file can be absent from a run, and the user needs both.
  */
-export function bulkDownloadConfirmMessage(count: number): string {
-  return `Anda akan mengunduh ${count} file PDF. Proses ini mungkin memakan waktu beberapa saat.\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?`;
+export function bulkDownloadConfirmMessage(count: number, skippedNotice?: string | null): string {
+  const missedSection = skippedNotice ? `\n\n${skippedNotice}` : "";
+  return `Anda akan mengunduh ${count} file PDF. Proses ini mungkin memakan waktu beberapa saat.${missedSection}\n\nFaktur yang sudah lama mungkin tidak bisa diunduh dan akan dilewati (skip).\n\nLanjutkan?`;
 }
 
 export function startPdfDownload(
@@ -253,9 +260,19 @@ export function startPdfDownload(
     globalThis.alert?.("Tidak ada faktur yang cocok dengan filter No. Faktur.\nKosongkan filter atau periksa nomor faktur.");
     return false;
   }
+  // Numbers the filter asked for that no captured row carries: those files would
+  // just be absent from the run. The panel switches to per-file progress the
+  // moment the download starts, so a panel notice could not survive — this has
+  // to ride the pre-download dialog, or an alert when the threshold means no
+  // dialog appears at all.
+  const requested = deps.isEfakturPage() ? deps.getMultiInvoiceNumbers() : [];
+  const skippedNotice = skippedInvoicesMessage(requested.length, findMissingInvoices(requested, data));
+
   if (deps.shouldConfirmBulkDownload(filtered.length)) {
-    const confirmed = globalThis.confirm?.(bulkDownloadConfirmMessage(filtered.length));
+    const confirmed = globalThis.confirm?.(bulkDownloadConfirmMessage(filtered.length, skippedNotice));
     if (!confirmed) return false;
+  } else if (skippedNotice) {
+    globalThis.alert?.(skippedNotice);
   }
   state.isRunning = true;
   deps.showPanel();

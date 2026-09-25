@@ -47,6 +47,8 @@ Alih-alih mengklik tombol unduh satu per satu seperti di Coretax bawaan, Cindieh
 
 **Filter No. Faktur (khusus e-Faktur):** di halaman e-Faktur, unduhan PDF bisa dibatasi ke nomor faktur tertentu. Klik tombol **"No. Faktur"** di toolbar, tempel daftar nomor faktur (satu per baris, atau dipisah koma/titik koma), lalu klik **Unduh PDF** — hanya faktur yang cocok yang akan diunduh. Filter ini hanya tersedia di halaman e-Faktur (PPN Keluaran, PPN Masukan, Retur) dan tidak muncul di halaman Bukti Potong.
 
+Sebelum unduhan PDF dimulai, Cindieh juga memeriksa daftar nomor Anda terhadap data yang sudah diambil: nomor yang tidak punya baris di data tersebut akan **disebutkan namanya** di dialog konfirmasi (atau di peringatan tersendiri bila konfirmasi dimatikan), karena berkas itu memang tidak akan ikut terunduh.
+
 Setelah ekspor bertarget selesai, Cindieh membandingkan daftar nomor yang Anda minta dengan baris yang benar-benar ditemukan, lalu melaporkan nomor yang tidak ada di Coretax di panel — mis. *"3 dari 20 nomor faktur tidak ditemukan di Coretax: 040-002, 040-007, 040-011."* Tanpa laporan ini, nomor yang tidak ketemu akan membuat berkas datang lebih pendek tanpa penjelasan.
 
 ---

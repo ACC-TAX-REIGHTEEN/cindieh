@@ -11,6 +11,7 @@ import {
   invalidateScrapeResult,
   missingInvoicesMessage,
   scrapeErrorMessage,
+  skippedInvoicesMessage,
 } from "../content/scrape-result";
 
 function makeState(): ContentState {
@@ -166,6 +167,16 @@ describe("missing-invoice reporting", () => {
     expect(missingInvoicesMessage(20, missing)).toBe(
       "7 dari 20 nomor faktur tidak ditemukan di Coretax: A, B, C, D, E (+2 nomor lain).",
     );
+  });
+
+  it("phrases the bulk-PDF variant around the data already captured", () => {
+    // Same list, different reason: these numbers are absent from the rows on hand,
+    // so those files will not be downloaded at all.
+    expect(skippedInvoicesMessage(20, ["040-002"])).toBe(
+      "1 dari 20 nomor faktur tidak ada di data yang sudah diambil dan akan dilewati: 040-002.",
+    );
+    expect(skippedInvoicesMessage(20, ["A", "B", "C", "D", "E", "F"])).toContain("(+1 nomor lain)");
+    expect(skippedInvoicesMessage(3, [])).toBeNull();
   });
 
   it("consumes the request, so a later scrape cannot be diffed against it", () => {
