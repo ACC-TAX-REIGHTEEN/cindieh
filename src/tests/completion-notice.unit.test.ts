@@ -101,6 +101,19 @@ describe("describeCompletion", () => {
       "120 data diproses, 3 gagal.",
     );
   });
+
+  it("counts the No. Faktur shortfall so a short run is not announced as clean", () => {
+    expect(describeCompletion({ total: 17, missing: 3 })).toBe(
+      "17 data diproses, 3 nomor faktur tidak ditemukan, tanpa kegagalan.",
+    );
+    expect(describeCompletion({ total: 12, missing: 2, failureCount: 1 })).toBe(
+      "12 data diproses, 2 nomor faktur tidak ditemukan, 1 gagal.",
+    );
+    // Zero keeps the wording of a run with no filter at all.
+    expect(describeCompletion({ total: 120, missing: 0 })).toBe(
+      "120 data diproses, tanpa kegagalan.",
+    );
+  });
 });
 
 describe("publishCompletion", () => {

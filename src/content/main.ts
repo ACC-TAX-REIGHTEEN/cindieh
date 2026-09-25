@@ -297,19 +297,25 @@ const pageMessageDispatcher = createMessageDispatcher({
         complete.kind,
       );
 
-      // A targeted No. Faktur scrape reports exhausted lookups as an incomplete
-      // result, but a number Coretax has no row for is not a failure at all —
-      // the lookup succeeds with an empty payload — so without this the export
-      // would just come back silently short. Says nothing for a full scrape.
-      const missingNotice = consumeMissingInvoices(contentState, complete.data ?? []);
-      if (missingNotice) updatePanelStatus(missingNotice);
+      // A run can come back short without failing: a targeted No. Faktur scrape
+      // gets an empty payload for a number Coretax has no row for, and a filtered
+      // bulk PDF run only returns the rows it downloaded. Says nothing for a run
+      // with no filter.
+      const { missing, notice } = consumeMissingInvoices(contentState, complete.data ?? []);
+      // A PDF run already named these in its pre-download dialog; an export run
+      // has not, so only the latter writes the panel.
+      if (notice && complete.kind !== "pdf") updatePanelStatus(notice);
 
       // Desktop notification is opt-in and raised by the background worker;
       // see completion-notice.ts for why the hand-off goes through storage.
       if (getPreferences().notifyOnComplete) {
         void publishCompletion(
           complete.kind ?? "scrape",
-          describeCompletion({ total: complete.total || 0, failureCount: complete.failureCount }),
+          describeCompletion({
+            total: complete.total || 0,
+            failureCount: complete.failureCount,
+            missing: missing.length,
+          }),
         );
       }
 

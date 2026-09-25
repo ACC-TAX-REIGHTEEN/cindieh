@@ -118,22 +118,33 @@ export function skippedInvoicesMessage(
   );
 }
 
+export interface MissingInvoices {
+  /** Numbers the run asked for that no returned row carried, in request order. */
+  missing: string[];
+  /** Panel notice for a targeted export; null when nothing is missing. */
+  notice: string | null;
+}
+
 /**
- * Consume a targeted scrape's requested-invoice list and describe what never
- * came back. The request is cleared either way, so a later scrape can never be
- * diffed against a stale list.
+ * Consume a run's requested-invoice list and describe what never came back. The
+ * request is cleared either way, so a later run can never be diffed against a
+ * stale list.
  *
  * This exists because a number Coretax has no row for is NOT a lookup failure:
  * the request succeeds with an empty payload, so `partial` and `failedInvoices`
- * both stay empty and the export would otherwise come back silently short.
+ * both stay empty and the result would otherwise come back silently short. The
+ * same diff serves a filtered bulk PDF run, whose completion carries only the
+ * rows it downloaded — the requested numbers absent from those are the ones the
+ * pre-download dialog already named.
  */
 export function consumeMissingInvoices(
   state: ContentState,
   rows: readonly Record<string, unknown>[],
-): string | null {
+): MissingInvoices {
   const requested = state.requestedInvoices;
   state.requestedInvoices = [];
-  return missingInvoicesMessage(requested.length, findMissingInvoices(requested, rows));
+  const missing = findMissingInvoices(requested, rows);
+  return { missing, notice: missingInvoicesMessage(requested.length, missing) };
 }
 
 export function scrapeErrorMessage(message?: string): string {

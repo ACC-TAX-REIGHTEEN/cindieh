@@ -617,6 +617,32 @@ describe("startPdfDownload", () => {
     expect(globalThis.alert).not.toHaveBeenCalled();
   });
 
+  it("hands the requested numbers to the completion report", () => {
+    const deps = makeDeps({ getMultiInvoiceNumbers: vi.fn(() => ["INV-001", "INV-404"]) });
+    const state = createContentState();
+
+    startPdfDownload(rows, state, deps);
+
+    // The completion diffs these against the rows that arrive, so the toast can
+    // report how many requested invoices the run left out.
+    expect(state.requestedInvoices).toEqual(["INV-001", "INV-404"]);
+  });
+
+  it("records nothing when the confirmation is declined", () => {
+    vi.mocked(globalThis.confirm).mockReturnValue(false);
+    const many = Array.from({ length: 15 }, (_, i) => ({ TaxInvoiceNumber: `INV-${i}` }));
+    const deps = makeDeps({
+      getMultiInvoiceNumbers: vi.fn(() => many.map((row) => row.TaxInvoiceNumber)),
+    });
+    const state = createContentState();
+
+    startPdfDownload(many, state, deps);
+
+    // No run started, so no completion will consume it — a stale list would make
+    // a later completion report invoices it never asked about.
+    expect(state.requestedInvoices).toEqual([]);
+  });
+
   it("says nothing when every filtered number has a row", () => {
     const deps = makeDeps({ getMultiInvoiceNumbers: vi.fn(() => ["INV-001"]) });
 

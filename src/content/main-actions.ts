@@ -48,10 +48,11 @@ export interface ContentState {
   pendingCompare: boolean;
   pendingCheck: boolean;
   /**
-   * The No. Faktur numbers a targeted scrape was asked for, so the result can be
-   * diffed against the rows that came back and the ones Coretax has no row for
-   * reported (a not-found number succeeds with an empty payload, so it never
-   * reaches `failedInvoices`). Empty outside a targeted scrape.
+   * The No. Faktur numbers this run was asked for — set by a targeted-scrape
+   * dispatch and by a filtered bulk PDF download. The completion handler diffs
+   * them against the rows that came back to count the shortfall: a not-found
+   * number succeeds with an empty payload, so it never reaches `failedInvoices`.
+   * Empty when no No. Faktur filter applies.
    */
   requestedInvoices: string[];
   lastState: ScrapeState | null;
@@ -274,6 +275,11 @@ export function startPdfDownload(
   } else if (skippedNotice) {
     globalThis.alert?.(skippedNotice);
   }
+  // Hand the request to the completion handler, which diffs it against the rows
+  // that were actually downloaded to report the count. Recorded only once the run
+  // is really starting, so a declined confirmation leaves nothing behind for a
+  // later completion to be measured against.
+  state.requestedInvoices = requested;
   state.isRunning = true;
   deps.showPanel();
   deps.postToScraper({ type: "START_PDF_DOWNLOAD", data: filtered });

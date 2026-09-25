@@ -179,20 +179,24 @@ describe("missing-invoice reporting", () => {
     expect(skippedInvoicesMessage(3, [])).toBeNull();
   });
 
-  it("consumes the request, so a later scrape cannot be diffed against it", () => {
+  it("consumes the request, so a later run cannot be diffed against it", () => {
     const state = makeState();
-    const notice = consumeMissingInvoices(state, [{ TaxInvoiceNumber: "001" }]);
-    expect(notice).toBe("1 dari 2 nomor faktur tidak ditemukan di Coretax: 002.");
+    const result = consumeMissingInvoices(state, [{ TaxInvoiceNumber: "001" }]);
+    expect(result.missing).toEqual(["002"]);
+    expect(result.notice).toBe("1 dari 2 nomor faktur tidak ditemukan di Coretax: 002.");
     expect(state.requestedInvoices).toEqual([]);
 
     // Same state, second completion: nothing left to report.
-    expect(consumeMissingInvoices(state, [])).toBeNull();
+    expect(consumeMissingInvoices(state, [])).toEqual({ missing: [], notice: null });
   });
 
   it("says nothing for a full scrape, which requested no numbers", () => {
     const state = makeState();
     state.requestedInvoices = [];
-    expect(consumeMissingInvoices(state, [{ TaxInvoiceNumber: "001" }])).toBeNull();
+    expect(consumeMissingInvoices(state, [{ TaxInvoiceNumber: "001" }])).toEqual({
+      missing: [],
+      notice: null,
+    });
   });
 });
 

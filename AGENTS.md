@@ -59,7 +59,7 @@ Key message types:
 | `debug-preference.ts` | Extension-storage bridge behind the popup's debug switch: read/write the flag and apply it to the content script, background, and popup |
 | `preferences.ts` | Extension-storage bridge behind every other popup control: read (guarded) / write / clear the shared keys, translate field names to storage keys, and hand synchronous callers `getPreferences()` |
 | `page-pacing.ts` | Rate-limit pacing mirror in page storage, the only channel the MAIN world can read; imported by the scraper too, so it must stay free of browser-API imports |
-| `completion-notice.ts` | Builds, validates, and publishes the "selesai" record the background turns into a desktop notification |
+| `completion-notice.ts` | Builds, validates, and publishes the "selesai" record the background turns into a desktop notification; `describeCompletion` counts the No. Faktur shortfall so a run that dropped invoices is never announced as a clean success |
 
 Outside `src/content/`: `src/background/background.ts` is the minimal MV3 background (install logging and completion notifications), `src/popup/popup.ts` manages every popup preference, and `src/shared/` holds the world-agnostic schemas — `export-preferences.ts` (export mode) and `extension-preferences.ts` (every other preference: keys, defaults, normalizers). `build.cjs` bundles four entries (`content/main`, `content/scraper`, `background/background`, `popup/popup`).
 

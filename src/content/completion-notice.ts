@@ -66,14 +66,26 @@ export function formatCompletionNotification(record: CompletionRecord): {
   return { title, message: record.detail || "Proses Cindieh telah selesai." };
 }
 
-/** A detail string from the completion's own counts, for the toast body. */
+/**
+ * A detail string from the completion's own counts, for the toast body.
+ *
+ * `missing` is the No. Faktur shortfall: numbers the run was asked for that no
+ * row carried. Without it a run that quietly dropped invoices would be announced
+ * as a clean success, which is exactly the case a notification is most useful
+ * for — the user is not looking at the panel when they need to know. Zero keeps
+ * the wording identical to a run with no filter at all.
+ */
 export function describeCompletion(counts: {
   total: number;
   failureCount?: number;
+  missing?: number;
 }): string {
   const failed = counts.failureCount ?? 0;
-  const base = `${counts.total} data diproses`;
-  return failed > 0 ? `${base}, ${failed} gagal.` : `${base}, tanpa kegagalan.`;
+  const missing = counts.missing ?? 0;
+  const parts = [`${counts.total} data diproses`];
+  if (missing > 0) parts.push(`${missing} nomor faktur tidak ditemukan`);
+  parts.push(failed > 0 ? `${failed} gagal` : "tanpa kegagalan");
+  return `${parts.join(", ")}.`;
 }
 
 /**
