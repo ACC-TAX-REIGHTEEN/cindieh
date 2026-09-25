@@ -13,7 +13,13 @@ import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode } from "../shared/export-p
 import { isOutputTaxPage, isSupportedExportPage } from "./page-context";
 import { createMessageDispatcher } from "./postmessage-guard";
 import { generateBridgeToken, getBridgeToken, getActiveRunId, isCurrentRunMessage, postToScraper } from "./bridge";
-import { acceptScrapeResult, currentRunHandlers, invalidateScrapeResult, scrapeErrorMessage } from "./scrape-result";
+import {
+  acceptScrapeResult,
+  consumeMissingInvoices,
+  currentRunHandlers,
+  invalidateScrapeResult,
+  scrapeErrorMessage,
+} from "./scrape-result";
 import type { ScrapeComplete } from "./scraper-types";
 import {
   destroyBadge,
@@ -290,6 +296,13 @@ const pageMessageDispatcher = createMessageDispatcher({
         undefined,
         complete.kind,
       );
+
+      // A targeted No. Faktur scrape reports exhausted lookups as an incomplete
+      // result, but a number Coretax has no row for is not a failure at all —
+      // the lookup succeeds with an empty payload — so without this the export
+      // would just come back silently short. Says nothing for a full scrape.
+      const missingNotice = consumeMissingInvoices(contentState, complete.data ?? []);
+      if (missingNotice) updatePanelStatus(missingNotice);
 
       // Desktop notification is opt-in and raised by the background worker;
       // see completion-notice.ts for why the hand-off goes through storage.

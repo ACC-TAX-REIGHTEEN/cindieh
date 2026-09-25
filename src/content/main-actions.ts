@@ -46,6 +46,13 @@ export interface ContentState {
   pendingExportFormat: "xlsx" | "csv" | "pdf" | null;
   pendingCompare: boolean;
   pendingCheck: boolean;
+  /**
+   * The No. Faktur numbers a targeted scrape was asked for, so the result can be
+   * diffed against the rows that came back and the ones Coretax has no row for
+   * reported (a not-found number succeeds with an empty payload, so it never
+   * reaches `failedInvoices`). Empty outside a targeted scrape.
+   */
+  requestedInvoices: string[];
   lastState: ScrapeState | null;
   exportMode: ExportMode;
 }
@@ -59,6 +66,7 @@ export function createContentState(): ContentState {
     pendingExportFormat: null,
     pendingCompare: false,
     pendingCheck: false,
+    requestedInvoices: [],
     lastState: null,
     exportMode: "cleaned",
   };
@@ -277,8 +285,10 @@ export function handleExportAction(
     deps.postToScraper({ type: "STOP_SCRAPE" });
     state.isRunning = false;
     state.pendingExportFormat = null;
-    // The aborted run emits no completion, so surface cancellation like the
-    // panel toggle does instead of implying idle, reusable data.
+    // The aborted run emits no completion, so its request is dropped here (a
+    // later scrape must not be diffed against it) and the cancellation is
+    // surfaced like the panel toggle does, instead of implying idle reusable data.
+    state.requestedInvoices = [];
     deps.updatePanelError(SCRAPE_CANCELLED_MESSAGE);
     return true;
   }
@@ -316,6 +326,9 @@ export function handleExportAction(
       state.isRunning = true;
       deps.showPanel();
       state.pendingExportFormat = format;
+      // Remember what was asked for: the completion handler diffs it against the
+      // rows that arrive and reports the numbers Coretax has no row for.
+      state.requestedInvoices = nums;
       deps.postToScraper({
         type: "SCRAPE_BY_INVOICES",
         invoiceNumbers: nums,

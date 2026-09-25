@@ -4,9 +4,12 @@ import type { ScrapeComplete } from "../content/scraper-types";
 import { createMessageDispatcher } from "../content/postmessage-guard";
 import {
   acceptScrapeResult,
+  consumeMissingInvoices,
   currentRunHandlers,
+  findMissingInvoices,
   incompleteResultMessage,
   invalidateScrapeResult,
+  missingInvoicesMessage,
   scrapeErrorMessage,
 } from "../content/scrape-result";
 
@@ -19,6 +22,7 @@ function makeState(): ContentState {
     pendingExportFormat: "xlsx",
     pendingCompare: true,
     pendingCheck: true,
+    requestedInvoices: ["001", "002"],
     lastState: null,
     exportMode: "raw",
   };
@@ -46,6 +50,7 @@ function expectInvalidated(state: ContentState): void {
     pendingExportFormat: null,
     pendingCompare: false,
     pendingCheck: false,
+    requestedInvoices: [],
     lastState: { type: "SCRAPE_ERROR" },
     exportMode: "raw",
   });
@@ -128,6 +133,55 @@ describe("result warnings and errors", () => {
     expect(message).toContain("Sesi berakhir.");
     expect(message).toContain("jalankan ulang");
     expect(scrapeErrorMessage()).toContain("Proses gagal.");
+  });
+});
+
+// ── Missing-invoice reporting ────────────────────────────────────────────────
+// A No. Faktur number Coretax has no row for is NOT a lookup failure: the request
+// succeeds with an empty payload, so the scrape looks complete and the export
+// comes back short. These cases pin the diff that makes the gap visible.
+
+describe("missing-invoice reporting", () => {
+  it("reports requested numbers no row carries, once each", () => {
+    const rows = [{ TaxInvoiceNumber: "001" }, { TaxInvoiceNumber: "002" }];
+    expect(findMissingInvoices(["001", "002", "003", "003"], rows)).toEqual(["003"]);
+  });
+
+  it("matches LetterNumber as a fallback and ignores case", () => {
+    const letter = [{ LetterNumber: "040-001" }];
+    expect(findMissingInvoices(["040-001"], letter)).toEqual([]);
+    expect(findMissingInvoices(["040-002"], letter)).toEqual(["040-002"]);
+    expect(findMissingInvoices(["abc"], [{ TaxInvoiceNumber: "ABC" }])).toEqual([]);
+  });
+
+  it("reports nothing when the request is empty or fully matched", () => {
+    expect(findMissingInvoices([], [])).toEqual([]);
+    expect(findMissingInvoices([], [{ TaxInvoiceNumber: "001" }])).toEqual([]);
+    expect(findMissingInvoices(["001"], [{ TaxInvoiceNumber: "001" }])).toEqual([]);
+    expect(missingInvoicesMessage(3, [])).toBeNull();
+  });
+
+  it("lists a sample and summarizes the remainder", () => {
+    const missing = ["A", "B", "C", "D", "E", "F", "G"];
+    expect(missingInvoicesMessage(20, missing)).toBe(
+      "7 dari 20 nomor faktur tidak ditemukan di Coretax: A, B, C, D, E (+2 nomor lain).",
+    );
+  });
+
+  it("consumes the request, so a later scrape cannot be diffed against it", () => {
+    const state = makeState();
+    const notice = consumeMissingInvoices(state, [{ TaxInvoiceNumber: "001" }]);
+    expect(notice).toBe("1 dari 2 nomor faktur tidak ditemukan di Coretax: 002.");
+    expect(state.requestedInvoices).toEqual([]);
+
+    // Same state, second completion: nothing left to report.
+    expect(consumeMissingInvoices(state, [])).toBeNull();
+  });
+
+  it("says nothing for a full scrape, which requested no numbers", () => {
+    const state = makeState();
+    state.requestedInvoices = [];
+    expect(consumeMissingInvoices(state, [{ TaxInvoiceNumber: "001" }])).toBeNull();
   });
 });
 

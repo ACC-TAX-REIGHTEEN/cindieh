@@ -45,12 +45,12 @@ Key message types:
 | `tax-date.ts` | Masa pajak period & date parsing: `extractYear`, `extractMonth`, `extractYMD`, `formatDate` |
 | `exporter.ts` | XLSX/CSV generation, `generateDynamicFilename`, `buildCSV`, `PREFIX_MAP`, and the per-source cleaned column mappings (every source including `WITHHOLDING_SLIPS`; a withholding row spells its number `WithholdingSlipsNumber`/`WithholdingSlipNumber` and derives MASA/TAHUN from the slip date) |
 | `downloader.ts` | Browser download orchestration with custom PDF naming |
-| `main-actions.ts` | Scrape/export action handlers + `ContentState` (module singleton; `createContentState()` factory for tests); `scrapeIntentForFormat()` maps a requested format to the START_SCRAPE intent (rows-only for XLSX/CSV) |
+| `main-actions.ts` | Scrape/export action handlers + `ContentState` (module singleton; `createContentState()` factory for tests); `scrapeIntentForFormat()` maps a requested format to the START_SCRAPE intent (rows-only for XLSX/CSV); `requestedInvoices` holds the No. Faktur numbers a targeted scrape was asked for |
 | `comparer.ts`, `comparer-logic.ts` | Paste-and-compare feature vs Coretax data (session + matching live in comparer-logic, ADR-0003) |
 | `checker-logic.ts` | Value-accuracy check (DPP / DPP Nilai Lain / PPN): per-row predicates, session, status filter, summary — the checker's pure half |
 | `comparer-export.ts` | Pure AOA row builders for both result grids (comparer + checker) and the shared number/difference formatters |
 | `ui-comparer.ts` | The panel that hosts BOTH tabs — "Bandingkan Data Penjualan" and "Pengecekan Keakuratan Nilai" (the checker tab is PPN-Keluaran-only) |
-| `scrape-result.ts` | Content-side acceptance of a scrape result: only a complete result may trigger a pending export, compare, or check |
+| `scrape-result.ts` | Content-side acceptance of a scrape result: only a complete result may trigger a pending export, compare, or check; also owns the missing-invoice report (`consumeMissingInvoices`) that diffs a targeted No. Faktur scrape's request against the rows that came back — a not-found number succeeds with an empty payload, so it never reaches `failedInvoices` |
 | `scraper-run.ts` | One scrape/bulk-PDF operation's identity + AbortController ownership (ADR-0010) |
 | `ui.ts`, `ui-filters.ts`, `ui-badge.ts`, `button-state.ts`, `shortcuts.ts` | In-page DOM injection and UI state; `ui.ts` builds the shared XLSX/CSV dropdown (`buildExportDropdown`) on every supported page — withholding slips pair it with their bulk "Unduh PDF" button |
 | `bridge.ts`, `postmessage-guard.ts` | Cross-world messaging: token generation + the guard-then-dispatch seam (`createMessageDispatcher`), pure and exported for tests |

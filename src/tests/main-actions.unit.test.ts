@@ -66,6 +66,7 @@ describe("createContentState", () => {
     expect(state.lastExportMeta).toBeNull();
     expect(state.pendingExportFormat).toBeNull();
     expect(state.pendingCompare).toBe(false);
+    expect(state.requestedInvoices).toEqual([]);
     expect(state.lastState).toBeNull();
     expect(state.exportMode).toBe("cleaned");
   });
@@ -328,6 +329,28 @@ describe("handleExportAction — multi-invoice filter", () => {
       type: "SCRAPE_BY_INVOICES",
       invoiceNumbers: ["INV-001", "INV-002"],
     });
+  });
+
+  it("remembers the requested numbers so the result can be diffed against them", () => {
+    const state = createContentState();
+    const deps = makeDeps({
+      getMultiInvoiceNumbers: vi.fn(() => ["INV-001", "INV-002"]),
+    });
+
+    handleExportAction("xlsx", state, deps);
+
+    expect(state.requestedInvoices).toEqual(["INV-001", "INV-002"]);
+  });
+
+  it("leaves no request behind when the user aborts the targeted scrape", () => {
+    const state = createContentState();
+    state.isRunning = true;
+    state.requestedInvoices = ["INV-001"];
+
+    handleExportAction("xlsx", state, makeDeps());
+
+    // The aborted run emits no completion, so nothing would ever consume it.
+    expect(state.requestedInvoices).toEqual([]);
   });
 
   it("sets isRunning to true and pendingExportFormat to the requested format", () => {
