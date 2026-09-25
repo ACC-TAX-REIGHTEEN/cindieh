@@ -2,7 +2,7 @@
 
 ## Project
 
-**Cindieh** — a Manifest V3 browser extension (Chrome + Firefox) for the Indonesian DJP Coretax tax portal (`coretaxdjp.pajak.go.id`). It replaces slow portal workflows with one-click features: bulk export of grid data to Excel/CSV, bulk PDF downloads, reference-number search, and a comparer that checks internal invoice records (pasted from Excel) against Coretax.
+**Cindieh** — a Manifest V3 browser extension (Chrome + Firefox) for the Indonesian DJP Coretax tax portal (`coretaxdjp.pajak.go.id`). It replaces slow portal workflows with one-click features: bulk export of grid data to Excel/CSV, bulk PDF downloads, reference-number search, a comparer that checks internal invoice records (pasted from Excel) against Coretax, and an accuracy checker (Pengecekan) that recomputes each recorded PPN Keluaran row's DPP / DPP Nilai Lain / PPN against a chosen benchmark (Acuan).
 
 Tech: TypeScript (strict), esbuild bundling, SheetJS (`xlsx`), vanilla DOM/CSS — no UI framework. Commands and scripts live in `package.json`; install deps with `pnpm install`.
 

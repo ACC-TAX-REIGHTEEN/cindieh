@@ -53,7 +53,7 @@ Seluruh 14 temuan audit pertama tetap selesai dan tidak ada yang regresi:
 | 1 | Test logika DOM `ui-filters.ts` (re-injection & cleanup) | Medium | ✅ **Ditutup** — `ui-filters.unit.test.ts` kini 22 kasus, termasuk blok describe DOM: injection, re-injection bersih, dan unregister listener |
 | 2 | Rapikan `RATE_LIMITING.md` (hapus nomor baris) | Trivial | ✅ **Selesai** — tabel memakai nama fungsi/konstanta. Satu klaim usang ("pengulangan `startswith` → `contains`") yang bertentangan dengan ADR-0012 diperbaiki pada audit ini |
 | 3 | Perluas test `ui-badge.ts` dari 3 smoke test | Low | ✅ **Ditutup** — kini 14 kasus |
-| 4 | (Opsional) Hapus branch `keyup` `ch-multi-invoice-textarea` yang mati | Trivial | ⚠️ **Masih terbuka** — handler di `main.ts` masih memproses id tersebut di semua halaman (aman, hanya sisa kode) |
+| 4 | (Opsional) Hapus branch `keyup` `ch-multi-invoice-textarea` yang "mati" | Trivial | ✅ **Ditutup pada 2026-09-25 — premis "kode mati" keliru**: `Enter` di textarea itu memang mencegah baris baru dan menulis petunjuk `N nomor siap (klik Download PDF)`, pesan yang berbeda dari hint listener `input` di `ui-filters.ts` (`N nomor faktur terdeteksi`). Tidak ada kode yang dihapus; rinciannya di §3 |
 
 ---
 
@@ -135,11 +135,13 @@ Untuk benchmark `DPP`, nilai DPP Nilai Lain yang diharapkan selalu dihitung `11/
 
 **Rekomendasi:** verifikasi dengan data portal nyata sebelum mengubah perilaku; bila `0` memang berarti "tidak berlaku", kecualikan baris tersebut dari perbandingan DPP NL (dan dokumentasikan).
 
-### [INFO] Branch `keyup` mati di `main.ts` (warisan audit lalu)
+### [INFO] Branch `keyup` `ch-multi-invoice-textarea` — dilaporkan "mati", ternyata hidup
 
-**File:** [`main.ts`](src/content/main.ts) — handler `keyup`, cabang `ch-multi-invoice-textarea`
+**File:** [`main.ts`](src/content/main.ts) — handler `keyup`, cabang `ch-multi-invoice-textarea`; [`ui-filters.ts`](src/content/ui-filters.ts) — listener `input` pada textarea yang sama
 
-Masih diproses di semua halaman; elemennya hanya ada di halaman e-Faktur (`ui-filters.ts`). Aman, hanya sisa kode. Tidak perlu diubah kecuali ingin dirapikan.
+Koreksi 2026-09-25 atas audit 2026-08-15: branch ini **bukan kode mati**. Handler `keyup` memang didaftarkan di level `document`, tetapi cabangnya hanya cocok bila target event ber-id `ch-multi-invoice-textarea` — elemen yang hanya dipasang `injectMultiInvoiceFilter()` di halaman e-Faktur; di halaman lain cabang itu tidak pernah tercapai. Saat pengguna menekan `Enter` di textarea tersebut, handler mencegah baris baru dan menulis petunjuk `N nomor siap (klik Download PDF)`, sedangkan listener `input` di `ui-filters.ts` menulis `N nomor faktur terdeteksi` — dua pesan berbeda yang keduanya terlihat pengguna.
+
+**Keputusan:** tidak ada yang dihapus. Menghapus branch ini adalah **perubahan perilaku** (Enter kembali menyisipkan baris baru dan petunjuk "siap" hilang), sehingga bila kelak dianggap tidak perlu, hapuslah sebagai perubahan yang disengaja beserta test-nya — bukan sebagai "bersih-bersih kode mati".
 
 ### [INFO] Fitur Pengecekan & ADR-0010–0012 belum tercatat di CHANGELOG
 
@@ -245,6 +247,6 @@ Catatan: pada pnpm 11, jalankan dengan `pnpm --config.verify-deps-before-run=fal
 | 4 | Laporan "nomor faktur tidak ditemukan" untuk filter No. Faktur | Low | Low |
 | 5 | Escape + semantik dialog (`role`, `aria-modal`) pada panel | Info | Trivial |
 | 6 | Verifikasi perlakuan `OtherTaxBase = 0` dengan satu sampel portal | Info | Trivial |
-| 7 | Hapus branch `keyup` `ch-multi-invoice-textarea` yang mati di `main.ts` | Info | Trivial |
+| 7 | ~~Hapus branch `keyup` yang mati di `main.ts`~~ — **ditutup 2026-09-25**: branch tersebut hidup, bukan kode mati (lihat §3) | Info | — |
 
 **Kesimpulan:** Tidak ada blocker. Proyek siap untuk iterasi berikutnya. Prioritas terbaik ada di sekitar fitur Pengecekan — memindahkan angka kebijakan pajaknya ke satu konstanta dan menyimpan setelannya — karena itulah area dengan pertumbuhan tercepat saat ini.

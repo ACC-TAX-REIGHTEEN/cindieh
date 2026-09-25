@@ -1,6 +1,6 @@
 # Cindieh
 
-The domain of the Cindieh extension: bulk capture, export, and comparison of tax data inside the Indonesian DJP Coretax portal, built as two JavaScript worlds (isolated + MAIN) that talk only over a token-validated message channel.
+The domain of the Cindieh extension: bulk capture, export, comparison, and accuracy checking of tax data inside the Indonesian DJP Coretax portal, built as two JavaScript worlds (isolated + MAIN) that talk only over a token-validated message channel.
 
 ## Language
 

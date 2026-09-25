@@ -45,8 +45,8 @@ DJP melarang aktivitas otomatisasi yang berpotensi menggangu ketersediaan layana
 
 ## 4. Keamanan Arsitektur Kode (*Code Security*)
 
-- **Bridge Token Security** ([`src/content/bridge.ts`](src/content/bridge.ts)): Menggunakan token acak unik yang dibuat sekali per halaman di dunia Isolated dan dibawa ke scraper (MAIN World) melalui URL script, lalu divalidasi pada setiap pesan. Hal ini mencegah skrip MAIN-world lain (misalnya ekstensi lain atau kode yang disuntikkan ke halaman) memalsukan perintah ke ekstensi.
-- **PostMessage Guard** ([`src/content/postmessage-guard.ts`](src/content/postmessage-guard.ts)): Memvalidasi `event.source`, *origin*, *direction*, dan token bridge pada setiap pesan sebelum di-dispatch, guna memastikan keamanan dari serangan *Cross-World Script Hijacking*.
+- **Bridge Token** ([`src/content/bridge.ts`](src/content/bridge.ts)): Token acak unik dibuat sekali per halaman di dunia Isolated dan dibawa ke scraper (MAIN World) melalui URL script, lalu dicocokkan pada setiap pesan. Fungsinya adalah **korelasi** — memastikan pesan ditangani oleh bridge yang sedang aktif dan menolak pesan tanpa token atau bertoken salah. Token **bukan autentikasi rahasia**: karena kedua dunia berbagi DOM dan lalu lintas `postMessage` halaman, kode MAIN-world mana pun (termasuk skrip yang disuntikkan ekstensi lain) dapat mengamatinya. Keterbatasan ini diterima secara eksplisit dan tercatat di [ADR-0007](docs/adr/0007-bridge-token-exposure-accepted-risks.md); token tidak pernah disimpan di `window`, tidak pernah dilog, dan tidak pernah menjadi satu-satunya pengaman.
+- **PostMessage Guard** ([`src/content/postmessage-guard.ts`](src/content/postmessage-guard.ts)): Validasi wajib sebelum dispatch — `event.source`, *origin*, *direction*, dan token bridge diperiksa pada setiap pesan. `source`/`origin` mengikat jendela dan origin (bukan dunia JavaScript), sedangkan *direction* adalah field protokol, bukan bukti identitas pengirim; karena itu guard ini **tidak diklaim** sebagai pertahanan terhadap pemalsuan pesan oleh kode berbahaya di halaman yang sama.
 
 ---
 
