@@ -151,7 +151,7 @@ Buat ekstensi siap pakai untuk browser yang diinginkan:
 |---|---|---|
 | `pnpm run build:chrome` | `dist/cindieh-chrome/` | Ekstensi Chrome (unpacked) |
 | `pnpm run build:firefox` | `dist/cindieh-firefox/` | Ekstensi Firefox (unpacked) |
-| `pnpm run package` | `/` (root) | `.zip` (Chrome) & `.xpi` (Firefox) |
+| `pnpm run package` | `dist/` | `cindieh-chrome.zip`, `cindieh-firefox.xpi`, dan `cindieh-source.zip` (sumber untuk submission Mozilla) |
 
 ### 3. Memasang Ekstensi
 
@@ -164,7 +164,7 @@ Buat ekstensi siap pakai untuk browser yang diinginkan:
 #### Mozilla Firefox
 1. Buka `about:addons`.
 2. Klik ikon roda gigi (⚙️) dan pilih **Install Add-on From File...**.
-3. Pilih file `cindieh-firefox.xpi` yang dihasilkan di direktori root.
+3. Pilih file `dist/cindieh-firefox.xpi` hasil `pnpm run package`.
    *(Catatan: Untuk pengujian lokal, pastikan `xpinstall.signatures.required` diatur ke `false` di `about:config`).*
 
 ## Tech Stack
