@@ -22,7 +22,12 @@ export const COMPLETION_STORAGE_KEY = "cindiehLastCompletion";
 /** Older than this and the record is a leftover, not a completion to announce. */
 export const MAX_NOTIFICATION_AGE_MS = 60_000;
 
-export type CompletionKind = "scrape" | "pdf";
+/**
+ * What finished. `scrape`/`pdf` are successful-ish runs (a run that comes back
+ * short is still one of these when it is accepted; a rejected or failed run is
+ * `error`). The kind only picks the toast title, so adding one is cheap.
+ */
+export type CompletionKind = "scrape" | "pdf" | "error";
 
 export interface CompletionRecord {
   /** Unique per publish: makes a repeated completion a real storage change. */
@@ -46,7 +51,7 @@ export function buildCompletionRecord(
 export function normalizeCompletionRecord(value: unknown): CompletionRecord | null {
   if (typeof value !== "object" || value === null) return null;
   const raw = value as Record<string, unknown>;
-  if (raw.kind !== "scrape" && raw.kind !== "pdf") return null;
+  if (raw.kind !== "scrape" && raw.kind !== "pdf" && raw.kind !== "error") return null;
   if (typeof raw.id !== "number" || !Number.isFinite(raw.id)) return null;
   if (typeof raw.at !== "number" || !Number.isFinite(raw.at)) return null;
   return {
@@ -62,8 +67,19 @@ export function formatCompletionNotification(record: CompletionRecord): {
   title: string;
   message: string;
 } {
-  const title = record.kind === "pdf" ? "Unduhan PDF selesai" : "Ekspor data selesai";
-  return { title, message: record.detail || "Proses Cindieh telah selesai." };
+  const title =
+    record.kind === "error"
+      ? "Proses Cindieh gagal"
+      : record.kind === "pdf"
+        ? "Unduhan PDF selesai"
+        : "Ekspor data selesai";
+  // A failed run's fallback must not say it finished: the whole point of the
+  // notification is to contradict the assumption that it did.
+  const fallback =
+    record.kind === "error"
+      ? "Proses tidak selesai. Periksa panel Cindieh untuk detailnya."
+      : "Proses Cindieh telah selesai.";
+  return { title, message: record.detail || fallback };
 }
 
 /**

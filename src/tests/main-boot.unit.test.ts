@@ -31,6 +31,9 @@ const MIRROR_MARKER_KEY = "cindieh:debug:ext";
 const ENABLED_KEY = "cindiehEnabled";
 const DELAY_PRESET_KEY = "cindiehDelayPreset";
 const PACING_STORAGE_KEY = "cindieh:pacing";
+const RESET_REQUEST_KEY = "cindiehResetRequest";
+const NOTIFY_ON_COMPLETE_KEY = "cindiehNotifyOnComplete";
+const COMPLETION_STORAGE_KEY = "cindiehLastCompletion";
 
 // ── Doubles ───────────────────────────────────────────
 
@@ -156,6 +159,9 @@ async function bootMain(options: { href?: string; pageStorage?: ReturnType<typeo
 
   const stored = deferred<Record<string, unknown>>();
   const onChanged: Array<(changes: Record<string, { newValue?: unknown }>, area: string) => void> = [];
+  // Every `storage.local.set` the content world makes. The completion hand-off
+  // is a write, so this is the only place a test can observe it from boot.
+  const extensionWrites: Record<string, unknown>[] = [];
 
   vi.stubGlobal("window", win);
   vi.stubGlobal("location", location);
@@ -165,7 +171,12 @@ async function bootMain(options: { href?: string; pageStorage?: ReturnType<typeo
     storage: {
       // loadExportModePreference() and the debug read share this promise: the
       // test can hold both back until it decides the gate should open.
-      local: { get: vi.fn(() => stored.promise), set: vi.fn(async () => undefined) },
+      local: {
+        get: vi.fn(() => stored.promise),
+        set: vi.fn(async (payload: Record<string, unknown>) => {
+          extensionWrites.push(payload);
+        }),
+      },
       onChanged: {
         addListener: (fn: (changes: Record<string, { newValue?: unknown }>, area: string) => void) => {
           onChanged.push(fn);
@@ -192,6 +203,7 @@ async function bootMain(options: { href?: string; pageStorage?: ReturnType<typeo
     fire,
     listenerCount,
     emitStorageChange,
+    extensionWrites,
     /** Fire a document-level listener (main.ts registers its keyup seam there). */
     fireDoc(type: string, event?: unknown): void {
       for (const fn of [...(doc.listeners.get(type) ?? [])]) fn(event);
@@ -588,5 +600,86 @@ describe("main boot — reference search", () => {
     vi.advanceTimersByTime(SEARCH_CLICK_DELAY_MS);
 
     expect(cari.click).not.toHaveBeenCalled();
+  });
+});
+
+// ── Completion notifications ──────────────────────────
+
+// The toast is raised by the background from a storage record, and the record
+// is only ever written from here. These tests are the half a seam suite cannot
+// see: a failed or partial run must publish too, not just a clean one.
+
+describe("main boot — completion notifications", () => {
+  type Env = Awaited<ReturnType<typeof bootMain>>;
+
+  /**
+   * Open a run the dispatcher will accept messages for. `clearScraperCache`
+   * (the popup's "Bersihkan cache") is the shortest way to a real run id from
+   * boot: it posts RESET_SCRAPER, which is what assigns and pages the run.
+   */
+  async function bootWithRun(): Promise<{ env: Env; runId: number }> {
+    const env = await bootMain();
+    env.fire("load");
+    await env.resolveStored({ [NOTIFY_ON_COMPLETE_KEY]: true });
+    env.emitStorageChange({ [RESET_REQUEST_KEY]: { newValue: 1 } });
+    const { getActiveRunId } = await import("../content/bridge");
+    return { env, runId: getActiveRunId() };
+  }
+
+  /** Frame a FROM_PAGE message the guard accepts, for the run bootWithRun opened. */
+  function fromPage(env: Env, data: Record<string, unknown>): void {
+    env.fire("message", {
+      source: env.win,
+      origin: PORTAL_ORIGIN,
+      data: { ...data, direction: "FROM_PAGE", token: env.token() },
+    });
+  }
+
+  function publishedRecord(env: Env): { kind?: string; detail?: string } | undefined {
+    const write = env.extensionWrites.find((w) => COMPLETION_STORAGE_KEY in w);
+    return write?.[COMPLETION_STORAGE_KEY] as { kind?: string; detail?: string } | undefined;
+  }
+
+  it("announces a hard failure instead of leaving the user with only a panel message", async () => {
+    const { env, runId } = await bootWithRun();
+
+    fromPage(env, { type: "SCRAPE_ERROR", message: "Sesi Coretax habis", runId });
+
+    const record = publishedRecord(env);
+    expect(record?.kind).toBe("error");
+    expect(record?.detail).toContain("Sesi Coretax habis");
+  });
+
+  it("announces a rejected partial run, whose early return used to notify nothing", async () => {
+    const { env, runId } = await bootWithRun();
+
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: [],
+      total: 10,
+      pages: 1,
+      elapsed: "4.2s",
+      partial: true,
+      failureCount: 2,
+      kind: "pdf",
+      runId,
+    });
+
+    const record = publishedRecord(env);
+    expect(record?.kind).toBe("error");
+    expect(record?.detail).toContain("2 proses gagal");
+  });
+
+  it("stays silent when the user never opted in", async () => {
+    const env = await bootMain();
+    env.fire("load");
+    // Only the notify switch is left at its default: off.
+    await env.resolveStored({ [ENABLED_KEY]: true });
+    env.emitStorageChange({ [RESET_REQUEST_KEY]: { newValue: 1 } });
+    const { getActiveRunId } = await import("../content/bridge");
+
+    fromPage(env, { type: "SCRAPE_ERROR", message: "Sesi habis", runId: getActiveRunId() });
+
+    expect(publishedRecord(env)).toBeUndefined();
   });
 });

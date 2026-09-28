@@ -60,6 +60,12 @@ describe("normalizeCompletionRecord", () => {
     expect(normalizeCompletionRecord({ kind: "export", id: 1, at: 1 })).toBeNull();
   });
 
+  it("accepts the error kind a failed run publishes", () => {
+    const record = buildCompletionRecord("error", "3 proses gagal.", 4);
+
+    expect(normalizeCompletionRecord(record)).toEqual(record);
+  });
+
   it("rejects a missing or non-numeric id or timestamp", () => {
     expect(normalizeCompletionRecord({ kind: "scrape", at: 1 })).toBeNull();
     expect(normalizeCompletionRecord({ kind: "scrape", id: "1", at: 1 })).toBeNull();
@@ -84,10 +90,22 @@ describe("formatCompletionNotification", () => {
     );
   });
 
+  it("titles a failed run as failed", () => {
+    const record = buildCompletionRecord("error", "Proses belum selesai sepenuhnya.");
+
+    expect(formatCompletionNotification(record).title).toBe("Proses Cindieh gagal");
+  });
+
   it("falls back to a readable body when the detail is empty", () => {
     const { message } = formatCompletionNotification(buildCompletionRecord("scrape", ""));
 
     expect(message).toBe("Proses Cindieh telah selesai.");
+  });
+
+  it("never tells the user a failed run finished", () => {
+    const { message } = formatCompletionNotification(buildCompletionRecord("error", ""));
+
+    expect(message).toBe("Proses tidak selesai. Periksa panel Cindieh untuk detailnya.");
   });
 });
 

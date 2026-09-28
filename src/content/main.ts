@@ -247,6 +247,17 @@ async function injectScraper(): Promise<void> {
 // One guard-then-dispatch seam (FROM_PAGE) for every message the
 // scraper sends in. New message types register in the table.
 
+/**
+ * Announce a run that did NOT complete — a hard failure or a result rejected as
+ * partial/cancelled. The success path publishes inline; these paths used to
+ * return first, so a user who opted in only ever heard about runs that went
+ * well, which is backwards: the panel is least likely to be watched when a long
+ * download dies. Opt-in gate and storage hand-off live in completion-notice.ts.
+ */
+function publishIncomplete(message: string): void {
+  if (getPreferences().notifyOnComplete) void publishCompletion("error", message);
+}
+
 const pageMessageDispatcher = createMessageDispatcher({
   direction: "FROM_PAGE",
   token: getBridgeToken,
@@ -286,6 +297,7 @@ const pageMessageDispatcher = createMessageDispatcher({
       if (!acceptScrapeResult(contentState, complete)) {
         if (contentState.lastState?.type === "SCRAPE_ERROR") {
           updatePanelError(contentState.lastState.message);
+          publishIncomplete(contentState.lastState.message);
         }
         return;
       }
@@ -353,6 +365,7 @@ const pageMessageDispatcher = createMessageDispatcher({
       const message = scrapeErrorMessage(typeof msg.message === "string" ? msg.message : undefined);
       invalidateScrapeResult(contentState, message);
       updatePanelError(message);
+      publishIncomplete(message);
     },
 
     REFERENCE_SEARCH_NOT_FOUND: (msg) => {
