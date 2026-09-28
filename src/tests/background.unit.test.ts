@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   COMPLETION_STORAGE_KEY,
+  SHOW_PANEL_REQUEST_KEY,
   buildCompletionRecord,
 } from "../content/completion-notice";
 
@@ -35,6 +36,7 @@ function makeFakeBrowser(
 ) {
   const onInstalled: Array<() => void> = [];
   const onChanged: StorageChangeListener[] = [];
+  const onNotificationClicked: Array<(id: string) => void> = [];
   const notifications = {
     // Typed so the assertions can read the (id, options) the worker passed.
     create: vi.fn(
@@ -43,11 +45,26 @@ function makeFakeBrowser(
         options: { type: string; iconUrl: string; title: string; message: string },
       ) => `${id}:${options.type}`,
     ),
+    onClicked: {
+      addListener: (fn: (id: string) => void) => {
+        onNotificationClicked.push(fn);
+      },
+    },
   };
+  const tabs = {
+    query: vi.fn(async () => [] as Array<{ id?: number; windowId?: number; active?: boolean }>),
+    update: vi.fn(async () => undefined),
+  };
+  const windows = { update: vi.fn(async () => undefined) };
+  const storageSet = vi.fn(async () => undefined);
   return {
     onInstalled,
     onChanged,
+    onNotificationClicked,
     notifications,
+    tabs,
+    windows,
+    storageSet,
     api: {
       storage: {
         local: {
@@ -58,6 +75,7 @@ function makeFakeBrowser(
             if (options.heldRead) return options.heldRead.promise;
             return store.has(key) ? { [key]: store.get(key) } : {};
           }),
+          set: storageSet,
         },
         onChanged: {
           addListener: (fn: StorageChangeListener) => {
@@ -66,6 +84,8 @@ function makeFakeBrowser(
         },
       },
       notifications,
+      tabs,
+      windows,
       runtime: {
         onInstalled: {
           addListener: (fn: () => void) => {
@@ -103,13 +123,21 @@ async function bootBackground(
     store,
     onInstalled: fake.onInstalled,
     onChanged: fake.onChanged,
+    onNotificationClicked: fake.onNotificationClicked,
     notifications: fake.notifications,
+    tabs: fake.tabs,
+    windows: fake.windows,
+    storageSet: fake.storageSet,
     log,
     debug,
     settle,
     /** Fire a storage change as the browser would when a key is written. */
     emitChange(key: string, newValue: unknown, areaName = "local"): void {
       for (const fn of fake.onChanged) fn({ [key]: { newValue } }, areaName);
+    },
+    /** Click a notification by id, as the browser reports it. */
+    emitNotificationClick(notificationId: string): void {
+      for (const fn of fake.onNotificationClicked) fn(notificationId);
     },
     /** Release a held read (see holdRead) with the stored keys to apply. */
     async resolveRead(keys: Record<string, unknown> = {}): Promise<void> {
@@ -245,5 +273,65 @@ describe("background — completion notifications", () => {
     env.emitChange(COMPLETION_STORAGE_KEY, buildCompletionRecord("scrape", "x"));
 
     await expect(env.settle()).resolves.toBeUndefined();
+  });
+});
+
+describe("background — a clicked completion toast", () => {
+  const PORTAL_URL = "https://coretaxdjp.pajak.go.id/*";
+
+  it("registers one notification-click listener", async () => {
+    const env = await bootBackground();
+
+    expect(env.onNotificationClicked).toHaveLength(1);
+  });
+
+  it("brings the portal tab forward and asks its panel to open", async () => {
+    const env = await bootBackground();
+    env.tabs.query.mockResolvedValue([{ id: 7, windowId: 3, active: false }]);
+
+    env.emitNotificationClick("cindieh-completion-123");
+    await env.settle();
+
+    expect(env.tabs.query).toHaveBeenCalledWith({ url: PORTAL_URL });
+    expect(env.tabs.update).toHaveBeenCalledWith(7, { active: true });
+    expect(env.windows.update).toHaveBeenCalledWith(3, { focused: true });
+    // Focusing the window is not enough: the panel is where the reason the toast
+    // fired is written, and the user may have collapsed it.
+    expect(env.storageSet).toHaveBeenCalledWith({ [SHOW_PANEL_REQUEST_KEY]: expect.any(Number) });
+  });
+
+  it("reaches a background-window tab without stealing focus from the wrong one", async () => {
+    const env = await bootBackground();
+    env.tabs.query.mockResolvedValue([
+      { id: 1, windowId: 5, active: false },
+      { id: 2, windowId: 6, active: true },
+    ]);
+
+    env.emitNotificationClick("cindieh-completion-9");
+    await env.settle();
+
+    expect(env.tabs.update).toHaveBeenCalledTimes(1);
+    expect(env.tabs.update).toHaveBeenCalledWith(2, { active: true });
+    expect(env.windows.update).toHaveBeenCalledWith(6, { focused: true });
+  });
+
+  it("ignores a notification that is not one of ours", async () => {
+    const env = await bootBackground();
+
+    env.emitNotificationClick("some-other-extension");
+    await env.settle();
+
+    expect(env.tabs.query).not.toHaveBeenCalled();
+    expect(env.storageSet).not.toHaveBeenCalled();
+  });
+
+  it("still asks for the panel when the tab lookup fails", async () => {
+    const env = await bootBackground();
+    env.tabs.query.mockRejectedValueOnce(new Error("tabs unavailable"));
+
+    env.emitNotificationClick("cindieh-completion-4");
+
+    await expect(env.settle()).resolves.toBeUndefined();
+    expect(env.storageSet).toHaveBeenCalledWith({ [SHOW_PANEL_REQUEST_KEY]: expect.any(Number) });
   });
 });

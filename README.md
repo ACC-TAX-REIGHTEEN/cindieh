@@ -138,7 +138,7 @@ Klik ikon Cindieh di toolbar browser untuk membuka pengaturan. Semua preferensi 
 | **Unduhan massal** | Jumlah berkas yang memicu konfirmasi (bawaan 10). Isi `0` untuk tidak pernah bertanya. |
 | **Default Komparator** | Toleransi selisih DPP/PPN, tanggal mode harian, dan filter status yang otomatis terisi saat panel Komparator dibuka. |
 | **Log debug** | Menampilkan log `[Cindieh]` di console halaman, background, dan popup. |
-| **Notifikasi saat selesai** | Notifikasi desktop setelah ekspor atau unduhan massal selesai. Bila ada nomor faktur yang tidak ditemukan, jumlahnya ikut disebut — mis. "17 data diproses, 3 nomor faktur tidak ditemukan, tanpa kegagalan." Izin `notifications` diminta saat saklar ini dinyalakan (izin opsional — tidak diminta saat pemasangan). |
+| **Notifikasi saat selesai** | Notifikasi desktop setelah ekspor atau unduhan massal selesai — termasuk bila prosesnya gagal atau hanya selesai sebagian ("Proses Cindieh gagal" beserta alasannya), supaya kegagalan tidak terlewat saat panel tidak diawasi. Bila ada nomor faktur yang tidak ditemukan, jumlahnya ikut disebut — mis. "17 data diproses, 3 nomor faktur tidak ditemukan, tanpa kegagalan." Izin `notifications` diminta saat saklar ini dinyalakan (izin opsional — tidak diminta saat pemasangan). Klik notifikasi membawa kembali ke tab portal Coretax dan membuka panel Cindieh. |
 | **Bersihkan cache** | Membuang data yang sudah diambil di tab portal, sehingga ekspor berikutnya mengambil ulang dari Coretax. |
 | **Reset preferensi** | Mengembalikan seluruh pengaturan di atas ke nilai bawaan. Format export dan Log debug tidak ikut direset. |
 

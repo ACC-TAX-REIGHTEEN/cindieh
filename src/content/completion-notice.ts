@@ -29,6 +29,15 @@ export const MAX_NOTIFICATION_AGE_MS = 60_000;
  */
 export type CompletionKind = "scrape" | "pdf" | "error";
 
+/**
+ * Storage key for the notification click's "show the panel" command. The click
+ * happens in the background worker and the panel lives in the content script,
+ * so it rides the same `storage.local` seam every background → tab command uses
+ * (ADR-0002): a changed value, a timestamp so two clicks in a row are still a
+ * real change, and a tab that is not open simply misses it.
+ */
+export const SHOW_PANEL_REQUEST_KEY = "cindiehShowPanelRequest";
+
 export interface CompletionRecord {
   /** Unique per publish: makes a repeated completion a real storage change. */
   id: number;
@@ -119,5 +128,14 @@ export async function publishCompletion(
     });
   } catch (err) {
     debugError("Gagal memublikasikan notifikasi selesai", err);
+  }
+}
+
+/** Ask every open portal tab to bring its Cindieh panel forward. */
+export async function requestShowPanel(now: number = Date.now()): Promise<void> {
+  try {
+    await browserAPI.storage.local.set({ [SHOW_PANEL_REQUEST_KEY]: now });
+  } catch (err) {
+    debugError("Gagal meminta panel Cindieh ditampilkan", err);
   }
 }

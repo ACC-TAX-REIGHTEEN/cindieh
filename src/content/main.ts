@@ -24,6 +24,7 @@ import type { ScrapeComplete } from "./scraper-types";
 import {
   destroyBadge,
   injectBadge,
+  showPanel,
   updatePanelComplete,
   updatePanelError,
   updatePanelIdle,
@@ -62,7 +63,7 @@ import {
 } from "./preferences";
 import { mirrorPacingToPageWorld } from "./page-pacing";
 import { REFERENCE_FAST_MATCH_MODE, REFERENCE_FIELD } from "./reference-search";
-import { describeCompletion, publishCompletion } from "./completion-notice";
+import { describeCompletion, publishCompletion, SHOW_PANEL_REQUEST_KEY } from "./completion-notice";
 import {
   handleExportAction,
   startScrape,
@@ -138,6 +139,11 @@ browserAPI.storage.onChanged.addListener((changes, areaName) => {
   // "Bersihkan cache" from the popup: same storage seam as everything else the
   // popup asks this tab to do (ADR-0002), so no messaging channel is needed.
   if (changes[RESET_SCRAPER_REQUEST_KEY]) clearScraperCache();
+
+  // A clicked completion toast bringing this tab forward also asks the panel to
+  // open: the bar is the only place the reason for the notification is spelled
+  // out, and the user may have collapsed it after the run failed.
+  if (changes[SHOW_PANEL_REQUEST_KEY]) showPanel();
 
   const preferencePatch = preferencesFromChanges(changes);
   if (Object.keys(preferencePatch).length === 0) return;
