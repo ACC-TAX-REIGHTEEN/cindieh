@@ -334,4 +334,104 @@ describe("background — a clicked completion toast", () => {
     await expect(env.settle()).resolves.toBeUndefined();
     expect(env.storageSet).toHaveBeenCalledWith({ [SHOW_PANEL_REQUEST_KEY]: expect.any(Number) });
   });
+
+  it("returns to the run's own page when the record carried it", async () => {
+    const env = await bootBackground();
+    env.emitChange(
+      COMPLETION_STORAGE_KEY,
+      buildCompletionRecord(
+        "error",
+        "Proses belum selesai sepenuhnya.",
+        Date.now(),
+        "https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax/detail/88",
+      ),
+    );
+    await env.settle();
+    // The portal's other section is open, and the run's own grid is closed.
+    env.tabs.query.mockImplementation(async ({ url }: { url?: string } = {}) =>
+      url === "https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax*"
+        ? []
+        : [{ id: 12, windowId: 4, active: true }],
+    );
+
+    env.emitNotificationClick(`cindieh-completion-${env.notifications.create.mock.calls[0][0].split("-").pop()}`);
+    await env.settle();
+
+    // The exact grid is gone, so the click falls back to the portal tab that
+    // does exist instead of doing nothing.
+    expect(env.tabs.query).toHaveBeenCalledWith({
+      url: "https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax*",
+    });
+    expect(env.tabs.query).toHaveBeenCalledWith({ url: PORTAL_URL });
+    expect(env.tabs.update).toHaveBeenCalledWith(12, { active: true });
+    expect(env.storageSet).toHaveBeenCalledWith({ [SHOW_PANEL_REQUEST_KEY]: expect.any(Number) });
+  });
+
+  it("lands on the exact grid when a tab still shows it", async () => {
+    const env = await bootBackground();
+    env.emitChange(
+      COMPLETION_STORAGE_KEY,
+      buildCompletionRecord(
+        "pdf",
+        "8 data diproses.",
+        Date.now(),
+        "https://coretaxdjp.pajak.go.id/withholding-slips-portal/my-withholding-slips",
+      ),
+    );
+    await env.settle();
+    env.tabs.query.mockImplementation(async ({ url }: { url?: string } = {}) =>
+      url === "https://coretaxdjp.pajak.go.id/withholding-slips-portal/my-withholding-slips*"
+        ? [{ id: 21, windowId: 2, active: false }]
+        : [{ id: 99, windowId: 2, active: true }],
+    );
+
+    env.emitNotificationClick(`cindieh-completion-${env.notifications.create.mock.calls[0][0].split("-").pop()}`);
+    await env.settle();
+
+    expect(env.tabs.update).toHaveBeenCalledTimes(1);
+    expect(env.tabs.update).toHaveBeenCalledWith(21, { active: true });
+    expect(env.windows.update).toHaveBeenCalledWith(2, { focused: true });
+  });
+
+  it("falls back to any portal tab when the record had no page", async () => {
+    const env = await bootBackground();
+    env.emitChange(COMPLETION_STORAGE_KEY, buildCompletionRecord("scrape", "120 data diproses."));
+    await env.settle();
+    env.tabs.query.mockResolvedValue([{ id: 5, windowId: 1, active: false }]);
+
+    env.emitNotificationClick(`cindieh-completion-${env.notifications.create.mock.calls[0][0].split("-").pop()}`);
+    await env.settle();
+
+    // Exactly one query — the any-portal fallback, no exact attempt first.
+    expect(env.tabs.query).toHaveBeenCalledTimes(1);
+    expect(env.tabs.query).toHaveBeenCalledWith({ url: PORTAL_URL });
+    expect(env.tabs.update).toHaveBeenCalledWith(5, { active: true });
+  });
+
+  it("does not confuse one toast's page with another's", async () => {
+    const env = await bootBackground();
+    env.emitChange(
+      COMPLETION_STORAGE_KEY,
+      buildCompletionRecord("error", "satu.", Date.now(), "https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax"),
+    );
+    await env.settle();
+    env.emitChange(
+      COMPLETION_STORAGE_KEY,
+      // +1: two records in the same millisecond would share a toast id, which
+      // production never does because Chrome replaces the earlier toast.
+      buildCompletionRecord("error", "dua.", Date.now() + 1, "https://coretaxdjp.pajak.go.id/withholding-slips-portal/my-withholding-slips"),
+    );
+    await env.settle();
+    env.tabs.query.mockResolvedValue([]);
+
+    // Click the FIRST toast: it must use the output-tax pattern, not the
+    // withholding one that arrived last.
+    env.emitNotificationClick(env.notifications.create.mock.calls[0][0] as string);
+    await env.settle();
+
+    expect(env.tabs.query).toHaveBeenNthCalledWith(
+      1,
+      { url: "https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax*" },
+    );
+  });
 });

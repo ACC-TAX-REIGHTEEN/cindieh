@@ -46,14 +46,24 @@ export interface CompletionRecord {
   detail: string;
   /** Epoch ms of the publish. */
   at: number;
+  /**
+   * Full href of the page the run happened on, when known. A toast click uses
+   * it to return to that exact tab and grid instead of any Coretax tab.
+   */
+  pageUrl?: string;
 }
 
 export function buildCompletionRecord(
   kind: CompletionKind,
   detail: string,
   now: number = Date.now(),
+  pageUrl?: string,
 ): CompletionRecord {
-  return { id: now, kind, detail, at: now };
+  const record: CompletionRecord = { id: now, kind, detail, at: now };
+  // Omitted rather than undefined: the background must not mistake a missing
+  // page for one it cannot parse.
+  if (pageUrl) record.pageUrl = pageUrl;
+  return record;
 }
 
 /** Validate a stored record. Returns null for anything unrecognizable. */
@@ -63,12 +73,14 @@ export function normalizeCompletionRecord(value: unknown): CompletionRecord | nu
   if (raw.kind !== "scrape" && raw.kind !== "pdf" && raw.kind !== "error") return null;
   if (typeof raw.id !== "number" || !Number.isFinite(raw.id)) return null;
   if (typeof raw.at !== "number" || !Number.isFinite(raw.at)) return null;
-  return {
+  const record: CompletionRecord = {
     id: raw.id,
     kind: raw.kind,
     detail: typeof raw.detail === "string" ? raw.detail : "",
     at: raw.at,
   };
+  if (typeof raw.pageUrl === "string" && raw.pageUrl) record.pageUrl = raw.pageUrl;
+  return record;
 }
 
 /** Title and body for the toast, in the project's user-facing language. */
@@ -121,13 +133,38 @@ export async function publishCompletion(
   kind: CompletionKind,
   detail: string,
   now: number = Date.now(),
+  pageUrl?: string,
 ): Promise<void> {
   try {
     await browserAPI.storage.local.set({
-      [COMPLETION_STORAGE_KEY]: buildCompletionRecord(kind, detail, now),
+      [COMPLETION_STORAGE_KEY]: buildCompletionRecord(kind, detail, now, pageUrl),
     });
   } catch (err) {
     debugError("Gagal memublikasikan notifikasi selesai", err);
+  }
+}
+
+// ── Notification click: back to the run's own page ────
+
+const PORTAL_ORIGIN = "https://coretaxdjp.pajak.go.id";
+
+/**
+ * A `tabs.query` match pattern for the portal page a run happened on, so a
+ * clicked toast can return to that exact grid instead of any Coretax tab. Keeps
+ * the origin and the first two path segments (`…/e-invoice-portal/output-tax`,
+ * `…/withholding-slips-portal/my-withholding-slips`): SPA state and query
+ * strings move around, the section does not. Null for anything that is not a
+ * portal page, which sends the click to the any-portal-tab fallback.
+ */
+export function notificationTabPattern(pageUrl: string): string | null {
+  try {
+    const url = new URL(pageUrl);
+    if (url.origin !== PORTAL_ORIGIN) return null;
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (segments.length === 0) return null;
+    return `${PORTAL_ORIGIN}/${segments.slice(0, 2).join("/")}*`;
+  } catch {
+    return null;
   }
 }
 

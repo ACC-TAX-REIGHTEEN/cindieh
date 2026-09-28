@@ -259,9 +259,12 @@ async function injectScraper(): Promise<void> {
  * return first, so a user who opted in only ever heard about runs that went
  * well, which is backwards: the panel is least likely to be watched when a long
  * download dies. Opt-in gate and storage hand-off live in completion-notice.ts.
+ * The page href rides along so a click on the toast returns to this exact grid.
  */
 function publishIncomplete(message: string): void {
-  if (getPreferences().notifyOnComplete) void publishCompletion("error", message);
+  if (getPreferences().notifyOnComplete) {
+    void publishCompletion("error", message, Date.now(), location.href);
+  }
 }
 
 const pageMessageDispatcher = createMessageDispatcher({
@@ -334,6 +337,8 @@ const pageMessageDispatcher = createMessageDispatcher({
             failureCount: complete.failureCount,
             missing: missing.length,
           }),
+          Date.now(),
+          location.href,
         );
       }
 

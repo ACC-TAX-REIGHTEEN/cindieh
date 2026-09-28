@@ -12,6 +12,7 @@ import {
   describeCompletion,
   formatCompletionNotification,
   normalizeCompletionRecord,
+  notificationTabPattern,
 } from "../content/completion-notice";
 
 afterEach(() => {
@@ -40,6 +41,18 @@ describe("buildCompletionRecord", () => {
 
     expect(second.id).not.toBe(first.id);
   });
+
+  it("carries the run's page so the toast click can return there", () => {
+    const record = buildCompletionRecord("error", "gagal.", 9, "https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax?x=1");
+
+    expect(record.pageUrl).toBe("https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax?x=1");
+  });
+
+  it("omits the page entirely when the caller has none", () => {
+    // An explicit undefined would make the background think a page existed but
+    // was unreadable; the two cases must not look different in storage.
+    expect(buildCompletionRecord("scrape", "d", 1, undefined)).not.toHaveProperty("pageUrl");
+  });
 });
 
 describe("normalizeCompletionRecord", () => {
@@ -64,6 +77,14 @@ describe("normalizeCompletionRecord", () => {
     const record = buildCompletionRecord("error", "3 proses gagal.", 4);
 
     expect(normalizeCompletionRecord(record)).toEqual(record);
+  });
+
+  it("keeps a well-formed pageUrl and drops a malformed one", () => {
+    const withPage = normalizeCompletionRecord({ kind: "pdf", id: 1, at: 2, pageUrl: "https://coretaxdjp.pajak.go.id/withholding-slips-portal/my-withholding-slips" });
+    expect(withPage?.pageUrl).toBe("https://coretaxdjp.pajak.go.id/withholding-slips-portal/my-withholding-slips");
+
+    // A non-string is decoration, not signal: the toast falls back instead.
+    expect(normalizeCompletionRecord({ kind: "pdf", id: 1, at: 2, pageUrl: 42 })?.pageUrl).toBeUndefined();
   });
 
   it("rejects a missing or non-numeric id or timestamp", () => {
@@ -131,6 +152,27 @@ describe("describeCompletion", () => {
     expect(describeCompletion({ total: 120, missing: 0 })).toBe(
       "120 data diproses, tanpa kegagalan.",
     );
+  });
+});
+
+describe("notificationTabPattern", () => {
+  it("keeps the portal origin and the first two path segments", () => {
+    expect(
+      notificationTabPattern("https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax/detail/123?tab=2"),
+    ).toBe("https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax*");
+    expect(
+      notificationTabPattern("https://coretaxdjp.pajak.go.id/withholding-slips-portal/my-withholding-slips"),
+    ).toBe("https://coretaxdjp.pajak.go.id/withholding-slips-portal/my-withholding-slips*");
+  });
+
+  it("rejects anything that is not a portal page", () => {
+    expect(notificationTabPattern("https://evil.example.com/e-invoice-portal/output-tax")).toBeNull();
+    expect(notificationTabPattern("https://coretaxdjp.pajak.go.id.evil.example/page")).toBeNull();
+    expect(notificationTabPattern("not a url")).toBeNull();
+  });
+
+  it("rejects the portal landing page, which has no section to match", () => {
+    expect(notificationTabPattern("https://coretaxdjp.pajak.go.id/")).toBeNull();
   });
 });
 

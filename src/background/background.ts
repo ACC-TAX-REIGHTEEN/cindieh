@@ -10,6 +10,7 @@ import {
   MAX_NOTIFICATION_AGE_MS,
   formatCompletionNotification,
   normalizeCompletionRecord,
+  notificationTabPattern,
   requestShowPanel,
 } from "../content/completion-notice";
 
@@ -51,9 +52,20 @@ export function announceCompletion(value: unknown, now: number = Date.now()): vo
   if (now - record.at > MAX_NOTIFICATION_AGE_MS) return;
 
   const { title, message } = formatCompletionNotification(record);
+  const notificationId = `cindieh-completion-${record.id}`;
+  // The click listener only receives the id, so the page a toast should return
+  // to is remembered here under that id. The map lives only as long as this
+  // service worker: a click after the worker restarted (or a toast that
+  // outlived it) falls back to any portal tab, which is the pre-pageUrl behavior.
+  if (record.pageUrl) {
+    if (PAGE_URL_BY_NOTIFICATION.size >= MAX_REMEMBERED_NOTIFICATIONS) {
+      PAGE_URL_BY_NOTIFICATION.clear();
+    }
+    PAGE_URL_BY_NOTIFICATION.set(notificationId, record.pageUrl);
+  }
   try {
     void Promise.resolve(
-      browserAPI.notifications.create(`cindieh-completion-${record.id}`, {
+      browserAPI.notifications.create(notificationId, {
         type: "basic",
         iconUrl: browserAPI.runtime.getURL("icons/icon128.png"),
         title,
@@ -75,17 +87,29 @@ const NOTIFICATION_ID_PREFIX = "cindieh-completion-";
 /** The manifest's portal match pattern, reused to find the tab to bring back. */
 const PORTAL_TAB_URL = "https://coretaxdjp.pajak.go.id/*";
 
+/** Remember which page each live toast came from, so the click can go back. */
+const PAGE_URL_BY_NOTIFICATION = new Map<string, string>();
+/** A bound on the map: notifications are capped by the OS anyway. */
+const MAX_REMEMBERED_NOTIFICATIONS = 32;
+
 /**
  * A completion toast is most useful when the user is elsewhere, so a click on
- * it takes them back: the portal tab is focused, and the tab is separately asked
- * to open its panel, because a focused window does not by itself put the reason
+ * it takes them back — to the exact grid the run happened on when the record
+ * carried its page, otherwise to any portal tab. The tab is separately asked to
+ * open its panel, because a focused window does not by itself put the reason
  * for the notification on screen. Exported for the unit tests; the click
  * listener is the only caller.
  */
-export async function focusPortalTab(): Promise<void> {
+export async function focusPortalTab(pageUrl?: string): Promise<void> {
+  const exactPattern = pageUrl ? notificationTabPattern(pageUrl) : null;
   try {
-    const tabs = await browserAPI.tabs.query({ url: PORTAL_TAB_URL });
-    // Prefer the tab the user last looked at; any portal tab beats none.
+    let tabs = exactPattern ? await browserAPI.tabs.query({ url: exactPattern }) : [];
+    // The run's page may have been navigated away since the toast fired — or
+    // the record carried no page at all; any portal tab still beats nothing.
+    if (tabs.length === 0) {
+      tabs = await browserAPI.tabs.query({ url: PORTAL_TAB_URL });
+    }
+    // Prefer the tab the user last looked at; any match beats none.
     const tab = tabs.find((candidate) => candidate.active) ?? tabs[0];
     if (tab?.id !== undefined) {
       await browserAPI.tabs.update(tab.id, { active: true });
@@ -104,5 +128,7 @@ browserAPI.notifications.onClicked.addListener((notificationId) => {
   if (typeof notificationId !== "string" || !notificationId.startsWith(NOTIFICATION_ID_PREFIX)) {
     return;
   }
-  void focusPortalTab();
+  const pageUrl = PAGE_URL_BY_NOTIFICATION.get(notificationId);
+  PAGE_URL_BY_NOTIFICATION.delete(notificationId);
+  void focusPortalTab(pageUrl);
 });

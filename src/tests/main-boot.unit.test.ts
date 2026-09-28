@@ -34,6 +34,7 @@ const PACING_STORAGE_KEY = "cindieh:pacing";
 const RESET_REQUEST_KEY = "cindiehResetRequest";
 const NOTIFY_ON_COMPLETE_KEY = "cindiehNotifyOnComplete";
 const COMPLETION_STORAGE_KEY = "cindiehLastCompletion";
+const SHOW_PANEL_REQUEST_KEY = "cindiehShowPanelRequest";
 
 // ── Doubles ───────────────────────────────────────────
 
@@ -681,5 +682,19 @@ describe("main boot — completion notifications", () => {
     fromPage(env, { type: "SCRAPE_ERROR", message: "Sesi habis", runId: getActiveRunId() });
 
     expect(publishedRecord(env)).toBeUndefined();
+  });
+
+  it("re-opens the panel when the notification click asks it to", async () => {
+    const env = await bootMain();
+    env.fire("load");
+    await env.resolveStored({ [ENABLED_KEY]: true });
+    const container = env.doc.getElementById("ch-floating-info-container")!;
+    expect(container.classList.contains("ch-panel-open")).toBe(false);
+
+    env.emitStorageChange({ [SHOW_PANEL_REQUEST_KEY]: { newValue: Date.now() } });
+
+    // The background focused the tab; this is how the reason for the toast gets
+    // onto the screen even if the user had collapsed the bar.
+    expect(container.classList.contains("ch-panel-open")).toBe(true);
   });
 });
