@@ -6,6 +6,9 @@ dist/
 *.zip
 *.xpi
 
+# Coverage report
+coverage/
+
 # OS files
 Thumbs.db
 Desktop.ini
