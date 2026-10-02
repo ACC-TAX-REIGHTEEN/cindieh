@@ -1,6 +1,8 @@
 // ── Main-side result acceptance and invalidation ──────────────
+// Acceptance, invalidation and the missing-invoice diff moved to
+// run-lifecycle.ts (ADR-0014): they are state transitions, and this module is
+// now the pure half — the diff itself plus the per-caller wording.
 
-import type { ContentState } from "./main-actions";
 import type { MessageHandler } from "./postmessage-guard";
 import type { ScrapeComplete } from "./scraper-types";
 
@@ -27,21 +29,6 @@ export function incompleteResultMessage(result: Pick<ScrapeComplete,
   const failures = result.failureCount && result.failureCount > 0 ? ` ${result.failureCount} proses gagal.` : "";
   const invoices = result.failedInvoices?.length ? ` Faktur gagal: ${result.failedInvoices.join(", ")}.` : "";
   return `${reason}${failures}${invoices} Data tidak disimpan sebagai hasil lengkap; ekspor dan pemeriksaan otomatis dibatalkan. Periksa sesi Coretax dan filter, lalu jalankan ulang. PDF yang sudah diunduh tetap tersimpan.`;
-}
-
-/** Discard both current and previous cached results, not just pending actions. */
-export function invalidateScrapeResult(state: ContentState, message: string): void {
-  state.isRunning = false;
-  state.scrapedData = null;
-  state.scrapedFields = null;
-  state.lastExportMeta = null;
-  state.pendingExportFormat = null;
-  state.pendingCompare = false;
-  state.pendingCheck = false;
-  // A discarded result must take its request with it: reporting a later scrape's
-  // rows against this list would invent "not found" numbers.
-  state.requestedInvoices = [];
-  state.lastState = { type: "SCRAPE_ERROR", message };
 }
 
 /** How many missing numbers the panel lists before summarizing the rest. */
@@ -118,51 +105,6 @@ export function skippedInvoicesMessage(
   );
 }
 
-export interface MissingInvoices {
-  /** Numbers the run asked for that no returned row carried, in request order. */
-  missing: string[];
-  /** Panel notice for a targeted export; null when nothing is missing. */
-  notice: string | null;
-}
-
-/**
- * Consume a run's requested-invoice list and describe what never came back. The
- * request is cleared either way, so a later run can never be diffed against a
- * stale list.
- *
- * This exists because a number Coretax has no row for is NOT a lookup failure:
- * the request succeeds with an empty payload, so `partial` and `failedInvoices`
- * both stay empty and the result would otherwise come back silently short. The
- * same diff serves a filtered bulk PDF run, whose completion carries only the
- * rows it downloaded — the requested numbers absent from those are the ones the
- * pre-download dialog already named.
- */
-export function consumeMissingInvoices(
-  state: ContentState,
-  rows: readonly Record<string, unknown>[],
-): MissingInvoices {
-  const requested = state.requestedInvoices;
-  state.requestedInvoices = [];
-  const missing = findMissingInvoices(requested, rows);
-  return { missing, notice: missingInvoicesMessage(requested.length, missing) };
-}
-
 export function scrapeErrorMessage(message?: string): string {
   return `${message || "Proses gagal."} Ekspor dan pemeriksaan otomatis dibatalkan. Periksa sesi Coretax dan filter, lalu jalankan ulang.`;
-}
-
-/** Only an accepted result may trigger pending exports or comparisons. */
-export function acceptScrapeResult(state: ContentState, result: ScrapeComplete): boolean {
-  const warning = incompleteResultMessage(result);
-  if (warning) {
-    invalidateScrapeResult(state, warning);
-    return false;
-  }
-  state.isRunning = false;
-  state.scrapedData = result.data || null;
-  // Successful PDF downloads carry no fields; retain the original grid schema.
-  if (result.fields?.length) state.scrapedFields = result.fields;
-  state.lastExportMeta = { filenameHint: result.filenameHint, source: result.source };
-  state.lastState = result;
-  return true;
 }

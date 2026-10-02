@@ -9,7 +9,7 @@
 // regression — new logic shipping without tests — does. Raise them as coverage
 // improves; never lower them to make a red build green.
 //
-// Measured 2026-10-02 on the whole suite (1142 tests). The modules that hold
+// Measured 2026-10-02 on the whole suite (1175 tests). The modules that hold
 // the baseline down are recorded in AGENTS.md so a low number reads as a known
 // gap rather than a mystery.
 
@@ -38,13 +38,14 @@ export default defineConfig({
 
       // Baseline floors. Global, so a new well-tested module may raise the
       // average while an untested one still drags it down.
-      // Raised from 80/72/74/82 after the column-schema extraction; the
-      // measured numbers are now 83.23/75.34/78.72/84.97.
+      // Raised from 80/72/74/82 after the column-schema extraction, then again
+      // by the run-lifecycle extraction (ADR-0014); the measured numbers are
+      // now 83.45/75.54/78.96/85.25.
       thresholds: {
-        statements: 81,
-        branches: 73,
-        functions: 76,
-        lines: 83,
+        statements: 81.2,
+        branches: 73.2,
+        functions: 76.2,
+        lines: 83.3,
       },
     },
   },

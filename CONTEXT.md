@@ -92,8 +92,12 @@ _Avoid_: rows-only scrape, PDF-less scrape
 The efaktur-only filter (toolbar toggle "No. Faktur" on the four e-invoice grids) that takes a list of invoice numbers — one per line, or comma/semicolon separated — and restricts which rows get PDF downloads, or which invoice numbers get a targeted scrape for XLSX/CSV export. Not available on withholding-slips or SPT pages. A requested number that matches nothing carries no row, so it is reported rather than silently dropped: in the panel after a targeted export, and in the pre-download dialog (or its own alert) before a bulk PDF run.
 _Avoid_: invoice filter, multi-invoice filter
 
+**Run**:
+One operation on a grid — a Scrape, a bulk download, or a targeted No. Faktur lookup — from the moment the Wajib Pajak asks for it until it ends. A Run spans both worlds: the bridge gives it a `runId` that rides every message, the Scraper owns its cancellation and identity (ADR-0010), and the isolated world owns its outcome and what it still owes (ADR-0014). One Run at a time per page; starting another cancels the first. A native download is not a Run: it carries no `runId`.
+_Avoid_: scrape operation, job, task, export request, ScrapeRun
+
 **Pending export**:
-An export (or comparison) the user requested before any data existed; it is fulfilled automatically when a scrape completes.
+An export, comparison or check the Wajib Pajak asked for before the grid data existed; the Run fulfils it automatically when it completes, and abandons it when the Run does not. A pending export is spent exactly once — a stop, a navigation, or a result rejected as incomplete leaves nothing behind for a later Run to fulfil against.
 _Avoid_: queued export, deferred export
 
 ### Comparer

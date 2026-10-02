@@ -16,9 +16,15 @@ import {
 import { stubFakeDom, type FakeDoc, type FakeEl } from "./__mocks__/fake-dom";
 
 vi.mock("../content/main-actions", () => ({
-  contentState: { scrapedData: null, pendingCompare: false },
   startScrape: vi.fn(),
 }));
+// The panel no longer reads run state off a ContentState; it asks a Run
+// (ADR-0014). One instance per module-registry reset keeps each case isolated,
+// exactly as the old per-test createContentState() did.
+vi.mock("../content/run-lifecycle", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../content/run-lifecycle")>();
+  return { ...actual, runLifecycle: actual.createRunLifecycle() };
+});
 vi.mock("../content/page-context", () => ({ isOutputTaxPage: () => true }));
 
 const comparison: ComparisonResult = {
@@ -139,6 +145,25 @@ describe("comparison UI validation and exports", () => {
   let ui: typeof import("../content/ui-comparer");
   let actions: typeof import("../content/main-actions");
   let exporter: typeof import("../content/exporter");
+  let run: import("../content/run-lifecycle").RunLifecycle;
+
+  /** Put rows in the Run the way a finished scrape would; null means none. */
+  function seedRows(rows: Record<string, unknown>[] | null): void {
+    if (rows === null) {
+      run.reset();
+      return;
+    }
+    run.begin("scrape");
+    run.complete({
+      type: "SCRAPE_COMPLETE",
+      data: rows,
+      fields: ["Reference", "SellingPrice", "OtherTaxBase", "VAT", "BuyerTIN", "TaxInvoiceNumber"],
+      total: rows.length,
+      pages: 1,
+      elapsed: "1s",
+      source: "OUTPUT_TAX",
+    });
+  }
 
   // Extend only this test's fake with innerHTML clearing and form properties.
   function el(id: string): FakeEl & { disabled: boolean; checked: boolean; innerHTML: string } {
@@ -150,10 +175,10 @@ describe("comparison UI validation and exports", () => {
   function runValid(): void {
     el("ch-comparer-textarea").value = "000123\t000456\t1.234,56789\t0";
     el("ch-comparer-daily-dates").value = "1";
-    actions.contentState.scrapedData = [{
+    seedRows([{
       Reference: "000123", SellingPrice: 1234.56789, VAT: 0,
       BuyerTIN: comparison.buyerTIN, TaxInvoiceNumber: comparison.taxInvoiceNumber,
-    }];
+    }]);
     fire("ch-comparer-check-btn");
     expect(el("ch-comparer-export-btn").disabled).toBe(false);
   }
@@ -182,8 +207,10 @@ describe("comparison UI validation and exports", () => {
       return element;
     });
     actions = await import("../content/main-actions");
-    actions.contentState.scrapedData = null;
-    actions.contentState.pendingCompare = false;
+    run = (await import("../content/run-lifecycle")).runLifecycle;
+    // The mocked module keeps one Run across resetModules, so clear it here
+    // rather than relying on a fresh instance per case.
+    run.reset();
     exporter = await import("../content/exporter");
     vi.spyOn(exporter, "downloadXLSXFile").mockImplementation(async () => {});
     ui = await import("../content/ui-comparer");
@@ -207,7 +234,7 @@ describe("comparison UI validation and exports", () => {
 
   it("clears stale results when data disappears during a rerun", () => {
     runValid();
-    actions.contentState.scrapedData = null;
+    seedRows(null);
     fire("ch-comparer-tolerance", "change");
     expectCleared();
   });
@@ -216,9 +243,20 @@ describe("comparison UI validation and exports", () => {
     el("ch-comparer-textarea").value = "000123\t000456\t1.000\t110";
     el("ch-comparer-daily-dates").value = "1";
     fire("ch-comparer-check-btn");
-    expect(actions.contentState.pendingCompare).toBe(true);
     expect(actions.startScrape).toHaveBeenCalledOnce();
-    actions.contentState.scrapedData = [{ Reference: "000123", SellingPrice: 1000, VAT: 110 }];
+
+    // Data arrives. The panel registered a pending comparison when it had
+    // nothing to check yet, so the completed run must hand exactly that back.
+    const outcome = run.complete({
+      type: "SCRAPE_COMPLETE",
+      data: [{ Reference: "000123", SellingPrice: 1000, VAT: 110 }],
+      fields: ["Reference", "SellingPrice", "VAT"],
+      total: 1, pages: 1, elapsed: "1s", source: "OUTPUT_TAX",
+    });
+    expect(outcome.kind === "accepted" && outcome.followUp).toEqual([{ kind: "compare" }]);
+
+    // The input changed while the scrape ran: revalidation uses what is there
+    // now, not what was there when "Periksa" was clicked.
     el(input === "dates" ? "ch-comparer-daily-dates" : "ch-comparer-textarea").value = "";
     ui.runPendingCompare();
     expectCleared();
@@ -226,9 +264,11 @@ describe("comparison UI validation and exports", () => {
 
   it("clears the session and cancels pending comparison on Hapus", () => {
     runValid();
-    actions.contentState.pendingCompare = true;
+    // The Run now owes a comparison. Hapus must cancel it: if it survived, the
+    // tolerance change below would re-run the comparison and write a status line.
+    // (The cancel itself is pinned in run-lifecycle.unit.test.ts.)
+    run.request({ kind: "compare" });
     fire("ch-comparer-clear-btn");
-    expect(actions.contentState.pendingCompare).toBe(false);
     expect(el("ch-comparer-export-btn").disabled).toBe(true);
     fire("ch-comparer-tolerance", "change");
     expect(el("ch-comparer-status").textContent).toBe("");
@@ -249,9 +289,9 @@ describe("comparison UI validation and exports", () => {
   });
 
   it("renders and filters incomplete checker data and exports blanks rather than zero", () => {
-    actions.contentState.scrapedData = [{
+    seedRows([{
       Reference: "000123", SellingPrice: null, OtherTaxBase: 0, VAT: 0,
-    }];
+    }]);
     fire("ch-checker-check-btn");
     const table = el("ch-checker-results").children[0];
     const cells = table.children[1].children[0].children.map((c) => c.textContent);

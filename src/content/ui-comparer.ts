@@ -13,10 +13,13 @@ import {
   buildCheckerExportRows,
 } from "./comparer-export";
 import { comparisonColumns, checkerColumns, type ResultColumn } from "./result-columns";
-import { contentState, startScrape } from "./main-actions";
+import { startScrape } from "./main-actions";
+import { runLifecycle } from "./run-lifecycle";
 import { getPreferences } from "./preferences";
 import { debugError } from "./debug";
 import { isOutputTaxPage } from "./page-context";
+import { showPanel, updatePanelProgress } from "./ui-badge";
+import { postToScraper } from "./bridge";
 import {
   applyComparerDefaults,
   applyStatusFilter,
@@ -39,6 +42,14 @@ import {
 } from "./checker-logic";
 
 const PAGE_SIZE = 10;
+
+/**
+ * The panel asks for a scrape on its own — "Periksa" with no grid data yet —
+ * which is not the export path and does not need a full ActionDeps. Supplying
+ * the three calls a bare scrape uses keeps the dependency explicit at the call
+ * site instead of reaching for production defaults the panel never touches.
+ */
+const SCRAPE_DEPS = { showPanel, updatePanelProgress, postToScraper };
 
 // ── Sessions ───────────────────────────────────────────
 
@@ -489,7 +500,7 @@ export function injectComparerModal(): void {
     session.results = [];
     session.currentPage = 1;
     session.viewedRefs.clear();
-    contentState.pendingCompare = false;
+    runLifecycle.cancelPending("compare");
     exportBtn.disabled = true;
     textarea.classList.remove("ch-hidden");
     const toggleIcon = document.getElementById("ch-comparer-toggle-icon");
@@ -709,11 +720,11 @@ function handleCheck(): void {
   const datesInput = document.getElementById("ch-comparer-daily-dates") as HTMLInputElement;
   const textareaValue = textarea ? textarea.value : "";
   const datesValue = datesInput ? datesInput.value : "";
-  const scrapedData = contentState.scrapedData;
+  const scrapedData = runLifecycle.result()?.data ?? null;
 
   const decision = prepareComparison(session, textareaValue, scrapedData, datesValue);
 
-  contentState.pendingCompare = false;
+  runLifecycle.cancelPending("compare");
   if (decision.action === "error") {
     renderComparisonError(decision.message);
     return;
@@ -723,8 +734,8 @@ function handleCheck(): void {
     renderResults();
     statusMsg.textContent = "Belum ada data. Mohon tunggu, sedang melakukan scraping data PPN Keluaran terlebih dahulu...";
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
-    contentState.pendingCompare = true;
-    startScrape();
+    runLifecycle.request({ kind: "compare" });
+    startScrape(SCRAPE_DEPS);
     return;
   }
 
@@ -741,7 +752,7 @@ export function runPendingCompare(): void {
   const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
   const datesInput = document.getElementById("ch-comparer-daily-dates") as HTMLInputElement;
   const result = rerunComparison(
-    session, textarea ? textarea.value : "", contentState.scrapedData,
+    session, textarea ? textarea.value : "", runLifecycle.result()?.data ?? null,
     datesInput ? datesInput.value : "",
   );
   if (result.action === "error") {
@@ -769,12 +780,12 @@ function handleCheckerCheck(): void {
   const statusMsg = document.getElementById("ch-checker-status");
   if (!statusMsg) return;
 
-  const scrapedData = contentState.scrapedData;
+  const scrapedData = runLifecycle.result()?.data ?? null;
   if (!scrapedData || scrapedData.length === 0) {
     statusMsg.textContent = "Belum ada data. Mohon tunggu, sedang melakukan scraping data PPN Keluaran terlebih dahulu...";
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
-    contentState.pendingCheck = true;
-    startScrape();
+    runLifecycle.request({ kind: "check" });
+    startScrape(SCRAPE_DEPS);
     return;
   }
 
@@ -788,7 +799,7 @@ function handleCheckerCheck(): void {
 }
 
 function rerunChecker(): void {
-  const scrapedData = contentState.scrapedData;
+  const scrapedData = runLifecycle.result()?.data ?? null;
   if (!scrapedData || scrapedData.length === 0) return;
 
   checkerSession.results = checkAllRowsAccuracy(
@@ -801,7 +812,7 @@ function rerunChecker(): void {
 }
 
 export function runPendingCheck(): void {
-  const scrapedData = contentState.scrapedData;
+  const scrapedData = runLifecycle.result()?.data ?? null;
   if (!scrapedData || scrapedData.length === 0) return;
 
   openComparerModal("check");

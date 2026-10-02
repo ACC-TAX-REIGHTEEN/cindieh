@@ -9,17 +9,12 @@
 // ============================================================
 
 import { browserAPI } from "./browser-shim";
-import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode } from "../shared/export-preferences";
+import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode, type StoredExportMode } from "../shared/export-preferences";
 import { isOutputTaxPage, isSupportedExportPage } from "./page-context";
 import { createMessageDispatcher } from "./postmessage-guard";
 import { generateBridgeToken, getBridgeToken, getActiveRunId, isCurrentRunMessage, postToScraper } from "./bridge";
-import {
-  acceptScrapeResult,
-  consumeMissingInvoices,
-  currentRunHandlers,
-  invalidateScrapeResult,
-  scrapeErrorMessage,
-} from "./scrape-result";
+import { currentRunHandlers, scrapeErrorMessage } from "./scrape-result";
+import { runLifecycle } from "./run-lifecycle";
 import type { ScrapeComplete } from "./scraper-types";
 import {
   destroyBadge,
@@ -65,14 +60,12 @@ import { mirrorPacingToPageWorld } from "./page-pacing";
 import { REFERENCE_FAST_MATCH_MODE, REFERENCE_FIELD } from "./reference-search";
 import { describeCompletion, publishCompletion, SHOW_PANEL_REQUEST_KEY } from "./completion-notice";
 import {
+  createActionDeps,
   handleExportAction,
   startScrape,
   triggerSearch,
   scrapeIntentForFormat,
-  contentState,
-  resetContentState,
   SCRAPE_CANCELLED_MESSAGE,
-  type ScrapeState,
 } from "./main-actions";
 
 const DEBOUNCE_DELAY_MS = 300;
@@ -100,6 +93,16 @@ const TEARDOWN_ELEMENT_IDS = [
 // readPreferences() has already seeded by the time any button can be clicked.
 let extensionEnabled = false;
 
+/**
+ * The stored export mode. It is not run state (ADR-0014): it belongs to the
+ * popup's EXPORT_MODE_STORAGE_KEY and is maintained by the storage listener
+ * below, so the action handlers read it through the deps this builds.
+ */
+let exportMode: StoredExportMode = "cleaned";
+
+/** Production ActionDeps, built once with the export mode as a live read. */
+const actionDeps = createActionDeps(() => exportMode);
+
 const preferencesReady = readPreferences().then((loaded) => {
   extensionEnabled = loaded.enabled;
   mirrorPacingToPageWorld(loaded.delayPreset);
@@ -111,7 +114,7 @@ const preferencesReady = readPreferences().then((loaded) => {
 async function loadExportModePreference(): Promise<void> {
   try {
     const result = await browserAPI.storage.local.get(EXPORT_MODE_STORAGE_KEY);
-    contentState.exportMode = normalizeExportMode(result[EXPORT_MODE_STORAGE_KEY]);
+    exportMode = normalizeExportMode(result[EXPORT_MODE_STORAGE_KEY]);
   } catch (err) {
     debugError("Gagal membaca preferensi format export", err);
   }
@@ -121,7 +124,7 @@ browserAPI.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return;
 
   const modeChange = changes[EXPORT_MODE_STORAGE_KEY];
-  if (modeChange) contentState.exportMode = normalizeExportMode(modeChange.newValue);
+  if (modeChange) exportMode = normalizeExportMode(modeChange.newValue);
 
   // Debug switch: apply in this tab right away so flipping the popup toggle
   // doesn't require reloading the portal page. `?chdebug` still wins. The page
@@ -272,7 +275,6 @@ const pageMessageDispatcher = createMessageDispatcher({
   token: getBridgeToken,
   handlers: currentRunHandlers({
     SCRAPE_PROGRESS: (msg) => {
-      contentState.lastState = msg as unknown as ScrapeState;
       updatePanelProgress(
         (msg.total as number) || 0,
         (msg.page as number) || 0,
@@ -287,7 +289,7 @@ const pageMessageDispatcher = createMessageDispatcher({
       // resend START_SCRAPE so the two worlds stay in sync — at most once per
       // injection (guarded by scraperResendArmed) so repeated INJECTED_READY
       // can't fire duplicate START_SCRAPE / scrape restarts.
-      if (contentState.isRunning && scraperResendArmed) {
+      if (runLifecycle.isRunning() && scraperResendArmed) {
         scraperResendArmed = false;
         debugLog("Scraper ready; resending START_SCRAPE (was requested earlier)");
         // Repeat the original request's intent (see scrapeIntentForFormat): a
@@ -295,7 +297,7 @@ const pageMessageDispatcher = createMessageDispatcher({
         // download just because the first message arrived before the scraper did.
         postToScraper({
           type: "START_SCRAPE",
-          ...scrapeIntentForFormat(contentState.pendingExportFormat),
+          ...scrapeIntentForFormat(runLifecycle.pendingExport()),
           runId: getActiveRunId(),
         });
       }
@@ -303,13 +305,14 @@ const pageMessageDispatcher = createMessageDispatcher({
 
     SCRAPE_COMPLETE: (msg) => {
       const complete = msg as unknown as ScrapeComplete;
-      if (!acceptScrapeResult(contentState, complete)) {
-        if (contentState.lastState?.type === "SCRAPE_ERROR") {
-          updatePanelError(contentState.lastState.message);
-          publishIncomplete(contentState.lastState.message);
-        }
+      const outcome = runLifecycle.complete(complete);
+
+      if (outcome.kind === "rejected") {
+        updatePanelError(outcome.message);
+        publishIncomplete(outcome.message);
         return;
       }
+
       updatePanelComplete(
         complete.total || 0,
         complete.pages || 0,
@@ -320,12 +323,9 @@ const pageMessageDispatcher = createMessageDispatcher({
 
       // A run can come back short without failing: a targeted No. Faktur scrape
       // gets an empty payload for a number Coretax has no row for, and a filtered
-      // bulk PDF run only returns the rows it downloaded. Says nothing for a run
-      // with no filter.
-      const { missing, notice } = consumeMissingInvoices(contentState, complete.data ?? []);
-      // A PDF run already named these in its pre-download dialog; an export run
-      // has not, so only the latter writes the panel.
-      if (notice && complete.kind !== "pdf") updatePanelStatus(notice);
+      // bulk PDF run only returns the rows it downloaded. The Run withholds the
+      // notice for a PDF run, whose pre-download dialog already named them.
+      if (outcome.shortfall?.notice) updatePanelStatus(outcome.shortfall.notice);
 
       // Desktop notification is opt-in and raised by the background worker;
       // see completion-notice.ts for why the hand-off goes through storage.
@@ -335,31 +335,20 @@ const pageMessageDispatcher = createMessageDispatcher({
           describeCompletion({
             total: complete.total || 0,
             failureCount: complete.failureCount,
-            missing: missing.length,
+            missing: outcome.shortfall?.count ?? 0,
           }),
           Date.now(),
           location.href,
         );
       }
 
-      // If the user clicked "Periksa" before any data was scraped, run the
-      // comparison automatically now that scraping is complete.
-      if (contentState.pendingCompare) {
-        contentState.pendingCompare = false;
-        runPendingCompare();
-      }
-
-      if (contentState.pendingCheck) {
-        contentState.pendingCheck = false;
-        runPendingCheck();
-      }
-
-      // Auto-export if a pending format was requested before scrape started.
-      // The same interface the buttons use — one export decision tree.
-      const pendingFormat = contentState.pendingExportFormat;
-      if (pendingFormat) {
-        contentState.pendingExportFormat = null;
-        handleExportAction(pendingFormat);
+      // Whatever the Run still owed — a pending comparison, check or export,
+      // spent exactly once, in the order the panel has always run them. The
+      // export goes through the same decision tree the buttons use.
+      for (const step of outcome.followUp) {
+        if (step.kind === "compare") runPendingCompare();
+        else if (step.kind === "check") runPendingCheck();
+        else handleExportAction(step.format, actionDeps);
       }
     },
 
@@ -374,7 +363,7 @@ const pageMessageDispatcher = createMessageDispatcher({
 
     SCRAPE_ERROR: (msg) => {
       const message = scrapeErrorMessage(typeof msg.message === "string" ? msg.message : undefined);
-      invalidateScrapeResult(contentState, message);
+      runLifecycle.abort();
       updatePanelError(message);
       publishIncomplete(message);
     },
@@ -446,35 +435,35 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
 // ── In-page button events ───────────────────────────
 
 document.addEventListener("ch:scrape-toggle", () => {
-  if (contentState.isRunning) {
+  if (runLifecycle.isRunning()) {
     postToScraper({ type: "STOP_SCRAPE" });
     const message = SCRAPE_CANCELLED_MESSAGE;
-    invalidateScrapeResult(contentState, message);
+    runLifecycle.abort();
     updatePanelError(message);
   } else {
-    startScrape();
+    startScrape(actionDeps);
   }
 });
 
 // Export XLSX
 document.addEventListener("ch:export-xlsx", () => {
-  handleExportAction("xlsx");
+  handleExportAction("xlsx", actionDeps);
 });
 
 // Export CSV
 document.addEventListener("ch:export-csv", () => {
-  handleExportAction("csv");
+  handleExportAction("csv", actionDeps);
 });
 
 // Export PDF
 document.addEventListener("ch:export-pdf", () => {
-  handleExportAction("pdf");
+  handleExportAction("pdf", actionDeps);
 });
 
 // Auto-start scrape (only starts if not already running, never stops)
 document.addEventListener("ch:scrape-start", () => {
-  if (contentState.isRunning) return; // Already running, don't restart
-  startScrape();
+  if (runLifecycle.isRunning()) return; // Already running, don't restart
+  startScrape(actionDeps);
 });
 
 // Open compare modal
@@ -551,7 +540,7 @@ function teardownInjectedUi(): void {
  * rows so the next export cannot reuse anything captured before the click.
  */
 function clearScraperCache(): void {
-  resetContentState(contentState, { preserveExportMode: true });
+  runLifecycle.reset();
   postToScraper({ type: "RESET_SCRAPER" });
   updatePanelIdle();
   debugLog("Cache scraper dibersihkan atas permintaan popup.");
@@ -562,7 +551,7 @@ function onNavigate(): void {
 
   // Reset content-script state so stale data from the previous page
   // cannot leak into exports on the new page.
-  resetContentState(contentState, { preserveExportMode: true });
+  runLifecycle.reset();
 
   // Ask the scraper (MAIN world) to reset its own state too:
   // captured request cache, filter state, running flags, etc.
@@ -574,7 +563,7 @@ function onNavigate(): void {
 function init(): void {
   void loadExportModePreference();
   debugLog("Extension starting up on page...", window.location.href);
-  registerShortcuts(() => contentState.isRunning);
+  registerShortcuts(() => runLifecycle.isRunning());
 
   // First paint waits for the stored preferences, so a disabled extension never
   // paints at all. preferencesReady resolves even when storage is unavailable

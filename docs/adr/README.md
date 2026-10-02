@@ -17,3 +17,4 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0011 | [Reference search asks for a prefix match first and widens only on an empty result](0011-reference-search-prefix-first.md) | Superseded by 0012 (prefix-first remains) |
 | 0012 | [An empty reference prefix search stops with a not-found notice instead of widening](0012-reference-search-stops-on-empty-prefix.md) | Accepted |
 | 0013 | [SheetJS is loaded as a separate chunk, not bundled into the content script](0013-sheetjs-as-a-lazy-chunk.md) | Accepted |
+| 0014 | [Run state lives in run-lifecycle; the bridge keeps run identity](0014-run-lifecycle-owns-run-state.md) | Accepted |
