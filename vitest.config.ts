@@ -38,11 +38,13 @@ export default defineConfig({
 
       // Baseline floors. Global, so a new well-tested module may raise the
       // average while an untested one still drags it down.
+      // Raised from 80/72/74/82 after the column-schema extraction; the
+      // measured numbers are now 83.23/75.34/78.72/84.97.
       thresholds: {
-        statements: 80,
-        branches: 72,
-        functions: 74,
-        lines: 82,
+        statements: 81,
+        branches: 73,
+        functions: 76,
+        lines: 83,
       },
     },
   },

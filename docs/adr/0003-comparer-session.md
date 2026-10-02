@@ -46,26 +46,43 @@ Two further corrections:
   same session/flow/pure split `comparer-logic.ts` was written for, applied
   again; the rule applies to it verbatim.
 - **"Renders session state" undersells the renderers.** They derive the column
-  schema, not just the markup: `getColClass` and `getCheckerColClass` decide
-  each column's CSS class, and the comparer header list is a nine-way rotation
-  that must stay in lockstep with two separate cell arrays and a `numCols`
-  index list. That is derived layout logic living inside a view.
+  schema, not just the markup: `getColClass` and `getCheckerColClass` decided
+  each column's CSS class, and the comparer header list was a nine-way rotation
+  that had to stay in lockstep with two separate cell arrays and a `numCols`
+  index list. That was derived layout logic living inside a view.
 
-## Consequence, and the direction
+## Resolution: the column schema moved out (2026-10-02)
 
-The consequence is measurable. `pnpm test:coverage` puts `ui-comparer.ts` at
-**41.15% branch** coverage, against a global average of 74.78% and a 72%
-ratchet floor. Among the modules the existing suites reach it is the worst by a
-wide margin: `ui.ts` (58.94%) and `popup.ts` (61.11%) are next. Only
-`shortcuts.ts` sits lower, and that is because nothing imports it at all rather
-than because it is broadly under-tested. The untested code in this file is
-concentrated in exactly the renderers this ADR misdescribed.
+The open work above is done. `result-columns.ts` now declares both grids as
+lists of `ResultColumn<T>` — label, CSS class, numeric flag, and the cell
+value — and the renderers only consume them. The four index-coupled artifacts
+per grid collapsed into one declarative list, the duplicated pagination block
+became a single `appendPagination`, and the class-by-header-name sniffing
+(`headerName.includes("NL")`) is now an explicit `wide` flag.
 
-So the amendment is descriptive first: a future reader should know where the
-risk is. The open work it points at is to lift the column-schema derivation out
-of the renderers into pure exported helpers with their own tests, which is the
-same move that fixed this file's session state in the first place. That work is
-not required before this ADR's rule is obeyed — but it is what would make the
-original "thin view" description true again.
+`ui-comparer.ts` is 1.121 lines, down from 1.283. Its own branch percentage went
+**down** (41.15% to 34.15%), which is the point worth stating plainly: the
+partially-covered ternary branches left the file, so the uncovered remainder —
+`injectComparerModal`'s 573 lines of DOM building and the event wiring — is now
+what that percentage is made of. The schema those branches computed is now at
+100% on all four metrics, and the global average rose from 82.53/74.78/77.88/
+84.17 to 83.23/75.34/78.72/84.97, which is why the ratchet floors moved up.
 
-Status: accepted. Amended to match the two-tab panel.
+Two behaviours were preserved deliberately rather than tidied away:
+
+- The comparer's Status cell shows `getStatusLabel(...)` while the checker's
+  shows the raw status. Both are pinned by tests.
+- The checker labels its difference columns from the SESSION's benchmark but
+  resolves each cell's difference from the ROW's benchmark. Every row in a run
+  comes from one `checkAllRowsAccuracy` call so they agree; the asymmetry is
+  kept so the table survives that ceasing to be true.
+
+Behaviour was proven unchanged rather than argued: the rendered matrix (labels,
+`th` class, `td` class, cell text) was captured for all five grid variants
+before and after, and the two captures are byte-identical.
+
+What remains untested in the view is `injectComparerModal` — real DOM
+construction, not derivation — and it is the next target.
+
+Status: accepted. Amended to match the two-tab panel; the column-schema
+resolution is recorded above.

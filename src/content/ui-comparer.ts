@@ -11,9 +11,8 @@ import { downloadXLSXFile, RESULT_NUMBER_FORMAT, RESULT_DIFFERENCE_FORMAT } from
 import {
   buildComparisonExportRows,
   buildCheckerExportRows,
-  formatResultNumber,
-  formatResultDifference,
 } from "./comparer-export";
+import { comparisonColumns, checkerColumns, type ResultColumn } from "./result-columns";
 import { contentState, startScrape } from "./main-actions";
 import { getPreferences } from "./preferences";
 import { debugError } from "./debug";
@@ -25,7 +24,6 @@ import {
   computePagination,
   createComparerSession,
   formatStatusSummary,
-  getStatusLabel,
   prepareComparison,
   rerunComparison,
   runComparison as runSessionComparison,
@@ -833,6 +831,84 @@ function renderAfterComparison(): void {
   if (toggleIcon) toggleIcon.className = "pi pi-chevron-down";
 }
 
+/**
+ * Append the page controls both result grids use. Kept in one place because
+ * the two grids showed byte-identical markup that had to be changed twice.
+ */
+function appendPagination(
+  container: HTMLElement,
+  currentPage: number,
+  totalPages: number,
+  onGoTo: (page: number) => void,
+): void {
+  const pagination = document.createElement("div");
+  pagination.className = "ch-comparer-pagination";
+
+  const prevBtn = document.createElement("button");
+  prevBtn.type = "button";
+  prevBtn.className = "ch-comparer-page-btn";
+  prevBtn.textContent = "Sebelumnya";
+  prevBtn.disabled = currentPage === 1;
+  prevBtn.addEventListener("click", () => {
+    if (currentPage > 1) onGoTo(currentPage - 1);
+  });
+
+  const pageInfo = document.createElement("span");
+  pageInfo.className = "ch-comparer-page-info";
+  pageInfo.textContent = `Halaman ${currentPage} dari ${totalPages}`;
+
+  const nextBtn = document.createElement("button");
+  nextBtn.type = "button";
+  nextBtn.className = "ch-comparer-page-btn";
+  nextBtn.textContent = "Berikutnya";
+  nextBtn.disabled = currentPage === totalPages;
+  nextBtn.addEventListener("click", () => {
+    if (currentPage < totalPages) onGoTo(currentPage + 1);
+  });
+
+  pagination.appendChild(prevBtn);
+  pagination.appendChild(pageInfo);
+  pagination.appendChild(nextBtn);
+  container.appendChild(pagination);
+}
+
+/** Build `<thead>` from a column schema. */
+function buildHeaderRow<T>(columns: readonly ResultColumn<T>[]): HTMLElement {
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  for (const column of columns) {
+    const th = document.createElement("th");
+    th.textContent = column.label;
+    th.className = column.className;
+    headerRow.appendChild(th);
+  }
+  thead.appendChild(headerRow);
+  return thead;
+}
+
+/**
+ * Build one `<tr>` from a column schema. `startIndex` is the 0-based index of
+ * the page's first row within the whole filtered set, so "No" keeps counting
+ * across pages.
+ */
+function buildResultRow<T>(
+  columns: readonly ResultColumn<T>[],
+  row: T,
+  startIndex: number,
+  offset: number,
+): HTMLTableRowElement {
+  const tr = document.createElement("tr") as HTMLTableRowElement;
+  for (const column of columns) {
+    const value = column.value(row, startIndex + offset);
+    const td = document.createElement("td");
+    td.textContent = value;
+    td.title = value;
+    td.className = column.numeric ? `${column.className} ch-comparer-num` : column.className;
+    tr.appendChild(td);
+  }
+  return tr;
+}
+
 function renderResults(): void {
   const exportBtn = document.getElementById("ch-comparer-export-btn") as HTMLButtonElement;
   if (exportBtn) exportBtn.disabled = session.results.length === 0;
@@ -851,54 +927,19 @@ function renderResults(): void {
   }
 
   const filtered = applyStatusFilter(session.results, session.statusFilter);
-  const { totalPages: filteredTotalPages, currentPage: clampedPage, startIndex: filteredStart, pageRows: filteredPageRows } =
+  const { totalPages, currentPage: clampedPage, startIndex, pageRows } =
     computePagination(filtered, PAGE_SIZE, session.currentPage);
   session.currentPage = clampedPage;
 
+  const columns = comparisonColumns(session.refLainEnabled);
+
   const table = document.createElement("table");
   table.className = "ch-comparer-table";
-
-  const thead = document.createElement("thead");
-  const headerRow = document.createElement("tr");
-  const headers = [
-    "No",
-    "Referensi",
-    session.refLainEnabled ? "Referensi Lain" : "Nama Pembeli",
-    session.refLainEnabled ? "Nama Pembeli" : "DPP Coretax",
-    session.refLainEnabled ? "DPP Coretax" : "DPP Baru",
-    session.refLainEnabled ? "DPP Baru" : "PPN Coretax",
-    session.refLainEnabled ? "PPN Coretax" : "PPN Baru",
-    session.refLainEnabled ? "PPN Baru" : "Selisih PPN",
-    session.refLainEnabled ? "Selisih PPN" : "Status",
-    session.refLainEnabled ? "Status" : "",
-  ].filter((h) => h !== "");
-  const getColClass = (i: number): string => {
-    if (i === 0) return "ch-col-no";
-    if (session.refLainEnabled) {
-      if (i === 1 || i === 2) return "ch-col-ref";
-      if (i === 3) return "ch-col-buyer";
-      if (i >= 4 && i <= 8) return "ch-col-num";
-      return "ch-col-status";
-    } else {
-      if (i === 1) return "ch-col-ref";
-      if (i === 2) return "ch-col-buyer";
-      if (i >= 3 && i <= 7) return "ch-col-num";
-      return "ch-col-status";
-    }
-  };
-
-  headers.forEach((h, i) => {
-    const th = document.createElement("th");
-    th.textContent = h;
-    th.className = getColClass(i);
-    headerRow.appendChild(th);
-  });
-  thead.appendChild(headerRow);
-  table.appendChild(thead);
+  table.appendChild(buildHeaderRow(columns));
 
   const tbody = document.createElement("tbody");
-  filteredPageRows.forEach((r, idx) => {
-    const tr = document.createElement("tr");
+  pageRows.forEach((r, idx) => {
+    const tr = buildResultRow(columns, r, startIndex, idx);
     if (session.viewedRefs.has(r.reference)) {
       tr.classList.add("ch-comparer-row-viewed");
     }
@@ -914,47 +955,6 @@ function renderResults(): void {
       tr.classList.toggle("ch-comparer-row-expanded");
     });
 
-
-    const statusLabel = getStatusLabel(r.status);
-
-    const cells = session.refLainEnabled
-      ? [
-          String(filteredStart + idx + 1),
-          r.reference,
-          r.refLain,
-          r.buyerName,
-          formatResultNumber(r.dppSistem),
-          formatResultNumber(r.dppExcel),
-          formatResultNumber(r.ppnSistem),
-          formatResultNumber(r.ppnExcel),
-          formatResultNumber(r.ppnSelisih),
-          statusLabel,
-        ]
-      : [
-          String(filteredStart + idx + 1),
-          r.reference,
-          r.buyerName,
-          formatResultNumber(r.dppSistem),
-          formatResultNumber(r.dppExcel),
-          formatResultNumber(r.ppnSistem),
-          formatResultNumber(r.ppnExcel),
-          formatResultNumber(r.ppnSelisih),
-          statusLabel,
-        ];
-
-    cells.forEach((c, i) => {
-      const td = document.createElement("td");
-      td.textContent = c;
-      td.title = String(c);
-      const colCls = getColClass(i);
-      td.className = colCls;
-      const numCols = session.refLainEnabled ? [0, 4, 5, 6, 7, 8] : [0, 3, 4, 5, 6, 7];
-      if (numCols.includes(i)) {
-        td.classList.add("ch-comparer-num");
-      }
-      tr.appendChild(td);
-    });
-
     if (!isNotFound) {
       tr.addEventListener("dblclick", () => {
         session.viewedRefs.add(r.reference);
@@ -968,42 +968,11 @@ function renderResults(): void {
   table.appendChild(tbody);
   container.appendChild(table);
 
-  if (filteredTotalPages > 1) {
-    const pagination = document.createElement("div");
-    pagination.className = "ch-comparer-pagination";
-
-    const prevBtn = document.createElement("button");
-    prevBtn.type = "button";
-    prevBtn.className = "ch-comparer-page-btn";
-    prevBtn.textContent = "Sebelumnya";
-    prevBtn.disabled = session.currentPage === 1;
-    prevBtn.addEventListener("click", () => {
-      if (session.currentPage > 1) {
-        session.currentPage--;
-        renderResults();
-      }
+  if (totalPages > 1) {
+    appendPagination(container, session.currentPage, totalPages, (page) => {
+      session.currentPage = page;
+      renderResults();
     });
-
-    const pageInfo = document.createElement("span");
-    pageInfo.className = "ch-comparer-page-info";
-    pageInfo.textContent = `Halaman ${session.currentPage} dari ${filteredTotalPages}`;
-
-    const nextBtn = document.createElement("button");
-    nextBtn.type = "button";
-    nextBtn.className = "ch-comparer-page-btn";
-    nextBtn.textContent = "Berikutnya";
-    nextBtn.disabled = session.currentPage === filteredTotalPages;
-    nextBtn.addEventListener("click", () => {
-      if (session.currentPage < filteredTotalPages) {
-        session.currentPage++;
-        renderResults();
-      }
-    });
-
-    pagination.appendChild(prevBtn);
-    pagination.appendChild(pageInfo);
-    pagination.appendChild(nextBtn);
-    container.appendChild(pagination);
   }
 }
 
@@ -1033,9 +1002,7 @@ function renderCheckerResults(): void {
     if (filterWrap) filterWrap.classList.add("ch-hidden");
     container.textContent = "Semua faktur sesuai.";
     return;
-  }
-
-  const filtered = applyCheckerStatusFilter(checkerSession.results, checkerSession.statusFilter);
+  }  const filtered = applyCheckerStatusFilter(checkerSession.results, checkerSession.statusFilter);
   const { totalPages, currentPage, startIndex, pageRows } = computePagination(
     filtered,
     PAGE_SIZE,
@@ -1043,75 +1010,15 @@ function renderCheckerResults(): void {
   );
   checkerSession.currentPage = currentPage;
 
+  const columns = checkerColumns(checkerSession.benchmark);
+
   const table = document.createElement("table");
   table.className = "ch-comparer-table";
-
-  const benchmark = checkerSession.benchmark;
-  const headers =
-    benchmark === "DPP"
-      ? [
-          "No",
-          "Referensi",
-          "Tanggal",
-          "Nama Pembeli",
-          "DPP",
-          "DPP NL",
-          "PPN",
-          "Selisih DPP NL",
-          "Selisih PPN",
-          "Status",
-        ]
-      : benchmark === "DPP_NILAI_LAIN"
-        ? [
-            "No",
-            "Referensi",
-            "Tanggal",
-            "Nama Pembeli",
-            "DPP",
-            "DPP NL",
-            "PPN",
-            "Selisih DPP",
-            "Selisih PPN",
-            "Status",
-          ]
-        : [
-            "No",
-            "Referensi",
-            "Tanggal",
-            "Nama Pembeli",
-            "DPP",
-            "DPP NL",
-            "PPN",
-            "Selisih DPP",
-            "Selisih DPP NL",
-            "Status",
-          ];
-
-  const getCheckerColClass = (i: number, headerName?: string): string => {
-    if (i === 0) return "ch-col-no";
-    if (i === 1) return "ch-col-ref";
-    if (i === 2) return "ch-col-date";
-    if (i === 3) return "ch-col-buyer";
-    if (headerName && (headerName.includes("NL") || headerName.includes("Nilai Lain"))) return "ch-col-num-wide";
-    if (i >= 4 && i <= 8) return "ch-col-num";
-    return "ch-col-status";
-  };
-
-  const thead = document.createElement("thead");
-  const headerRow = document.createElement("tr");
-
-  headers.forEach((h, i) => {
-    const th = document.createElement("th");
-    th.textContent = h;
-    th.className = getCheckerColClass(i, h);
-    headerRow.appendChild(th);
-  });
-  thead.appendChild(headerRow);
-  table.appendChild(thead);
+  table.appendChild(buildHeaderRow(columns));
 
   const tbody = document.createElement("tbody");
   pageRows.forEach((r, idx) => {
-    const tr = document.createElement("tr");
+    const tr = buildResultRow(columns, r, startIndex, idx);
     const searchKey = r.reference || r.taxInvoiceNumber;
     tr.style.cursor = "pointer";
     tr.title = searchKey
@@ -1127,46 +1034,6 @@ function renderCheckerResults(): void {
       tr.classList.add("ch-comparer-row-viewed");
     }
 
-
-    let diffCol1 = "-";
-    let diffCol2 = "-";
-
-    if (r.benchmark === "DPP") {
-      diffCol1 = formatResultDifference(r.dppNilaiLainDiff, r.tolerance);
-      diffCol2 = formatResultDifference(r.ppnDiff, r.tolerance);
-    } else if (r.benchmark === "DPP_NILAI_LAIN") {
-      diffCol1 = formatResultDifference(r.dppDiff, r.tolerance);
-      diffCol2 = formatResultDifference(r.ppnDiff, r.tolerance);
-    } else {
-      diffCol1 = formatResultDifference(r.dppDiff, r.tolerance);
-      diffCol2 = formatResultDifference(r.dppNilaiLainDiff, r.tolerance);
-    }
-
-    const cells = [
-      String(startIndex + idx + 1),
-      r.reference || r.taxInvoiceNumber,
-      r.invoiceDate,
-      r.buyerName,
-      formatResultNumber(r.dppSystem),
-      formatResultNumber(r.dppNilaiLainSystem),
-      formatResultNumber(r.ppnSystem),
-      diffCol1,
-      diffCol2,
-      r.status,
-    ];
-
-    cells.forEach((c, i) => {
-      const td = document.createElement("td");
-      td.textContent = c;
-      td.title = String(c);
-      const colCls = getCheckerColClass(i, headers[i]);
-      td.className = colCls;
-      if ([0, 4, 5, 6, 7, 8].includes(i)) {
-        td.classList.add("ch-comparer-num");
-      }
-      tr.appendChild(td);
-    });
-
     if (searchKey) {
       tr.addEventListener("dblclick", () => {
         checkerSession.viewedRefs.add(searchKey);
@@ -1177,46 +1044,14 @@ function renderCheckerResults(): void {
 
     tbody.appendChild(tr);
   });
-
   table.appendChild(tbody);
   container.appendChild(table);
 
   if (totalPages > 1) {
-    const pagination = document.createElement("div");
-    pagination.className = "ch-comparer-pagination";
-
-    const prevBtn = document.createElement("button");
-    prevBtn.type = "button";
-    prevBtn.className = "ch-comparer-page-btn";
-    prevBtn.textContent = "Sebelumnya";
-    prevBtn.disabled = checkerSession.currentPage === 1;
-    prevBtn.addEventListener("click", () => {
-      if (checkerSession.currentPage > 1) {
-        checkerSession.currentPage--;
-        renderCheckerResults();
-      }
+    appendPagination(container, checkerSession.currentPage, totalPages, (page) => {
+      checkerSession.currentPage = page;
+      renderCheckerResults();
     });
-
-    const pageInfo = document.createElement("span");
-    pageInfo.className = "ch-comparer-page-info";
-    pageInfo.textContent = `Halaman ${checkerSession.currentPage} dari ${totalPages}`;
-
-    const nextBtn = document.createElement("button");
-    nextBtn.type = "button";
-    nextBtn.className = "ch-comparer-page-btn";
-    nextBtn.textContent = "Berikutnya";
-    nextBtn.disabled = checkerSession.currentPage === totalPages;
-    nextBtn.addEventListener("click", () => {
-      if (checkerSession.currentPage < totalPages) {
-        checkerSession.currentPage++;
-        renderCheckerResults();
-      }
-    });
-
-    pagination.appendChild(prevBtn);
-    pagination.appendChild(pageInfo);
-    pagination.appendChild(nextBtn);
-    container.appendChild(pagination);
   }
 }
 
