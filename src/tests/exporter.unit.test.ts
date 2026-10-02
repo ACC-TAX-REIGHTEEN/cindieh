@@ -1,8 +1,18 @@
 // Unit tests for exporter.ts — generateDynamicFilename and escapeCSV
 // Validates: Requirements 6.5, 6.6, 12.2, 12.3
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import * as XLSX from "xlsx";
 import type { ExportSource } from "../content/page-context";
-import { escapeCSV, buildCSV, generateDynamicFilename, PREFIX_MAP, downloadXLSXFile } from "../content/exporter";
+import {
+  escapeCSV,
+  buildCSV,
+  generateDynamicFilename,
+  PREFIX_MAP,
+  downloadWorkbookFile,
+  createXlsxChunkLoader,
+  XLSX_CHUNK_PATH,
+  type XlsxModule,
+} from "../content/exporter";
 import type { ExportData } from "../content/exporter";
 
 // ============================================================
@@ -361,7 +371,7 @@ describe("PREFIX_MAP", () => {
 // ============================================================
 // downloadXLSXFile
 // ============================================================
-describe("downloadXLSXFile", () => {
+describe("downloadWorkbookFile", () => {
 	it("executes without error when given 2D rows", () => {
 		const originalCreate = URL.createObjectURL;
 		const originalRevoke = URL.revokeObjectURL;
@@ -393,7 +403,7 @@ describe("downloadXLSXFile", () => {
 		];
 
 		expect(() => {
-			downloadXLSXFile(rows, "test.xlsx", "Sheet1");
+			downloadWorkbookFile(XLSX, rows, "test.xlsx", "Sheet1");
 		}).not.toThrow();
 
 		expect(created).toBe(true);
@@ -403,5 +413,44 @@ describe("downloadXLSXFile", () => {
 		URL.createObjectURL = originalCreate;
 		URL.revokeObjectURL = originalRevoke;
 		(globalThis as unknown as { document: unknown }).document = originalDocument;
+	});
+});
+
+// ============================================================
+// The lazy SheetJS chunk — the seam that keeps ~330KB off the
+// page-load path (see exporter.ts / build.cjs).
+// ============================================================
+describe("createXlsxChunkLoader", () => {
+	it("imports at most once across many loads", async () => {
+		const importer = vi.fn(async () => XLSX as unknown as XlsxModule);
+		const loader = createXlsxChunkLoader(importer);
+
+		await loader.load("chrome-extension://x/content/xlsx.js");
+		await loader.load("chrome-extension://x/content/xlsx.js");
+		const third = await loader.load("chrome-extension://x/content/xlsx.js");
+
+		expect(importer).toHaveBeenCalledOnce();
+		expect(third).toBe(XLSX);
+	});
+
+	it("retries after a failed load instead of replaying the rejection", async () => {
+		let attempt = 0;
+		const importer = vi.fn(async () => {
+			attempt += 1;
+			if (attempt === 1) throw new Error("chunk unreachable");
+			return XLSX as unknown as XlsxModule;
+		});
+		const loader = createXlsxChunkLoader(importer);
+
+		await expect(loader.load("url")).rejects.toThrow("chunk unreachable");
+		// The cache must have been dropped, so the next export can still work.
+		await expect(loader.load("url")).resolves.toBe(XLSX);
+		expect(importer).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("XLSX_CHUNK_PATH", () => {
+	it("points at the web-accessible chunk the build emits", () => {
+		expect(XLSX_CHUNK_PATH).toBe("content/xlsx.js");
 	});
 });

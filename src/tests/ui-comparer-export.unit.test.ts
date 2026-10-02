@@ -66,7 +66,7 @@ describe("result XLSX rows and AOA readback", () => {
       status: "HANYA_CORETAX",
     }], refLainEnabled);
     const first = refLainEnabled ? 7 : 6;
-    const sheet = readback(buildAoaWorkbook(rows, "Perbandingan", {
+    const sheet = readback(buildAoaWorkbook(XLSX, rows, "Perbandingan", {
       numberFormats: Object.fromEntries(Array.from({ length: 5 }, (_, i) => [first + i, RESULT_NUMBER_FORMAT])),
     }));
     const cell = (r: number, c: number) => sheet[XLSX.utils.encode_cell({ r, c })];
@@ -86,7 +86,7 @@ describe("result XLSX rows and AOA readback", () => {
 
   it.each<BenchmarkType>(["DPP", "DPP_NILAI_LAIN", "PPN"])("preserves checker values for %s, including differences within tolerance", (benchmark) => {
     const rows = buildCheckerExportRows([{ ...checker, benchmark }], benchmark);
-    const sheet = readback(buildAoaWorkbook(rows, "Pengecekan", {
+    const sheet = readback(buildAoaWorkbook(XLSX, rows, "Pengecekan", {
       numberFormats: { 5: RESULT_NUMBER_FORMAT, 6: RESULT_NUMBER_FORMAT, 7: RESULT_NUMBER_FORMAT,
         8: RESULT_DIFFERENCE_FORMAT, 9: RESULT_DIFFERENCE_FORMAT },
     }));
@@ -107,7 +107,7 @@ describe("result XLSX rows and AOA readback", () => {
       ppnSystem: 0, dppDiff: null, dppNilaiLainDiff: null, ppnDiff: null,
       status: "Data tidak lengkap",
     }], "DPP");
-    const sheet = readback(buildAoaWorkbook(rows));
+    const sheet = readback(buildAoaWorkbook(XLSX, rows));
     for (const address of ["F2", "G2", "I2", "J2"]) expect(sheet[address]).toBeUndefined();
     expect(sheet.H2).toMatchObject({ t: "n", v: 0 });
     expectText(sheet.B2, checker.taxInvoiceNumber);
@@ -115,7 +115,7 @@ describe("result XLSX rows and AOA readback", () => {
   });
 
   it("does not infer numbers or formulas from text, even in formatted columns", () => {
-    const sheet = readback(buildAoaWorkbook([
+    const sheet = readback(buildAoaWorkbook(XLSX, [
       ["Referensi", "Nilai"], ["=1+1", "00123"], ["+001", "1.234,56789"],
     ], "Hasil", { numberFormats: { 0: RESULT_NUMBER_FORMAT, 1: RESULT_NUMBER_FORMAT } }));
     expectText(sheet.A2, "=1+1");
@@ -185,7 +185,7 @@ describe("comparison UI validation and exports", () => {
     actions.contentState.scrapedData = null;
     actions.contentState.pendingCompare = false;
     exporter = await import("../content/exporter");
-    vi.spyOn(exporter, "downloadXLSXFile").mockImplementation(() => {});
+    vi.spyOn(exporter, "downloadXLSXFile").mockImplementation(async () => {});
     ui = await import("../content/ui-comparer");
     ui.injectComparerModal();
   });
@@ -241,7 +241,7 @@ describe("comparison UI validation and exports", () => {
     fire("ch-comparer-export-btn");
     const [rows, filename, sheetName, options] = vi.mocked(exporter.downloadXLSXFile).mock.calls[0];
     expect(filename).toBe("perbandingan-faktur.xlsx");
-    const sheet = readback(buildAoaWorkbook(rows, sheetName, options));
+    const sheet = readback(buildAoaWorkbook(XLSX, rows, sheetName, options));
     expectNumeric(sheet.H2, 1234.56789);
     expectNumeric(sheet.J2, 0);
     expectText(sheet.F2, comparison.buyerTIN);
@@ -264,7 +264,7 @@ describe("comparison UI validation and exports", () => {
     expect(el("ch-checker-results").children[0].children[1].children).toHaveLength(1);
     fire("ch-checker-export-btn");
     const [rows, , sheetName, options] = vi.mocked(exporter.downloadXLSXFile).mock.calls[0];
-    const sheet = readback(buildAoaWorkbook(rows, sheetName, options));
+    const sheet = readback(buildAoaWorkbook(XLSX, rows, sheetName, options));
     expect(sheet.F2).toBeUndefined();
     expectNumeric(sheet.G2, 0);
     expectNumeric(sheet.H2, 0);

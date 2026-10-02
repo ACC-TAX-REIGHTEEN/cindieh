@@ -1,9 +1,20 @@
 // ============================================================
 // EXPORTER.TS — Export scraped data to various formats
 // ============================================================
-import * as XLSX from "xlsx";
+// SheetJS is loaded LAZILY from its own chunk (content/xlsx.js); see
+// loadXLSX below. Nothing here imports "xlsx" statically, which is what keeps
+// ~330KB out of the content script that every portal page load parses.
+//
+// The workbook builders therefore take the loaded module as a parameter rather
+// than closing over it: they stay pure, stay unit-testable with a plain
+// `import * as XLSX from "xlsx"` in the test, and make the one real dependency
+// of the export path visible at each call site.
 import type { ExportSource } from "./page-context";
-import { debugWarn } from "./debug";
+// Type-only: erased at compile time, so this costs nothing in the bundle. The
+// runtime library arrives through the lazily-imported chunk instead.
+import type { WorkBook } from "xlsx";
+import { browserAPI } from "./browser-shim";
+import { debugError, debugWarn } from "./debug";
 import { extractYear, extractMonth, formatDate, extractYMD, getCurrentYearMonthWIB } from "./tax-date";
 import { normalizeFilenamePrefix } from "../shared/extension-preferences";
 
@@ -76,21 +87,93 @@ export interface AoaXLSXOptions {
 export const RESULT_NUMBER_FORMAT = "#,##0.##########";
 export const RESULT_DIFFERENCE_FORMAT = "+#,##0.##########;-#,##0.##########;0";
 
+/** The SheetJS module as this project consumes it. */
+export type XlsxModule = typeof import("xlsx");
+
+/** Path of the lazily-loaded SheetJS chunk; a web-accessible resource. */
+export const XLSX_CHUNK_PATH = "content/xlsx.js";
+
+/**
+ * Import the SheetJS chunk. The specifier is a parameter on purpose: a
+ * non-literal specifier is what makes esbuild leave this `import()` in place
+ * instead of inlining the library into content/main.js.
+ */
+export function importXlsxChunk(url: string): Promise<XlsxModule> {
+  return import(url).then((module) => (module.default ?? module) as XlsxModule);
+}
+
+/**
+ * One cached chunk load. Exported as a factory so the caching and the
+ * retry-on-failure rule can be tested without a real extension URL, and used
+ * as a singleton in production.
+ */
+export function createXlsxChunkLoader(importer: (url: string) => Promise<XlsxModule>) {
+  let pending: Promise<XlsxModule> | null = null;
+  return {
+    /** Resolve the chunk, importing at most once per successful load. */
+    load(url: string): Promise<XlsxModule> {
+      pending ??= importer(url).catch((err: unknown) => {
+        // A failed load must not poison every later export: drop the cache so
+        // the next attempt re-imports instead of replaying the same rejection.
+        pending = null;
+        debugError("Gagal memuat pustaka Excel", err);
+        throw err;
+      });
+      return pending;
+    },
+  };
+}
+
+const xlsxChunk = createXlsxChunkLoader(importXlsxChunk);
+
+/**
+ * Load SheetJS, on the first XLSX export of the session.
+ *
+ * This is the seam that keeps the library off the page-load path: nothing in
+ * the content script references it until an export actually asks for a
+ * spreadsheet. The CSV path never calls this at all — `buildCSV` is
+ * hand-rolled and needs no library.
+ */
+export function loadXLSX(): Promise<XlsxModule> {
+  return xlsxChunk.load(browserAPI.runtime.getURL(XLSX_CHUNK_PATH));
+}
+
 export function buildAoaWorkbook(
+  xlsx: XlsxModule,
   rows: readonly (readonly unknown[])[],
   sheetName = "Sheet1",
   options: AoaXLSXOptions = {},
-): XLSX.WorkBook {
-  const worksheet = XLSX.utils.aoa_to_sheet(rows as unknown[][]);
+): WorkBook {
+  const worksheet = xlsx.utils.aoa_to_sheet(rows as unknown[][]);
   for (const [column, format] of Object.entries(options.numberFormats ?? {})) {
     for (let row = 1; row < rows.length; row++) {
-      const cell = worksheet[XLSX.utils.encode_cell({ r: row, c: Number(column) })];
+      const cell = worksheet[xlsx.utils.encode_cell({ r: row, c: Number(column) })];
       if (cell?.t === "n") cell.z = format;
     }
   }
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
   return workbook;
+}
+
+export const XLSX_MIME_TYPE =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/**
+ * Build the workbook and trigger the browser download, with an
+ * already-loaded SheetJS. Pure and synchronous — see downloadXLSXFile for the
+ * lazy entry point the UI calls.
+ */
+export function downloadWorkbookFile(
+  xlsx: XlsxModule,
+  rows: readonly (readonly unknown[])[],
+  filename: string,
+  sheetName = "Sheet1",
+  options: AoaXLSXOptions = {},
+): void {
+  const workbook = buildAoaWorkbook(xlsx, rows, sheetName, options);
+  const excelBuffer = xlsx.write(workbook, { bookType: "xlsx", type: "array" });
+  downloadFile(excelBuffer, filename, XLSX_MIME_TYPE);
 }
 
 /**
@@ -103,20 +186,13 @@ export function buildAoaWorkbook(
  * would add nothing but overhead there. Keep the two writers distinct; they
  * serve different data shapes.
  */
-export function downloadXLSXFile(
+export async function downloadXLSXFile(
   rows: readonly (readonly unknown[])[],
   filename: string,
   sheetName = "Sheet1",
   options: AoaXLSXOptions = {},
-): void {
-  const workbook = buildAoaWorkbook(rows, sheetName, options);
-
-  const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-  downloadFile(
-    excelBuffer,
-    filename,
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  );
+): Promise<void> {
+  downloadWorkbookFile(await loadXLSX(), rows, filename, sheetName, options);
 }
 
 export function processData(exportData: ExportData): ExportData {
@@ -575,7 +651,8 @@ export function exportCSV(exportData: ExportData): void {
   downloadTextFile(buildCSV(rows), `${filename}.csv`, "text/csv;charset=utf-8");
 }
 
-export function exportXLSX(exportData: ExportData): void {
+/** The grid export with an already-loaded SheetJS. Pure and synchronous. */
+export function writeXlsxFile(xlsx: XlsxModule, exportData: ExportData): void {
   const filename = generateDynamicFilename(exportData);
   const { data, fields } = processData(exportData);
 
@@ -583,11 +660,16 @@ export function exportXLSX(exportData: ExportData): void {
   // row objects keyed by field name, so json_to_sheet + { header: fields }
   // preserves column order and typing. Deliberately separate from
   // downloadXLSXFile (aoa_to_sheet), which serves pre-shaped 2D grids.
-  const worksheet = XLSX.utils.json_to_sheet(data, { header: fields });
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Faktur");
+  const worksheet = xlsx.utils.json_to_sheet(data, { header: fields });
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(workbook, worksheet, "Faktur");
 
-  const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  const excelBuffer = xlsx.write(workbook, { bookType: "xlsx", type: "array" });
 
-  downloadFile(excelBuffer, `${filename}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  downloadFile(excelBuffer, `${filename}.xlsx`, XLSX_MIME_TYPE);
+}
+
+/** The grid export. Loads the SheetJS chunk first — the only place it is needed. */
+export async function exportXLSX(exportData: ExportData): Promise<void> {
+  writeXlsxFile(await loadXLSX(), exportData);
 }

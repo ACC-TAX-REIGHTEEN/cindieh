@@ -16,7 +16,7 @@ import type { ScrapeProgress, ScrapeComplete, ScrapeError } from "./scraper-type
 import { showPanel, updatePanelProgress, updatePanelError, updatePanelIdle } from "./ui-badge";
 import { getMultiInvoiceNumbers } from "./ui-filters";
 import { postToScraper } from "./bridge";
-import { debugLog, debugWarn } from "./debug";
+import { debugError, debugLog, debugWarn } from "./debug";
 import { getPreferences } from "./preferences";
 import { findMissingInvoices, skippedInvoicesMessage } from "./scrape-result";
 import { shouldConfirmBulkDownload } from "../shared/extension-preferences";
@@ -116,7 +116,12 @@ export interface ActionDeps {
    * synchronously from the preferences snapshot.
    */
   shouldConfirmBulkDownload: (count: number) => boolean;
-  exportXLSX: (data: ExportData) => void;
+  /**
+   * Both writers are typed as possibly-async: `exportXLSX` must load the
+   * SheetJS chunk before it can write, while `exportCSV` is synchronous and
+   * needs no library. The union also lets a test double return nothing.
+   */
+  exportXLSX: (data: ExportData) => void | Promise<void>;
   exportCSV: (data: ExportData) => void;
   /** Find and click the Coretax search/refresh button. */
   triggerSearch: () => void;
@@ -129,6 +134,14 @@ export interface ActionDeps {
  */
 export const SCRAPE_CANCELLED_MESSAGE =
   "Proses dihentikan. Ekspor dan pemeriksaan otomatis dibatalkan. Jalankan ulang untuk memperoleh data lengkap.";
+
+/**
+ * Shown when the XLSX export cannot produce a file — in practice a failed
+ * load of the SheetJS chunk. The export is fire-and-forget from the click, so
+ * without this the failure would be a silent no-op.
+ */
+export const EXPORT_XLSX_FAILED_MESSAGE =
+  "Gagal membuat berkas Excel. Periksa koneksi lalu coba ekspor kembali.";
 
 /** Build a production ActionDeps that calls the real browser globals. */
 export function createActionDeps(): ActionDeps {
@@ -334,7 +347,13 @@ export function handleExportAction(
       filenamePrefix: getPreferences().filenamePrefix,
     };
     if (format === "xlsx") {
-      deps.exportXLSX(exportData);
+      // Async because the writer first loads the SheetJS chunk. Wrapped in
+      // Promise.resolve so a synchronous test double is handled too.
+      void Promise.resolve(deps.exportXLSX(exportData)).catch((err: unknown) => {
+        debugError("Gagal mengekspor ke Excel", err);
+        deps.showPanel();
+        deps.updatePanelError(EXPORT_XLSX_FAILED_MESSAGE);
+      });
     } else {
       deps.exportCSV(exportData);
     }

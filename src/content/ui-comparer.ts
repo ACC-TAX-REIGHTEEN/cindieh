@@ -16,6 +16,7 @@ import {
 } from "./comparer-export";
 import { contentState, startScrape } from "./main-actions";
 import { getPreferences } from "./preferences";
+import { debugError } from "./debug";
 import { isOutputTaxPage } from "./page-context";
 import {
   applyComparerDefaults,
@@ -1221,6 +1222,20 @@ function renderCheckerResults(): void {
 
 // ── Export results to XLSX ────────────────────────────
 
+/**
+ * Report a failed spreadsheet export in the panel instead of letting the
+ * rejection die silently — the click handler is fire-and-forget, and the most
+ * likely cause is the SheetJS chunk failing to load.
+ */
+function reportExportFailure(err: unknown): void {
+  debugError("Gagal mengekspor hasil ke Excel", err);
+  const statusMsg = document.getElementById("ch-comparer-status");
+  if (statusMsg) {
+    statusMsg.textContent = "Gagal membuat berkas Excel. Coba ekspor kembali.";
+    statusMsg.className = "ch-comparer-status ch-comparer-status-error";
+  }
+}
+
 function handleExportResults(): void {
   const container = document.getElementById("ch-comparer-results");
   if (!container || container.classList.contains("ch-hidden")) return;
@@ -1229,23 +1244,23 @@ function handleExportResults(): void {
 
   const rows = buildComparisonExportRows(session.results, session.refLainEnabled);
   const firstAmount = session.refLainEnabled ? 7 : 6;
-  downloadXLSXFile(rows, "perbandingan-faktur.xlsx", "Perbandingan", {
+  void downloadXLSXFile(rows, "perbandingan-faktur.xlsx", "Perbandingan", {
     numberFormats: Object.fromEntries(
       Array.from({ length: 5 }, (_, i) => [firstAmount + i, RESULT_NUMBER_FORMAT]),
     ),
-  });
+  }).catch(reportExportFailure);
 }
 
 function handleCheckerExportResults(): void {
   if (checkerSession.results.length === 0) return;
 
   const rows = buildCheckerExportRows(checkerSession.results, checkerSession.benchmark);
-  downloadXLSXFile(rows, "pengecekan-nilai-faktur.xlsx", "Pengecekan", {
+  void downloadXLSXFile(rows, "pengecekan-nilai-faktur.xlsx", "Pengecekan", {
     numberFormats: {
       5: RESULT_NUMBER_FORMAT, 6: RESULT_NUMBER_FORMAT, 7: RESULT_NUMBER_FORMAT,
       8: RESULT_DIFFERENCE_FORMAT, 9: RESULT_DIFFERENCE_FORMAT,
     },
-  });
+  }).catch(reportExportFailure);
 }
 
 // ── Search reference in Coretax ───────────────────────

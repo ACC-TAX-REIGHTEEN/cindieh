@@ -23,6 +23,7 @@ import {
   triggerSearch,
   scrapeIntentForFormat,
   SCRAPE_CANCELLED_MESSAGE,
+  EXPORT_XLSX_FAILED_MESSAGE,
   type ContentState,
   type ActionDeps,
 } from "../content/main-actions";
@@ -240,6 +241,27 @@ describe("handleExportAction — data already scraped", () => {
     handleExportAction("xlsx", state, deps);
     const arg = (deps.exportXLSX as ReturnType<typeof vi.fn>).mock.calls[0][0] as ExportData;
     expect(arg.mode).toBe("raw");
+  });
+
+  it("surfaces a failed xlsx export in the panel instead of swallowing it", async () => {
+    // The writer is now async (it loads the SheetJS chunk first), and the click
+    // that triggers it cannot await — so a rejected load must reach the user.
+    const deps = makeDeps({
+      exportXLSX: vi.fn(() => Promise.reject(new Error("chunk unreachable"))),
+    });
+    handleExportAction("xlsx", makeStateWithData(), deps);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(deps.showPanel).toHaveBeenCalled();
+    expect(deps.updatePanelError).toHaveBeenCalledWith(EXPORT_XLSX_FAILED_MESSAGE);
+  });
+
+  it("tolerates a synchronous xlsx dep returning nothing", () => {
+    // The existing suite's default double returns undefined; Promise.resolve
+    // wrapping keeps that supported instead of demanding a real Promise.
+    const deps = makeDeps({ exportXLSX: vi.fn(() => undefined) });
+    expect(() => handleExportAction("xlsx", makeStateWithData(), deps)).not.toThrow();
+    expect(deps.updatePanelError).not.toHaveBeenCalled();
   });
 
   it("calls exportCSV with the correct ExportData for csv format", () => {

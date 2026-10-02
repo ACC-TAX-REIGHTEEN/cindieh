@@ -27,20 +27,63 @@ const buildOptions = {
 	loader: {
 		".ts": "ts",
 	},
+	// The content scripts are classic scripts — MV3 declares no module type for
+	// content_scripts — so the four entries must stay IIFE. That is also why
+	// esbuild's own `splitting` cannot be used to split SheetJS out of
+	// content/main.js (it requires an ESM format); see xlsxChunkOptions below.
+	format: "iife",
+	define: {
+		"process.env.NODE_ENV": watch ? '"development"' : '"production"',
+	},
+	// exporter.ts loads the SheetJS chunk through a runtime `import()` of the
+	// extension URL. esbuild cannot follow a non-literal specifier, and that is
+	// the point — the call must survive to runtime. The default warning is
+	// silenced so it does not read as a build defect on every run.
+	logOverride: {
+		"unsupported-dynamic-import": "silent",
+	},
+};
+
+// ── SheetJS chunk (separate ESM bundle) ───────────────
+// Built in its own pass because it needs `format: "esm"` while the four entries
+// above need "iife". content/xlsx.js is a web-accessible resource the content
+// script imports on first XLSX export, which keeps ~330KB of SheetJS off the
+// page-load path.
+const xlsxChunkOptions = {
+	entryPoints: [
+		{ in: "src/content/xlsx-runtime.ts", out: "content/xlsx" },
+	],
+	bundle: true,
+	minify: !watch,
+	sourcemap: watch ? "inline" : false,
+	outdir: outdir,
+	platform: "browser",
+	target: ["es2020"],
+	loader: {
+		".ts": "ts",
+	},
+	format: "esm",
 	define: {
 		"process.env.NODE_ENV": watch ? '"development"' : '"production"',
 	},
 };
 
-async function run() {
+async function buildAll() {
 	if (watch) {
 		let ctx = await esbuild.context(buildOptions);
 		await ctx.watch();
+		let xlsxCtx = await esbuild.context(xlsxChunkOptions);
+		await xlsxCtx.watch();
 		console.log("Watching for changes...");
 	} else {
 		await esbuild.build(buildOptions);
+		await esbuild.build(xlsxChunkOptions);
 		console.log("Build complete.");
 	}
+}
+
+async function run() {
+	await buildAll();
 
 	// Copy and modify assets
 	copyAndModifyAssets();
