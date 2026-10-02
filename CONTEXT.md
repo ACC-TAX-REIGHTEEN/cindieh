@@ -64,6 +64,10 @@ _Avoid_: download data, export file
 Which Coretax page/grid a scrape or export came from — determines the column mapping and the filename prefix (`FPK-`, `FPM-`, `RET-FPK-`, `A2-`, `B2-`, `PPH21-L1A-`, `BP-`, …).
 _Avoid_: source type, page type
 
+**Export source spec**:
+The single declaration that says what one export source's export looks like — its columns, its filename prefix, its schema-drift warning, and the rules for naming the file. Every source has one, and the compiler refuses a source that does not. An Export source spec is not a page predicate (which URL is this?) and not a PDF filename rule (what is this document called?); those are separate questions with separate lifetimes.
+_Avoid_: source config, export config, column map, prefix map
+
 **Export mode**:
 How export shapes the data: **raw** keeps the portal's columns (only dates reformatted); **cleaned** maps fields to stable Indonesian labels and splits masa pajak into month/year columns.
 _Avoid_: format mode, output style

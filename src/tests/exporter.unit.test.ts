@@ -7,12 +7,12 @@ import {
   escapeCSV,
   buildCSV,
   generateDynamicFilename,
-  PREFIX_MAP,
   downloadWorkbookFile,
   createXlsxChunkLoader,
   XLSX_CHUNK_PATH,
   type XlsxModule,
 } from "../content/exporter";
+import { getExportSourceSpec } from "../content/export-source";
 import type { ExportData } from "../content/exporter";
 
 // ============================================================
@@ -340,31 +340,38 @@ describe("generateDynamicFilename — filenameHint formats", () => {
 });
 
 // ============================================================
-// PREFIX_MAP completeness
+// Export source declarations
 // ============================================================
-describe("PREFIX_MAP", () => {
-	it("contains entries for all 11 ExportSource values plus the default", () => {
-		const allSources: ExportSource[] = [
-			"OUTPUT_TAX",
-			"INPUT_TAX",
-			"OUTPUT_RETURN",
-			"INPUT_RETURN",
-			"SPT_A2",
-			"SPT_B2",
-			"PPH_21_L1A",
-			"PPH_21_L1B",
-			"PPH_21_L2",
-			"PPH_21_L3",
-			"WITHHOLDING_SLIPS",
-		];
-		for (const source of allSources) {
-			expect(PREFIX_MAP).toHaveProperty(source);
+describe("getExportSourceSpec", () => {
+	const expectedPrefixes: Record<ExportSource, string> = {
+		OUTPUT_TAX:        "FPK-",
+		INPUT_TAX:         "FPM-",
+		OUTPUT_RETURN:     "RET-FPK-",
+		INPUT_RETURN:      "RET-FPM-",
+		SPT_A2:            "A2-",
+		SPT_B2:            "B2-",
+		PPH_21_L1A:        "PPH21-L1A-",
+		PPH_21_L1B:        "PPH21-L1B-",
+		PPH_21_L2:         "PPH21-L2-",
+		PPH_21_L3:         "PPH21-L3-",
+		WITHHOLDING_SLIPS: "BP-",
+	};
+
+	it("declares every ExportSource with its documented prefix", () => {
+		for (const source of Object.keys(expectedPrefixes) as ExportSource[]) {
+			expect(getExportSourceSpec(source).prefix).toBe(expectedPrefixes[source]);
 		}
-		expect(PREFIX_MAP).toHaveProperty("default");
 	});
 
-	it("default entry is FPK-", () => {
-		expect(PREFIX_MAP["default"]).toBe("FPK-");
+	it("falls back to the PPN Keluaran declaration, not to a bare prefix", () => {
+		// The fallback used to be a `default` entry in a prefix map, so a missing
+		// source lost its columns too. Resolving to OUTPUT_TAX's whole
+		// declaration means an unrecognised source still produces a usable
+		// spreadsheet rather than an empty one.
+		const outputTax = getExportSourceSpec("OUTPUT_TAX");
+
+		expect(getExportSourceSpec(undefined)).toBe(outputTax);
+		expect(getExportSourceSpec("NOT_A_SOURCE" as ExportSource)).toBe(outputTax);
 	});
 });
 

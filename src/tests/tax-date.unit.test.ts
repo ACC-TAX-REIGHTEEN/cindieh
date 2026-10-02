@@ -2,7 +2,7 @@
 // Covers extractYear, extractMonth (including the TD. tax-domain form),
 // extractYMD, and the timezone-safe formatDate.
 import { describe, it, expect } from "vitest";
-import { extractYear, extractMonth, extractMasaPajak, extractYMD, formatDate, getCurrentYearMonthWIB } from "../content/tax-date";
+import { extractYear, extractMonth, extractMasaPajak, extractYMD, formatDate, formatIsoDateTime, getCurrentYearMonthWIB } from "../content/tax-date";
 
 // ── extractYear ───────────────────────────────────────────────────────────────
 
@@ -152,6 +152,40 @@ describe("formatDate", () => {
 
   it("passes through unparseable strings", () => {
     expect(formatDate("not-a-date")).toBe("not-a-date");
+  });
+});
+
+// ── formatIsoDateTime ────────────────────────────────────────────────────────
+
+describe("formatIsoDateTime", () => {
+  it("reformats an ISO datetime to DD/MM/YYYY", () => {
+    expect(formatIsoDateTime("2026-01-31T23:00:00+07:00")).toBe("31/01/2026");
+    expect(formatIsoDateTime("2026-04-15T00:00:00Z")).toBe("15/04/2026");
+  });
+
+  it("leaves a pure calendar date alone", () => {
+    // The whole difference between this and formatDate: "2026-03-04" is a value
+    // whose column already says what it is, and rewriting it would be wrong.
+    expect(formatIsoDateTime("2026-03-04")).toBe("2026-03-04");
+    expect(formatDate("2026-03-04")).toBe("04/03/2026");
+  });
+
+  it("leaves values that are not strings untouched, type and all", () => {
+    const zero = 0;
+    expect(formatIsoDateTime(zero)).toBe(0);
+    expect(formatIsoDateTime(null)).toBeNull();
+    expect(formatIsoDateTime(undefined)).toBeUndefined();
+  });
+
+  it("leaves other strings untouched", () => {
+    expect(formatIsoDateTime("")).toBe("");
+    expect(formatIsoDateTime("not-a-date")).toBe("not-a-date");
+    expect(formatIsoDateTime("PT Maju Jaya")).toBe("PT Maju Jaya");
+  });
+
+  it("requires the time component, not merely a T somewhere in the string", () => {
+    expect(formatIsoDateTime("PT Maju")).toBe("PT Maju");
+    expect(formatIsoDateTime("2026-01-01 PT")).toBe("2026-01-01 PT");
   });
 });
 

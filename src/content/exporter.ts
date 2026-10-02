@@ -15,7 +15,8 @@ import type { ExportSource } from "./page-context";
 import type { WorkBook } from "xlsx";
 import { browserAPI } from "./browser-shim";
 import { debugError, debugWarn } from "./debug";
-import { extractYear, extractMonth, formatDate, extractYMD, getCurrentYearMonthWIB } from "./tax-date";
+import { extractYear, extractMonth, extractYMD, getCurrentYearMonthWIB } from "./tax-date";
+import { CAPTURED_COLUMNS, getExportSourceSpec, mapColumns } from "./export-source";
 import { normalizeFilenamePrefix } from "../shared/extension-preferences";
 
 export type ExportMode = "cleaned" | "raw";
@@ -195,337 +196,40 @@ export async function downloadXLSXFile(
   downloadWorkbookFile(await loadXLSX(), rows, filename, sheetName, options);
 }
 
+/**
+ * Map scraped rows onto the columns their source declares.
+ *
+ * Every branch this used to have is now a declaration in `export-source.ts`;
+ * all that is left here is choosing the declaration and reporting drift. The
+ * returned object is an `ExportData` so the existing destructuring in the
+ * writers stays unchanged.
+ */
 export function processData(exportData: ExportData): ExportData {
   if (exportData.mode === "raw") {
-    const processedData = exportData.data.map((row) => {
-      const newRow: Record<string, unknown> = {};
-      for (const f of exportData.fields) {
-        let val = row[f];
-        if (typeof val === "string" && val.includes("T") && /^\d{4}-\d{2}-\d{2}T/.test(val)) {
-          val = formatDate(val);
-        }
-        newRow[f] = val;
-      }
-      return newRow;
-    });
-    return { data: processedData, fields: exportData.fields, source: exportData.source, mode: exportData.mode };
+    // Raw mode expects to match nothing in particular — it dumps whatever the
+    // grid returned — so it has no drift warning, only the ISO date catch.
+    const { data, fields } = mapColumns(CAPTURED_COLUMNS, exportData.data, exportData.fields);
+    return { data, fields, source: exportData.source, mode: exportData.mode };
   }
 
-  const processMappedTaxColumns = (
-    columns: readonly (readonly [string, string])[],
-    warningMessage: string,
-  ): ExportData => {
-    const fields = columns.map(([, label]) => label);
-    const processedData = exportData.data.map((row) => {
-      const newRow: Record<string, unknown> = {};
-
-      for (const [sourceField, outputField] of columns) {
-        if (sourceField === "TaxInvoicePeriod" || sourceField === "PeriodCredit") {
-          const rawMonth = row[sourceField] || row["TaxPeriodMonth"] || row["TaxPeriod"] || "";
-          newRow[outputField] = rawMonth ? extractMonth(rawMonth).replace(/^0/, "") : "";
-        } else if (sourceField === "TaxInvoiceYear" || sourceField === "YearCredit") {
-          newRow[outputField] = extractYear(row[sourceField] || row["TaxPeriodYear"] || row["TaxPeriod"] || "");
-        } else {
-          let val = row[sourceField];
-          if (sourceField === "TaxInvoiceDate" || sourceField === "ReturnDate") {
-            val = formatDate(val);
-          }
-          newRow[outputField] = val;
-        }
-      }
-
-      return newRow;
-    });
-
-    const sourceFields = columns.map(([sourceField]) => sourceField);
-    const allUndefined = exportData.data.some((row) =>
-      sourceFields.every((f) => row[f] === undefined || row[f] === null),
-    );
-    if (allUndefined) {
-      debugWarn(warningMessage, {
-        expected: sourceFields,
-        sampleRow: exportData.data[0],
-      });
-    }
-
-    return { data: processedData, fields, source: exportData.source };
-  };
-
-  if (exportData.source === "INPUT_TAX") {
-    return processMappedTaxColumns(
-      [
-        ["TaxInvoiceDate", "TANGGAL"],
-        ["TaxInvoicePeriod", "MASA"],
-        ["TaxInvoiceYear", "TAHUN"],
-        ["SellerTaxpayerName", "NAMA PENJUAL"],
-        ["SellerTIN", "NO IDENTITAS PENJUAL"],
-        ["TaxInvoiceNumber", "NO FAKTUR"],
-        ["TaxInvoiceStatus", "STATUS"],
-        ["BuyerStatus", "STATUS PEMBELI"],
-        ["PeriodCredit", "MASA PENGKREDITAN"],
-        ["YearCredit", "TAHUN PENGKREDITAN"],
-        ["SellingPrice", "DPP"],
-        ["OtherTaxBase", "DPP NILAI LAIN"],
-        ["VAT", "PPN"],
-        ["STLG", "PPNBM"],
-        ["Reference", "REFERENSI"],
-      ],
-      "API schema may have changed: no INPUT_TAX fields matched in any row",
-    );
+  const spec = getExportSourceSpec(exportData.source);
+  const { data, fields, drift } = mapColumns(spec.columns, exportData.data, exportData.fields);
+  if (drift && spec.driftWarning) {
+    debugWarn(spec.driftWarning, { expected: drift.expected, sampleRow: drift.sampleRow });
   }
 
-  if (exportData.source === "OUTPUT_RETURN") {
-    return processMappedTaxColumns(
-      [
-        ["BuyerTIN", "NO IDENTITAS PEMBELI"],
-        ["BuyerTaxpayerNameClear", "NAMA PEMBELI"],
-        ["TaxInvoiceNumber", "NO FAKTUR"],
-        ["TaxInvoiceDate", "TANGGAL"],
-        ["ReturnNumber", "NO RETUR"],
-        ["ReturnDate", "TANGGAL RETUR"],
-        ["TaxInvoicePeriod", "MASA"],
-        ["TaxInvoiceYear", "TAHUN"],
-        ["BuyerStatus", "STATUS PEMBELI"],
-        ["TaxInvoiceStatus", "STATUS"],
-        ["SellingPrice", "DPP"],
-        ["OtherTaxBase", "DPP NILAI LAIN"],
-        ["VAT", "PPN"],
-        ["STLG", "PPNBM"],
-      ],
-      "API schema may have changed: no OUTPUT_RETURN fields matched in any row",
-    );
-  }
-
-  if (exportData.source === "INPUT_RETURN") {
-    return processMappedTaxColumns(
-      [
-        ["SellerTIN", "NO IDENTITAS PENJUAL"],
-        ["SellerTaxpayerName", "NAMA PENJUAL"],
-        ["TaxInvoiceNumber", "NO FAKTUR"],
-        ["TaxInvoiceDate", "TANGGAL"],
-        ["ReturnNumber", "NO RETUR"],
-        ["ReturnDate", "TANGGAL RETUR"],
-        ["TaxInvoicePeriod", "MASA"],
-        ["TaxInvoiceYear", "TAHUN"],
-        ["BuyerStatus", "STATUS PEMBELI"],
-        ["TaxInvoiceStatus", "STATUS"],
-        ["SellingPrice", "DPP"],
-        ["OtherTaxBase", "DPP NILAI LAIN"],
-        ["VAT", "PPN"],
-        ["STLG", "PPNBM"],
-      ],
-      "API schema may have changed: no INPUT_RETURN fields matched in any row",
-    );
-  }
-  if (exportData.source === "WITHHOLDING_SLIPS") {
-    // Withholding slips are the one supported grid whose cleaned column set is
-    // not pinned by a settled field list. What the rest of the code does confirm:
-    // the slip number arrives as `WithholdingSlipNumber` for the bulk-PDF flow
-    // (scraper-xhr.ts) but as `WithholdingSlipsNumber` for the PDF filename
-    // builder (downloader.ts), the slip date is `WithholdingSlipsDate`, and the
-    // withholding agent is `EmployerName` / `TaxIdentificationNumber`. Each
-    // column therefore accepts either spelling of the number, and the slip date
-    // is what seeds TANGGAL as well as MASA/TAHUN — a withholding row carries no
-    // separate tax-period field (extractFilenameHintFromBody and
-    // extractPeriodsFromData both have nothing to read for this source). The
-    // usual schema-drift warning fires when a row matches none of them, and the
-    // "Asli" export mode dumps every captured field verbatim for anyone who
-    // needs more than these columns.
-    const withholdingColumns: {
-      label: string;
-      sources: string[];
-      format?: "date" | "month" | "year";
-    }[] = [
-      { label: "NO BUKTI POTONG", sources: ["WithholdingSlipsNumber", "WithholdingSlipNumber"] },
-      { label: "TANGGAL", sources: ["WithholdingSlipsDate"], format: "date" },
-      { label: "MASA", sources: ["WithholdingSlipsDate"], format: "month" },
-      { label: "TAHUN", sources: ["WithholdingSlipsDate"], format: "year" },
-      { label: "NAMA PEMOTONG", sources: ["EmployerName"] },
-      { label: "NPWP PEMOTONG", sources: ["TaxIdentificationNumber"] },
-    ];
-    const fields = withholdingColumns.map((column) => column.label);
-
-    // First non-empty value among the candidate spellings of one column.
-    const pick = (row: Record<string, unknown>, sources: string[]): unknown => {
-      for (const source of sources) {
-        const value = row[source];
-        if (value !== undefined && value !== null && value !== "") return value;
-      }
-      return undefined;
-    };
-
-    const processedData = exportData.data.map((row) => {
-      const newRow: Record<string, unknown> = {};
-      for (const column of withholdingColumns) {
-        const raw = pick(row, column.sources);
-        if (column.format === "date") {
-          newRow[column.label] = formatDate(raw);
-        } else if (column.format === "month") {
-          // MASA/TAHUN come from the slip date's own calendar digits, never via
-          // `Date` (see tax-date.ts) — extractMonth only understands period
-          // strings, so a full ISO date has to go through extractYMD.
-          const month = extractYMD(raw)?.month ?? "";
-          newRow[column.label] = month ? month.replace(/^0/, "") : "";
-        } else if (column.format === "year") {
-          newRow[column.label] = extractYMD(raw)?.year ?? "";
-        } else {
-          newRow[column.label] = raw;
-        }
-      }
-      return newRow;
-    });
-
-    const allUndefined = exportData.data.some((row) =>
-      withholdingColumns.every((column) => pick(row, column.sources) === undefined),
-    );
-    if (allUndefined) {
-      debugWarn("API schema may have changed: no WITHHOLDING_SLIPS fields matched in any row", {
-        expected: withholdingColumns.flatMap((column) => column.sources),
-        sampleRow: exportData.data[0],
-      });
-    }
-
-    return { data: processedData, fields, source: exportData.source };
-  }
-
-  if (exportData.source === "SPT_A2") {
-    // Hardcoded columns for SPT Masa PPN Lampiran A2 based on user request
-    const a2Fields = ["DocumentDate", "Name", "TIN", "DocumentNumber", "TaxBase", "OtherTaxBase", "VAT", "STLG"];
-
-    const processedData = exportData.data.map((row) => {
-      const newRow: Record<string, unknown> = {};
-      for (const f of a2Fields) {
-        let val = row[f];
-        // Format document dates strictly as well as any internal ISO time string
-        if (f === "DocumentDate") {
-          val = formatDate(val);
-        } else if (typeof val === "string" && val.includes("T") && /^\d{4}-\d{2}-\d{2}T/.test(val)) {
-          val = formatDate(val);
-        }
-        newRow[f] = val;
-      }
-      return newRow;
-    });
-
-    // Runtime validation: check if hardcoded fields still match API response
-    const allUndefined = processedData.some((row) => a2Fields.every((f) => row[f] === undefined || row[f] === null));
-    if (allUndefined) {
-      debugWarn("API schema may have changed: no A2 fields matched in any row", {
-        expected: a2Fields,
-        sampleRow: exportData.data[0],
-      });
-    }
-
-    return { data: processedData, fields: a2Fields, source: exportData.source };
-  }
-
-  if (exportData.source === "SPT_B2" || (exportData.source && exportData.source.startsWith("PPH_21_"))) {
-    // Dump every field as-is — SPT B2 and the PPh 21 lampiran share this shape
-    const processedData = exportData.data.map((row) => {
-      const newRow: Record<string, unknown> = {};
-      for (const f of exportData.fields) {
-        let val = row[f];
-        // Catch ISO dates
-        if (typeof val === "string" && val.includes("T") && /^\d{4}-\d{2}-\d{2}T/.test(val)) {
-          val = formatDate(val);
-        }
-        newRow[f] = val;
-      }
-      return newRow;
-    });
-    return { data: processedData, fields: exportData.fields, source: exportData.source };
-  }
-
-  // Default fallback to OutputTax logic
-  const outputTaxColumns = [
-    ["TaxInvoiceDate", "TANGGAL"],
-    ["TaxInvoicePeriod", "MASA"],
-    ["TaxInvoiceYear", "TAHUN"],
-    ["BuyerName", "NAMA PEMBELI"],
-    ["BuyerTIN", "NO IDENTITAS PEMBELI"],
-    ["TaxInvoiceNumber", "NO FAKTUR"],
-    ["TaxInvoiceStatus", "STATUS"],
-    ["BuyerStatus", "STATUS PEMBELI"],
-    ["SellingPrice", "DPP"],
-    ["OtherTaxBase", "DPP NILAI LAIN"],
-    ["VAT", "PPN"],
-    ["STLG", "PPNBM"],
-    ["Reference", "REFERENSI"],
-  ] as const;
-  const hardcodedFields = outputTaxColumns.map(([, label]) => label);
-
-  const processedData = exportData.data.map((row) => {
-    const newRow: Record<string, unknown> = {};
-
-    // Extract Masa (Period) - handle TD007 prefix or use TaxPeriodMonth
-    let masa = "";
-    const rawMonth = row["TaxInvoicePeriod"] || row["TaxPeriodMonth"] || row["TaxPeriod"] || "";
-    if (rawMonth) {
-      masa = extractMonth(rawMonth).replace(/^0/, ""); // Remove leading zero for display
-    }
-
-    // Extract Tahun (Year) - handle TD007 prefix or use separate field
-    let tahun = extractYear(
-      row["TaxInvoiceYear"] || row["TaxPeriodYear"] || row["TaxPeriod"] || "",
-    );
-
-    for (const [sourceField, outputField] of outputTaxColumns) {
-      if (sourceField === "TaxInvoicePeriod") {
-        newRow[outputField] = masa;
-      } else if (sourceField === "TaxInvoiceYear") {
-        newRow[outputField] = tahun;
-      } else {
-        let val = row[sourceField];
-        if (sourceField === "TaxInvoiceDate") {
-          val = formatDate(val);
-        }
-        newRow[outputField] = val;
-      }
-    }
-    return newRow;
-  });
-
-  // Runtime validation: check if hardcoded fields still match API response
-  const sourceFields = outputTaxColumns.map(([sourceField]) => sourceField);
-  const allUndefined = exportData.data.some((row) =>
-    sourceFields.every((f) => row[f] === undefined || row[f] === null),
-  );
-  if (allUndefined) {
-    debugWarn("API schema may have changed: no hardcoded fields matched in any row", {
-      expected: sourceFields,
-      sampleRow: exportData.data[0],
-    });
-  }
-
-  return { data: processedData, fields: hardcodedFields, source: exportData.source };
+  return { data, fields, source: exportData.source };
 }
-
-export const PREFIX_MAP: Record<ExportSource | "default", string> = {
-  OUTPUT_TAX: "FPK-",
-  INPUT_TAX: "FPM-",
-  OUTPUT_RETURN: "RET-FPK-",
-  INPUT_RETURN: "RET-FPM-",
-  SPT_A2: "A2-",
-  SPT_B2: "B2-",
-  PPH_21_L1A: "PPH21-L1A-",
-  PPH_21_L1B: "PPH21-L1B-",
-  PPH_21_L2: "PPH21-L2-",
-  PPH_21_L3: "PPH21-L3-",
-  WITHHOLDING_SLIPS: "BP-",
-  default: "FPK-",
-};
 
 export function generateDynamicFilename(exportData: ExportData): string {
   const { data: originalData, filenameHint, source } = exportData;
-  const isA2 = source === "SPT_A2";
-  const basePrefix =
-    source && Object.prototype.hasOwnProperty.call(PREFIX_MAP, source)
-      ? PREFIX_MAP[source as ExportSource]
-      : PREFIX_MAP["default"];
+  const spec = getExportSourceSpec(source);
   // The user's own prefix goes in FRONT of the per-source one, so `PTABC-FPK-072026`
   // still ends with the prefix the README documents. Bulk PDF filenames keep
   // their documented shape (see downloader.ts) and are not affected.
-  const prefix = `${normalizeFilenamePrefix(exportData.filenamePrefix)}${basePrefix}`;
+  const prefix = `${normalizeFilenamePrefix(exportData.filenamePrefix)}${spec.prefix}`;
+  // A retur file is named for the return YEAR; everything else for the period.
+  const yearOnly = spec.filename.shape === "tahun";
 
   const formatPeriod = (p: string) => {
     // 1. Handle internal format YYYY_MM
@@ -563,7 +267,7 @@ export function generateDynamicFilename(exportData: ExportData): string {
   };
 
   if (filenameHint) {
-    if (source === "OUTPUT_RETURN" || source === "INPUT_RETURN") {
+    if (yearOnly) {
       const year = filenameHint.replace(/\D/g, "").match(/(20\d{2}|19\d{2})/)?.[1];
       if (year) return `${prefix}${year}`;
     }
@@ -574,8 +278,9 @@ export function generateDynamicFilename(exportData: ExportData): string {
       return `${prefix}${formatted}`;
     }
 
-    // Fallback for PPh 21 if we have any digits
-    if (source && source.startsWith("PPH_21_") && formatted.length >= 4) {
+    // The PPh 21 lampiran are filtered by an article code, not by masa, so a
+    // hint that is not a period at all is still the best name available.
+    if (spec.filename.looseHint && formatted.length >= 4) {
       return `${prefix}${formatted}`;
     }
   }
@@ -604,13 +309,13 @@ export function generateDynamicFilename(exportData: ExportData): string {
         y = extractYear(sP);
         m = extractMonth(sP).padStart(2, "0");
       }
-      // Fallback: Date fields (Last Resort - only if no period fields found)
+      // Fallback: Date fields (Last Resort - only if no period fields found).
+      // Which date field is the source's own decision — Lampiran A2 carries no
+      // tax period at all, and a Bukti Potong row carries only a slip date.
       else {
-        const dateField = isA2
-          ? row["DocumentDate"] || row["Date"] || ""
-          : source === "WITHHOLDING_SLIPS"
-            ? row["WithholdingSlipsDate"]
-            : row["TaxInvoiceDate"];
+        const dateField = spec.filename.periodDateFields
+          .map((field) => row[field])
+          .find((value) => Boolean(value));
         const ymd = extractYMD(dateField);
         if (ymd) {
           y = ymd.year;
@@ -627,8 +332,9 @@ export function generateDynamicFilename(exportData: ExportData): string {
 
   const dataPeriods = extractPeriodsFromData();
 
-  // PRIORITY 2 (after filenameHint): USE DATA ROWS
-  if (dataPeriods.length > 0 && source !== "OUTPUT_RETURN" && source !== "INPUT_RETURN") {
+  // PRIORITY 2 (after filenameHint): USE DATA ROWS. A retur's rows hold the
+  // INVOICE's masa, not the return year, so they are never used for its name.
+  if (dataPeriods.length > 0 && !yearOnly) {
     if (dataPeriods.length === 1) {
       return `${prefix}${formatPeriod(dataPeriods[0])}`;
     }
@@ -637,10 +343,7 @@ export function generateDynamicFilename(exportData: ExportData): string {
 
   // FALLBACK: CURRENT DATE (Asia/Jakarta, UTC+7 timezone-safe)
   const { year: yString, month: mString } = getCurrentYearMonthWIB();
-  if (source === "OUTPUT_RETURN" || source === "INPUT_RETURN") {
-    return `${prefix}${yString}`;
-  }
-  return `${prefix}${mString}${yString}`;
+  return yearOnly ? `${prefix}${yString}` : `${prefix}${mString}${yString}`;
 }
 
 export function exportCSV(exportData: ExportData): void {

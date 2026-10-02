@@ -118,6 +118,28 @@ export function formatDate(dateStr: unknown): string {
   return dateStr;
 }
 
+/** A `YYYY-MM-DD` immediately followed by the time component. */
+const ISO_DATE_TIME_PREFIX = /^\d{4}-\d{2}-\d{2}T/;
+
+/**
+ * Reformat a value ONLY if it is an ISO datetime — "2026-01-31T23:00:00+07:00"
+ * — and otherwise return it untouched.
+ *
+ * This is narrower than `formatDate`, and deliberately so: a column whose whole
+ * job is to catch an ISO timestamp that arrived in a field nobody declared must
+ * leave a plain calendar date ("2026-03-04") alone, because that is a different
+ * kind of value and the grid's own label already says which one it is. Calling
+ * `formatDate` on it would silently turn it into "04/03/2026".
+ *
+ * It lives here rather than in the caller for ADR-0004's reason: this is a date
+ * shape test, and the export column declarations should not hand-roll date
+ * regexes.
+ */
+export function formatIsoDateTime(value: unknown): unknown {
+  if (typeof value === "string" && ISO_DATE_TIME_PREFIX.test(value)) return formatDate(value);
+  return value;
+}
+
 /**
  * Get current year and month formatted as { year: YYYY, month: MM } in Asia/Jakarta (WIB, UTC+7).
  * Timezone-safe: independent of the browser local system timezone offset.

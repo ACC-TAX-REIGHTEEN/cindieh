@@ -2,7 +2,8 @@
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
 import type { ExportSource } from "../content/page-context";
-import { generateDynamicFilename, PREFIX_MAP } from "../content/exporter";
+import { generateDynamicFilename } from "../content/exporter";
+import { getExportSourceSpec } from "../content/export-source";
 import type { ExportData } from "../content/exporter";
 
 /**
@@ -10,12 +11,12 @@ import type { ExportData } from "../content/exporter";
  *
  * For any ExportSource value (including all 11 named sources, undefined, and
  * unrecognised strings) and any filenameHint input (including undefined, a valid
- * period string, and an empty string), the refactored generateDynamicFilename
- * using the flat PREFIX_MAP SHALL return the same filename string as the original
- * nested-ternary implementation would have.
+ * period string, and an empty string), generateDynamicFilename SHALL return the
+ * same filename string as the original nested-ternary implementation would have.
  *
  * Since the original nested-ternary is no longer available, this test verifies:
- * 1. The PREFIX_MAP covers all 11 ExportSource values with the correct prefixes.
+ * 1. The export-source declarations cover all 11 ExportSource values with the
+ *    correct prefixes.
  * 2. The filename returned always starts with the correct prefix for the given source.
  * 3. Undefined or unrecognised source values fall back to "FPK-".
  *
@@ -38,10 +39,10 @@ const allExportSources: ExportSource[] = [
 
 /**
  * The expected prefix mapping — this mirrors the original nested-ternary logic
- * that was replaced by PREFIX_MAP. This serves as the reference implementation
- * for the property test.
+ * that the export-source declarations replaced. This serves as the reference
+ * implementation for the property test.
  */
-const expectedPrefixes: Record<ExportSource | "default", string> = {
+const expectedPrefixes: Record<ExportSource, string> = {
 	OUTPUT_TAX:        "FPK-",
 	INPUT_TAX:         "FPM-",
 	OUTPUT_RETURN:     "RET-FPK-",
@@ -53,28 +54,28 @@ const expectedPrefixes: Record<ExportSource | "default", string> = {
 	PPH_21_L2:         "PPH21-L2-",
 	PPH_21_L3:         "PPH21-L3-",
 	WITHHOLDING_SLIPS: "BP-",
-	default:           "FPK-",
 };
 
 describe("generateDynamicFilename - Property 7: prefix consistency", () => {
 	/**
-	 * Structural check: PREFIX_MAP must cover all 11 ExportSource values
+	 * Structural check: the declarations must cover all 11 ExportSource values
 	 * with the exact same prefixes as the original nested-ternary implementation.
+	 * `Record<ExportSource, ExportSourceSpec>` makes a missing entry a type
+	 * error, so this test documents the table rather than policing it.
 	 */
-	it("PREFIX_MAP covers all 11 ExportSource values with correct prefixes", () => {
+	it("the declarations cover all 11 ExportSource values with correct prefixes", () => {
 		for (const source of allExportSources) {
-			expect(PREFIX_MAP).toHaveProperty(source);
-			expect(PREFIX_MAP[source]).toBe(expectedPrefixes[source]);
+			expect(getExportSourceSpec(source).prefix).toBe(expectedPrefixes[source]);
 		}
 		// Also verify the default fallback
-		expect(PREFIX_MAP["default"]).toBe("FPK-");
+		expect(getExportSourceSpec(undefined).prefix).toBe("FPK-");
 	});
 
 	/**
 	 * Property: for every ExportSource value and any filenameHint, the filename
 	 * returned by generateDynamicFilename starts with the correct prefix.
 	 *
-	 * This verifies that the PREFIX_MAP lookup logic is correct for all 11 sources.
+	 * This verifies that the declaration lookup is correct for all 11 sources.
 	 */
 	it("filename always starts with the correct prefix for each ExportSource", () => {
 		fc.assert(
@@ -152,15 +153,15 @@ describe("generateDynamicFilename - Property 7: prefix consistency", () => {
 
 	/**
 	 * Property: for any ExportSource and any filenameHint, the prefix selected
-	 * by the refactored PREFIX_MAP lookup equals the prefix that the original
+	 * from the source's declaration equals the prefix that the original
 	 * nested-ternary would have selected.
 	 *
-	 * This is the core of Property 7: the refactored implementation is
+	 * This is the core of Property 7: the declaration-driven implementation is
 	 * behaviourally equivalent to the original for all inputs.
 	 *
 	 * Validates: Requirements 12.2, 12.3
 	 */
-	it("PREFIX_MAP lookup is equivalent to original nested-ternary for all ExportSource + filenameHint combinations", () => {
+	it("declaration lookup is equivalent to original nested-ternary for all ExportSource + filenameHint combinations", () => {
 		/**
 		 * Reference implementation: the original nested-ternary prefix selection
 		 * logic, preserved here as the ground truth for comparison.
@@ -198,11 +199,8 @@ describe("generateDynamicFilename - Property 7: prefix consistency", () => {
 				(source, filenameHint) => {
 					const resolvedSource = source ?? undefined;
 
-					// Compute the prefix using the refactored PREFIX_MAP lookup
-					const refactoredPrefix =
-						resolvedSource && (resolvedSource as string) in PREFIX_MAP
-							? PREFIX_MAP[resolvedSource as ExportSource]
-							: PREFIX_MAP["default"];
+					// Compute the prefix from the source's declaration
+					const refactoredPrefix = getExportSourceSpec(resolvedSource).prefix;
 
 					// Compute the prefix using the original nested-ternary
 					const originalPrefix = originalNestedTernaryPrefix(resolvedSource);

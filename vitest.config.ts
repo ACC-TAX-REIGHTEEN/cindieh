@@ -9,7 +9,7 @@
 // regression — new logic shipping without tests — does. Raise them as coverage
 // improves; never lower them to make a red build green.
 //
-// Measured 2026-10-02 on the whole suite (1175 tests). The modules that hold
+// Measured 2026-10-02 on the whole suite (1230 tests). The modules that hold
 // the baseline down are recorded in AGENTS.md so a low number reads as a known
 // gap rather than a mystery.
 
@@ -39,12 +39,20 @@ export default defineConfig({
       // Baseline floors. Global, so a new well-tested module may raise the
       // average while an untested one still drags it down.
       // Raised from 80/72/74/82 after the column-schema extraction, then again
-      // by the run-lifecycle extraction (ADR-0014); the measured numbers are
-      // now 83.45/75.54/78.96/85.25.
+      // by the run-lifecycle extraction (ADR-0014), then on branches and
+      // functions by the export-source spec extraction (ADR-0015); the measured
+      // numbers are now 83.41/75.73/78.98/85.23.
+      //
+      // Statements and lines were left alone for ADR-0015 even though the new
+      // module is 100% covered: exporter.ts shrank 675 -> 381 lines, so its
+      // still-untested download entry points (exportCSV, writeXlsxFile,
+      // exportXLSX) weigh more heavily against a smaller denominator. Same
+      // uncovered code, tighter ratio — not a regression to paper over, and not
+      // a reason to lower a floor.
       thresholds: {
         statements: 81.2,
-        branches: 73.2,
-        functions: 76.2,
+        branches: 73.5,
+        functions: 76.4,
         lines: 83.3,
       },
     },
