@@ -1,0 +1,28 @@
+# Cloudflare Pages header rules.
+#
+# The site has no build step, so there is no content hash in the asset URLs —
+# a cache-buster cannot be appended by a bundler. That is fine for the fonts
+# because they only change when someone deliberately edits the @font-face
+# block in microsite.css, and a year-long immutable cache is still the right
+# trade: a returning visitor re-uses the same bytes instead of re-downloading
+# 111 KB on every visit. Bump a font file means renaming it, same as any
+# static host without hashing.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  # HTML must revalidate: the canonical, og:url and the whole body are edited
+  # by hand, and a stale cached page would keep advertising the old hostname.
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/img/*
+  Cache-Control: public, max-age=604800
+
+/sitemap.xml
+  Cache-Control: public, max-age=3600
+
+/robots.txt
+  Cache-Control: public, max-age=3600

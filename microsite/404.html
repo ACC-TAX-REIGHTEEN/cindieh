@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<!--
+  Cloudflare Pages serves this file for ANY missing path, so the browser's
+  base URL is whatever was requested (/foo/bar), not /. Relative asset paths
+  would resolve to /foo/assets/... and 404 themselves — hence <base href="/">,
+  which is the one place this page differs from index.html. If the site ever
+  moves into a subfolder, this attribute is what has to change.
+-->
+<base href="/">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Halaman tidak ditemukan — Cindieh</title>
+<meta name="description" content="Halaman yang Anda cari tidak ada di Cindieh. Kembali ke beranda untuk mengunduh ekstensi gratis.">
+<meta name="robots" content="noindex, follow">
+<meta name="theme-color" content="#ECEAE1">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/img/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/img/icon-16.png">
+<link rel="icon" type="image/png" sizes="48x48" href="assets/img/icon-48.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="preload" href="assets/fonts/space-grotesk-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/plex-sans-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/microsite.css">
+<style>
+  /* Scoped to this page so nothing here leaks into index.html. */
+  .nf{padding:120px 0 90px;text-align:center;}
+  .nf .code{
+    font-family:var(--mono);font-size:14px;letter-spacing:.12em;
+    color:var(--stamp);text-transform:uppercase;margin-bottom:18px;
+  }
+  .nf h1{font-size:clamp(30px,5vw,46px);margin-bottom:18px;}
+  .nf .lede{max-width:46ch;margin:0 auto 34px;color:var(--ink-soft);font-size:16px;line-height:1.65;}
+  .nf .hero-cta{justify-content:center;}
+  .nf .brand{display:inline-flex;margin-bottom:30px;}
+</style>
+</head>
+<body>
+  <div class="wrap nf">
+    <a class="brand" href="/" aria-label="Cindieh — ke beranda"><img src="assets/img/icon-32.png" width="22" height="22" alt="">Cindieh</a>
+    <p class="code">Error 404</p>
+    <h1>Halaman ini tidak ada.</h1>
+    <p class="lede">
+      Alamat yang Anda ketik tidak ada di sini — mungkin ada salah ketik, atau
+      tautannya sudah berubah. Ekstensi Cindieh sendiri tidak hilang: semuanya
+      ada di beranda.
+    </p>
+    <div class="hero-cta">
+      <a href="/" class="btn btn-primary">Kembali ke beranda</a>
+      <a href="/#unduhan" class="btn btn-ghost">Unduh ekstensi</a>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# Cindieh microsite — static, no tracking, nothing private to hide.
+# The page is public documentation for a browser extension; there is nothing
+# behind it that should not be indexed.
+
+User-agent: *
+Allow: /
+
+# Nothing here is user-specific, so there is no crawl-delay to set. The host
+# decides whether this repo deserves anything more expensive than that.
+Sitemap: https://cindieh.pages.dev/sitemap.xml
