@@ -22,7 +22,7 @@
 // ============================================================
 
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { getExportSourceSpec } from "../content/export-source";
@@ -56,6 +56,7 @@ const shortcutsSource = read("../content/shortcuts.ts");
 // Hosting support files. Cloudflare Pages serves 404.html for any missing path,
 // `_headers` sets the cache rules, and robots/sitemap carry the hostname.
 const notFoundPage = read("../../microsite/404.html");
+const privacyPolicy = read("../../microsite/privacy.html");
 const pageHeaders = read("../../microsite/_headers");
 const robotsTxt = read("../../microsite/robots.txt");
 const sitemapXml = read("../../microsite/sitemap.xml");
@@ -546,10 +547,37 @@ describe("microsite — site URL", () => {
     expect(new URL(String(image)).origin).toBe(new URL(String(origin)).origin);
   });
 
-  it("lists the canonical in the sitemap, and nothing else", () => {
+  it("lists every canonical page in the sitemap, and nothing else", () => {
+    // Both directions. A page that is canonical but unlisted is invisible to
+    // search engines; a sitemap entry with no page behind it is a dead link
+    // waiting to be indexed.
     const locations = [...sitemapXml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-    expect(locations.length, "the sitemap should list the single indexable page").toBe(1);
-    expect(locations[0]).toBe(origin);
+    const pages = [microsite, privacyPolicy];
+
+    for (const pageSource of pages) {
+      const canonical = pageSource.match(/<link rel="canonical" href="([^"]+)"/)?.[1];
+      expect(canonical, "a microsite page lost its canonical link").toBeDefined();
+      expect(locations, `${canonical} is not listed in sitemap.xml`).toContain(canonical);
+    }
+
+    for (const location of locations) {
+      expect(
+        pages.some((p) => p.includes(`rel="canonical" href="${location}"`)),
+        `sitemap.xml lists ${location}, but no microsite page declares that canonical`,
+      ).toBe(true);
+    }
+  });
+
+  it("gives every microsite page the same origin", () => {
+    for (const [name, text] of [
+      ["index.html", microsite],
+      ["privacy.html", privacyPolicy],
+    ] as const) {
+      expect(
+        new URL(text.match(/<link rel="canonical" href="([^"]+)"/)![1]).origin,
+        `${name} points its canonical at a different host than the others`,
+      ).toBe(new URL(String(origin)).origin);
+    }
   });
 
   it("points robots.txt at the same sitemap", () => {
@@ -563,6 +591,7 @@ describe("microsite — site URL", () => {
     for (const [name, text] of [
       ["index.html", microsite],
       ["404.html", notFoundPage],
+      ["privacy.html", privacyPolicy],
       ["robots.txt", robotsTxt],
       ["sitemap.xml", sitemapXml],
     ] as const) {
@@ -575,6 +604,70 @@ describe("microsite — site URL", () => {
 });
 
 describe("microsite — hosting files", () => {
+  it("links the pages to each other with relative paths that exist", () => {
+    // The README promises the folder works from a subdirectory, which is only
+    // true while every internal link is relative. A root-anchored "/privacy.html"
+    // silently breaks that claim, and a relative link to a renamed page is just
+    // as broken — so both directions are checked against the files on disk.
+    const pages = [
+      ["index.html", microsite],
+      ["privacy.html", privacyPolicy],
+    ] as const;
+
+    for (const [name, text] of pages) {
+      for (const [, href] of text.matchAll(/<a [^>]*href="([^"]+)"/g)) {
+        if (/^(https?:|#|mailto:)/.test(href)) continue; // external or same-page
+        expect(
+          href.startsWith("/"),
+          `${name} links to "${href}" with a root-anchored path; relative links keep the folder portable`,
+        ).toBe(false);
+        expect(
+          href.includes(".."),
+          `${name} climbs out of the folder with "${href}"; the site has one output directory`,
+        ).toBe(false);
+        expect(
+          existsSync(fileURLToPath(new URL(`../../microsite/${href}`, import.meta.url))),
+          `${name} links to "${href}", which does not exist in microsite/`,
+        ).toBe(true);
+      }
+    }
+  });  it("leaves no mojibake in the prose", () => {
+    // Editing these pages through tooling has already produced a "Präferensi".
+    // That is invisible to a build and glaring to a store reviewer, so the
+    // check is mechanical: every non-ASCII character the site uses is listed
+    // here by name, and anything else means an edit landed garbled.
+    const ALLOWED = new Set([
+      "\u2011", // non-breaking hyphen (the prefix table's dashes)
+      "\u2013", // en dash
+      "\u2014", // em dash
+      "\u2018", // left single quote
+      "\u2019", // right single quote
+      "\u201c", // left double quote
+      "\u201d", // right double quote
+      "\u2026", // ellipsis
+      "\u00b7", // middle dot
+      "\u00d7", // multiplication sign ("x" in dimensions)
+      "\u2190", // left arrow (the breadcrumb)
+      "\u2192", // right arrow
+      "\u2699", // gear
+      "\ufe0f", // variation selector-16 (after the gear)
+      "\u2715", // multiplication x (the close button)
+    ]);
+
+    for (const [name, text] of [
+      ["index.html", microsite],
+      ["privacy.html", privacyPolicy],
+      ["404.html", notFoundPage],
+    ] as const) {
+      const offender = [...text].find((ch) => ch.codePointAt(0)! > 127 && !ALLOWED.has(ch));
+      const codePoint = offender ? `U+${offender.codePointAt(0)!.toString(16).toUpperCase()}` : "";
+      expect(
+        offender,
+        `${name} contains the stray non-ASCII character "${offender}" (${codePoint}) — an edit likely landed garbled`,
+      ).toBeUndefined();
+    }
+  });
+
   it("resolves the 404 page's assets from the site root", () => {
     // Cloudflare serves 404.html for any missing path, so a relative asset URL
     // would resolve against the requested path (/foo/assets/...) and 404 itself.
@@ -586,6 +679,84 @@ describe("microsite — hosting files", () => {
 
   it("keeps 404.html out of the index", () => {
     expect(notFoundPage).toMatch(/<meta name="robots" content="noindex/);
+  });
+
+  it("states every browser permission the manifest actually requests", () => {
+    // The privacy policy is what a store reviewer reads before installing, and
+    // it claims "only four permissions". That claim is checked here against
+    // manifest.json, so it cannot quietly go out of date — a fifth permission
+    // would redden the build rather than the page.
+    const declared = manifest.permissions ?? [];
+    const optional = manifest.optional_permissions ?? [];
+    const hosts = manifest.host_permissions ?? [];
+
+    for (const permission of [...declared, ...optional]) {
+      expect(
+        privacyPolicy.includes(permission),
+        `the privacy policy does not mention the "${permission}" permission`,
+      ).toBe(true);
+    }
+
+    for (const pattern of hosts) {
+      const host = new URL(pattern).host;
+      expect(
+        privacyPolicy.includes(host),
+        `the privacy policy does not name the host it contacts (${host})`,
+      ).toBe(true);
+    }
+
+    // And the reverse: the policy must not list a permission that is not in the
+    // manifest, which is the direction a store reviewer would act on.
+    const claimed = [...privacyPolicy.matchAll(/<td>([a-z][a-zA-Z]+)<\/td>\s*<td>(wajib|opsional)<\/td>/g)].map(
+      (m) => m[1],
+    );
+    expect(claimed.length, "the privacy policy's permission table lost its rows").toBe(
+      declared.length + optional.length,
+    );
+    for (const permission of claimed) {
+      expect(
+        [...declared, ...optional].includes(permission),
+        `the privacy policy claims a "${permission}" permission the manifest does not request`,
+      ).toBe(true);
+    }
+  });
+
+  it("counts the privacy policy's rows the way its prose does", () => {
+    // The section introducing the table states a count in words ("empat entri"),
+    // and a previous draft of that sentence said "empat izin, dan ketiganya" —
+    // two different numbers in one clause, which no structural test can see.
+    // Indonesian ordinals for 1-10 are spelled out, so the words are mapped
+    // rather than parsed; anything outside that range fails loudly here.
+    const WORDS: Record<number, string> = {
+      1: "satu",
+      2: "dua",
+      3: "tiga",
+      4: "empat",
+      5: "lima",
+      6: "enam",
+      7: "tujuh",
+      8: "delapan",
+      9: "sembilan",
+      10: "sepuluh",
+    };
+
+    const rows = privacyPolicy.match(/<tbody>[\s\S]*?<\/tbody>/)?.[0] ?? "";
+    const tableRows = [...rows.matchAll(/<tr>/g)].length;
+    const hosts = (manifest.host_permissions ?? []).length;
+    expect(tableRows, "the privacy policy's permission table lost its rows").toBe(
+      (manifest.permissions ?? []).length + (manifest.optional_permissions ?? []).length + hosts,
+    );
+
+    // Every number word the page uses to describe the table must be that one.
+    const intro = privacyPolicy.match(/Cuma ada ([a-z]+) entri/)?.[1];
+    expect(
+      intro,
+      "the privacy policy no longer states how many rows its permission table has",
+    ).toBeDefined();
+    expect(
+      WORDS[tableRows],
+      `the privacy policy says "Cuma ada ${intro} entri" but its table has ${tableRows} rows`,
+    ).toBe(intro);
   });
 
   it("caches the fonts immutably and never caches the HTML", () => {

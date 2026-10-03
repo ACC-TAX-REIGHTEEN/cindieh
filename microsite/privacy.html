@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<script>document.documentElement.classList.add("js");</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kebijakan Privasi — Cindieh</title>
+<meta name="description" content="Kebijakan privasi Cindieh: seluruh pemrosesan data terjadi lokal di browser, tidak ada server, telemetri, atau analitik, dan satu-satunya domain yang dihubungi adalah coretaxdjp.pajak.go.id.">
+<meta name="theme-color" content="#ECEAE1">
+<!--
+  Halaman ini dibuat untuk submit ke Chrome Web Store dan Firefox Add-ons,
+  yang keduanya meminta kebijakan privasi pada URL publik — bukan berkas di
+  dalam repositori. Isinya diturunkan dari apa yang kodenya benar-benar
+  lakukan: izin browser dibaca dari manifest.json, dan nilai-nilai itu
+  diverifikasi ulang oleh microsite-sync.unit.test.ts, jadi tabel di bawah
+  tidak bisa melenceng dari kode.
+
+  Hostname ditulis mutlak di sini, sama seperti di index.html. Tes ensured
+  kedua halaman memakai origin yang sama dan sama-sama tercatat di sitemap.
+-->
+<link rel="canonical" href="https://cindieh.pages.dev/privacy.html">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://cindieh.pages.dev/privacy.html">
+<meta property="og:locale" content="id_ID">
+<meta property="og:site_name" content="Cindieh">
+<meta property="og:title" content="Kebijakan Privasi — Cindieh">
+<meta property="og:description" content="Seluruh pemrosesan data Cindieh terjadi lokal di browser. Tidak ada server, telemetri, maupun analitik, dan hanya coretaxdjp.pajak.go.id yang dihubungi.">
+<meta property="og:image" content="https://cindieh.pages.dev/assets/img/og.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://cindieh.pages.dev/assets/img/og.jpg">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/img/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/img/icon-16.png">
+<link rel="icon" type="image/png" sizes="48x48" href="assets/img/icon-48.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="preload" href="assets/fonts/space-grotesk-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/plex-sans-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/microsite.css">
+<style>
+  /* Scoped to this page. Everything shared comes from microsite.css, so the
+     policy cannot drift from the site's own type and colour tokens. */
+  .legal{padding:64px 0 90px;}
+  .legal .crumb{margin-bottom:34px;font-size:14px;}
+  .legal .crumb a{color:var(--ink-soft);}
+  .legal h1{font-size:clamp(30px,4.4vw,44px);margin-bottom:18px;}
+  .legal .stamp-note{
+    font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--stamp-dark);background:var(--stamp-tint);
+    display:inline-block;padding:5px 10px;border-radius:5px;margin-bottom:26px;
+  }
+  .legal h2{
+    font-size:clamp(19px,2.2vw,23px);margin:52px 0 14px;
+    padding-top:26px;border-top:1px solid var(--line);
+  }
+  .legal h3{font-size:16px;margin:26px 0 8px;}
+  .legal p,.legal li{font-size:15.5px;line-height:1.72;color:var(--ink);}
+  .legal p{margin:0 0 14px;}
+  .legal ul,.legal ol{margin:0 0 16px;padding-left:22px;}
+  .legal li{margin-bottom:8px;}
+  .legal strong{font-weight:600;}
+  .legal code{font-family:var(--mono);font-size:0.9em;}
+  .legal .none{
+    font-family:var(--mono);font-size:12.5px;color:var(--match);
+    background:var(--match-tint);padding:2px 8px;border-radius:4px;
+  }
+  .legal .callout{
+    background:var(--card);border:1px solid var(--line);border-left:3px solid var(--stamp);
+    border-radius:var(--radius);padding:18px 20px;margin:0 0 18px;
+  }
+  .legal .callout p:last-child{margin-bottom:0;}
+  .legal .updated{
+    font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin-top:44px;
+    padding-top:20px;border-top:1px solid var(--line);
+  }
+  @media(max-width:700px){.perm-table td:first-child{white-space:normal;}}
+</style>
+</head>
+<body>
+<main class="legal">
+  <div class="wrap">
+    <p class="crumb"><a href="index.html">&larr; Kembali ke beranda</a></p>
+
+    <span class="stamp-note">Dokumen ini milik Cindieh, bukan produk resmi DJP</span>
+    <h1>Kebijakan Privasi</h1>
+    <p class="lede">
+      Ringkasnya: <strong>Cindieh tidak mengirim data apa pun ke mana pun.</strong>
+      Semua pekerjaan — mengambil data dari Coretax, mengubahnya menjadi Excel atau
+      CSV, menamai berkas PDF — berjalan di dalam browser Anda. Cindieh tidak punya
+      server, tidak mengirim telemetri, dan tidak memuat pustaka analitik.
+    </p>
+
+    <h2>1. Data apa yang diproses</h2>
+    <p>
+      Untuk menjalankan fiturnya, Cindieh membaca data yang sudah ada di portal
+      DJP Coretax pada sesi login Anda sendiri: baris grid e-Faktur dan SPT,
+      metadata faktur (nomor referensi, nomor faktur pajak, tanggal, nama dan NPWP
+      pembeli), serta metadata Bukti Potong.
+    </p>
+    <p>
+      Data itu diproses <strong>di dalam halaman browser</strong>. Cindieh
+      mengambilnya dari respons API portal yang sedang tampil, menyusunnya di
+      memori, lalu menuliskannya ke berkas di komputer Anda. Tidak ada langkah
+      antara keduanya yang melewati jaringan.
+    </p>
+    <p>
+      Cindieh bersifat <strong>hanya-baca</strong> terhadap portal. Tidak ada kode
+      dalam ekstensi yang mengubah, memanipulasi, memalsukan, atau menghapus nilai
+      faktur, DPP, PPN, Bukti Potong, atau data transaksi apa pun di sisi DJP.
+    </p>
+
+    <h2>2. Apa yang TIDAK dikumpulkan</h2>
+    <ul>
+      <li><span class="none">tidak ada</span> server, proxy, atau backend milik Cindieh</li>
+      <li><span class="none">tidak ada</span> telemetri, analitik, atau pelacak pihak ketiga</li>
+      <li><span class="none">tidak ada</span> Google Analytics atau pixel serupa</li>
+      <li><span class="none">tidak ada</span> cookie DJP atau cookie situs lain yang dibaca</li>
+      <li><span class="none">tidak ada</span> akses ke riwayat penjelajahan</li>
+      <li><span class="none">tidak ada</span> pengiriman data faktur ke server mana pun</li>
+    </ul>
+    <div class="callout">
+      <p>
+        Ekstensi ini sepenuhnya <em>client-side</em>. Kalau perangkat Anda offline,
+        tidak ada satu pun proses Cindieh yang tetap berjalan — karena tidak ada
+        proses yang ada di server kami untuk jalankan.
+      </p>
+    </div>
+
+    <h2>3. Password dan kredensial</h2>
+    <p>
+      Cindieh <strong>tidak pernah membaca, mencatat, maupun menyimpan</strong>
+      password, PIN, atau passphrase Anda. Login tetap dilakukan langsung di portal
+      DJP, dan Cindieh hanya bekerja pada sesi yang sudah terbuka itu. Jika Anda
+      menutup tab portal, sesi ikut berakhir.
+    </p>
+
+    <h2>4. Izin browser yang diminta</h2>
+    <p>
+      Cuma ada empat entri di bawah ini — tiga izin browser dan satu host — dan
+      semuanya bisa diperiksa langsung di <code>manifest.json</code> repositori:
+    </p>
+    <table class="perm-table">
+      <thead>
+        <tr><th>Izin</th><th>Jenis</th><th>Untuk apa</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>activeTab</td>
+          <td>wajib</td>
+          <td>Akses ke tab portal yang sedang aktif, agar tombol Cindieh bisa disuntikkan ke halaman tersebut.</td>
+        </tr>
+        <tr>
+          <td>storage</td>
+          <td>wajib</td>
+          <td>Menyimpan preferensi Anda (format file, awalan nama berkas, kecepatan, ambang konfirmasi, preferensi Komparator) di <code>storage.local</code> milik browser. Tidak pernah dikirim ke mana pun.</td>
+        </tr>
+        <tr>
+          <td>notifications</td>
+          <td>opsional</td>
+          <td>Notifikasi desktop saat proses selesai. Izin ini <strong>tidak diminta saat pemasangan</strong> — hanya ketika Anda menyalakan saklarnya sendiri di popup.</td>
+        </tr>
+        <tr>
+          <td>coretaxdjp.pajak.go.id</td>
+          <td>host</td>
+          <td>Satu-satunya domain yang dihubungi: <code>https://coretaxdjp.pajak.go.id/*</code>. Cindieh membaca respons API portal yang sedang Anda gunakan. Tidak ada domain lain yang diakses.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Chrome Web Store dan Firefox Add-ons menampilkan daftar izin ini apa adanya
+      sebelum pengguna memasang, jadi tidak ada izin yang tersembunyi di sini.
+    </p>
+
+    <h2>5. Data yang disimpan, dan di mana</h2>
+    <p>
+      Preferensi disimpan di <code>storage.local</code> browser — ruang lingkup
+      ekstensi, di perangkat Anda, tidak terenkripsi, dan tidak pernah keluar dari
+      browser itu. Preferensi ini mencakup:
+    </p>
+    <ul>
+      <li>saklar utama Cindieh</li>
+      <li>format file bawaan (XLSX atau CSV)</li>
+      <li>awalan nama berkas kustom</li>
+      <li>preset kecepatan (Normal / Hati-hati / Sabar)</li>
+      <li>ambang konfirmasi unduhan massal</li>
+      <li>preferensi Komparator (toleransi, tanggal mode harian, filter status)</li>
+      <li>saklar notifikasi saat selesai</li>
+    </ul>
+    <p>
+      Hasil scraping untuk sesi itu sendiri hanya hidup di memori tab, dan hilang
+      ketika tab ditutup atau pengguna menekan <strong>Bersihkan cache</strong>.
+      Menu <strong>Reset preferensi</strong> mengembalikan seluruh daftar di atas
+      ke nilai bawaan.
+    </p>
+
+    <h2>6. Berapa lama data disimpan</h2>
+    <ul>
+      <li><strong>Data faktur dari portal</strong> — hanya di memori tab, tidak pernah ditulis ke penyimpanan permanen.</li>
+      <li><strong>Preferensi</strong> — di <code>storage.local</code>, sampai Anda menghapusnya lewat <strong>Reset preferensi</strong> atau mencabut ekstensi.</li>
+      <li><strong>Berkas XLSX/CSV/PDF</strong> — hasil unduhan biasa, tersimpan di folder Downloads komputer Anda seperti berkas apa pun.</li>
+    </ul>
+    <p>
+      Cindieh tidak punya salinan data Anda di mana pun — karena tidak punya
+      tempat untuk menyimpannya.
+    </p>
+
+    <h2>7. Perubahan kebijakan ini</h2>
+    <p>
+      Jika kebijakan ini berubah, tanggal pembaruan di bawah diperbarui dan
+      perubahannya tercermin di <a href="https://github.com/allababbot/cindieh">repositori</a>.
+      Karena Cindieh tidak mengirim data ke server, tidak ada yang perlu diberi
+      tahu.
+    </p>
+
+    <h2>8. Kontak</h2>
+    <p>
+      Pertanyaan, atau laporan yang menyangkut privasi, bisa dibuka sebagai
+      issue di repositori GitHub:
+      <a href="https://github.com/allababbot/cindieh/issues">github.com/allababbot/cindieh/issues</a>.
+    </p>
+
+    <p class="updated">
+      Terakhir diperbarui: <time datetime="2026-10-03">3 Oktober 2026</time> · Berlaku untuk
+      Cindieh di Chrome, Edge, dan Firefox.
+    </p>
+
+    <div class="callout" style="margin-top:34px;">
+      <p><strong>Catatan status hukum.</strong> Halaman ini menjelaskan perilaku teknis
+      Cindieh apa adanya, dan seluruh klaimnya bisa diperiksa di
+      <a href="https://github.com/allababbot/cindieh/blob/main/LEGAL_COMPLIANCE.md">LEGAL_COMPLIANCE.md</a>.
+      Peninjauan hukum terhadap Syarat &amp; Ketentuan Coretax/DJP masih berjalan; Cindieh
+      bukan produk resmi Direktorat Jenderal Pajak dan tidak berafiliasi dengannya.</p>
+    </div>
+  </div>
+</main>
+</body>
+</html>

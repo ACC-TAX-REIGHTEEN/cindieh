@@ -1,7 +1,7 @@
 # Cindieh microsite
 
-Landing page (one-pager) for the Cindieh extension. Indonesian, matching the
-project's user-facing language split.
+Landing page (one-pager) for the Cindieh extension, plus the public privacy
+policy. Indonesian, matching the project's user-facing language split.
 
 ## Architecture: static, no build step
 
@@ -9,21 +9,23 @@ Plain HTML + CSS + vanilla JS, split into files and served as-is. This is a
 deliberate match for the extension itself (vanilla DOM/CSS, no UI framework,
 minimal dependencies): no bundler, no framework, no `node_modules` for the
 site. Any static host works (GitHub Pages, Netlify, a subfolder of an existing
-site) because **every asset path is relative**.
+site) because **every asset path and every cross-page link is relative**.
 
-The hosting domain is not decided yet, so `og:url`, `canonical`, and absolute
-`og:image` are intentionally absent — there is a marked HTML comment in
-`index.html` where they belong once the domain exists.
+The site is deployed at `https://cindieh.pages.dev`, so the absolute URLs a
+crawler needs — `canonical`, `og:url`, and the absolute `og:image` — are
+written out by hand and checked against each other by the test suite (see
+[The hostname lives in four places](#the-hostname-lives-in-four-places)).
 
 ## Structure
 
 ```
 microsite/
 ├── index.html                 # the whole page (semantic sections, JSON-LD)
+├── privacy.html               # public privacy policy (store submissions)
 ├── 404.html                   # Cloudflare Pages fallback; needs <base href="/">
 ├── _headers                   # Cloudflare Pages cache + security rules
 ├── robots.txt                 # allow all, points at the sitemap
-├── sitemap.xml                # the single indexable URL
+├── sitemap.xml                # the two indexable URLs
 ├── assets/
 │   ├── css/microsite.css      # design system + components (cream/ink theme)
 │   ├── fonts/                 # self-hosted woff2, Latin subset
@@ -64,6 +66,18 @@ microsite/
 - **`prefers-reduced-motion` is honoured in JS, not only in CSS.** The reveal
   skips its `IntersectionObserver` entirely rather than animating and letting
   the media query undo it afterwards.
+- **`privacy.html` is a real page, not a file in the repo, because a store
+  listing cannot link to GitHub.** Chrome Web Store and Firefox Add-ons both
+  ask for a privacy policy **URL** at review time, so it lives at
+  `https://cindieh.pages.dev/privacy.html` next to the landing page. Its
+  content is derived from what the code actually does — no server, no
+  telemetry, no analytics, one host — and its permissions table is checked
+  against `manifest.json` **in both directions** by `microsite-sync.unit.test.ts`:
+  every permission the manifest requests must be named on the page, and every
+  permission the page claims must exist in the manifest. A fifth permission
+  cannot go out undeclared. The page shares the landing page's origin, is listed
+  in `sitemap.xml`, and is linked from the footer with a **relative** path, so
+  the folder still works from a subdirectory.
 - **Icons are copies of `../icons/`.** If the extension icon is redesigned,
   re-copy the four PNGs and re-render `apple-touch-icon.png` / `og.jpg`
   (both were produced by drawing `icon128.png` on a 180px/1200x630 canvas —
@@ -115,15 +129,19 @@ anything because Cloudflare Pages recognises them by name:
 
 There is no build step to inject a site URL, so `https://cindieh.pages.dev/`
 is written out by hand in the `<link rel="canonical">`, in `og:url`, in
-`sitemap.xml`, and in the `Sitemap:` line of `robots.txt`. Asset paths inside
-the pages stay **relative** so the folder still works from a subdirectory —
-only the four host references above need to be absolute.
+`sitemap.xml`, and in the `Sitemap:` line of `robots.txt` — and now once more in
+each of the two pages' canonical and social tags, so moving the site means
+editing all of them. Asset paths and every link **between the pages** stay
+**relative** so the folder still works from a subdirectory; only the host
+references above need to be absolute.
 
-`src/tests/microsite-sync.unit.test.ts` asserts all four agree, that the
-canonical is absolute HTTPS, that `og:image` resolves to the same host, that
-the 404 keeps its `<base href="/">`, and that no `__SITE`/TODO placeholder is
-left behind. Moving the site is therefore one deliberately failing test rather
-than three silently stale tags.
+`src/tests/microsite-sync.unit.test.ts` asserts all of them agree, that each
+canonical is absolute HTTPS and on one shared origin, that `sitemap.xml` lists
+every canonical page and nothing else (both directions, so no page is unlisted
+and no `<loc>` is a dead link), that the 404 keeps its `<base href="/">`, that
+every cross-page link is relative *and* points at a file that exists, and that
+no `__SITE`/TODO placeholder is left behind. Moving or renaming a page is
+therefore one deliberately failing test rather than several silently stale tags.
 
 ## Preview
 
@@ -134,3 +152,10 @@ e.g.:
 npx serve .
 # → http://localhost:3000/microsite/
 ```
+
+Prefer the server over `file://`: the pages preload their own fonts and fetch a
+same-origin stylesheet, and a `file://` origin will silently skip both, which
+makes the page render in a fallback serif. The 404 page is the exception worth
+checking by hand, since its whole job is behaving correctly on a deep path:
+request `/microsite/404.html` style paths and confirm its assets still resolve
+thanks to `<base href="/">`.
