@@ -6,7 +6,18 @@
     "push": false
   },
   "hooks": {
-    "after:bump": "node sync-manifest.cjs"
+    "after:bump": [
+      "node sync-manifest.cjs",
+      "pnpm run release:assets"
+    ]
+  },
+  "github": {
+    "release": true,
+    "assets": [
+      "dist/cindieh-chrome.zip",
+      "dist/cindieh-firefox.xpi",
+      "dist/cindieh-source.zip"
+    ]
   },
   "plugins": {
     "@release-it/conventional-changelog": {

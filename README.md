@@ -173,6 +173,21 @@ Buat ekstensi siap pakai untuk browser yang diinginkan:
 3. Pilih file `dist/cindieh-firefox.xpi` hasil `pnpm run package`.
    *(Catatan: Untuk pengujian lokal, pastikan `xpinstall.signatures.required` diatur ke `false` di `about:config`).*
 
+### 4. Rilis
+
+`pnpm run release` menjalankan satu alur penuh: menaikkan versi di `package.json` + `manifest.json`, memperbarui `CHANGELOG.md`, membangun dan mengarsipkan ekstensi, membuat GitHub Release, lalu mengunggah tiga arsip sebagai aset rilis:
+
+| Aset Rilis | URL Stabil |
+|---|---|
+| `cindieh-chrome.zip` | `https://github.com/allababbot/cindieh/releases/latest/download/cindieh-chrome.zip` |
+| `cindieh-firefox.xpi` | `https://github.com/allababbot/cindieh/releases/latest/download/cindieh-firefox.xpi` |
+| `cindieh-source.zip` | `https://github.com/allababbot/cindieh/releases/latest/download/cindieh-source.zip` |
+
+* **Butuh `GITHUB_TOKEN`** dengan izin `contents: write` — release-it memakainya untuk membuat release dan mengunggah aset.
+* **Tag belum didorong otomatis** (`push: false`): GitHub membuat tag rilis dari commit terakhir yang sudah ada di remote. Agar tag menunjuk ke commit rilis, dorong branch dan tag setelah selesai (`git push origin main --follow-tags`) — atau setel `"push": true` di `.release-it.json` supaya release-it yang mendorong keduanya sebelum membuat release.
+* Hanya ingin membangun arsip tanpa menerbitkan rilis? Jalankan `pnpm run release:assets`.
+* Pratinjau tanpa menyentuh apa pun: `pnpm run release:dry-run` (pengunggahan aset otomatis dilewati).
+
 ## Tech Stack
 - **Bahasa:** TypeScript
 - **Bundler:** esbuild

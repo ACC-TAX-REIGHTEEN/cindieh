@@ -13,6 +13,7 @@
     "package:chrome": "node package.cjs --browser=chrome",
     "package:firefox": "node package.cjs --browser=firefox",
     "package": "node package.cjs --browser=chrome && node package.cjs --browser=firefox && node package-source.cjs",
+    "release:assets": "node build.cjs --browser=chrome && node build.cjs --browser=firefox && node package.cjs --browser=chrome && node package.cjs --browser=firefox && node package-source.cjs",
     "package:source": "node package-source.cjs",
     "version": "node sync-manifest.cjs",
     "release": "release-it",
