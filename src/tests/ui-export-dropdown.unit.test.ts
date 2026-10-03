@@ -65,6 +65,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // ui.ts keeps module state (isInjected, the open-menu flag) that outlives one
+  // fake document; the removal path is the supported way to put it back, so a
+  // test never inherits the previous test's toolbar.
+  removeExportButton();
   vi.unstubAllGlobals();
 });
 
@@ -292,10 +296,6 @@ describe("withholding page toolbar", () => {
     });
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it("injects the export dropdown beside the bulk PDF button", () => {
     injectExportButton();
 
@@ -320,5 +320,121 @@ describe("withholding page toolbar", () => {
 
     expect(doc.getElementById("ch-export-dropdown")).toBeNull();
     expect(doc.getElementById("ch-export-btn")).toBeNull();
+  });
+});
+
+// ── SPT page toolbar: a re-render must not slam the menu shut ────────────────
+// The SPT pages put the toolbar inside one named grid's datatable header while
+// the page itself carries other tables, so the header an injection anchored on
+// and the header a later check resolves are not the same node. Angular mutates
+// these pages constantly, and the content script re-runs injectExportButton on
+// every debounced mutation — so a check that cannot see the anchor the toolbar
+// was really placed in rebuilt the toolbar mid-click and closed the menu the
+// user was reaching for.
+
+describe("SPT page toolbar", () => {
+  const SPT_URL =
+    "https://coretaxdjp.pajak.go.id/returnsheets-portal/value-added-tax-return/list";
+
+  /** The header the SPT injection anchors on (the named grid's float-left). */
+  let sptHeader: FakeEl;
+
+  beforeEach(() => {
+    // Both toolbar preferences are module state; pin the shape this page is
+    // about (the default single button) instead of inheriting a neighbouring
+    // suite's one-click mode.
+    setExportFormatDefault("xlsx");
+    setOneClickExport(false);
+    vi.stubGlobal("location", { href: SPT_URL });
+    vi.stubGlobal(
+      "CustomEvent",
+      class {
+        type: string;
+        constructor(type: string) {
+          this.type = type;
+        }
+      },
+    );
+    ({ doc } = stubFakeDom());
+    events = [];
+    Object.assign(doc, {
+      dispatchEvent: (event: { type: string }) => {
+        events.push(event.type);
+        return true;
+      },
+    });
+
+    // A page table that comes first in the document — the generic
+    // ".p-datatable-header .float-left" lookup finds this one, while the SPT
+    // injection anchors on the named grid below.
+    const otherHeader = doc.createElement("div");
+    otherHeader.className = "float-left";
+    const otherTable = doc.createElement("div");
+    otherTable.className = "p-datatable-header";
+    otherTable.appendChild(otherHeader);
+    doc.body.appendChild(otherTable);
+
+    sptHeader = doc.createElement("div");
+    sptHeader.className = "float-left";
+    const sptTable = doc.createElement("div");
+    sptTable.className = "p-datatable-header";
+    const grid = doc.createElement("div");
+    grid.className = "rshshr-nvat-la2-grid";
+    sptTable.appendChild(sptHeader);
+    grid.appendChild(sptTable);
+    doc.body.appendChild(grid);
+
+    // The fake DOM cannot resolve the descendant selector lists, so hand the
+    // SPT branch its named grid's header and let the generic lookup find the
+    // page's own table.
+    Object.assign(doc, {
+      querySelectorAll: (sel: string) => (sel.includes("rshshr-nvat-la2-grid") ? [sptHeader] : []),
+      querySelector: (sel: string) => {
+        if (sel.includes(".p-datatable-header")) return otherHeader;
+        if (sel.includes(".p-highlight")) return null;
+        return null;
+      },
+    });
+  });
+
+  it("anchors the dropdown in the SPT grid's own header", () => {
+    injectExportButton();
+
+    expect(sptHeader.children).toContain(el("ch-export-dropdown"));
+  });
+
+  it("keeps the toolbar and the open menu across a re-injection", () => {
+    injectExportButton();
+    const dropdown = el("ch-export-dropdown");
+    const button = el("ch-export-dropdown-btn");
+
+    click(button);
+    expect(el("ch-export-dropdown-menu").classList.contains("ch-hidden")).toBe(false);
+
+    // The MutationObserver's debounced re-injection after an Angular re-render.
+    injectExportButton();
+
+    expect(el("ch-export-dropdown")).toBe(dropdown);
+    expect(el("ch-export-dropdown-btn")).toBe(button);
+    expect(el("ch-export-dropdown-menu").classList.contains("ch-hidden")).toBe(false);
+
+    // …and the item the user was reaching for is still clickable.
+    click(el("ch-export-xlsx-item"));
+    expect(events).toEqual(["ch:export-xlsx"]);
+  });
+
+  it("reopens the menu when a lost toolbar really is rebuilt", () => {
+    injectExportButton();
+    const button = el("ch-export-dropdown-btn");
+    click(button);
+
+    // Angular dropped the header the toolbar lived in: the button is gone, so
+    // the toolbar has to be rebuilt — without taking the open menu with it.
+    sptHeader.remove();
+    injectExportButton();
+
+    expect(el("ch-export-dropdown-btn")).not.toBe(button);
+    expect(sptHeader.children).toContain(el("ch-export-dropdown"));
+    expect(el("ch-export-dropdown-menu").classList.contains("ch-hidden")).toBe(false);
   });
 });

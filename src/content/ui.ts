@@ -163,15 +163,122 @@ function syncExportButtonMode(): void {
  */
 let outsideClickHandler: ((e: MouseEvent) => void) | null = null;
 
+/**
+ * Whether the format menu is open. Module state on purpose: a rebuild driven
+ * by an unrelated page mutation has to hand the menu back in the state the
+ * user left it, and a fresh hidden menu under a cursor that just opened it
+ * reads as "it closed by itself" — which is exactly the bug this guards.
+ */
+let menuOpen = false;
+
+/** Flip the menu, remembering the direction for the next rebuild. */
+function toggleMenu(menu: HTMLElement): void {
+  menuOpen = menu.classList.toggle("ch-hidden") === false;
+}
+
+/** Open or close the menu and remember which way it went. */
+function setMenuOpen(menu: HTMLElement, open: boolean): void {
+  menuOpen = open;
+  menu.classList.toggle("ch-hidden", !open);
+}
+
 // ── Anchor Button Helpers ─────────────────────────────
+
+/** Headers that take the toolbar INSIDE them rather than beside them. */
+const HEADER_ANCHOR_SELECTOR =
+  ".p-datatable-header .float-left, .p-datatable-header, .card-header .float-left, .card-header";
+
+/** The SPT pages' grids: the toolbar goes in the first one that is on screen. */
+const SPT_GRID_HEADER_SELECTOR = `
+	rshshr-nvat-la2-grid .p-datatable-header .float-left,
+	rshshr-nvat-lb2-grid .p-datatable-header .float-left,
+	rshshr-art2126-l1a-grid .p-datatable-header .float-left,
+	rshshr-art2126-l1b-grid .p-datatable-header .float-left,
+	rshshr-art2126-l2-grid .p-datatable-header .float-left,
+	rshshr-art2126-l3-grid .p-datatable-header .float-left
+	`;
+
+/** Bukti Potong: any visible datatable/card header. */
+const WITHHOLDING_HEADER_SELECTOR = ".p-datatable-header .float-left, .card-header .float-left";
+
+/**
+ * Where the toolbar belongs on the current page: the node to place it against,
+ * and whether to go before it or inside it. ONE resolution, shared by the
+ * injection and by the "is it still where it belongs?" check that runs on
+ * every debounced Angular mutation. When those two picked different headers —
+ * the SPT injection anchors on one named grid, the old generic lookup found
+ * whichever datatable header came first in the document — the check read a
+ * perfectly good toolbar as misplaced, tore the whole thing down, and rebuilt
+ * it with the menu shut under the user's cursor.
+ */
+interface ToolbarPlacement {
+  anchor: HTMLElement;
+  insertMode: "before" | "append";
+}
+
+/** First of `headers` that is actually on screen (tab panels hide the rest). */
+function firstVisibleHeader(headers: Element[]): HTMLElement | null {
+  return (headers.find((el) => (el as HTMLElement).offsetParent !== null) as HTMLElement) || null;
+}
+
+function resolveToolbarPlacement(): ToolbarPlacement | null {
+  if (isOutputTaxPage() || isInputTaxPage() || isOutputReturnPage() || isInputReturnPage()) {
+    const anchor = findEfakturAnchor();
+    if (!anchor) return null;
+    return {
+      anchor,
+      insertMode: anchor.matches(HEADER_ANCHOR_SELECTOR) ? "append" : "before",
+    };
+  }
+
+  if (isSptPage()) {
+    const anchor = firstVisibleHeader(Array.from(document.querySelectorAll(SPT_GRID_HEADER_SELECTOR)));
+    return anchor ? { anchor, insertMode: "append" } : null;
+  }
+
+  if (isWithholdingPage()) {
+    const anchor = firstVisibleHeader(Array.from(document.querySelectorAll(WITHHOLDING_HEADER_SELECTOR)));
+    return anchor ? { anchor, insertMode: "append" } : null;
+  }
+
+  return null;
+}
+
+/**
+ * Put one injected node where the page's current placement says it belongs, and
+ * leave it alone when it is already there. Moving a live node keeps its
+ * listeners and the open menu; rebuilding one throws both away.
+ */
+function placeInToolbar(node: HTMLElement, { anchor, insertMode }: ToolbarPlacement): void {
+  if (insertMode === "append") {
+    if (!anchor.contains(node)) anchor.appendChild(node);
+    return;
+  }
+  const parent = anchor.parentElement;
+  if (parent && !parent.contains(node)) parent.insertBefore(node, anchor);
+}
+
+/**
+ * The injected toolbar nodes, in the order they are built. Re-placed together
+ * so a moved dropdown never leaves its siblings behind in an old container.
+ */
+function injectedToolbarNodes(): HTMLElement[] {
+  return [
+    document.getElementById("ch-export-dropdown"),
+    document.getElementById("ch-export-btn"),
+    document.getElementById("ch-export-pdf-btn"),
+    document.getElementById("ch-scrape-btn"),
+    document.getElementById("ch-compare-btn"),
+  ].filter((node): node is HTMLElement => node !== null);
+}
 
 /**
  * Helper to find the page's anchor element that the export controls are placed
- * next to. The anchor differs per page type: an action button (or the table
- * header as fallback) on the e-faktur pages, a table header on the SPT and
- * withholding pages.
+ * next to. The e-faktur pages have an action button of their own (or the
+ * table header as fallback); the SPT and withholding pages have no such
+ * button and are anchored by `resolveToolbarPlacement` instead.
  */
-function findAnchorButton(): HTMLElement | null {
+function findEfakturAnchor(): HTMLElement | null {
   if (isInputTaxPage()) {
     const inputTaxAnchor = document.getElementById("CreditInvoiceButtonButton");
     return inputTaxAnchor && inputTaxAnchor.offsetParent !== null ? inputTaxAnchor : null;
@@ -201,35 +308,10 @@ function findAnchorButton(): HTMLElement | null {
   const byIcon = document.querySelector(".pi-upload")?.closest("button");
   if (byIcon) return byIcon as HTMLElement;
 
-  const tableHeaderAnchor = document.querySelector(
-    ".p-datatable-header .float-left, .p-datatable-header, .card-header .float-left, .card-header",
-  ) as HTMLElement | null;
+  const tableHeaderAnchor = document.querySelector(HEADER_ANCHOR_SELECTOR) as HTMLElement | null;
   if (tableHeaderAnchor && tableHeaderAnchor.offsetParent !== null) return tableHeaderAnchor;
 
   return null;
-}
-
-function isButtonPlacedCorrectly(btn: HTMLElement): boolean {
-  // Check that the button is visible and lives in the same container as the anchor.
-  // We no longer require exact sibling adjacency because multiple buttons
-  // (XLSX, CSV, PDF) can be inserted before the anchor.
-  if (btn.offsetParent === null) return false;
-
-  const anchor = findAnchorButton();
-  if (!anchor || anchor.offsetParent === null) return false;
-
-  const container = anchor.parentElement;
-  if (!container) return false;
-
-  // Button is either a sibling (before mode) or a child of the anchor (append mode)
-  return container.contains(btn) || anchor.contains(btn);
-}
-
-function moveButtonNextToAnchor(btn: HTMLElement, anchor: HTMLElement): boolean {
-  const parent = anchor.parentElement;
-  if (!parent) return false;
-  parent.insertBefore(btn, anchor);
-  return true;
 }
 
 // ── Export Button Injection ───────────────────────────
@@ -261,9 +343,17 @@ function clearInjectedToolbar(): void {
  * and e-faktur pages pair it with the PDF, scrape and comparer icon buttons.
  */
 export function injectExportButton(retries = MAX_RETRIES): void {
+  // True when this call has to rebuild a toolbar Angular took away, as opposed
+  // to building the first one for this page. Only a rebuild hands the open menu
+  // back to its replacement.
+  let rebuilding = false;
+
   // Check if buttons are already injected. A re-render that drops either the
   // dropdown or the withholding page's PDF button invalidates the whole toolbar,
-  // so a rebuild never leaves a half-working pair behind.
+  // so a rebuild never leaves a half-working pair behind. A toolbar that is
+  // merely in the wrong container is MOVED, not rebuilt: these pages mutate
+  // constantly, and a rebuild scheduled right behind the click that opened the
+  // menu used to hand the user a fresh, closed one.
   if (isInjected) {
     const exportDropdownBtn = document.getElementById("ch-export-dropdown-btn");
     const withholdingPdfBtn = document.getElementById("ch-export-btn");
@@ -271,29 +361,22 @@ export function injectExportButton(retries = MAX_RETRIES): void {
     const dropdownMissing = !exportDropdownBtn || exportDropdownBtn.offsetParent === null;
     const withholdingPdfMissing =
       isWithholdingPage() && (!withholdingPdfBtn || withholdingPdfBtn.offsetParent === null);
-    // Placement keeps being judged on the withholding page's own button: that is
-    // the node this injection has always checked there, and findAnchorButton()
-    // resolves its anchor from a different selector list than the code below.
-    const placementTarget = isWithholdingPage() ? withholdingPdfBtn : exportDropdownBtn;
 
     if (dropdownMissing || withholdingPdfMissing) {
       isInjected = false;
-      clearInjectedToolbar();
-    } else if (placementTarget && !isButtonPlacedCorrectly(placementTarget)) {
-      // A misplaced dropdown on PPN Masukan can be nudged back beside its own
-      // anchor, which costs no rebuild.
-      const inputTaxAnchor = isInputTaxPage() ? document.getElementById("CreditInvoiceButtonButton") : null;
-      if (
-        inputTaxAnchor &&
-        inputTaxAnchor.offsetParent !== null &&
-        moveButtonNextToAnchor(exportDropdownBtn!, inputTaxAnchor)
-      ) {
-        return;
-      }
-      isInjected = false;
+      rebuilding = true;
       clearInjectedToolbar();
     } else {
-      return;
+      const placement = resolveToolbarPlacement();
+      if (placement) {
+        for (const node of injectedToolbarNodes()) placeInToolbar(node, placement);
+        return;
+      }
+      // No anchor to judge against: fall through, so the page-specific checks
+      // below (the SPT "induk" tab) still get their turn and can clear the
+      // toolbar a tab switch left behind.
+      isInjected = false;
+      clearInjectedToolbar();
     }
   }
 
@@ -306,49 +389,30 @@ export function injectExportButton(retries = MAX_RETRIES): void {
 
   if (!isSupportedExportPage()) return;
 
-  let anchorEl: HTMLElement | null = null;
-  let insertMode: "before" | "append" = "before";
-
-  if (isOutputTax || isInputTax || isOutputReturn || isInputReturn) {
-    anchorEl = findAnchorButton();
-    insertMode = anchorEl?.matches(
-      ".p-datatable-header .float-left, .p-datatable-header, .card-header .float-left, .card-header",
-    )
-      ? "append"
-      : "before";
-  } else if (isSpt) {
+  if (isSpt) {
+    // The "induk" tab has no exportable grid of its own — the toolbar belongs
+    // to the detail tabs, so it goes away with them.
     const activeTab = document.querySelector(".p-tabview-nav li.p-highlight");
     const tabText = activeTab?.textContent?.trim().toLowerCase() || "";
     if (tabText.includes("induk")) {
       removeExportButton();
       return;
     }
-
-    const headers = Array.from(
-      document.querySelectorAll(`
-				rshshr-nvat-la2-grid .p-datatable-header .float-left,
-				rshshr-nvat-lb2-grid .p-datatable-header .float-left,
-				rshshr-art2126-l1a-grid .p-datatable-header .float-left,
-				rshshr-art2126-l1b-grid .p-datatable-header .float-left,
-				rshshr-art2126-l2-grid .p-datatable-header .float-left,
-				rshshr-art2126-l3-grid .p-datatable-header .float-left
-			`),
-    );
-    anchorEl = (headers.find((el) => (el as HTMLElement).offsetParent !== null) as HTMLElement) || null;
-    insertMode = "append";
-  } else if (isWithholding) {
-    const headers = Array.from(document.querySelectorAll(".p-datatable-header .float-left, .card-header .float-left"));
-    anchorEl = (headers.find((el) => (el as HTMLElement).offsetParent !== null) as HTMLElement) || null;
-    insertMode = "append";
   }
 
-  if (!anchorEl) {
+  const placement = resolveToolbarPlacement();
+  if (!placement) {
     if (retries > 0) scheduleRetry(() => injectExportButton(retries - 1));
     return;
   }
 
-  let containerNode = insertMode === "append" ? anchorEl : anchorEl.parentElement;
+  const { anchor: anchorEl, insertMode } = placement;
+  const containerNode = insertMode === "append" ? anchorEl : anchorEl.parentElement;
   if (!containerNode) return;
+
+  // A toolbar built for the first time on this page always starts closed; only
+  // a rebuild of a toolbar the user was mid-click on reopens its menu.
+  if (!rebuilding) menuOpen = false;
 
   isInjected = true;
 
@@ -576,31 +640,35 @@ function buildExportDropdown(
   exportBtn.addEventListener("click", (e: MouseEvent) => {
     e.stopPropagation();
     if (!oneClickExport) {
-      menu.classList.toggle("ch-hidden");
+      toggleMenu(menu);
       return;
     }
-    menu.classList.add("ch-hidden");
+    setMenuOpen(menu, false);
     document.dispatchEvent(new CustomEvent(FORMAT_EXPORT_EVENT[defaultExportFormat]));
   });
 
   caretBtn.addEventListener("click", (e: MouseEvent) => {
     e.stopPropagation();
-    menu.classList.toggle("ch-hidden");
+    toggleMenu(menu);
   });
 
   dropdownNodes = { exportBtn, caretBtn, caret, menu };
   syncExportButtonMode();
+  // The mode switch always starts closed; a rebuild does not. Hand the menu
+  // back the way the user left it, so a re-render that lands mid-click cannot
+  // pull the list out from under the pointer that just opened it.
+  if (menuOpen) menu.classList.remove("ch-hidden");
 
   // Menu item handlers
   xlsxItem.addEventListener("click", (e: MouseEvent) => {
     e.stopPropagation();
-    menu.classList.add("ch-hidden");
+    setMenuOpen(menu, false);
     document.dispatchEvent(new CustomEvent("ch:export-xlsx"));
   });
 
   csvItem.addEventListener("click", (e: MouseEvent) => {
     e.stopPropagation();
-    menu.classList.add("ch-hidden");
+    setMenuOpen(menu, false);
     document.dispatchEvent(new CustomEvent("ch:export-csv"));
   });
 
@@ -609,7 +677,7 @@ function buildExportDropdown(
   if (outsideClickHandler) document.removeEventListener("click", outsideClickHandler);
   outsideClickHandler = (e: MouseEvent) => {
     if (!exportDropdown.contains(e.target as Node)) {
-      menu.classList.add("ch-hidden");
+      setMenuOpen(menu, false);
     }
   };
   document.addEventListener("click", outsideClickHandler);
@@ -619,6 +687,9 @@ function buildExportDropdown(
 
 /** Remove elements on navigation */
 export function removeExportButton(): void {
+  // A toolbar that is gone cannot have an open menu, and the next page's
+  // injection must not inherit this page's state.
+  menuOpen = false;
   clearFilterTimers();
   // Tear down the No. Faktur filter too — leaving an export page (e.g. to the
   // dashboard) should not leave the panel orphaned in <body>.
