@@ -1,0 +1,54 @@
+name: CI
+
+# The project had no CI at all: 1269 tests, a typecheck and a lint rule that
+# only ran when someone remembered locally. This runs them on every push and
+# every pull request.
+#
+# The microsite drift guard lives here too. It used to be a separate workflow
+# with its own path filters, but `pnpm test` runs the whole suite and
+# src/tests/microsite-sync.unit.test.ts is one of the 46 files in it — so that
+# workflow was paying a second `pnpm install` to run a strict subset of what
+# this one already runs. Merging them makes the guard run on EVERY change
+# rather than only the ones someone thought to list, at one install instead of
+# two.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push makes an in-flight run for the same ref obsolete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, lint, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm 12 is required: pnpm-workspace.yaml uses `allowBuilds`, which
+      # earlier versions do not understand, and esbuild's build script then
+      # trips ERR_PNPM_IGNORED_BUILDS during install.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      # Includes microsite-sync.unit.test.ts, so the microsite cannot drift
+      # from the code without failing this job.
+      - name: Test
+        run: pnpm test

@@ -96,11 +96,10 @@ Hosted on **Cloudflare Pages**, which needs no build step at all:
 | Build output directory | `microsite` |
 | Root directory | *(repository root)* |
 
-The repo root `README.md` links back to this folder, and the
-[`Microsite sync`](.github/workflows/microsite-sync.yml) workflow runs
-`src/tests/microsite-sync.unit.test.ts` on every change under `microsite/`,
-`src/content/`, `src/shared/`, `popup/`, or `manifest.json` — so editing this
-page or the code it documents fails the build rather than quietly drifting.
+The repo root `README.md` links back to this folder, and the [`CI`](.github/workflows/ci.yml)
+workflow runs `src/tests/microsite-sync.unit.test.ts` — it is one of the test
+files in `pnpm test` — on every push and every pull request. Editing this page
+or the code it documents therefore fails the build rather than quietly drifting.
 
 Everything in this folder is served exactly as committed. Three files only do
 anything because Cloudflare Pages recognises them by name:

@@ -196,7 +196,7 @@ Isinya one-pager statis — HTML, CSS, dan JS polos tanpa dependensi — yang me
 
 Yang membuatnya tidak melenceng dari kode adalah [`src/tests/microsite-sync.unit.test.ts`](src/tests/microsite-sync.unit.test.ts). Halaman itu menyalin fakta dari TypeScript (prefix berkas, permission, shortcut, halaman portal yang didukung, label status kedua grid, nama berkas ekspor, setiap kontrol popup, dan hostname situs), lalu tes tersebut membandingkannya balik dengan sumber aslinya. Menambah sumber ekspor, permission, shortcut, halaman portal, status, nama berkas, atau preferensi wajib disertai perubahan halaman di commit yang sama — kalau tidak, tesnya merah. Suite yang sama juga menjaga struktur halaman itu sendiri, mulai dari satu label dan satu panel per tab fitur sampai `<base href="/">` di halaman 404.
 
-Workflow [`Microsite sync`](.github/workflows/microsite-sync.yml) menjalankan tes tersebut di GitHub Actions setiap kali `microsite/`, `src/content/`, `src/shared/`, `popup/`, atau `manifest.json` berubah — jadi guard-nya bekerja di CI, bukan hanya saat ada yang ingat menjalankannya secara lokal.
+Workflow [`CI`](.github/workflows/ci.yml) menjalankan `pnpm typecheck`, `pnpm lint`, dan `pnpm test` di GitHub Actions pada setiap push dan setiap pull request — dan `microsite-sync.unit.test.ts` termasuk salah satu file di dalamnya. Jadi guard-nya bekerja di CI, bukan hanya saat ada yang ingat menjalankannya secara lokal.
 
 ## Tech Stack
 - **Bahasa:** TypeScript
