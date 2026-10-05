@@ -96,8 +96,55 @@ microsite/
   122 KB (the anti-aliased type alone uses 2,744 colours), and WebP is not
   reliably supported for `og:image` — LinkedIn in particular. JPEG at q=0.85 is
   67 KB at PSNR 37.7 dB, and a link preview shows it at half size anyway.
-- Keep the design tokens in `:root` aligned with the extension's
-  `--ch-primary` (`#C23B22`), which the toolbar mockup mirrors.
+- **The palette is a mirror of the extension's, and text lives one step
+  darker.** The site depicts the product, so ten base tokens are byte-identical
+  copies of `../styles/injected.css` (`--match`↔`--ch-match` `#2F6F5E`,
+  `--diff`↔`--ch-diff` `#B8842F`, `--bad`↔`--ch-bad` `#B23A2E`,
+  `--only-ct`↔`--ch-blue` `#3E5D8A`, `--miss`↔`--ch-text-muted` `#8A8677`,
+  `--ink-soft`↔`--ch-text-dark`, `--card`↔`--ch-white`, `--paper`↔`--ch-paper`,
+  `--paper-alt`↔`--ch-paper-alt`, `--stamp`↔`--ch-primary` `#C23B22`). Those
+  hues were chosen as **fills**, and as text on their own 12–14% tints they
+  measured 2.4:1 to 4.2:1 — a clear WCAG AA failure. Each status colour
+  therefore has a `-ink` twin: the same hue and saturation with only the
+  lightness reduced, solved to clear **5:1** against its tint on both `--paper`
+  and `--card`. The margin over AA's 4.5 is deliberate, so a rounding change
+  cannot silently put a pair back under the line.
+
+  | Role | Base (fills, borders, swatches) | Text-safe | Was | Now |
+  |---|---|---|---|---|
+  | match | `--match` `#2F6F5E` | `--match-ink` `#296152` | 4.20:1 | 5.10:1 |
+  | diff | `--diff` `#B8842F` | `--diff-ink` `#72521D` | 2.41:1 | 5.23:1 |
+  | bad | `--bad` `#B23A2E` | `--bad-ink` `#9A3228` | 4.16:1 | 5.14:1 |
+  | miss | `--miss` `#8A8677` | `--miss-ink` `#5D5A50` | 2.65:1 | 5.02:1 |
+  | only Coretax | `--only-ct` `#3E5D8A` | `--only-ct-ink` `#3E5D8A` | 5.17:1 | 5.17:1 |
+
+  **The rule: `-ink` owns every `color:`; the base token keeps every
+  `background:`, border and swatch.** `--only-ct` needed no darkening and
+  `--only-ct-ink` is simply an alias — the rule stays uniform so nobody has to
+  remember which hues happened to be dark enough.
+- **`--line-strong` is a hairline; `--control-line` is a control boundary.**
+  WCAG 1.4.11 wants 3:1 for anything that identifies a control, and
+  `--line-strong` (`rgba(27,36,54,0.28)`) measures 1.75:1 on paper. Card edges
+  and table rules are decorative and may keep it; the borders of `.btn-ghost`
+  and `.ct-input` may not, so they draw `--control-line`
+  (`rgba(27,36,54,0.55)`, 3.3–3.5:1). Pill swatch dots stay on the base hues:
+  they are decorative-redundant with the label beside them.
+- **Contrast is a test, not a review.** `microsite-sync.unit.test.ts` computes
+  WCAG 2.1 ratios in the suite itself — 86 rendered text pairs (4.5:1 normal,
+  3:1 large), the literal `rgba()` in `.code-block .cmt`, and the three control
+  borders at 3:1 — and fails the build on any regression. It also re-checks the
+  ten-token mirror against `injected.css` in both directions, so a change to
+  either side has to be deliberate, and it fails on any `color: var(--match)`
+  written against a base hue instead of its `-ink` twin.
+
+  `404.html` is included because it carries its **own** `<style>` block, and
+  that is exactly how `.nf .code` slipped through at 4.42:1 while the table
+  still showed `--stamp` as covered elsewhere. A fifth guard therefore checks
+  the table against the source: for every entry whose label is a real selector,
+  the rule block must still name the token the table claims to have tested —
+  so swapping a passing `-ink` back for a failing base hue goes red even though
+  every token-level assertion still passes. Adding a colour means adding the
+  pair to `TEXT_PAIRS`.
 
 ## Deploy
 

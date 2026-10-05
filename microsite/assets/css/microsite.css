@@ -102,6 +102,10 @@
   --card:#F6F5EF;
   --line:rgba(27,36,54,0.14);
   --line-strong:rgba(27,36,54,0.28);
+  /* A border that has to READ as a control boundary (WCAG 1.4.11 wants 3:1).
+     --line-strong is a decorative hairline at 0.28 and measures 1.75:1 on
+     paper, which is fine for a card edge and not fine for "Buka Coretax". */
+  --control-line:rgba(27,36,54,0.55);
   --stamp:#C23B22;
   --stamp-dark:#9C2E19;
   --stamp-tint:rgba(194,59,34,0.10);
@@ -115,6 +119,21 @@
   --miss-tint:rgba(138,134,119,0.14);
   --only-ct:#3E5D8A;
   --only-ct-tint:rgba(62,93,138,0.12);
+  /* The five `-ink` tokens are the TEXT-SAFE versions of the status colours
+     above. The base values are byte-identical copies of the extension's own
+     tokens (--ch-match, --ch-diff, --ch-bad, --ch-text-muted, --ch-blue) and
+     that mirror is the point: the microsite depicts the product's palette. But
+     the base hues were chosen as fills, and as TEXT on their own 12-14% tints
+     they measure 2.4:1 to 4.2:1 — a fail under WCAG AA. Each `-ink` is the same
+     hue and saturation with only the lightness reduced, solved to clear 5:1
+     (AA needs 4.5) against the tint on BOTH --paper and --card, so it keeps a
+     margin that rounding cannot take back. Rule: `-ink` owns every `color:`,
+     the base token keeps every `background:`, border and swatch. */
+  --match-ink:#296152;
+  --diff-ink:#72521D;
+  --bad-ink:#9A3228;
+  --miss-ink:#5D5A50;
+  --only-ct-ink:#3E5D8A;
   --radius:10px;
   --maxw:1100px;
   --display:'Space Grotesk','Space Grotesk Fallback',system-ui,sans-serif;
@@ -231,7 +250,7 @@ code{font-family:var(--mono);font-size:0.92em;background:rgba(27,36,54,0.06);pad
 .btn:hover{transform:translateY(-1.5px);}
 .btn-primary{background:var(--ink);color:var(--paper);}
 .btn-primary:hover{box-shadow:0 6px 18px rgba(27,36,54,0.25);}
-.btn-ghost{background:transparent;color:var(--ink);border-color:var(--line-strong);}
+.btn-ghost{background:transparent;color:var(--ink);border-color:var(--control-line);}
 .btn-ghost:hover{border-color:var(--ink);}
 .btn-sm{padding:8px 16px;font-size:13.5px;}
 .btn-sub{
@@ -307,8 +326,8 @@ code{font-family:var(--mono);font-size:0.92em;background:rgba(27,36,54,0.06);pad
   font-family:var(--body);font-size:13px;
   display:inline-flex;align-items:center;gap:7px;
   padding:8px 14px;border-radius:6px;
-  background:#fff;color:var(--miss);
-  border:1px solid var(--line-strong);
+  background:#fff;color:var(--miss-ink);
+  border:1px solid var(--control-line);
   min-width:170px;
 }
 .ct-input .cd-ic{color:var(--ink-soft);}
@@ -340,7 +359,7 @@ section{padding:86px 0;scroll-margin-top:64px;}
 .role-item:last-child:nth-child(odd){grid-column:1/-1;}
 .role-item .who{font-weight:600;font-size:15px;margin-bottom:6px;}
 .role-item .path{
-  font-family:var(--mono);font-size:12.5px;color:var(--only-ct);
+  font-family:var(--mono);font-size:12.5px;color:var(--only-ct-ink);
   background:var(--only-ct-tint);
   display:inline-block;padding:3px 8px;border-radius:5px;margin-top:6px;
 }
@@ -418,9 +437,9 @@ section{padding:86px 0;scroll-margin-top:64px;}
   content:counter(step);
   position:absolute;left:0;top:10px;
   font-family:var(--mono);font-size:12px;font-weight:600;
-  color:var(--stamp);
+  color:var(--stamp-dark);
   width:22px;height:22px;border-radius:50%;
-  border:1px solid var(--stamp);
+  border:1px solid var(--stamp-dark);
   display:flex;align-items:center;justify-content:center;
 }
 .feat-side{
@@ -443,15 +462,15 @@ section{padding:86px 0;scroll-margin-top:64px;}
   padding:6px 10px;border-radius:6px;width:fit-content;
 }
 .status-pill .sw{width:9px;height:9px;border-radius:50%;flex:none;}
-.pill-match{background:var(--match-tint);color:var(--match);}
+.pill-match{background:var(--match-tint);color:var(--match-ink);}
 .pill-match .sw{background:var(--match);}
-.pill-diff{background:var(--diff-tint);color:var(--diff);}
+.pill-diff{background:var(--diff-tint);color:var(--diff-ink);}
 .pill-diff .sw{background:var(--diff);}
-.pill-bad{background:var(--bad-tint);color:var(--bad);}
+.pill-bad{background:var(--bad-tint);color:var(--bad-ink);}
 .pill-bad .sw{background:var(--bad);}
-.pill-miss{background:var(--miss-tint);color:var(--miss);}
+.pill-miss{background:var(--miss-tint);color:var(--miss-ink);}
 .pill-miss .sw{background:var(--miss);}
-.pill-only{background:var(--only-ct-tint);color:var(--only-ct);}
+.pill-only{background:var(--only-ct-tint);color:var(--only-ct-ink);}
 .pill-only .sw{background:var(--only-ct);}
 .kbd{
   font-family:var(--mono);font-size:12.5px;font-weight:600;
@@ -473,8 +492,8 @@ section{padding:86px 0;scroll-margin-top:64px;}
 .compare-table td,.pref-table td{padding:16px;vertical-align:top;border-bottom:1px solid var(--line);}
 .compare-table tr:last-child td,.pref-table tr:last-child td{border-bottom:none;}
 .compare-table tr td:first-child{font-weight:600;width:26%;}
-.compare-table td.before{color:var(--bad);}
-.compare-table td.after{color:var(--match);font-weight:500;}
+.compare-table td.before{color:var(--bad-ink);}
+.compare-table td.after{color:var(--match-ink);font-weight:500;}
 @media(max-width:700px){
   .compare-table thead,.pref-table thead{display:none;}
   .compare-table,.compare-table tbody,.compare-table tr,.compare-table td,
@@ -508,7 +527,7 @@ section{padding:86px 0;scroll-margin-top:64px;}
 .sd-node .name{font-weight:600;font-size:14.5px;}
 .sd-you{background:var(--paper);border:1px solid var(--line-strong);}
 .sd-ct{background:var(--match-tint);border:1px solid var(--match);}
-.sd-ct .name{color:var(--match);}
+.sd-ct .name{color:var(--match-ink);}
 .sd-arrow{
   font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);
   padding:0 18px;display:flex;flex-direction:column;align-items:center;gap:2px;
@@ -521,7 +540,7 @@ section{padding:86px 0;scroll-margin-top:64px;}
 }
 .sd-other .badge{
   display:inline-flex;align-items:center;gap:8px;
-  font-family:var(--mono);font-size:12px;color:var(--bad);
+  font-family:var(--mono);font-size:12px;color:var(--bad-ink);
   background:var(--bad-tint);padding:6px 12px;border-radius:6px;
 }
 .perm-table{width:100%;border-collapse:collapse;font-size:14px;}
@@ -563,7 +582,7 @@ section{padding:86px 0;scroll-margin-top:64px;}
   background:var(--card);border:1px solid var(--line-strong);
   padding:14px 18px;border-radius:10px;font-weight:600;font-size:14.5px;
 }
-.browser-badge .ok{color:var(--match);font-family:var(--mono);font-size:12px;font-weight:600;}
+.browser-badge .ok{color:var(--match-ink);font-family:var(--mono);font-size:12px;font-weight:600;}
 .browser-badge .dot{width:8px;height:8px;border-radius:50%;background:var(--match);}
 
 /* ---------- instalasi & unduhan ---------- */
@@ -614,7 +633,7 @@ section{padding:86px 0;scroll-margin-top:64px;}
 }
 .faq-item summary::-webkit-details-marker{display:none;}
 .faq-item summary::after{
-  content:"+";font-family:var(--mono);font-size:20px;color:var(--stamp);flex:none;
+  content:"+";font-family:var(--mono);font-size:20px;color:var(--stamp-dark);flex:none;
   transition:transform .18s;
 }
 .faq-item[open] summary::after{transform:rotate(45deg);}
@@ -628,7 +647,7 @@ section{padding:86px 0;scroll-margin-top:64px;}
 }
 .roadmap-card .tag{
   font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;
-  background:var(--diff-tint);color:var(--diff);padding:4px 9px;border-radius:5px;flex:none;margin-top:3px;
+  background:var(--diff-tint);color:var(--diff-ink);padding:4px 9px;border-radius:5px;flex:none;margin-top:3px;
 }
 
 /* ---------- footer ---------- */

@@ -27,7 +27,10 @@
   .nf{padding:120px 0 90px;text-align:center;}
   .nf .code{
     font-family:var(--mono);font-size:14px;letter-spacing:.12em;
-    color:var(--stamp);text-transform:uppercase;margin-bottom:18px;
+    /* --stamp on --paper is 4.42:1 at this size, just under AA's 4.5.
+       --stamp-dark is the same hue one step down (6.31:1), which is what
+       the landing page already uses for this identical pair. */
+    color:var(--stamp-dark);text-transform:uppercase;margin-bottom:18px;
   }
   .nf h1{font-size:clamp(30px,5vw,46px);margin-bottom:18px;}
   .nf .lede{max-width:46ch;margin:0 auto 34px;color:var(--ink-soft);font-size:16px;line-height:1.65;}

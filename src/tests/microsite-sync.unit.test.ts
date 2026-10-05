@@ -51,6 +51,7 @@ interface ManifestShape {
 }
 
 const microsite = read("../../microsite/index.html");
+const micrositeCss = read("../../microsite/assets/css/microsite.css");
 const manifest: ManifestShape = JSON.parse(read("../../manifest.json"));
 const shortcutsSource = read("../content/shortcuts.ts");
 // Hosting support files. Cloudflare Pages serves 404.html for any missing path,
@@ -600,6 +601,343 @@ describe("microsite — site URL", () => {
         `${name} still carries a placeholder host or TODO marker`,
       ).toBe(false);
     }
+  });
+});
+
+describe("microsite — colour contrast", () => {
+  const injectedCss = read("../../styles/injected.css");
+
+  // ── WCAG 2.1 maths, in the test itself so the numbers are auditable ──────
+  const parseColour = (value: string): { rgb: [number, number, number]; a: number } => {
+    const s = value.trim();
+    if (s.startsWith("#")) {
+      const h = s.slice(1);
+      const full = h.length === 3 ? [...h].map((c) => c + c).join("") : h;
+      return { rgb: [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16)) as [number, number, number], a: 1 };
+    }
+    const parts = s.match(/rgba?\(([^)]+)\)/)![1].split(",").map(Number);
+    return { rgb: parts.slice(0, 3) as [number, number, number], a: parts.length > 3 ? parts[3] : 1 };
+  };
+  const channel = (c: number) => {
+    const s = c / 255;
+    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const luminance = ({ rgb }: { rgb: readonly number[] }) =>
+    0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
+  /** Composite translucent ink over an opaque surface, the way a browser does. */
+  const flatten = (top: { rgb: readonly number[]; a: number }, bottom: { rgb: readonly number[] }) => ({
+    rgb: [0, 1, 2].map((i) => top.rgb[i] * top.a + bottom.rgb[i] * (1 - top.a)) as [number, number, number],
+    a: 1,
+  });
+  const contrast = (fg: { rgb: readonly number[] }, bg: { rgb: readonly number[] }) => {
+    const [hi, lo] = [luminance(fg), luminance(bg)].sort((a, b) => b - a);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
+  // Only colour-valued tokens: --maxw:1100px shares the syntax.
+  const isColour = (v: string) => /^#[0-9a-f]{3,8}$/i.test(v.trim()) || /^rgba?\(/i.test(v.trim());
+  const tokensOf = (css: string): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const [, name, value] of css.matchAll(/(--[a-z-]+)\s*:\s*([^;]+);/g)) {
+      if (isColour(value)) out[name] = value.trim();
+    }
+    return out;
+  };
+  const TOKENS = tokensOf(micrositeCss);
+  /** Resolve a paint: a token from :root, or a literal the sheet writes inline. */
+  const colour = (name: string) => {
+    if (isColour(name)) return parseColour(name);
+    const raw = TOKENS[name];
+    expect(raw, `microsite.css lost the ${name} token`).toBeDefined();
+    return parseColour(String(raw));
+  };
+
+  const PAPER = colour("--paper");
+  const PAPER_ALT = colour("--paper-alt");
+  const CARD = colour("--card");
+  const INK = colour("--ink");
+  const WHITE = parseColour("#fff");
+
+  /** Resolve a background reference, compositing any tint over its surface. */
+  const background = (ref: string, tintOver = PAPER) => {
+    const c = colour(ref);
+    return c.a === 1 ? c : flatten(c, tintOver);
+  };
+
+  // Every rendered TEXT pair the audit covers. `tintOver` says what surface a
+  // translucent background actually sits on — the status legend lives inside
+  // .feat-side (--card), the roadmap tag and diagram live on --card, and the
+  // rest sit on --paper. Large text is >=24px, or >=18.66px at weight >=700.
+  const TEXT_PAIRS: readonly (readonly [string, string, string, number, number, typeof PAPER?])[] = [
+    ["body text", "--ink", "--paper", 16, 400],
+    ["body text on alt-bg", "--ink", "--paper-alt", 16, 400],
+    ["body text on card", "--ink", "--card", 16, 400],
+    [".hero .lede", "--ink-soft", "--paper", 18, 400],
+    [".hero h1 em", "--stamp", "--paper", 64, 600],
+    [".section-head .sub", "--ink-soft", "--paper", 16, 400],
+    [".navlinks a", "--ink-soft", "--paper", 14, 400],
+    [".navlinks a:hover", "--stamp-dark", "--paper", 14, 400],
+    [".foot-links a", "--ink-soft", "--paper", 13.5, 400],
+    [".foot-links a:hover", "--stamp-dark", "--paper", 13.5, 400],
+    [".foot-note", "--ink-soft", "--paper", 13, 400],
+    [".brand", "--ink", "--paper", 19, 700],
+    [".btn-primary label", "--paper", "--ink", 14.5, 600],
+    [".btn-ghost label", "--ink", "--paper", 14.5, 600],
+    [".cd-btn label (toolbar mock)", "#fff", "--stamp", 13, 600],
+    [".ct-btn label (portal mock)", "--ink-soft", "--paper-deep", 13, 500],
+    [".ct-input text", "--miss-ink", "#fff", 13, 400],
+    [".eyebrow", "--stamp-dark", "--paper", 12.5, 400],
+    [".eyebrow on alt-bg", "--stamp-dark", "--paper-alt", 12.5, 400],
+    [".hero-note", "--stamp-dark", "--paper", 12.5, 400],
+    [".install-card .ic-tag", "--stamp-dark", "--card", 11, 400],
+    [".perm-table td:first-child", "--stamp-dark", "--paper", 13, 400],
+    [".opt-tag", "--stamp-dark", "--stamp-tint", 10, 500],
+    [".legal .stamp-note", "--stamp-dark", "--stamp-tint", 11, 400],
+    [".legal .none", "--match-ink", "--match-tint", 12.5, 400, PAPER],
+    [".roadmap-card .tag", "--diff-ink", "--diff-tint", 11, 400, CARD],
+    [".pill-match (card)", "--match-ink", "--match-tint", 13, 500, CARD],
+    [".pill-diff (card)", "--diff-ink", "--diff-tint", 13, 500, CARD],
+    [".pill-bad (card)", "--bad-ink", "--bad-tint", 13, 500, CARD],
+    [".pill-miss (card)", "--miss-ink", "--miss-tint", 13, 500, CARD],
+    [".pill-only (card)", "--only-ct-ink", "--only-ct-tint", 13, 500, CARD],
+    [".pill-match (paper)", "--match-ink", "--match-tint", 13, 500, PAPER],
+    [".pill-diff (paper)", "--diff-ink", "--diff-tint", 13, 500, PAPER],
+    [".pill-bad (paper)", "--bad-ink", "--bad-tint", 13, 500, PAPER],
+    [".pill-miss (paper)", "--miss-ink", "--miss-tint", 13, 500, PAPER],
+    [".pill-only (paper)", "--only-ct-ink", "--only-ct-tint", 13, 500, PAPER],
+    [".compare-table th", "--ink-soft", "--card", 11.5, 600],
+    [".compare-table td.before", "--bad-ink", "--card", 14.5, 400],
+    [".compare-table td.after", "--match-ink", "--card", 14.5, 500],
+    [".pref-table td", "--ink-soft", "--card", 14, 400],
+    [".pref-table td:first-child", "--ink", "--card", 15, 700],
+    [".perm-table th", "--ink-soft", "--paper", 11, 600],
+    [".perm-table td", "--ink", "--paper", 14, 400],
+    [".mini-table th", "--ink-soft", "--card", 11, 600],
+    [".tab-labels label", "--ink-soft", "--paper", 14, 600],
+    [".tab-labels label:hover", "--ink", "--paper", 14, 600],
+    [".tab-labels label[selected]", "--stamp-dark", "--paper", 14, 600],
+    [".feat-steps li", "--ink", "--paper", 14.5, 400],
+    [".feat-steps li::before number", "--stamp-dark", "--paper", 12, 600],
+    [".feat-problem", "--ink-soft", "--paper", 15, 400],
+    [".feat-side h4", "--ink-soft", "--card", 13, 400],
+    [".role-item .path", "--only-ct-ink", "--only-ct-tint", 12.5, 400, CARD],
+    [".role-item .who", "--ink", "--card", 15, 600],
+    [".sd-node .lbl", "--ink-soft", "--card", 11, 400],
+    [".sd-ct .name", "--match-ink", "--match-tint", 14.5, 600, CARD],
+    [".sd-other .badge", "--bad-ink", "--bad-tint", 12, 400, CARD],
+    [".comply-card .cc-num", "--stamp", "--card", 12, 600],
+    [".comply-card .cc-text", "--ink-soft", "--card", 13.5, 400],
+    [".comply-link a", "--stamp-dark", "--paper", 13.5, 600],
+    [".browser-badge .ok", "--match-ink", "--card", 12, 600],
+    [".ic-lead", "--ink-soft", "--card", 13.5, 400],
+    [".install-card ol", "--ink-soft", "--card", 13.5, 400],
+    [".ic-note", "--ink-soft", "--card", 12.5, 400],
+    [".code-block", "--paper", "--ink", 12.5, 400],
+    [".dl-note", "--ink-soft", "--paper", 13, 400],
+    [".faq-item summary", "--ink", "--paper", 15.5, 600],
+    [".faq-item summary::after +", "--stamp-dark", "--paper", 20, 400],
+    [".faq-a", "--ink-soft", "--paper", 14.5, 400],
+    [".td-chrome", "--ink-soft", "--paper-deep", 12, 400],
+    [".td-url", "--ink-soft", "--paper", 12, 400],
+    [".td-toolbar-label", "--ink-soft", "--card", 11, 400],
+    [".td-caption", "--ink-soft", "--card", 13, 400],
+    [".td-caption b", "--stamp-dark", "--card", 13, 600],
+    ["::selection", "#fff", "--stamp", 16, 400],
+    // 404.html carries its own scoped <style> block, so these are separate
+    // usages of the same tokens on the same surface. A token that passes on
+    // the landing page can still fail here: `.nf .code` is --stamp at 14px,
+    // where the 64px `.hero h1 em` is comfortably large text.
+    ["404 .nf .code", "--stamp-dark", "--paper", 14, 400],
+    ["404 .nf h1", "--ink", "--paper", 30, 700],
+    ["404 .nf .lede", "--ink-soft", "--paper", 16, 400],
+    ["404 .brand", "--ink", "--paper", 19, 700],
+    ["404 .hero-cta .btn-primary", "--paper", "--ink", 14.5, 600],
+    // Surfaced by the browser sweep: rendered text that no entry covered.
+    [".hero h1", "--ink", "--paper", 64, 700],
+    [".hero .lede strong", "--ink", "--paper", 18, 600],
+    [".section-head p.sub", "--ink-soft", "--paper", 16, 400],
+    [".pref-table th", "--ink-soft", "--card", 11.5, 600],
+    [".sd-arrow", "--ink-soft", "--card", 11.5, 400],
+    [".sd-arrow .line", "--ink-soft", "--card", 11.5, 400],
+    [".comply-link", "--ink-soft", "--paper", 13.5, 400],
+    [".kbd", "--paper", "--ink", 12.5, 600],
+    [".ct-input .cd-ic", "--ink-soft", "#fff", 13, 400],
+  ];
+
+  it("keeps every rendered text pair at WCAG AA", () => {
+    // 4.5:1 for normal text, 3:1 for large. Each entry names the surface a
+    // translucent background actually sits on, because compositing the same
+    // tint over --paper and over --card gives two different answers.
+    const failures: string[] = [];
+    for (const [label, fgRef, bgRef, px, weight, tintOver = PAPER] of TEXT_PAIRS) {
+      const fgToken = colour(fgRef);
+      const fg = fgToken.a === 1 ? fgToken : flatten(fgToken, tintOver);
+      const ratio = contrast(fg, background(bgRef, tintOver));
+      const need = px >= 24 || (px >= 18.66 && weight >= 700) ? 3 : 4.5;
+      if (ratio < need) {
+        failures.push(`${label}: ${fgRef} on ${bgRef} is ${ratio.toFixed(2)}:1, needs ${need}:1`);
+      }
+    }
+    expect(failures.join("\n"), "these text pairs fall below WCAG AA").toBe("");
+  });
+
+  it("renders the code-block comments at AA too", () => {
+    // The one text colour written as a literal rather than a token: a 55%
+    // paper on the ink block. It is the easiest pair on the site to break by
+    // nudging an alpha, and it is not covered by the token table above.
+    const cmt = micrositeCss.match(/\.code-block \.cmt\{color:(rgba?\([^)]+\));?\}/);
+    expect(cmt, ".code-block .cmt lost its colour declaration").not.toBeNull();
+    expect(contrast(flatten(parseColour(cmt![1]), INK), INK)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("keeps control borders at the 3:1 non-text threshold", () => {
+    // WCAG 1.4.11: a boundary that identifies a control has to be visible.
+    // --line-strong is a decorative hairline (1.75:1) and cannot do that job.
+    const failures: string[] = [];
+    const line = colour("--control-line");
+    for (const [label, surface] of [
+      [".btn-ghost border on paper", PAPER],
+      [".btn-ghost border on alt-bg", PAPER_ALT],
+      [".ct-input border on its own white fill", WHITE],
+    ] as const) {
+      const ratio = contrast(line.a === 1 ? line : flatten(line, surface), surface);
+      if (ratio < 3) failures.push(`${label} is ${ratio.toFixed(2)}:1, needs 3:1`);
+    }
+    expect(failures.join("\n"), "a control border is too faint to see").toBe("");
+
+    // And the two controls really do use it rather than the hairline token.
+    for (const selector of [".btn-ghost{", ".ct-input{"]) {
+      const rule = micrositeCss.slice(micrositeCss.indexOf(selector));
+      const block = rule.slice(0, rule.indexOf("}"));
+      expect(
+        block,
+        `${selector} must draw its border with --control-line, not --line-strong`,
+      ).toContain("--control-line");
+    }
+  });
+
+  it("keeps the status hues mirrored from the extension's own tokens", () => {
+    // The microsite depicts the product's palette, so the base status tokens
+    // are byte-identical copies of injected.css. That mirror is why the AA
+    // fixes went into separate `-ink` tokens rather than into these — if a
+    // future change moves one, it is either deliberate or a mistake, and this
+    // is where that shows up.
+    const extensionTokens = tokensOf(injectedCss);
+    const MIRRORED: readonly (readonly [string, string])[] = [
+      ["--match", "--ch-match"],
+      ["--diff", "--ch-diff"],
+      ["--bad", "--ch-bad"],
+      ["--miss", "--ch-text-muted"],
+      ["--only-ct", "--ch-blue"],
+      ["--ink-soft", "--ch-text-dark"],
+      ["--card", "--ch-white"],
+      ["--paper", "--ch-paper"],
+      ["--paper-alt", "--ch-paper-alt"],
+      ["--stamp", "--ch-primary"],
+    ];
+    const drift: string[] = [];
+    for (const [site, extension] of MIRRORED) {
+      const a = (TOKENS[site] ?? "").toUpperCase().replace(/\s+/g, "");
+      const b = (extensionTokens[extension] ?? "").toUpperCase().replace(/\s+/g, "");
+      if (a !== b) drift.push(`${site} is ${a} but ${extension} is ${b}`);
+    }
+    expect(drift.join("\n"), "the microsite palette drifted from the extension's").toBe("");
+  });
+
+  it("audits the token each listed rule actually uses", () => {
+    // The gap this closes: TEXT_PAIRS is hand-written, and a hand-written
+    // table rots silently. `.nf .code` on 404.html sat at 4.42:1 -- a real AA
+    // failure -- precisely because the page carries its own <style> block, so
+    // its rules were on nobody's radar, and `--stamp` already looked covered
+    // by the 64px `.hero h1 em`. Membership checks cannot catch that, and
+    // neither can token-level checks: the same token passes at 64px and fails
+    // at 14px. What catches it is asking the SOURCE, per rule, which token it
+    // names, and requiring that to equal what the table claims to have tested.
+    //
+    // Scope, stated honestly: this verifies every entry whose label is a real
+    // selector in the stylesheet (`.nf .code`, `.pill-diff`, `.ct-input`,
+    // `.hero .lede`, `.feat-steps li::before`, ...). Descriptive labels are
+    // skipped -- "body text on alt-bg" and "pill-diff (paper)" name a surface
+    // or a reading of a rule rather than a selector, and about a quarter of
+    // the table reads that way. A brand-new coloured rule is therefore not
+    // caught here; adding one still means adding its entry to TEXT_PAIRS.
+    const sources = [
+      micrositeCss,
+      ...microsite.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g),
+      ...notFoundPage.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g),
+    ]
+      .map((s) => (typeof s === "string" ? s : s[1]))
+      .join("\n");
+
+    /** "404 .pill-diff (paper)" -> ".pill-diff"; ".faq-item summary::after +" -> "...::after" */
+    const selectorOf = (label: string): string =>
+      label
+        .replace(/^404\s+/, "")
+        .replace(/\s*\([^)]*\)\s*$/, "")
+        .replace(/\s*[+>~]\s*$/, "")
+        .trim();
+
+    /** The selector must start a rule, not merely appear inside one. */
+    const findRule = (selector: string): string | undefined => {
+      for (let at = sources.indexOf(selector); at !== -1; at = sources.indexOf(selector, at + 1)) {
+        const before = sources.slice(0, at);
+        if (before.length === 0 || /[},;]|\n\s*$/.test(before)) return selector + at.toString();
+      }
+      return undefined;
+    };
+
+    const drift: string[] = [];
+    for (const [label, fgRef] of TEXT_PAIRS) {
+      const selector = selectorOf(label);
+      const found = findRule(selector);
+      if (found === undefined) continue; // descriptive entry, nothing to verify
+      const at = Number(found.slice(selector.length));
+      const block = sources.slice(at + selector.length).match(/\{([^{}]*)\}/);
+      if (!block) {
+        drift.push(`${label}: "${selector}" no longer has a declaration block`);
+        continue;
+      }
+      // `border-color:` must not match, so the declaration needs a real
+      // leading boundary rather than a bare substring.
+      const used = block[1].match(/(?:^|[;{\s])color\s*:\s*(var\(\s*(--[a-z-]+)\s*\)|#[0-9a-f]{3,8})/i);
+      // No `color:` in the block means the text INHERITS, and the inherited
+      // value is not something this block can be checked against; TEXT_PAIRS
+      // still computes the pair the entry declares.
+      if (!used) continue;
+      const token = used[1].startsWith("#") ? used[1] : used[2];
+      if (token !== fgRef) {
+        drift.push(`${label}: table says ${fgRef}, but "${selector}" uses ${token}`);
+      }
+    }
+    expect(drift.join("\n"), "TEXT_PAIRS has drifted from the stylesheet").toBe("");
+  });
+
+  it("keeps text colours on the `-ink` tokens, never on the base hue", () => {
+    // The rule that makes the AA fix durable: a base status token owns fills,
+    // borders and swatches; only its `-ink` twin may set `color:`. Without
+    // this, one well-meaning `color: var(--diff)` reopens a 2.4:1 pair while
+    // every token-level assertion above still passes.
+    const BASE_STATUS = ["--match", "--diff", "--bad", "--miss", "--only-ct"] as const;
+    const sources = [
+      ["microsite.css", micrositeCss],
+      ["privacy.html", privacyPolicy],
+      ["404.html", notFoundPage],
+    ] as const;
+
+    const offenders: string[] = [];
+    for (const [name, source] of sources) {
+      for (const token of BASE_STATUS) {
+        const ink = `${token}-ink`;
+        expect(TOKENS[ink], `microsite.css lost the ${ink} token`).toBeDefined();
+        // A `color:` that names the base token without naming its `-ink` twin.
+        for (const [, declaration] of source.matchAll(/color:\s*var\((--[a-z-]+)\)/g)) {
+          if (declaration === token) {
+            offenders.push(`${name} sets color: var(${token}); text must use var(${ink})`);
+          }
+        }
+      }
+    }
+    expect(offenders.join("\n"), "a status hue is being used as a text colour").toBe("");
   });
 });
 
