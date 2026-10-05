@@ -44,6 +44,32 @@ export function buildCheckerExportRows(
   ];
 }
 
+// ── Filenames ───────────────────────────────────────────────────
+// Both result grids are offered as XLSX and CSV. The base name lives here, not
+// in the panel, so the button labels, the generated file, and the microsite
+// copy that shows the samples all derive from one place.
+
+export type ResultExportFormat = "xlsx" | "csv";
+
+export const COMPARISON_EXPORT_BASENAME = "perbandingan-faktur";
+export const CHECKER_EXPORT_BASENAME = "pengecekan-nilai-faktur";
+
+const EXTENSION: Record<ResultExportFormat, string> = { xlsx: ".xlsx", csv: ".csv" };
+
+/** The full generated filename for one result grid in one format. */
+export function resultExportFilename(
+  basename: string,
+  format: ResultExportFormat,
+): string {
+  return `${basename}${EXTENSION[format]}`;
+}
+
+/** The two button labels, so the panel cannot spell them differently per tab. */
+export const RESULT_EXPORT_LABELS: Record<ResultExportFormat, string> = {
+  xlsx: "Excel",
+  csv: "CSV",
+};
+
 export function formatResultNumber(value: number | null): string {
   return value === null ? "-" : value.toLocaleString("id-ID");
 }

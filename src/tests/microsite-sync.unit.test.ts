@@ -66,6 +66,7 @@ const sitemapXml = read("../../microsite/sitemap.xml");
 // its own right. See the "legal copy" block at the end of this file.
 const legalCompliance = read("../../LEGAL_COMPLIANCE.md");
 const uiComparerSource = read("../content/ui-comparer.ts");
+const comparerExportSource = read("../content/comparer-export.ts");
 const exporterSource = read("../content/exporter.ts");
 const popupHtml = read("../../popup/popup.html");
 
@@ -147,10 +148,32 @@ const parseFilterOptions = (variable: string): readonly { value: string; label: 
   }));
 };
 
-/** The XLSX names the two result grids are written under, from their call sites. */
-const resultExportFilenames = [
-  ...uiComparerSource.matchAll(/downloadXLSXFile\(\s*\w+,\s*"([^"]+\.xlsx)"/g),
+/**
+ * The names the two result grids are written under, in BOTH formats, read from
+ * comparer-export.ts — the single place the basenames and the extensions now live.
+ * They used to be literals at the two downloadXLSXFile() call sites in
+ * ui-comparer.ts and moved to a declaration when CSV was added. A guard that
+ * kept regexing the old location would have gone quiet on the move instead of
+ * reporting it, which is the failure mode this suite exists to prevent.
+ */
+const resultExportExtensions = [
+  ...comparerExportSource.matchAll(/\b(?:xlsx|csv):\s*"(\.[a-z0-9]+)"/g),
 ].map((m) => m[1]);
+
+/** Each result grid's tab panel id -> every full filename that grid may write. */
+const resultExportFilenames = new Map<string, string[]>(
+  ([
+    ["COMPARISON_EXPORT_BASENAME", "p5"],
+    ["CHECKER_EXPORT_BASENAME", "p6"],
+  ] as const).map(([constant, tab]) => {
+    const basename =
+      comparerExportSource.match(new RegExp(`const ${constant}[^=]*= "([^"]+)"`))?.[1];
+    if (!basename) {
+      throw new Error(`${constant} not found in comparer-export.ts — update this suite`);
+    }
+    return [tab, resultExportExtensions.map((ext) => `${basename}${ext}`)] as const;
+  }),
+);
 
 /**
  * `exportXLSX`/`exportCSV` append the extension at the download call site, so
@@ -383,17 +406,15 @@ describe("microsite — export filenames", () => {
   const HINT = "2026-07";
   const CUSTOM_PREFIX = "PTABC-";
 
-  it("names the result-grid exports where their own tab names them", () => {
-    expect(
-      resultExportFilenames.length,
-      "no result filenames parsed from ui-comparer.ts — update the parser in this suite",
-    ).toBeGreaterThan(0);
+  it("names every result-grid export, in both formats, where its own tab names it", () => {
+    expect(resultExportExtensions.length, "no export extensions found in comparer-export.ts").toBe(2);
+    expect(resultExportFilenames.size, "no result filenames parsed — update the parser in this suite").toBe(2);
 
-    for (const [filename, tab] of [
-      [resultExportFilenames[0], panel("p5")],
-      [resultExportFilenames[1], panel("p6")],
-    ] as const) {
-      expect(tab.includes(filename), `the microsite never mentions ${filename}`).toBe(true);
+    for (const [tabId, filenames] of resultExportFilenames) {
+      const tab = panel(tabId);
+      for (const filename of filenames) {
+        expect(tab.includes(filename), `the microsite never mentions ${filename}`).toBe(true);
+      }
     }
   });
 

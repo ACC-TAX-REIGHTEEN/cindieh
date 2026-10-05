@@ -160,6 +160,9 @@ export function buildAoaWorkbook(
 export const XLSX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+/** UTF-8, matching the BOM buildCSV already prepends. */
+export const CSV_MIME_TYPE = "text/csv;charset=utf-8";
+
 /**
  * Build the workbook and trigger the browser download, with an
  * already-loaded SheetJS. Pure and synchronous — see downloadXLSXFile for the
@@ -194,6 +197,22 @@ export async function downloadXLSXFile(
   options: AoaXLSXOptions = {},
 ): Promise<void> {
   downloadWorkbookFile(await loadXLSX(), rows, filename, sheetName, options);
+}
+
+/**
+ * Trigger a browser download of the same pre-built AOA grid as a CSV file.
+ *
+ * The mirror of downloadXLSXFile for callers that want the text format, and
+ * deliberately library-free: buildCSV is hand-rolled, so this path never loads
+ * the SheetJS chunk and works even when that chunk fails to load. The comparer
+ * and checker result grids use it, which is why offering CSV there costs
+ * nothing — the grid export's own CSV path already proved the shape.
+ */
+export function downloadCSVFile(
+  rows: readonly (readonly unknown[])[],
+  filename: string,
+): void {
+  downloadTextFile(buildCSV(rows), filename, CSV_MIME_TYPE);
 }
 
 /**
@@ -351,7 +370,7 @@ export function exportCSV(exportData: ExportData): void {
   const { data, fields } = processData(exportData);
 
   const rows = [fields, ...data.map((row) => fields.map((f) => row[f]))];
-  downloadTextFile(buildCSV(rows), `${filename}.csv`, "text/csv;charset=utf-8");
+  downloadTextFile(buildCSV(rows), `${filename}.csv`, CSV_MIME_TYPE);
 }
 
 /** The grid export with an already-loaded SheetJS. Pure and synchronous. */

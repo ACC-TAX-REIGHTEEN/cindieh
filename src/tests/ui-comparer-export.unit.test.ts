@@ -5,11 +5,16 @@ import type { BenchmarkType, CheckResult } from "../content/checker-logic";
 import {
   buildCheckerExportRows,
   buildComparisonExportRows,
+  CHECKER_EXPORT_BASENAME,
+  COMPARISON_EXPORT_BASENAME,
   formatResultDifference,
   formatResultNumber,
+  RESULT_EXPORT_LABELS,
+  resultExportFilename,
 } from "../content/comparer-export";
 import {
   buildAoaWorkbook,
+  buildCSV,
   RESULT_DIFFERENCE_FORMAT,
   RESULT_NUMBER_FORMAT,
 } from "../content/exporter";
@@ -61,6 +66,105 @@ function expectText(cell: XLSX.CellObject, value: string): void {
   expect(cell.v).toBe(value);
   expect(cell.f).toBeUndefined();
 }
+
+/**
+ * Split one CSV line into its cells, honouring quotes and doubled quotes. This
+ * is what the property under test actually needs: a quoted comma must not shift
+ * every later column, and a regex over the raw line cannot tell the difference
+ * between "a,b" as one cell and as two.
+ */
+function csvCells(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (ch === '"') inQuotes = true;
+    else if (ch === ",") {
+      cells.push(current);
+      current = "";
+    } else current += ch;
+  }
+  cells.push(current);
+  return cells;
+}
+
+describe("result grid filenames", () => {
+  // The panel used to spell these out as literals at each download call site.
+  // They moved into comparer-export.ts so the button labels, the generated file
+  // and the microsite samples all derive from one place — which is also where
+  // microsite-sync.unit.test.ts now reads them from.
+  it("appends the extension for each format", () => {
+    expect(resultExportFilename(COMPARISON_EXPORT_BASENAME, "xlsx")).toBe("perbandingan-faktur.xlsx");
+    expect(resultExportFilename(COMPARISON_EXPORT_BASENAME, "csv")).toBe("perbandingan-faktur.csv");
+  });
+
+  it("keeps the two grids on distinct base names", () => {
+    expect(COMPARISON_EXPORT_BASENAME).not.toBe(CHECKER_EXPORT_BASENAME);
+    expect(resultExportFilename(CHECKER_EXPORT_BASENAME, "xlsx").endsWith(".xlsx")).toBe(true);
+  });
+
+  it("labels both format buttons in the panel's own wording", () => {
+    expect(RESULT_EXPORT_LABELS).toEqual({ xlsx: "Excel", csv: "CSV" });
+  });
+});
+
+describe("result CSV rows", () => {
+  // CSV is hand-rolled, so the same grid must survive the text path with its
+  // amounts still numeric-looking and its commas quoted rather than shifting
+  // every later column by one.
+  it("writes the comparison grid with the same column count as the XLSX grid", () => {
+    const rows = buildComparisonExportRows([comparison], true);
+    const lines = buildCSV(rows).replace("\uFEFF", "").trim().split("\n");
+    expect(csvCells(lines[0]!)).toHaveLength(rows[0]!.length);
+    expect(csvCells(lines[1]!)).toHaveLength(rows[0]!.length);
+    expect(lines[0]).toContain("Referensi");
+  });
+
+  it("keeps a quoted comma inside one cell instead of shifting the columns", () => {
+    // The property that makes the text format usable next to Excel: a company
+    // name containing a comma must not renumber every amount after it.
+    const rows = buildComparisonExportRows([{ ...comparison, buyerName: 'PT A, "B" S.E.' }], true);
+    const lines = buildCSV(rows).replace("\uFEFF", "").trim().split("\n");
+    expect(lines[1]).toContain('"PT A, ""B"" S.E."');
+    expect(csvCells(lines[1]!)).toHaveLength(rows[0]!.length);
+    expect(csvCells(lines[1]!)[rows[0]!.indexOf("Nama Pembeli")]).toBe('PT A, "B" S.E.');
+  });
+
+  it("writes the checker grid header verbatim", () => {
+    const rows = buildCheckerExportRows([checker], "DPP");
+    const lines = buildCSV(rows).replace("\uFEFF", "").trim().split("\n");
+    expect(csvCells(lines[0]!)).toEqual(rows[0]!.map(String));
+    expect(lines[0]).toContain("DPP NL");
+  });
+
+  it("keeps the amounts numeric rather than quoted, so a spreadsheet can sum them", () => {
+    const rows = buildCheckerExportRows([checker], "DPP");
+    const cells = csvCells(
+      buildCSV(rows).replace("\uFEFF", "").trim().split("\n")[1]!,
+    );
+    // DPP / DPP NL / PPN are columns 5-7 of the grid; numbers must survive as
+    // bare values, which is the whole reason the result grids number-format
+    // those columns in the XLSX path.
+    for (const i of [5, 6, 7]) {
+      expect(cells[i]).toBe(String(rows[1]![i]));
+      expect(Number.isNaN(Number(cells[i]))).toBe(false);
+    }
+  });
+});
 
 describe("result XLSX rows and AOA readback", () => {
   it.each([true, false])("preserves comparison values with refLain=%s", (refLainEnabled) => {

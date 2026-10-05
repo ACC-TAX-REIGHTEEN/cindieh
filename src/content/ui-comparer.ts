@@ -7,10 +7,15 @@
 // ============================================================
 
 import type { ComparisonResult } from "./comparer";
-import { downloadXLSXFile, RESULT_NUMBER_FORMAT, RESULT_DIFFERENCE_FORMAT } from "./exporter";
+import { downloadXLSXFile, downloadCSVFile, RESULT_NUMBER_FORMAT, RESULT_DIFFERENCE_FORMAT } from "./exporter";
 import {
   buildComparisonExportRows,
   buildCheckerExportRows,
+  CHECKER_EXPORT_BASENAME,
+  COMPARISON_EXPORT_BASENAME,
+  RESULT_EXPORT_LABELS,
+  resultExportFilename,
+  type ResultExportFormat,
 } from "./comparer-export";
 import { comparisonColumns, checkerColumns, type ResultColumn } from "./result-columns";
 import { startScrape } from "./main-actions";
@@ -167,7 +172,7 @@ export function injectComparerModal(): void {
   pasteSection.appendChild(pasteHeader);
   pasteSection.appendChild(textarea);
 
-  // Button row: Periksa (left) ... Export XLSX (right)
+  // Button row: Periksa (left) ... Export Excel + CSV (right)
   const btnRow = document.createElement("div");
   btnRow.className = "ch-comparer-btn-row";
 
@@ -249,9 +254,19 @@ export function injectComparerModal(): void {
   const exportBtn = document.createElement("button");
   exportBtn.id = "ch-comparer-export-btn";
   exportBtn.className = "ch-comparer-btn ch-comparer-btn-primary";
-  exportBtn.textContent = "Export XLSX";
+  exportBtn.textContent = RESULT_EXPORT_LABELS.xlsx;
   exportBtn.title = "Ekspor hasil perbandingan ke file Excel";
   exportBtn.disabled = true;
+
+  // Two plain buttons rather than a format menu: the grid export already offers
+  // XLSX and CSV side by side, and a second format must not cost a dropdown's
+  // open/close state on a panel that is already the largest module in the project.
+  const exportCsvBtn = document.createElement("button");
+  exportCsvBtn.id = "ch-comparer-export-csv-btn";
+  exportCsvBtn.className = "ch-comparer-btn";
+  exportCsvBtn.textContent = RESULT_EXPORT_LABELS.csv;
+  exportCsvBtn.title = "Ekspor hasil perbandingan ke file CSV";
+  exportCsvBtn.disabled = true;
 
   // Status filter dropdown (next to Export) — custom dropdown with checkboxes
   const filterOptions: { value: string; label: string }[] = [
@@ -316,6 +331,7 @@ export function injectComparerModal(): void {
   rightGroup.className = "ch-comparer-btn-right";
   rightGroup.appendChild(filterWrap);
   rightGroup.appendChild(exportBtn);
+  rightGroup.appendChild(exportCsvBtn);
 
   btnRow.appendChild(leftGroup);
   btnRow.appendChild(rightGroup);
@@ -395,8 +411,14 @@ export function injectComparerModal(): void {
   const checkerExportBtn = document.createElement("button");
   checkerExportBtn.id = "ch-checker-export-btn";
   checkerExportBtn.className = "ch-comparer-btn ch-comparer-btn-primary";
-  checkerExportBtn.textContent = "Export XLSX";
+  checkerExportBtn.textContent = RESULT_EXPORT_LABELS.xlsx;
   checkerExportBtn.title = "Ekspor hasil pengecekan ke file Excel";
+
+  const checkerExportCsvBtn = document.createElement("button");
+  checkerExportCsvBtn.id = "ch-checker-export-csv-btn";
+  checkerExportCsvBtn.className = "ch-comparer-btn";
+  checkerExportCsvBtn.textContent = RESULT_EXPORT_LABELS.csv;
+  checkerExportCsvBtn.title = "Ekspor hasil pengecekan ke file CSV";
 
   // Status filter dropdown for Pengecekan
   const checkerFilterOptions: { value: string; label: string }[] = [
@@ -459,6 +481,7 @@ export function injectComparerModal(): void {
   checkerRightGroup.className = "ch-comparer-btn-right";
   checkerRightGroup.appendChild(checkerFilterWrap);
   checkerRightGroup.appendChild(checkerExportBtn);
+  checkerRightGroup.appendChild(checkerExportCsvBtn);
 
   checkerBtnRow.appendChild(checkerLeftGroup);
   checkerBtnRow.appendChild(checkerRightGroup);
@@ -502,6 +525,7 @@ export function injectComparerModal(): void {
     session.viewedRefs.clear();
     runLifecycle.cancelPending("compare");
     exportBtn.disabled = true;
+    exportCsvBtn.disabled = true;
     textarea.classList.remove("ch-hidden");
     const toggleIcon = document.getElementById("ch-comparer-toggle-icon");
     if (toggleIcon) toggleIcon.className = "pi pi-chevron-up";
@@ -513,7 +537,8 @@ export function injectComparerModal(): void {
     if (filterWrap) filterWrap.classList.add("ch-hidden");
   });
 
-  exportBtn.addEventListener("click", handleExportResults);
+  exportBtn.addEventListener("click", () => handleExportResults("xlsx"));
+  exportCsvBtn.addEventListener("click", () => handleExportResults("csv"));
 
   toleranceInput.addEventListener("change", () => {
     const val = parseInt(toleranceInput.value, 10);
@@ -650,7 +675,8 @@ export function injectComparerModal(): void {
     rerunChecker();
   });
 
-  checkerExportBtn.addEventListener("click", handleCheckerExportResults);
+  checkerExportBtn.addEventListener("click", () => handleCheckerExportResults("xlsx"));
+  checkerExportCsvBtn.addEventListener("click", () => handleCheckerExportResults("csv"));
 }
 
 // ── Stored defaults ───────────────────────────────────
@@ -923,6 +949,10 @@ function buildResultRow<T>(
 function renderResults(): void {
   const exportBtn = document.getElementById("ch-comparer-export-btn") as HTMLButtonElement;
   if (exportBtn) exportBtn.disabled = session.results.length === 0;
+  // Both format buttons gate on the same thing — a grid with no results exports
+  // nothing in either format, so leaving one enabled would promise a file.
+  const exportCsvBtn = document.getElementById("ch-comparer-export-csv-btn") as HTMLButtonElement;
+  if (exportCsvBtn) exportCsvBtn.disabled = session.results.length === 0;
   const container = document.getElementById("ch-comparer-results");
   if (!container) return;
 
@@ -1082,26 +1112,37 @@ function reportExportFailure(err: unknown): void {
   }
 }
 
-function handleExportResults(): void {
+function handleExportResults(format: ResultExportFormat): void {
   const container = document.getElementById("ch-comparer-results");
   if (!container || container.classList.contains("ch-hidden")) return;
 
   if (session.results.length === 0) return;
 
   const rows = buildComparisonExportRows(session.results, session.refLainEnabled);
+  const filename = resultExportFilename(COMPARISON_EXPORT_BASENAME, format);
+  // CSV is hand-rolled and synchronous: no chunk load, so no failure to report.
+  if (format === "csv") {
+    downloadCSVFile(rows, filename);
+    return;
+  }
   const firstAmount = session.refLainEnabled ? 7 : 6;
-  void downloadXLSXFile(rows, "perbandingan-faktur.xlsx", "Perbandingan", {
+  void downloadXLSXFile(rows, filename, "Perbandingan", {
     numberFormats: Object.fromEntries(
       Array.from({ length: 5 }, (_, i) => [firstAmount + i, RESULT_NUMBER_FORMAT]),
     ),
   }).catch(reportExportFailure);
 }
 
-function handleCheckerExportResults(): void {
+function handleCheckerExportResults(format: ResultExportFormat): void {
   if (checkerSession.results.length === 0) return;
 
   const rows = buildCheckerExportRows(checkerSession.results, checkerSession.benchmark);
-  void downloadXLSXFile(rows, "pengecekan-nilai-faktur.xlsx", "Pengecekan", {
+  const filename = resultExportFilename(CHECKER_EXPORT_BASENAME, format);
+  if (format === "csv") {
+    downloadCSVFile(rows, filename);
+    return;
+  }
+  void downloadXLSXFile(rows, filename, "Pengecekan", {
     numberFormats: {
       5: RESULT_NUMBER_FORMAT, 6: RESULT_NUMBER_FORMAT, 7: RESULT_NUMBER_FORMAT,
       8: RESULT_DIFFERENCE_FORMAT, 9: RESULT_DIFFERENCE_FORMAT,

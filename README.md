@@ -86,7 +86,7 @@ Cara kerja: cukup **copy dari Excel, lalu paste** ke panel Komparator. Tidak per
 - **Toleransi** — batas selisih yang masih dianggap cocok, berguna untuk menangani pembulatan
 - **Mode Harian** — masukkan tanggal tertentu (1–31) untuk mendeteksi faktur di Coretax yang belum ada di catatan internal
 - **Filter Status** — saring hasil berdasarkan satu atau lebih status sekaligus
-- **Export XLSX** — ekspor seluruh hasil perbandingan ke file yang bisa langsung dibuka di Excel
+- **Export Excel / CSV** — ekspor seluruh hasil perbandingan, ke `perbandingan-faktur.xlsx` atau `perbandingan-faktur.csv`. CSV siap dibuka di editor teks atau dipakai untuk membandingkan dua hasil
 - **Klik baris hasil** — langsung menutup panel dan menjalankan pencarian referensi tersebut di tabel PPN Keluaran Coretax, untuk validasi cepat tanpa perlu copy-paste manual
 
 ### 5. Pengecekan Keakuratan Nilai (PPN Keluaran)
@@ -116,7 +116,7 @@ Cara pakai: buka panel **Bandingkan** (ikon daftar di toolbar), pilih tab **Peng
 **Opsi tambahan:**
 - **Toleransi** — selisih yang masih dianggap cocok (untuk pembulatan); selisih di dalam toleransi ditampilkan sebagai `-`
 - **Filter Status** — saring hasil (Semua Status, DPP Berbeda, DPP NL Berbeda, PPN Berbeda, Dua Nilai Berbeda, Data tidak lengkap)
-- **Export XLSX** — ekspor hasil pengecekan ke `pengecekan-nilai-faktur.xlsx`
+- **Export Excel / CSV** — ekspor hasil pengecekan ke `pengecekan-nilai-faktur.xlsx` atau `.csv`. Keduanya menyimpan seluruh temuan, bukan hanya yang sedang tampil
 - **Klik baris hasil** — klik 1× untuk melihat teks lengkap, klik 2× untuk mencari referensi tersebut di grid PPN Keluaran (sama seperti Komparator)
 - **Ringkasan** — "Semua faktur sesuai." bila tidak ada temuan, atau jumlah faktur yang berbeda dan yang datanya tidak lengkap
 - Hasil dipaginasi per halaman, dan angka besar tetap tersimpan sebagai angka di Excel (bukan teks)

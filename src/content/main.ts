@@ -453,7 +453,7 @@ document.addEventListener("ch:scrape-toggle", () => {
   }
 });
 
-// Export XLSX
+// Export format chosen from the toolbar dropdown (XLSX or CSV).
 document.addEventListener("ch:export-xlsx", () => {
   handleExportAction("xlsx", actionDeps);
 });
