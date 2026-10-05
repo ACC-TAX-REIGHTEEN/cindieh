@@ -40,8 +40,12 @@ export default defineConfig({
       // average while an untested one still drags it down.
       // Raised from 80/72/74/82 after the column-schema extraction, then again
       // by the run-lifecycle extraction (ADR-0014), then on branches and
-      // functions by the export-source spec extraction (ADR-0015); the measured
-      // numbers are now 83.41/75.73/78.98/85.23.
+      // functions by the export-source spec extraction (ADR-0015), then to
+      // 81.2/73.5/76.4/83.3 as the suite grew past 1280 tests; the measured
+      // numbers are now 83.73/76.58/79.59/85.55. The microsite legal-copy
+      // guards live in src/tests (excluded here), so that suite is neutral to
+      // these numbers — the headroom above the previous floors was already
+      // there and is now locked in rather than left as slack.
       //
       // Statements and lines were left alone for ADR-0015 even though the new
       // module is 100% covered: exporter.ts shrank 675 -> 381 lines, so its
@@ -50,10 +54,10 @@ export default defineConfig({
       // uncovered code, tighter ratio — not a regression to paper over, and not
       // a reason to lower a floor.
       thresholds: {
-        statements: 81.2,
-        branches: 73.5,
-        functions: 76.4,
-        lines: 83.3,
+        statements: 83.4,
+        branches: 76.3,
+        functions: 79.2,
+        lines: 85.2,
       },
     },
   },

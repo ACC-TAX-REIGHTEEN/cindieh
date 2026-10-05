@@ -61,6 +61,10 @@ const privacyPolicy = read("../../microsite/privacy.html");
 const pageHeaders = read("../../microsite/_headers");
 const robotsTxt = read("../../microsite/robots.txt");
 const sitemapXml = read("../../microsite/sitemap.xml");
+// The published legal audit. The page cites it twice (the legality FAQ and the
+// footer both send a reader there), so it is read here as a source of truth in
+// its own right. See the "legal copy" block at the end of this file.
+const legalCompliance = read("../../LEGAL_COMPLIANCE.md");
 const uiComparerSource = read("../content/ui-comparer.ts");
 const exporterSource = read("../content/exporter.ts");
 const popupHtml = read("../../popup/popup.html");
@@ -1183,6 +1187,122 @@ describe("microsite — popup preferences", () => {
           `the preference table does not state that "${name}" is ${multiplier}× slower`,
         ).toBe(true);
       }
+    }
+  });
+});
+
+// ── Legal copy ───────────────────────────────────────────────────────────
+
+describe("microsite — legal copy matches the published audit", () => {
+  // Every other block here guards code → page drift. This one guards the
+  // opposite direction: LEGAL_COMPLIANCE.md reaches a written conclusion per
+  // UU ITE article, and the page used to answer the legality FAQ with "belum
+  // bisa dijawab pasti di sini" while calling itself a preview — for a review
+  // the repository had already finished. A reader deciding whether to install
+  // an extension on a government portal was told "unknown" where the repo says
+  // "reviewed, clean". Nothing failed on that, because nothing compared the
+  // page against the document it cites.
+  //
+  // The articles are parsed out of the audit rather than hand-listed here, so a
+  // NEW article in the review fails the build until the page names it too. A
+  // parser that finds nothing fails loudly for the same reason.
+
+  /** Conclusions are written `* **Kesimpulan**: <first sentence>.` */
+  const conclusions = [
+    ...legalCompliance.matchAll(/\*\s*\*\*Kesimpulan\*\*:\s*(Cindieh[^*]*?)\.(?:\s|$)/g),
+  ].map((m) => m[1].trim());
+
+  const articles = conclusions
+    .map((c) => c.match(/Pasal (\d+) UU ITE/)?.[1])
+    .filter((a): a is string => a !== undefined);
+
+  /** The FAQ answer, located by its own question rather than by page position. */
+  const faqAnswer =
+    microsite.match(
+      /<summary>Apakah legal menggunakan[\s\S]*?<\/summary>\s*<p class="faq-a">([\s\S]*?)<\/p>/,
+    )?.[1] ?? "";
+
+  it("finds the audit conclusions the page depends on", () => {
+    expect(
+      conclusions.length,
+      "LEGAL_COMPLIANCE.md lost its **Kesimpulan** lines — this suite can no longer tell what the page is quoting",
+    ).toBeGreaterThan(0);
+    expect(
+      articles.length,
+      "no conclusion in LEGAL_COMPLIANCE.md names a Pasal anymore, so the FAQ cannot be checked against them",
+    ).toBeGreaterThan(0);
+    expect(
+      articles.length,
+      "two conclusions named the same article — the page names one article once",
+    ).toBe(new Set(articles).size);
+  });
+
+  it("keeps the page's clean bill of health honest", () => {
+    // The FAQ states the review found no violation. That is only a fair summary
+    // while every conclusion says so: a future audit that DOES find one must
+    // red this test, because the copy claiming otherwise would then be false.
+    const contrary = conclusions.filter((c) => !c.includes("tidak melanggar"));
+    expect(
+      contrary,
+      `LEGAL_COMPLIANCE.md no longer finds Cindieh compliant (${contrary.join(" | ")}) — the FAQ and footer must be rewritten`,
+    ).toEqual([]);
+  });
+
+  it("answers the legality FAQ instead of deferring the review", () => {
+    expect(
+      faqAnswer,
+      "the legality FAQ no longer has an answer — its question or its <p class=\"faq-a\"> moved",
+    ).not.toBe("");
+
+    for (const article of articles) {
+      expect(
+        flat(faqAnswer).includes(`Pasal ${article} UU ITE`),
+        `LEGAL_COMPLIANCE.md concludes on Pasal ${article} UU ITE but the legality FAQ never names it — a reader cannot check the claim`,
+      ).toBe(true);
+    }
+  });
+
+  it("carries no 'the review is still running' wording anywhere", () => {
+    // Each phrase is wording this page actually used while the audit was
+    // already finished. Matching them here is what makes the correction
+    // durable: re-adding "we cannot answer that yet" is a one-word edit, and
+    // without this check it would silently undo the fix.
+    const PENDING = [
+      "belum bisa dijawab",
+      "belum bisa dipastikan",
+      "halaman ini masih pratinjau",
+      "akan diperbarui setelah tinjauan",
+      "memerlukan tinjauan hukum",
+    ];
+
+    for (const phrase of PENDING) {
+      // Compared as a boolean on purpose: `expect(page).not.toContain(...)`
+      // prints all 44 KB of the page into the failure output, which buries the
+      // one sentence that actually regressed.
+      expect(
+        page.includes(phrase),
+        `the page still says "${phrase}" — LEGAL_COMPLIANCE.md has published its conclusions, so this is stale`,
+      ).toBe(false);
+    }
+  });
+
+  it("points readers at the audit it summarises", () => {
+    const footer = microsite.match(/<footer>[\s\S]*?<\/footer>/)?.[0] ?? "";
+    expect(
+      footer,
+      "index.html has no <footer> — the disclaimer this check reads is missing",
+    ).not.toBe("");
+
+    // Both the FAQ and the footer must cite the document, so the page's summary
+    // is never the only account of what the review found.
+    for (const [name, block] of [
+      ["the legality FAQ", faqAnswer],
+      ["the footer", footer],
+    ] as const) {
+      expect(
+        block.includes("LEGAL_COMPLIANCE.md"),
+        `${name} summarises the audit without linking LEGAL_COMPLIANCE.md`,
+      ).toBe(true);
     }
   });
 });

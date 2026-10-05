@@ -66,6 +66,20 @@ microsite/
 - **`prefers-reduced-motion` is honoured in JS, not only in CSS.** The reveal
   skips its `IntersectionObserver` entirely rather than animating and letting
   the media query undo it afterwards.
+- **The legal copy is guarded in the opposite direction.** Every other check
+  here catches the page drifting away from the code. `LEGAL_COMPLIANCE.md` is a
+  document instead, so nothing compared the page against the audit it cites: the
+  legality FAQ used to answer *"belum bisa dijawab pasti di sini"* and the
+  footer called the page a preview, for a review the repository had already
+  concluded clean on both Pasal 30 and Pasal 32 UU ITE. A reader deciding
+  whether to install an extension on a government portal was told "unknown".
+  The suite now parses the audit's `**Kesimpulan**` lines and requires the FAQ
+  to name every article they cover, forbids the "still under review" wording
+  outright, and cites the audit from both the FAQ and the footer. Two properties
+  make it durable: the articles are **parsed, not hand-listed**, so a new one in
+  the audit reddens the build until the page names it too; and a conclusion that
+  stops finding Cindieh compliant also reddens it, because the copy would then
+  be claiming a clean bill of health the audit no longer gives.
 - **`privacy.html` is a real page, not a file in the repo, because a store
   listing cannot link to GitHub.** Chrome Web Store and Firefox Add-ons both
   ask for a privacy policy **URL** at review time, so it lives at
