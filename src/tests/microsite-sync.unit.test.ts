@@ -723,7 +723,7 @@ describe("microsite — colour contrast", () => {
     [".feat-steps li", "--ink", "--paper", 14.5, 400],
     [".feat-steps li::before number", "--stamp-dark", "--paper", 12, 600],
     [".feat-problem", "--ink-soft", "--paper", 15, 400],
-    [".feat-side h4", "--ink-soft", "--card", 13, 400],
+    [".feat-side h3", "--ink-soft", "--card", 13, 400],
     [".role-item .path", "--only-ct-ink", "--only-ct-tint", 12.5, 400, CARD],
     [".role-item .who", "--ink", "--card", 15, 600],
     [".sd-node .lbl", "--ink-soft", "--card", 11, 400],
@@ -894,7 +894,15 @@ describe("microsite — colour contrast", () => {
     for (const [label, fgRef] of TEXT_PAIRS) {
       const selector = selectorOf(label);
       const found = findRule(selector);
-      if (found === undefined) continue; // descriptive entry, nothing to verify
+      // NOTE: an unresolved label is skipped, deliberately — roughly a quarter
+      // of the table is a descriptive reading (".eyebrow on alt-bg",
+      // ".btn-primary label", "::selection") rather than a literal selector,
+      // and "starts with a dot" does not tell the two apart. The consequence is
+      // that a label that USED to resolve stops being verified in silence, so
+      // any rule whose selector this project renames must also be pinned
+      // directly elsewhere; the heading subheads are pinned by the
+      // "microsite — heading outline" block for exactly that reason.
+      if (found === undefined) continue;
       const at = Number(found.slice(selector.length));
       const block = sources.slice(at + selector.length).match(/\{([^{}]*)\}/);
       if (!block) {
@@ -1305,4 +1313,100 @@ describe("microsite — legal copy matches the published audit", () => {
       ).toBe(true);
     }
   });
+});
+
+// ── Heading structure ────────────────────────────────────────────────────
+
+describe("microsite — heading outline never skips a level", () => {
+  // The page shipped thirteen <h4>s sitting directly under <h2> section
+  // headings, with no <h3> anywhere between them, so every screen reader
+  // announced an outline that jumped a level. Promoting them was a one-line
+  // revert away from regressing, and nothing noticed: the contrast table pins
+  // the COLOUR of `.feat-side h3`, which a demotion back to h4 would leave
+  // untouched. This is the check that notices the level itself moving.
+  //
+  // Levels are read in DOCUMENT ORDER rather than per container, because a skip
+  // is a property of the sequence (h1 -> h2 -> h4): validating each section in
+  // isolation would pass a page that skips inside every one of them.
+
+  const outlineOf = (html: string): { level: number; text: string }[] =>
+    [...html.matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/g)].map((m) => ({
+      level: Number(m[1]),
+      text: flat(m[2].replace(/<[^>]*>/g, "")).trim(),
+    }));
+
+  it("keeps a real rule for the promoted subheads", () => {
+    // Promoting the subheads renamed `.feat-side h4` to `.feat-side h3`, and the
+    // contrast table only verifies a label that STILL resolves to a rule — an
+    // unresolved label is skipped, so renaming the stylesheet rule alone left
+    // the suite fully green with thirteen subheads rendering at the browser's
+    // default size and spacing. Both halves are pinned here instead.
+    for (const selector of [".feat-side h3", ".install-card h3"]) {
+      expect(
+        micrositeCss.includes(`${selector}{`),
+        `${selector} has no rule in microsite.css — the promoted subheads would render unstyled`,
+      ).toBe(true);
+    }
+    expect(
+      micrositeCss.includes(".feat-side h4{"),
+      "microsite.css still styles .feat-side h4, but the page has no h4 left to style",
+    ).toBe(false);
+  });
+
+  for (const [name, html] of [
+    ["index.html", microsite],
+    ["privacy.html", privacyPolicy],
+    ["404.html", notFoundPage],
+  ] as const) {
+    it(`${name} has exactly one h1 and steps down by at most one level`, () => {
+      const outline = outlineOf(html);
+      expect(
+        outline.length,
+        `${name} lost its headings — an empty outline must not pass as correct`,
+      ).toBeGreaterThan(0);
+
+      const h1s = outline.filter((h) => h.level === 1);
+      expect(h1s.length, `${name} must have exactly one h1, found ${h1s.length}`).toBe(1);
+      expect(outline[0].level, `${name} opens at h${outline[0].level}, not h1`).toBe(1);
+
+      const skips: string[] = [];
+      for (let i = 1; i < outline.length; i++) {
+        if (outline[i].level - outline[i - 1].level > 1) {
+          skips.push(
+            `h${outline[i - 1].level} "${outline[i - 1].text}" → h${outline[i].level} "${outline[i].text}"`,
+          );
+        }
+      }
+      expect(
+        skips.join("; "),
+        `${name} skips a heading level, which is exactly what breaks the outline a screen reader navigates by`,
+      ).toBe("");
+
+      // The jump check above only sees INCREASES, so on its own it is blind to
+      // the likelier regression: demoting ONE subhead among its siblings turns
+      // h3, h3, h4, h3 into a sequence with no jump in it at all. Proved by
+      // counterfactual — that edit passed the jump check and is caught only
+      // here. Within a section, every heading after the first is a sibling
+      // subhead of it, so they have to agree.
+      //
+      // `keamanan` holds a second h2 (the pacing block is its own section-like
+      // block nested in the section), which is a legal document-order step DOWN
+      // and must not be read as a skip — hence "after the first", not "exactly
+      // one h2".
+      const sections = [
+        ...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g),
+      ].map((m) => outlineOf(m[1]));
+
+      for (const section of sections) {
+        const siblings = section.slice(1);
+        if (siblings.length < 2) continue; // nothing to disagree with
+        const levels = [...new Set(siblings.map((h) => h.level))];
+        expect(
+          levels.length,
+          `${name} has sibling subheads at mixed levels (${levels.join(", ")}) — demoting one ` +
+            `orphans it from its siblings and from the .feat-side/.install-card rules`,
+        ).toBe(1);
+      }
+    });
+  }
 });

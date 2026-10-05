@@ -66,6 +66,26 @@ microsite/
 - **`prefers-reduced-motion` is honoured in JS, not only in CSS.** The reveal
   skips its `IntersectionObserver` entirely rather than animating and letting
   the media query undo it afterwards.
+- **Heading levels are pinned, because the outline is a contract.** The page
+  shipped thirteen `<h4>`s sitting directly under `<h2>` section headings with no
+  `<h3>` between them, so every screen reader announced a level it could not
+  descend into. They are `<h3>`s now, with zero visual change (the reset covers
+  both, and each rule sets its own `font-size`).
+  `microsite-sync.unit.test.ts` reads each page's headings **in document order**
+  and fails on a skipped level, on more than one `h1`, and on sibling subheads
+  that disagree with each other. Three separate counterfactuals shaped it, and
+  the middle one is the reason it is not just a "no jump" check: demoting a
+  *single* subhead among its siblings yields `h3, h3, h4, h3` — no jump
+  anywhere in that sequence, which the obvious rule passes. The sibling check
+  is the only thing that catches it.
+  Promoting those subheads also renamed `.feat-side h4` and `.install-card h4`,
+  and `TEXT_PAIRS` **skips any label that no longer resolves to a rule** — so
+  renaming the stylesheet rule alone left the suite green with thirteen subheads
+  rendering at the browser default. Both rules are therefore pinned directly,
+  including an assertion that no `.feat-side h4` rule survives. Fixing that skip
+  in general needs a way to tell a real selector from a prose reading
+  (`.eyebrow on alt-bg`, `.btn-primary label`), which "starts with a dot" does
+  not do — so it stays a documented limitation rather than a wrong heuristic.
 - **The legal copy is guarded in the opposite direction.** Every other check
   here catches the page drifting away from the code. `LEGAL_COMPLIANCE.md` is a
   document instead, so nothing compared the page against the audit it cites: the
