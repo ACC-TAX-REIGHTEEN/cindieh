@@ -125,6 +125,19 @@ export function injectComparerModal(): void {
   const modal = document.createElement("div");
   modal.id = "ch-comparer-modal";
   modal.className = "ch-comparer-modal";
+  // The panel is a modal dialog: it covers the portal, traps nothing the user
+  // can act on behind it, and Escape dismisses it. Saying so is what lets a
+  // screen reader announce it as one and what tells assistive tech the content
+  // behind the overlay is inert — the visible "×" alone communicated neither.
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  // Named after what the two tabs actually do, since the panel has no visible
+  // heading to point aria-labelledby at.
+  modal.setAttribute("aria-label", "Perbandingan data dan pengecekan akuratan nilai");
+  // Focusable so openComparerModal() can move focus into the panel: Escape is
+  // handled on the overlay (see below) and would otherwise never be delivered
+  // while focus still sits on the portal's own button.
+  modal.tabIndex = -1;
 
   // Header
   const header = document.createElement("div");
@@ -540,6 +553,26 @@ export function injectComparerModal(): void {
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) closeComparerModal();
   });
+  // Escape closes the panel. The listener lives on the OVERLAY rather than on
+  // document, so the master-switch teardown that removes the element also drops
+  // the handler with it — a document-level one would outlive the panel and keep
+  // swallowing a key the portal may want.
+  //
+  // One press does the least destructive thing available: dismiss an open
+  // filter menu first, and only close the panel when there is none. Closing a
+  // 300-row comparison because the user meant to close a dropdown would be a
+  // harsh reading of the same gesture.
+  overlay.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const menus = [filterMenu, checkerFilterMenu];
+    const openMenu = menus.find((menu) => !menu.classList.contains("ch-hidden"));
+    if (openMenu) {
+      e.stopPropagation();
+      openMenu.classList.add("ch-hidden");
+      return;
+    }
+    closeComparerModal();
+  });
 
   checkBtn.addEventListener("click", handleCheck);
 
@@ -780,6 +813,12 @@ export function openComparerModal(targetTab: "compare" | "check" = "compare"): v
   if (overlay) {
     overlay.classList.remove("ch-hidden");
     overlay.style.display = "flex";
+    // Move focus into the panel first. Escape is handled on the overlay, so a
+    // focus still sitting on the portal's own button would leave the one key a
+    // dialog user reaches for doing nothing. The branch below then hands focus
+    // to the textarea when there is one to type into.
+    const modalEl = document.getElementById("ch-comparer-modal");
+    if (modalEl) modalEl.focus({ preventScroll: true });
 
     const tabCheckerBtn = document.getElementById("ch-tab-checker");
     if (tabCheckerBtn) {

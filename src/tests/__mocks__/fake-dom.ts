@@ -17,7 +17,6 @@ export type FakeListener = (event?: unknown) => void;
 
 export class FakeEl {
   id = "";
-  className = "";
   style: Record<string, string> = {};
   value = "";
   title = "";
@@ -26,6 +25,13 @@ export class FakeEl {
   src = "";
   htmlFor = "";
   rows = 0;
+  /**
+   * The DOM's tabIndex property. A real element defaults to -1, and the panel
+   * sets it explicitly to -1 so it can hold focus; a fake that had no such
+   * field would make "is the panel focusable" untestable and would let a
+   * missing tabIndex pass unnoticed.
+   */
+  tabIndex = -1;
   placeholder = "";
   textContent = "";
   children: FakeEl[] = [];
@@ -43,27 +49,56 @@ export class FakeEl {
   tagName: string;
   doc: FakeDoc;
 
+  /**
+   * The backing store for BOTH className and classList.
+   *
+   * In the real DOM they are two views of one list, and the code under test
+   * writes them interchangeably -- `el.className = "a b"` to build an element,
+   * `el.classList.add("ch-hidden")` to hide it later. The fake used to keep an
+   * independent Set, so an element built with a class string was invisible to
+   * its own classList: a `contains("ch-hidden")` guard read false for an
+   * element that was, in the browser, plainly hidden. That is exactly the shape
+   * of bug a fake is supposed to rule out, and it hid the panel's Escape
+   * handler while the tests stayed green. One source of truth, faithfully.
+   */
+  private classSet = new Set<string>();
+
   constructor(tagName: string, doc: FakeDoc) {
     this.tagName = tagName;
     this.doc = doc;
+    const classes = this.classSet;
     this.classList = {
-      classes: new Set<string>(),
+      classes,
       add(c: string): void {
-        this.classes.add(c);
+        classes.add(c);
       },
       remove(c: string): void {
-        this.classes.delete(c);
+        classes.delete(c);
       },
       toggle(c: string, force?: boolean): boolean {
-        const shouldAdd = force ?? !this.classes.has(c);
-        if (shouldAdd) this.classes.add(c);
-        else this.classes.delete(c);
+        const shouldAdd = force ?? !classes.has(c);
+        if (shouldAdd) classes.add(c);
+        else classes.delete(c);
         return shouldAdd;
       },
       contains(c: string): boolean {
-        return this.classes.has(c);
+        return classes.has(c);
       },
     };
+  }
+
+  /** The DOM's single class list, seen through either name. */
+  get className(): string {
+    return [...this.classSet].join(" ");
+  }
+
+  set className(value: string) {
+    // Replace the CONTENTS, not the Set object: classList's methods closed over
+    // this one instance in the constructor, so swapping the instance would
+    // silently split the two views again -- which is the very bug this class of
+    // fake exists to rule out.
+    this.classSet.clear();
+    for (const c of value.split(/\s+/).filter(Boolean)) this.classSet.add(c);
   }
 
   /**
@@ -152,9 +187,21 @@ export class FakeEl {
     return { bottom: 0, left: 0, top: 0, right: 0, width: 0, height: 0 };
   }
 
+  /**
+   * Records the call instead of moving focus anywhere. The real DOM would move
+   * it, and a test asserting "focus went into the panel" needs to be able to see
+   * that, but the fake has no focus tree to move it through. `focusCalls` on the
+   * document is the assertion surface; the last one is the current owner, which
+   * is what "focus is on the panel" means in practice.
+   */
+  focus(options?: { preventScroll?: boolean }): void {
+    void options;
+    this.doc.focusCalls.push(this);
+  }
+
   matches(sel: string): boolean {
     if (sel.startsWith("#")) return this.id === sel.slice(1);
-    if (sel.startsWith(".")) return this.className.split(/\s+/).includes(sel.slice(1));
+    if (sel.startsWith(".")) return this.classList.contains(sel.slice(1));
     return this.tagName.toLowerCase() === sel.toLowerCase();
   }
 
@@ -190,6 +237,12 @@ export class FakeDoc {
   /** main.ts branches on this at import time; "loading" keeps init on `load`. */
   readyState = "loading";
   listeners = new Map<string, Set<FakeListener>>();
+  /**
+   * Every element focus() was called on, in order. The fake has no focus tree,
+   * so this is the only way a test can see that focus moved; the last entry is
+   * the element that would currently hold it.
+   */
+  focusCalls: FakeEl[] = [];
 
   constructor() {
     this.body = new FakeEl("body", this);

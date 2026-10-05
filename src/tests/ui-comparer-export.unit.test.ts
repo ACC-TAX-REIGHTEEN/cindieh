@@ -30,7 +30,12 @@ vi.mock("../content/run-lifecycle", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../content/run-lifecycle")>();
   return { ...actual, runLifecycle: actual.createRunLifecycle() };
 });
-vi.mock("../content/page-context", () => ({ isOutputTaxPage: () => true }));
+// Both page predicates true: the panel gates the checker tab on the VAT-invoice
+// pages, and every case here needs the two tabs present.
+vi.mock("../content/page-context", () => ({
+  isOutputTaxPage: () => true,
+  isVatInvoicePage: () => true,
+}));
 
 const comparison: ComparisonResult = {
   reference: "000123", refLain: "000456", buyerName: "Pembeli",
@@ -432,5 +437,105 @@ describe("comparison UI validation and exports", () => {
     expect(sheet.I2).toBeUndefined();
     expect(sheet.J2).toBeUndefined();
     expectText(sheet.K2, "Data tidak lengkap");
+  });
+});
+
+// ── The panel as a dialog ───────────────────────────────────────────────
+// The panel covers the portal and is dismissed with a key, so it has to say
+// so: role="dialog" + aria-modal is what a screen reader acts on, and Escape is
+// the one affordance a dialog user reaches for before reading anything on it.
+// Both were absent -- the only dismiss paths were the "×" and a click outside.
+
+describe("the panel as a modal dialog", () => {
+  let doc: FakeDoc;
+  let ui: typeof import("../content/ui-comparer");
+
+  /** Fire a keydown on an element, as a real press would bubble. */
+  function press(target: FakeEl, key: string): void {
+    for (const listener of target.listeners.keydown ?? []) listener({ key, stopPropagation: () => {} });
+  }
+
+  const overlay = (): FakeEl => doc.getElementById("ch-comparer-overlay")!;
+  const modal = (): FakeEl => doc.getElementById("ch-comparer-modal")!;
+  const isClosed = (): boolean => overlay().classList.contains("ch-hidden");
+
+  beforeEach(async () => {
+    vi.resetModules();
+    doc = stubFakeDom().doc;
+    const create = doc.createElement.bind(doc);
+    vi.spyOn(doc, "createElement").mockImplementation((tag) =>
+      Object.assign(create(tag), { disabled: false, checked: false }),
+    );
+    ui = await import("../content/ui-comparer");
+    ui.injectComparerModal();
+    // Opening the panel pre-fills the textarea from the clipboard, so a test
+    // that opens it needs the API to exist. Rejects are already swallowed by
+    // the caller; an empty resolve is the honest "nothing on the clipboard".
+    vi.stubGlobal("navigator", { clipboard: { readText: async () => "" } });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("declares itself a modal dialog with an accessible name", () => {
+    expect(modal().getAttribute("role")).toBe("dialog");
+    expect(modal().getAttribute("aria-modal")).toBe("true");
+    // Named, or a screen reader announces an unlabelled dialog.
+    expect(modal().getAttribute("aria-label")).toBeTruthy();
+    // Focusable, so focus can be moved INTO it -- Escape is delivered to the
+    // overlay, and an overlay nothing inside holds focus for would swallow it.
+    expect(modal().tabIndex).toBe(-1);
+  });
+
+  it("moves focus into the panel when it opens", () => {
+    doc.focusCalls.length = 0;
+    ui.openComparerModal("compare");
+    expect(doc.focusCalls[0]).toBe(modal());
+  });
+
+  it("closes on Escape", () => {
+    ui.openComparerModal("compare");
+    expect(isClosed()).toBe(false);
+
+    press(overlay(), "Escape");
+
+    expect(isClosed()).toBe(true);
+  });
+
+  it("ignores every other key", () => {
+    ui.openComparerModal("compare");
+    press(overlay(), "Enter");
+    press(overlay(), "a");
+    expect(isClosed()).toBe(false);
+  });
+
+  it("closes an open filter menu first, leaving the panel open", () => {
+    // Dismissing a 300-row comparison because the user meant to close a
+    // dropdown would be a harsh reading of one gesture, so the first Escape
+    // takes the menu and a second takes the panel.
+    ui.openComparerModal("compare");
+    const menu = doc.getElementById("ch-comparer-filter-menu")!;
+    const toggle = doc.getElementById("ch-comparer-filter-toggle")!;
+    for (const listener of toggle.listeners.click ?? []) {
+      listener({ stopPropagation: () => {} });
+    }
+    expect(menu.classList.contains("ch-hidden")).toBe(false);
+
+    press(overlay(), "Escape");
+    expect(menu.classList.contains("ch-hidden")).toBe(true);
+    expect(isClosed()).toBe(false);
+
+    press(overlay(), "Escape");
+    expect(isClosed()).toBe(true);
+  });
+
+  it("registers the Escape handler on the overlay, not the document", () => {
+    // A document-level listener would outlive the panel: the master-switch
+    // teardown removes the element, and the handler would go on swallowing a
+    // key the portal may want.
+    expect(doc.listenerCount("keydown")).toBe(0);
+    expect(overlay().listeners.keydown).toHaveLength(1);
   });
 });
