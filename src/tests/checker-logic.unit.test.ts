@@ -1,6 +1,11 @@
 // Unit tests for checker-logic.ts
 import { describe, it, expect } from "vitest";
 import {
+  DPP_NILAI_LAIN_DENOMINATOR,
+  DPP_NILAI_LAIN_NUMERATOR,
+  PPN_RATE,
+  PPN_RATE_ON_NILAI_LAIN,
+  PPN_RATE_PERCENT,
   createCheckerSession,
   checkRowAccuracy,
   checkAllRowsAccuracy,
@@ -295,6 +300,55 @@ describe("counterparty resolution across both PPN grids", () => {
     expect(masuk?.status).toBe(keluar?.status);
     expect(masuk?.dppDiff).toBe(keluar?.dppDiff);
     expect(masuk?.ppnDiff).toBe(keluar?.ppnDiff);
+  });
+});
+
+// The audit finding this pins: the tax numbers used to be literals in five
+// branches and in the tests themselves, so a rate change would make every row
+// read "Berbeda" with nothing failing. They are now one declaration, and these
+// assert that declaration still means 11% VAT on an 11/12 base.
+describe("tax policy constants", () => {
+  it("states the Indonesian VAT rate and the DPP Nilai Lain fraction", () => {
+    expect(PPN_RATE_PERCENT).toBe(11);
+    expect(PPN_RATE).toBe(0.11);
+    expect(DPP_NILAI_LAIN_NUMERATOR).toBe(11);
+    expect(DPP_NILAI_LAIN_DENOMINATOR).toBe(12);
+    // PPN on the nilai-lain base is 12%, one point above the DPP rate.
+    expect(PPN_RATE_ON_NILAI_LAIN).toBe(0.12);
+  });
+
+  it("derives the nilai-lain rate from the DPP rate and the fraction, not from a magic +1", () => {
+    // The same tax on the 11/12 base: PPN_RATE x (12/11). If the three
+    // benchmarks disagreed about the fraction, the same invoice would be called
+    // inconsistent depending on which Acuan was chosen — so this is a real
+    // invariant, not a restatement of the constants.
+    const fraction = DPP_NILAI_LAIN_NUMERATOR / DPP_NILAI_LAIN_DENOMINATOR;
+    expect(PPN_RATE_ON_NILAI_LAIN).toBeCloseTo(PPN_RATE / fraction, 12);
+    // The same relation read back the other way round.
+    expect(PPN_RATE_ON_NILAI_LAIN * fraction).toBeCloseTo(PPN_RATE, 12);
+  });
+
+  it("round-trips one invoice across all three Acuan without disagreeing with itself", () => {
+    // DPP 12.000.000 -> DPP NL 11.000.000 -> PPN 1.320.000. Each benchmark takes
+    // one of those as given and must derive the other two to the same values.
+    const dpp = 12000000, dppNl = 11000000, ppn = 1320000;
+    const fromDpp = checkRowAccuracy({ SellingPrice: dpp, OtherTaxBase: dppNl, VAT: ppn }, "DPP");
+    const fromNl = checkRowAccuracy({ SellingPrice: dpp, OtherTaxBase: dppNl, VAT: ppn }, "DPP_NILAI_LAIN");
+    const fromPpn = checkRowAccuracy({ SellingPrice: dpp, OtherTaxBase: dppNl, VAT: ppn }, "PPN");
+    // A consistent invoice is never listed at all, whichever Acuan is chosen.
+    expect(fromDpp).toBeNull();
+    expect(fromNl).toBeNull();
+    expect(fromPpn).toBeNull();
+  });
+
+  it("reproduces the old inline literals exactly", () => {
+    // Guards the refactor itself: the constants must not have shifted rounding.
+    expect(Math.round((12000000 * DPP_NILAI_LAIN_NUMERATOR) / DPP_NILAI_LAIN_DENOMINATOR))
+      .toBe(Math.round((12000000 * 11) / 12));
+    expect(Math.round(12000000 * PPN_RATE)).toBe(Math.round(12000000 * 0.11));
+    expect(Math.round(11000000 * PPN_RATE_ON_NILAI_LAIN)).toBe(Math.round(11000000 * 0.12));
+    expect(Math.round(1320000 / PPN_RATE)).toBe(Math.round(1320000 / 0.11));
+    expect(Math.round(1320000 / PPN_RATE_ON_NILAI_LAIN)).toBe(Math.round(1320000 / 0.12));
   });
 });
 
