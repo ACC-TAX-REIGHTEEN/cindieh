@@ -52,3 +52,19 @@ jobs:
       # from the code without failing this job.
       - name: Test
         run: pnpm test
+
+      # The coverage run is a SECOND, separate invocation rather than a flag on
+      # the step above. `pnpm test` is what contributors run locally and what the
+      # microsite guard needs; folding coverage into it would make the ordinary
+      # loop pay the v8 instrumentation cost for a number nobody reads until
+      # review. What the second run buys is the enforced `thresholds` block in
+      # vitest.config.ts -- the ratchet. Without this step the floors were
+      # documentation: local `pnpm test` never evaluated them, so a change could
+      # drop coverage by several points and stay green on every push.
+      #
+      # The floors sit just under the measured numbers on purpose, so ordinary
+      # churn cannot redden the build while NEW untested logic does. They are
+      # raised as coverage improves and must never be lowered to make a red
+      # build green.
+      - name: Coverage ratchet
+        run: pnpm test:coverage
