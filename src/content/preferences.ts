@@ -13,8 +13,10 @@ import { browserAPI } from "./browser-shim";
 import { debugError } from "./debug";
 import {
   BULK_CONFIRM_STORAGE_KEY,
+  CHECKER_DEFAULTS_STORAGE_KEY,
   COMPARER_DEFAULTS_STORAGE_KEY,
   DEFAULT_BULK_CONFIRM_THRESHOLD,
+  DEFAULT_CHECKER_DEFAULTS,
   DEFAULT_COMPARER_DEFAULTS,
   DEFAULT_DELAY_PRESET,
   DEFAULT_ENABLED,
@@ -30,6 +32,7 @@ import {
   ONE_CLICK_EXPORT_STORAGE_KEY,
   PREFERENCE_STORAGE_KEYS,
   normalizeBulkConfirmThreshold,
+  normalizeCheckerDefaults,
   normalizeComparerDefaults,
   normalizeDelayPreset,
   normalizeEnabled,
@@ -37,6 +40,7 @@ import {
   normalizeFilenamePrefix,
   normalizeNotifyOnComplete,
   normalizeOneClickExport,
+  type CheckerDefaults,
   type ComparerDefaults,
   type DelayPreset,
   type StoredExportFormat,
@@ -49,6 +53,7 @@ export interface ExtensionPreferences {
   delayPreset: DelayPreset;
   bulkConfirmThreshold: number;
   comparerDefaults: ComparerDefaults;
+  checkerDefaults: CheckerDefaults;
   filenamePrefix: string;
   notifyOnComplete: boolean;
 }
@@ -60,6 +65,7 @@ export const DEFAULT_PREFERENCES: ExtensionPreferences = {
   delayPreset: DEFAULT_DELAY_PRESET,
   bulkConfirmThreshold: DEFAULT_BULK_CONFIRM_THRESHOLD,
   comparerDefaults: { ...DEFAULT_COMPARER_DEFAULTS, statusFilter: [] },
+  checkerDefaults: { ...DEFAULT_CHECKER_DEFAULTS, statusFilter: [] },
   filenamePrefix: DEFAULT_FILENAME_PREFIX,
   notifyOnComplete: DEFAULT_NOTIFY_ON_COMPLETE,
 };
@@ -77,6 +83,7 @@ export function normalizePreferences(raw: Record<string, unknown>): ExtensionPre
     delayPreset: normalizeDelayPreset(raw[DELAY_PRESET_STORAGE_KEY]),
     bulkConfirmThreshold: normalizeBulkConfirmThreshold(raw[BULK_CONFIRM_STORAGE_KEY]),
     comparerDefaults: normalizeComparerDefaults(raw[COMPARER_DEFAULTS_STORAGE_KEY]),
+    checkerDefaults: normalizeCheckerDefaults(raw[CHECKER_DEFAULTS_STORAGE_KEY]),
     filenamePrefix: normalizeFilenamePrefix(raw[FILENAME_PREFIX_STORAGE_KEY]),
     notifyOnComplete: normalizeNotifyOnComplete(raw[NOTIFY_ON_COMPLETE_STORAGE_KEY]),
   };
@@ -91,6 +98,7 @@ export function normalizePreferences(raw: Record<string, unknown>): ExtensionPre
 let cachedPreferences: ExtensionPreferences = {
   ...DEFAULT_PREFERENCES,
   comparerDefaults: { ...DEFAULT_COMPARER_DEFAULTS, statusFilter: [] },
+  checkerDefaults: { ...DEFAULT_CHECKER_DEFAULTS, statusFilter: [] },
 };
 
 /** The most recent preference value this context knows about. Never rejects. */
@@ -109,6 +117,7 @@ export function resetPreferencesSnapshot(): ExtensionPreferences {
   cachedPreferences = {
     ...DEFAULT_PREFERENCES,
     comparerDefaults: { ...DEFAULT_COMPARER_DEFAULTS, statusFilter: [] },
+    checkerDefaults: { ...DEFAULT_CHECKER_DEFAULTS, statusFilter: [] },
   };
   return cachedPreferences;
 }
@@ -140,6 +149,7 @@ const STORAGE_KEY_BY_FIELD: Record<keyof ExtensionPreferences, string> = {
   delayPreset: DELAY_PRESET_STORAGE_KEY,
   bulkConfirmThreshold: BULK_CONFIRM_STORAGE_KEY,
   comparerDefaults: COMPARER_DEFAULTS_STORAGE_KEY,
+  checkerDefaults: CHECKER_DEFAULTS_STORAGE_KEY,
   filenamePrefix: FILENAME_PREFIX_STORAGE_KEY,
   notifyOnComplete: NOTIFY_ON_COMPLETE_STORAGE_KEY,
 };
@@ -204,6 +214,11 @@ export function preferencesFromChanges(
   if (COMPARER_DEFAULTS_STORAGE_KEY in changes) {
     patch.comparerDefaults = normalizeComparerDefaults(
       changes[COMPARER_DEFAULTS_STORAGE_KEY]?.newValue,
+    );
+  }
+  if (CHECKER_DEFAULTS_STORAGE_KEY in changes) {
+    patch.checkerDefaults = normalizeCheckerDefaults(
+      changes[CHECKER_DEFAULTS_STORAGE_KEY]?.newValue,
     );
   }
   if (FILENAME_PREFIX_STORAGE_KEY in changes) {

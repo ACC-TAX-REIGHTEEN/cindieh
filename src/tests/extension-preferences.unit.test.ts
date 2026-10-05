@@ -22,6 +22,11 @@ import {
   PREFERENCE_STORAGE_KEYS,
   normalizeBulkConfirmThreshold,
   normalizeComparerDefaults,
+  normalizeCheckerDefaults,
+  BENCHMARK_TYPES,
+  CHECKER_DEFAULTS_STORAGE_KEY,
+  DEFAULT_CHECKER_DEFAULTS,
+  MAX_CHECKER_TOLERANCE,
   normalizeDelayPreset,
   normalizeEnabled,
   normalizeExportFormat,
@@ -288,7 +293,56 @@ describe("normalizeComparerDefaults", () => {
   });
 
   it("treats a non-array status filter as 'all statuses'", () => {
-    expect(normalizeComparerDefaults({ statusFilter: "COCOK" }).statusFilter).toEqual([]);
+expect(normalizeComparerDefaults({ statusFilter: "COCOK" }).statusFilter).toEqual([]);
+  });
+});
+
+// ── Checker defaults ───────────────────────────────────
+
+describe("normalizeCheckerDefaults", () => {
+  it("falls back to the documented defaults for anything that is not an object", () => {
+    expect(normalizeCheckerDefaults(undefined)).toEqual(DEFAULT_CHECKER_DEFAULTS);
+    expect(normalizeCheckerDefaults("nope")).toEqual(DEFAULT_CHECKER_DEFAULTS);
+    expect(normalizeCheckerDefaults(null)).toEqual(DEFAULT_CHECKER_DEFAULTS);
+    expect(normalizeCheckerDefaults([])).toEqual(DEFAULT_CHECKER_DEFAULTS);
+  });
+
+  it("accepts exactly the benchmarks the panel offers, and nothing else", () => {
+    for (const benchmark of BENCHMARK_TYPES) {
+      expect(normalizeCheckerDefaults({ benchmark }).benchmark).toBe(benchmark);
+    }
+    // A benchmark the session cannot act on must never reach the control, or
+    // the panel would show a value that checking silently ignores.
+    expect(normalizeCheckerDefaults({ benchmark: "LUAR" }).benchmark).toBe("DPP");
+    expect(normalizeCheckerDefaults({ benchmark: "" }).benchmark).toBe("DPP");
+  });
+
+  it("clamps the tolerance the same way the comparer's", () => {
+    expect(normalizeCheckerDefaults({ tolerance: -3 }).tolerance).toBe(0);
+    expect(normalizeCheckerDefaults({ tolerance: 4.9 }).tolerance).toBe(4);
+    expect(normalizeCheckerDefaults({ tolerance: "250" }).tolerance).toBe(250);
+    expect(normalizeCheckerDefaults({ tolerance: Number.NaN }).tolerance).toBe(0);
+    expect(normalizeCheckerDefaults({ tolerance: Number.POSITIVE_INFINITY }).tolerance).toBe(0);
+    expect(normalizeCheckerDefaults({ tolerance: 1e18 }).tolerance).toBe(MAX_CHECKER_TOLERANCE);
+  });
+
+  it("keeps only known statuses, in the canonical order, and no duplicates", () => {
+    const normalized = normalizeCheckerDefaults({
+      statusFilter: ["DATA_TIDAK_LENGKAP", "NOT_A_STATUS", "PPN_BERBEDA", "PPN_BERBEDA"],
+    });
+
+    expect(normalized.statusFilter).toEqual(["PPN_BERBEDA", "DATA_TIDAK_LENGKAP"]);
+  });
+
+  it("treats a non-array status filter as 'all statuses'", () => {
+    expect(normalizeCheckerDefaults({ statusFilter: "PPN_BERBEDA" }).statusFilter).toEqual([]);
+  });
+});
+
+describe("preference storage keys", () => {
+  it("registers the checker defaults alongside the comparer's", () => {
+    expect(PREFERENCE_STORAGE_KEYS).toContain(CHECKER_DEFAULTS_STORAGE_KEY);
+    expect(CHECKER_DEFAULTS_STORAGE_KEY).toBe("cindiehCheckerDefaults");
   });
 });
 

@@ -32,9 +32,12 @@ import { getStatusLabel } from "../content/comparer-logic";
 import { generateDynamicFilename } from "../content/exporter";
 import { generateOutputTaxFilename, generateWithholdingFilename } from "../content/downloader";
 import {
+  BENCHMARK_TYPES,
+  CHECKER_STATUSES,
   COMPARISON_STATUSES,
   DEFAULT_BULK_CONFIRM_THRESHOLD,
   DELAY_PRESET_MULTIPLIER,
+  DELAY_PRESETS,
   NEVER_CONFIRM_THRESHOLD,
   normalizeFilenamePrefix,
 } from "../shared/extension-preferences";
@@ -66,6 +69,7 @@ const sitemapXml = read("../../microsite/sitemap.xml");
 // its own right. See the "legal copy" block at the end of this file.
 const legalCompliance = read("../../LEGAL_COMPLIANCE.md");
 const uiComparerSource = read("../content/ui-comparer.ts");
+const extensionPreferencesSource = read("../shared/extension-preferences.ts");
 const comparerExportSource = read("../content/comparer-export.ts");
 const exporterSource = read("../content/exporter.ts");
 const popupHtml = read("../../popup/popup.html");
@@ -134,17 +138,35 @@ const statusLegend = (id: string): string =>
   panel(id).match(/<div class="status-legend">([\s\S]*?)<\/div>/)?.[1] ?? "";
 
 /**
- * `ui-comparer.ts` declares its two filter menus as inline `{ value, label }`
- * tables and reads them with `document.createElement`, so there is no exported
- * array to import. They are read from the source instead — and a parser that
- * finds nothing says so rather than passing silently (see the shortcut suite).
+ * The checker's status-filter options, read from the TWO places that own them
+ * rather than from one array literal in the panel.
+ *
+ * `ui-comparer.ts` builds its filter menu with `document.createElement`, so the
+ * labels have no exported array to import and are read from the source. It used
+ * to be one list there — the values AND the labels in a single `{ value, label }`
+ * table — and the parser found it there.
+ * The values moved to the preference schema (CHECKER_STATUSES) when the popup
+ * gained stored checker defaults, and the labels stayed in the panel, so the
+ * options are now a spread over a schema-driven map. A parser still pointed at
+ * the old array would have returned just the "ALL" reset entry and then passed
+ * VACUOUSLY for the rest of the suite -- which is precisely the silence this
+ * suite exists to prevent. Each half is asserted non-empty by its callers, and
+ * `gives every checker status a panel label and no extra ones` below
+ * additionally proves the panel's map and the schema agree key for key.
  */
-const parseFilterOptions = (variable: string): readonly { value: string; label: string }[] => {
-  const body =
-    uiComparerSource.match(new RegExp(`const ${variable}[^=]*= \\[([\\s\\S]*?)\\n\\s*\\];`))?.[1] ?? "";
-  return [...body.matchAll(/\{ value: "([A-Za-z_]+)", label: "([^"]+)" \}/g)].map((m) => ({
+const checkerFilterOptions = (): readonly { value: string; label: string }[] => {
+  const valuesBody =
+    extensionPreferencesSource.match(/CHECKER_STATUSES = \[([\s\S]*?)\] as const;/)?.[1] ?? "";
+  const labelsBody =
+    uiComparerSource.match(/const CHECKER_STATUS_LABELS: Record<string, string> = \{([\s\S]*?)\n\};/)?.[1] ??
+    "";
+
+  const labels = new Map(
+    [...labelsBody.matchAll(/([A-Z_]+): "([^"]+)"/g)].map((m) => [m[1], m[2]]),
+  );
+  return [...valuesBody.matchAll(/"([A-Z_]+)"/g)].map((m) => ({
     value: m[1],
-    label: m[2],
+    label: labels.get(m[1]) ?? "",
   }));
 };
 
@@ -360,14 +382,13 @@ describe("microsite — status labels", () => {
   });
 
   it("documents every status filter the checker offers", () => {
-    const options = parseFilterOptions("checkerFilterOptions");
+    const options = checkerFilterOptions();
     expect(
       options.length,
-      "no checker filter options parsed from ui-comparer.ts — update the parser in this suite",
+      "no checker status filters parsed from the preference schema — update the parser in this suite",
     ).toBeGreaterThan(0);
 
-    // "Semua Status" is the filter's own reset entry, not a result status.
-    for (const { value, label } of options.filter((option) => option.value !== "ALL")) {
+    for (const { value, label } of options) {
       expect(
         checkerLegend.includes(label),
         `the checker status legend does not show the ${value} filter ("${label}")`,
@@ -375,10 +396,25 @@ describe("microsite — status labels", () => {
     }
   });
 
+  it("gives every checker status a panel label and no extra ones", () => {
+    // The schema drives the popup's checkboxes and the panel's labels the map
+    // separately, so a key added to one and not the other has to be reported
+    // here rather than surfacing as an unlabelled checkbox.
+    const labelled =
+      uiComparerSource.match(/const CHECKER_STATUS_LABELS: Record<string, string> = \{([\s\S]*?)\n\};/)![1];
+    const keys = [...labelled.matchAll(/([A-Z_]+): "([^"]+)"/g)].map((m) => m[1]);
+    const expected = checkerFilterOptions().map((option) => option.value);
+
+    expect(keys).toEqual(expected);
+    for (const option of checkerFilterOptions()) {
+      expect(option.label, `no panel label for the ${option.value} checker status`).not.toBe("");
+    }
+  });
+
   it("shows no status on either tab that the code does not produce", () => {
     const known = new Set<string>([
       ...COMPARISON_STATUSES.map((status) => getStatusLabel(status)),
-      ...parseFilterOptions("checkerFilterOptions").map((option) => option.label),
+      ...checkerFilterOptions().map((option) => option.label),
     ]);
 
     for (const [legend, tab] of [
@@ -1245,7 +1281,14 @@ describe("microsite — popup preferences", () => {
   });
 
   it("keeps the pacing presets and their multipliers honest in both places", () => {
-    const options = [...popupHtml.matchAll(/<option value="([^"]+)">([^<]+)<\/option>/g)].map((m) => ({
+    // Read the PACING select's own options, not every <option> in the popup.
+    // The popup now has a second select (the checker's benchmark), and a
+    // page-wide scan would have demanded that "DPP" be a rate-limit preset
+    // with a 1x multiplier. A fact checked inside the wrong container fails
+    // for the wrong reason, which is worse than not checking it.
+    const pacingSelect =
+      popupHtml.match(/<select id="delay-preset"[^>]*>([\s\S]*?)<\/select>/)?.[1] ?? "";
+    const options = [...pacingSelect.matchAll(/<option value="([^"]+)">([^<]+)<\/option>/g)].map((m) => ({
       value: m[1],
       label: flat(m[2]),
     }));
@@ -1267,6 +1310,13 @@ describe("microsite — popup preferences", () => {
       const name = label.replace(/\s*\(.*\)$/, "");
       expect(prefTable.includes(`<em>${name}</em>`), `the preference table does not offer "${name}"`)
         .toBe(true);
+      // The reverse direction, which the original one-sided check never had:
+      // deleting a preset from the popup left the loop simply shorter, so the
+      // suite stayed green while a documented pacing choice became unselectable.
+      expect(
+        [...popupHtml.matchAll(/<option value="(hati-hati|sabar|normal)">/g)].map((m) => m[1]).sort(),
+        "the popup does not offer every pacing preset the schema defines",
+      ).toEqual([...DELAY_PRESETS].sort());
       if (multiplier > 1) {
         expect(
           prefTable.includes(`${multiplier}\u00d7 lebih lambat`),
@@ -1274,6 +1324,31 @@ describe("microsite — popup preferences", () => {
         ).toBe(true);
       }
     }
+  });
+
+  it("offers the popup exactly the benchmarks the checker can check", () => {
+    const select =
+      popupHtml.match(/<select id="checker-benchmark"[^>]*>([\s\S]*?)<\/select>/)?.[1] ?? "";
+    const options = [...select.matchAll(/<option value="([^"]+)">([^<]+)<\/option>/g)].map((m) => ({
+      value: m[1],
+      label: flat(m[2]),
+    }));
+    expect(options.length, "the popup lost its benchmark options — update this suite").toBeGreaterThan(0);
+
+    // Both directions: no benchmark the schema defines may be unselectable in
+    // the popup, and the popup may not offer a value the session cannot store.
+    expect(options.map((o) => o.value).sort()).toEqual([...BENCHMARK_TYPES].sort());
+    for (const { value, label } of options) {
+      expect(
+        prefTable.includes(`<em>${label}</em>`),
+        `the preference table does not offer the "${label}" benchmark (${value})`,
+      ).toBe(true);
+    }
+  });
+
+  it("offers a checkbox per checker status and for no other status", () => {
+    const boxes = [...popupHtml.matchAll(/id="checker-status-([A-Z_]+)"/g)].map((m) => m[1]);
+    expect(boxes.sort()).toEqual([...CHECKER_STATUSES].sort());
   });
 });
 

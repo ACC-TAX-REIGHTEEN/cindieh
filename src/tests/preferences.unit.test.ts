@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BULK_CONFIRM_STORAGE_KEY,
+  CHECKER_DEFAULTS_STORAGE_KEY,
   COMPARER_DEFAULTS_STORAGE_KEY,
   DELAY_PRESET_STORAGE_KEY,
   ENABLED_STORAGE_KEY,
@@ -96,6 +97,7 @@ describe("readPreferences", () => {
       delayPreset: "normal",
       bulkConfirmThreshold: 10,
       comparerDefaults: { tolerance: 0, dailyDates: "", statusFilter: [] },
+      checkerDefaults: { benchmark: "DPP", tolerance: 0, statusFilter: [] },
       filenamePrefix: "",
       notifyOnComplete: false,
     });
@@ -108,6 +110,7 @@ describe("readPreferences", () => {
       [DELAY_PRESET_STORAGE_KEY, "sabar"],
       [BULK_CONFIRM_STORAGE_KEY, "50"],
       [COMPARER_DEFAULTS_STORAGE_KEY, { tolerance: "7", dailyDates: "1,2", statusFilter: ["COCOK", "X"] }],
+      [CHECKER_DEFAULTS_STORAGE_KEY, { benchmark: "PPN", tolerance: "3", statusFilter: ["DUA_BERBEDA", "X"] }],
       [FILENAME_PREFIX_STORAGE_KEY, "PT A/B"],
       [NOTIFY_ON_COMPLETE_STORAGE_KEY, true],
       [ONE_CLICK_EXPORT_STORAGE_KEY, "1"],
@@ -125,6 +128,11 @@ describe("readPreferences", () => {
       tolerance: 7,
       dailyDates: "1,2",
       statusFilter: ["COCOK"],
+    });
+    expect(prefs.checkerDefaults).toEqual({
+      benchmark: "PPN",
+      tolerance: 3,
+      statusFilter: ["DUA_BERBEDA"],
     });
     expect(prefs.filenamePrefix).toBe("PT-AB");
     expect(prefs.notifyOnComplete).toBe(true);

@@ -187,6 +187,91 @@ export function normalizeComparerDefaults(value: unknown): ComparerDefaults {
   };
 }
 
+// ── Checker defaults ──────────────────────────────────
+// The benchmark, the tolerance, and the status filter are chosen per row inside
+// the in-page panel. These seed it on open, so the second visit starts from the
+// same three answers instead of three clicks and a decision the panel had
+// already been given.
+//
+// `BenchmarkType` lives HERE, not in checker-logic.ts, for the same reason
+// COMPARISON_STATUSES does: a stored value must be normalized before it reaches
+// behaviour, and the normalizer may not import the domain module that also
+// reaches the MAIN-world bundle. checker-logic.ts re-exports the type, so every
+// existing `import type { BenchmarkType } from "./checker-logic"` keeps working.
+
+export const BENCHMARK_TYPES = ["DPP", "DPP_NILAI_LAIN", "PPN"] as const;
+export type BenchmarkType = (typeof BENCHMARK_TYPES)[number];
+
+/**
+ * Status-filter keys for the checker grid, in panel order. "ALL" is the empty
+ * selection rather than a value: `applyCheckerFilter` treats an empty set (or
+ * one containing "ALL") as "show everything", so storing "ALL" alongside the
+ * others would be two spellings of the same thing.
+ */
+export const CHECKER_STATUSES = [
+  "DPP_BERBEDA",
+  "DPP_NILAI_LAIN_BERBEDA",
+  "PPN_BERBEDA",
+  "DUA_BERBEDA",
+  "DATA_TIDAK_LENGKAP",
+] as const;
+
+export type StoredCheckerStatus = (typeof CHECKER_STATUSES)[number];
+
+export interface CheckerDefaults {
+  /** Which of DPP / DPP Nilai Lain / PPN the "Periksa" button recomputes. */
+  benchmark: BenchmarkType;
+  /** Allowed absolute difference per checked parameter before a row is flagged. */
+  tolerance: number;
+  /** Empty array means "all statuses" — mirrors CheckerSession.statusFilter. */
+  statusFilter: StoredCheckerStatus[];
+}
+
+export const CHECKER_DEFAULTS_STORAGE_KEY = "cindiehCheckerDefaults";
+
+export const DEFAULT_CHECKER_DEFAULTS: CheckerDefaults = {
+  benchmark: "DPP",
+  tolerance: 0,
+  statusFilter: [],
+};
+
+export const MAX_CHECKER_TOLERANCE = MAX_COMPARER_TOLERANCE;
+
+export function normalizeBenchmarkType(value: unknown): BenchmarkType {
+  return BENCHMARK_TYPES.includes(value as BenchmarkType)
+    ? (value as BenchmarkType)
+    : DEFAULT_CHECKER_DEFAULTS.benchmark;
+}
+
+function normalizeCheckerTolerance(value: unknown): number {
+  // The same clamp as the comparer's: a stored tolerance is a whole number of
+  // rupiah, never negative, and never so large it overflows a file.
+  const parsed = typeof value === "string" ? Number(value) : value;
+  if (typeof parsed !== "number" || !Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.min(Math.floor(parsed), MAX_CHECKER_TOLERANCE);
+}
+
+function normalizeCheckerStatusFilter(value: unknown): StoredCheckerStatus[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<StoredCheckerStatus>();
+  for (const entry of value) {
+    if (CHECKER_STATUSES.includes(entry as StoredCheckerStatus)) {
+      seen.add(entry as StoredCheckerStatus);
+    }
+  }
+  return CHECKER_STATUSES.filter((status) => seen.has(status));
+}
+
+export function normalizeCheckerDefaults(value: unknown): CheckerDefaults {
+  if (typeof value !== "object" || value === null) return { ...DEFAULT_CHECKER_DEFAULTS };
+  const raw = value as Record<string, unknown>;
+  return {
+    benchmark: normalizeBenchmarkType(raw.benchmark),
+    tolerance: normalizeCheckerTolerance(raw.tolerance),
+    statusFilter: normalizeCheckerStatusFilter(raw.statusFilter),
+  };
+}
+
 // ── Filename prefix ───────────────────────────────────
 // Prepended to every generated export filename so a practitioner can group
 // files by client or entity without renaming them afterwards.
@@ -230,6 +315,7 @@ export const PREFERENCE_STORAGE_KEYS = [
   DELAY_PRESET_STORAGE_KEY,
   BULK_CONFIRM_STORAGE_KEY,
   COMPARER_DEFAULTS_STORAGE_KEY,
+  CHECKER_DEFAULTS_STORAGE_KEY,
   FILENAME_PREFIX_STORAGE_KEY,
   NOTIFY_ON_COMPLETE_STORAGE_KEY,
 ] as const;

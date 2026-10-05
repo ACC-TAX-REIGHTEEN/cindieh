@@ -9,12 +9,15 @@ import { clearPreferences, readPreferences, requestScraperReset, writePreference
 import { describePortalPage } from "../content/page-context";
 import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode, type StoredExportMode } from "../shared/export-preferences";
 import {
+  CHECKER_STATUSES,
   COMPARISON_STATUSES,
   DELAY_PRESET_MULTIPLIER,
   NEVER_CONFIRM_THRESHOLD,
   normalizeBulkConfirmThreshold,
+  normalizeCheckerDefaults,
   normalizeComparerDefaults,
   normalizeFilenamePrefix,
+  type StoredCheckerStatus,
   type StoredComparisonStatus,
 } from "../shared/extension-preferences";
 
@@ -32,6 +35,8 @@ const delayPresetSelect = byId<HTMLSelectElement>("delay-preset");
 const bulkConfirmInput = byId<HTMLInputElement>("bulk-confirm");
 const comparerToleranceInput = byId<HTMLInputElement>("comparer-tolerance");
 const comparerDailyDatesInput = byId<HTMLInputElement>("comparer-daily-dates");
+const checkerBenchmarkSelect = byId<HTMLSelectElement>("checker-benchmark");
+const checkerToleranceInput = byId<HTMLInputElement>("checker-tolerance");
 const notifyInput = byId<HTMLInputElement>("notify-on-complete");
 const debugInput = byId<HTMLInputElement>("debug-logs");
 const clearCacheButton = byId<HTMLButtonElement>("clear-cache");
@@ -43,6 +48,12 @@ const portalStatus = byId<HTMLElement>("portal-status");
 const statusCheckboxes = COMPARISON_STATUSES.map((status) => ({
   status,
   input: byId<HTMLInputElement>(`comparer-status-${status}`),
+}));
+
+/** The checker's status checkboxes, paired with the status each one stores. */
+const checkerStatusCheckboxes = CHECKER_STATUSES.map((status) => ({
+  status,
+  input: byId<HTMLInputElement>(`checker-status-${status}`),
 }));
 
 function byId<T extends HTMLElement>(id: string): T | null {
@@ -141,6 +152,16 @@ async function loadPreferences(): Promise<void> {
     setChecked(input, comparer.statusFilter.includes(status));
   }
 
+  const checker = normalizeCheckerDefaults(prefs.checkerDefaults);
+  if (checkerBenchmarkSelect) checkerBenchmarkSelect.value = checker.benchmark;
+  if (checkerToleranceInput) {
+    // Same rule as the comparer's box: an empty field means "no tolerance".
+    checkerToleranceInput.value = checker.tolerance > 0 ? String(checker.tolerance) : "";
+  }
+  for (const { status, input } of checkerStatusCheckboxes) {
+    setChecked(input, checker.statusFilter.includes(status));
+  }
+
   setChecked(notifyInput, prefs.notifyOnComplete);
 }
 
@@ -158,6 +179,22 @@ function currentComparerDefaults() {
     statusFilter: readCheckedStatuses(),
   });
   return tolerance;
+}
+
+/** The checker's status checkboxes that are ticked, in schema order. */
+function readCheckedCheckerStatuses(): StoredCheckerStatus[] {
+  return checkerStatusCheckboxes
+    .filter(({ input }) => input?.checked)
+    .map(({ status }) => status);
+}
+
+/** Read the current checker controls back into the stored defaults shape. */
+function currentCheckerDefaults() {
+  return normalizeCheckerDefaults({
+    benchmark: checkerBenchmarkSelect?.value,
+    tolerance: checkerToleranceInput?.value,
+    statusFilter: readCheckedCheckerStatuses(),
+  });
 }
 
 // ── Export format default ─────────────────────────────
@@ -252,6 +289,20 @@ comparerToleranceInput?.addEventListener("change", saveComparerDefaults);
 comparerDailyDatesInput?.addEventListener("change", saveComparerDefaults);
 for (const { input } of statusCheckboxes) {
   input?.addEventListener("change", saveComparerDefaults);
+}
+
+// ── Checker defaults ──────────────────────────────────
+// One stored value, three controls: each change writes all of them, exactly as
+// the comparer's defaults do, so a partially-written object is never stored.
+
+function saveCheckerDefaults(): void {
+  void writePreferences({ checkerDefaults: currentCheckerDefaults() });
+}
+
+checkerBenchmarkSelect?.addEventListener("change", saveCheckerDefaults);
+checkerToleranceInput?.addEventListener("change", saveCheckerDefaults);
+for (const { input } of checkerStatusCheckboxes) {
+  input?.addEventListener("change", saveCheckerDefaults);
 }
 
 // ── Debug logging switch ──────────────────────────────

@@ -168,6 +168,55 @@
       </details>
 
       <details class="mode-group">
+        <summary>Default Pengecekan</summary>
+        <div class="group-body">
+          <label class="field">
+            <span>Acuan nilai yang dihitung ulang</span>
+            <select id="checker-benchmark">
+              <option value="DPP">DPP</option>
+              <option value="DPP_NILAI_LAIN">DPP Nilai Lain</option>
+              <option value="PPN">PPN</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Toleransi selisih nilai</span>
+            <input id="checker-tolerance" type="number" min="0" step="1" placeholder="0" />
+          </label>
+          <div class="check-grid" role="group" aria-label="Filter status default pengecekan">
+            <label class="check-inline">
+              <input id="checker-status-DPP_BERBEDA" type="checkbox" value="DPP_BERBEDA" />
+              <span>DPP Berbeda</span>
+            </label>
+            <label class="check-inline">
+              <input
+                id="checker-status-DPP_NILAI_LAIN_BERBEDA"
+                type="checkbox"
+                value="DPP_NILAI_LAIN_BERBEDA"
+              />
+              <span>DPP NL Berbeda</span>
+            </label>
+            <label class="check-inline">
+              <input id="checker-status-PPN_BERBEDA" type="checkbox" value="PPN_BERBEDA" />
+              <span>PPN Berbeda</span>
+            </label>
+            <label class="check-inline">
+              <input id="checker-status-DUA_BERBEDA" type="checkbox" value="DUA_BERBEDA" />
+              <span>Dua Nilai Berbeda</span>
+            </label>
+            <label class="check-inline">
+              <input
+                id="checker-status-DATA_TIDAK_LENGKAP"
+                type="checkbox"
+                value="DATA_TIDAK_LENGKAP"
+              />
+              <span>Data tidak lengkap</span>
+            </label>
+          </div>
+          <p class="group-hint">Semua tidak dicentang berarti semua status ditampilkan.</p>
+        </div>
+      </details>
+
+      <details class="mode-group">
         <summary>Diagnostik</summary>
         <div class="group-body">
           <label class="mode-option">

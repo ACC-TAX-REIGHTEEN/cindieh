@@ -9,10 +9,58 @@ import {
   createCheckerSession,
   checkRowAccuracy,
   checkAllRowsAccuracy,
+  applyCheckerDefaults,
   applyCheckerStatusFilter,
   formatCheckSummary,
   type CheckResult,
 } from "../content/checker-logic";
+import type { CheckerDefaults } from "../shared/extension-preferences";
+
+// ── Stored Checker defaults ─────────────────────────────────────────────
+// The panel owns these three controls for the life of the modal, so the stored
+// defaults are applied while it is built. That makes the seed the only thing
+// standing between a stored value and a check run with the wrong benchmark.
+
+describe("applyCheckerDefaults", () => {
+  it("copies the benchmark, the tolerance and the filter onto the session", () => {
+    const session = createCheckerSession();
+
+    applyCheckerDefaults(session, {
+      benchmark: "DPP_NILAI_LAIN",
+      tolerance: 75,
+      statusFilter: ["DATA_TIDAK_LENGKAP", "PPN_BERBEDA"],
+    });
+
+    expect(session.benchmark).toBe("DPP_NILAI_LAIN");
+    expect(session.tolerance).toBe(75);
+    // Canonical order, matching what the panel's own filter would produce.
+    expect(session.statusFilter).toEqual(["PPN_BERBEDA", "DATA_TIDAK_LENGKAP"]);
+  });
+
+  it("keeps an empty filter empty rather than expanding it to every status", () => {
+    // applyCheckerFilter reads an empty set as "no filter", so turning it into
+    // a list of all five would quietly change the meaning of the default.
+    const session = createCheckerSession();
+
+    applyCheckerDefaults(session, { benchmark: "PPN", tolerance: 0, statusFilter: [] });
+
+    expect(session.statusFilter).toEqual([]);
+  });
+
+  it("falls back to the default benchmark for an empty one", () => {
+    // The normalizer already refuses an unknown value, so this only fires for a
+    // caller that built the defaults object by hand — hence the cast.
+    const session = createCheckerSession();
+
+    applyCheckerDefaults(session, {
+      benchmark: "" as unknown as CheckerDefaults["benchmark"],
+      tolerance: 0,
+      statusFilter: [],
+    });
+
+    expect(session.benchmark).toBe("DPP");
+  });
+});
 
 describe("createCheckerSession", () => {
   it("creates a session with default values", () => {

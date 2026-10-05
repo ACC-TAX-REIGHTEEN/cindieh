@@ -17,6 +17,7 @@ const EXPORT_FORMAT_KEY = "cindiehExportFormat";
 const DELAY_PRESET_KEY = "cindiehDelayPreset";
 const BULK_CONFIRM_KEY = "cindiehBulkConfirm";
 const COMPARER_DEFAULTS_KEY = "cindiehComparerDefaults";
+const CHECKER_DEFAULTS_KEY = "cindiehCheckerDefaults";
 const FILENAME_PREFIX_KEY = "cindiehFilenamePrefix";
 const NOTIFY_KEY = "cindiehNotifyOnComplete";
 const ONE_CLICK_KEY = "cindiehOneClickExport";
@@ -95,6 +96,15 @@ function mountControls(doc: ReturnType<typeof stubFakeDom>["doc"]) {
       BERBEDA: make("comparer-status-BERBEDA"),
       TIDAK_DITEMUKAN: make("comparer-status-TIDAK_DITEMUKAN"),
       HANYA_CORETAX: make("comparer-status-HANYA_CORETAX"),
+    },
+    checkerBenchmark: make("checker-benchmark", "select"),
+    checkerTolerance: make("checker-tolerance"),
+    checkerStatus: {
+      DPP_BERBEDA: make("checker-status-DPP_BERBEDA"),
+      DPP_NILAI_LAIN_BERBEDA: make("checker-status-DPP_NILAI_LAIN_BERBEDA"),
+      PPN_BERBEDA: make("checker-status-PPN_BERBEDA"),
+      DUA_BERBEDA: make("checker-status-DUA_BERBEDA"),
+      DATA_TIDAK_LENGKAP: make("checker-status-DATA_TIDAK_LENGKAP"),
     },
     notify: make("notify-on-complete"),
     debug: make("debug-logs"),
@@ -461,6 +471,70 @@ describe("popup — comparer defaults", () => {
   });
 });
 
+describe("popup — checker defaults", () => {
+  it("seeds every control from the stored defaults", async () => {
+    const { controls } = await bootPopup({
+      store: new Map([
+        [CHECKER_DEFAULTS_KEY, { benchmark: "DPP_NILAI_LAIN", tolerance: 25, statusFilter: ["DUA_BERBEDA"] }],
+      ]),
+    });
+
+    expect(controls.checkerBenchmark.value).toBe("DPP_NILAI_LAIN");
+    expect(controls.checkerTolerance.value).toBe("25");
+    expect(controls.checkerStatus.DUA_BERBEDA.checked).toBe(true);
+    expect(controls.checkerStatus.PPN_BERBEDA.checked).toBe(false);
+  });
+
+  it("falls back to the schema defaults for an unwritten or corrupt value", async () => {
+    // A benchmark the session cannot store must not reach the control: writing
+    // it back would keep a value the panel can never act on.
+    const { controls } = await bootPopup({
+      store: new Map([[CHECKER_DEFAULTS_KEY, { benchmark: "LUAR", tolerance: -4, statusFilter: "no" }]]),
+    });
+
+    expect(controls.checkerBenchmark.value).toBe("DPP");
+    expect(controls.checkerTolerance.value).toBe("");
+  });
+
+  it("shows an empty tolerance box for the default 0", async () => {
+    const { controls } = await bootPopup();
+    expect(controls.checkerTolerance.value).toBe("");
+    expect(controls.checkerBenchmark.value).toBe("DPP");
+  });
+
+  it("writes the three controls as one stored object", async () => {
+    const { controls, store, settle } = await bootPopup();
+
+    controls.checkerBenchmark.value = "PPN";
+    controls.checkerTolerance.value = "40";
+    controls.checkerStatus.PPN_BERBEDA.checked = true;
+    controls.checkerStatus.DATA_TIDAK_LENGKAP.checked = true;
+    fire(controls.checkerStatus.PPN_BERBEDA, "change");
+    await settle();
+
+    // One value, not three: the panel reads them together when the modal opens,
+    // and it re-emits the filter in schema order regardless of click order.
+    expect(store.get(CHECKER_DEFAULTS_KEY)).toEqual({
+      benchmark: "PPN",
+      tolerance: 40,
+      statusFilter: ["PPN_BERBEDA", "DATA_TIDAK_LENGKAP"],
+    });
+  });
+
+  it("writes 'all statuses' as an empty filter", async () => {
+    const { controls, store, settle } = await bootPopup();
+
+    fire(controls.checkerTolerance, "change");
+    await settle();
+
+    expect(store.get(CHECKER_DEFAULTS_KEY)).toEqual({
+      benchmark: "DPP",
+      tolerance: 0,
+      statusFilter: [],
+    });
+  });
+});
+
 describe("popup — notifications", () => {
   it("reflects the stored switch", async () => {
     const on = await bootPopup({ store: new Map([[NOTIFY_KEY, true]]) });
@@ -514,6 +588,7 @@ describe("popup — maintenance", () => {
       [DELAY_PRESET_KEY, "sabar"],
       [BULK_CONFIRM_KEY, 0],
       [FILENAME_PREFIX_KEY, "X-"],
+      [CHECKER_DEFAULTS_KEY, { benchmark: "PPN", tolerance: 9, statusFilter: ["DUA_BERBEDA"] }],
       [NOTIFY_KEY, true],
       [ONE_CLICK_KEY, true],
       [EXPORT_MODE_KEY, "raw"],
@@ -524,7 +599,7 @@ describe("popup — maintenance", () => {
     await settle();
 
     expect(removals.flat().sort()).toEqual(
-      [BULK_CONFIRM_KEY, COMPARER_DEFAULTS_KEY, DELAY_PRESET_KEY, ENABLED_KEY, EXPORT_FORMAT_KEY, FILENAME_PREFIX_KEY, NOTIFY_KEY, ONE_CLICK_KEY].sort(),
+      [BULK_CONFIRM_KEY, CHECKER_DEFAULTS_KEY, COMPARER_DEFAULTS_KEY, DELAY_PRESET_KEY, ENABLED_KEY, EXPORT_FORMAT_KEY, FILENAME_PREFIX_KEY, NOTIFY_KEY, ONE_CLICK_KEY].sort(),
     );
     // The opt-in split toolbar goes back to the compact single button with it.
     expect(controls.oneClickExport.checked).toBe(false);
@@ -532,6 +607,8 @@ describe("popup — maintenance", () => {
     expect(controls.formatXlsx.checked).toBe(true);
     expect(controls.delayPreset.value).toBe("normal");
     expect(controls.filenamePrefix.value).toBe("");
+    expect(controls.checkerBenchmark.value).toBe("DPP");
+    expect(controls.checkerTolerance.value).toBe("");
     // The export MODE is a separate preference with its own key, and a reset of
     // the new settings must not silently change how data is exported.
     expect(store.get(EXPORT_MODE_KEY)).toBe("raw");

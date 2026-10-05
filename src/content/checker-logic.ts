@@ -5,6 +5,20 @@
 
 import { parseNumericField } from "./comparer";
 import { formatDate } from "./tax-date";
+import {
+  BENCHMARK_TYPES,
+  CHECKER_STATUSES,
+  DEFAULT_CHECKER_DEFAULTS,
+  type BenchmarkType,
+  type CheckerDefaults,
+} from "../shared/extension-preferences";
+
+// The benchmark list and the type are the PREFERENCE schema's, because a
+// stored value has to be normalized before it reaches this module and the
+// normalizer may not import it back. Re-exported here so the domain's own
+// importers keep one obvious place to get it from.
+export type { BenchmarkType };
+export { BENCHMARK_TYPES, CHECKER_STATUSES };
 
 // ── Tax policy, in one place ──────────────────────────────
 // The arithmetic below is Indonesian VAT: PPN is 11% of DPP, and DPP is 12/11
@@ -38,8 +52,6 @@ export const PPN_RATE = PPN_RATE_PERCENT / 100;
 export const PPN_RATE_ON_NILAI_LAIN =
   (PPN_RATE_PERCENT * DPP_NILAI_LAIN_DENOMINATOR) /
   (DPP_NILAI_LAIN_NUMERATOR * 100);
-
-export type BenchmarkType = "DPP" | "DPP_NILAI_LAIN" | "PPN";
 
 export interface CheckResult {
   taxInvoiceNumber: string;
@@ -89,6 +101,26 @@ export function createCheckerSession(): CheckerSession {
     currentPage: 1,
     viewedRefs: new Set<string>(),
   };
+}
+
+/**
+ * Seed the session from the popup's stored Checker defaults.
+ *
+ * The mirror of applyComparerDefaults: the panel owns these three controls for
+ * the life of the modal, and re-injecting the modal must not lose them, so the
+ * defaults are applied while it is built rather than fetched later. An empty
+ * stored filter means "all statuses", which is also what applyCheckerFilter
+ * does with an empty set — so it needs no special case here.
+ */
+export function applyCheckerDefaults(
+  session: CheckerSession,
+  defaults: CheckerDefaults,
+): void {
+  session.benchmark = defaults.benchmark || DEFAULT_CHECKER_DEFAULTS.benchmark;
+  session.tolerance = defaults.tolerance;
+  session.statusFilter = CHECKER_STATUSES.filter((status) =>
+    defaults.statusFilter.includes(status),
+  );
 }
 
 /**

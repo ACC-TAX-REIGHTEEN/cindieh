@@ -43,13 +43,36 @@ import {
   type ComparerSession,
 } from "./comparer-logic";
 import {
+  applyCheckerDefaults,
   applyCheckerStatusFilter,
   checkAllRowsAccuracy,
   createCheckerSession,
   formatCheckSummary,
+  BENCHMARK_TYPES,
+  CHECKER_STATUSES,
   type BenchmarkType,
   type CheckerSession,
 } from "./checker-logic";
+
+/**
+ * Panel label per benchmark value. Kept here rather than in the preference
+ * schema because a label is presentation: the schema owns the VALUES, and this
+ * is the only place they are rendered.
+ */
+const BENCHMARK_LABELS: Record<BenchmarkType, string> = {
+  DPP: "DPP",
+  DPP_NILAI_LAIN: "DPP NL",
+  PPN: "PPN",
+};
+
+/** Panel label per checker status-filter key, in the schema's own order. */
+const CHECKER_STATUS_LABELS: Record<string, string> = {
+  DPP_BERBEDA: "DPP Berbeda",
+  DPP_NILAI_LAIN_BERBEDA: "DPP NL Berbeda",
+  PPN_BERBEDA: "PPN Berbeda",
+  DUA_BERBEDA: "Dua Nilai Berbeda",
+  DATA_TIDAK_LENGKAP: "Data tidak lengkap",
+};
 
 const PAGE_SIZE = 10;
 
@@ -379,21 +402,14 @@ export function injectComparerModal(): void {
   benchmarkSelect.id = "ch-checker-benchmark-select";
   benchmarkSelect.className = "ch-checker-benchmark-select";
 
-  const optDpp = document.createElement("option");
-  optDpp.value = "DPP";
-  optDpp.textContent = "DPP";
-
-  const optNilaiLain = document.createElement("option");
-  optNilaiLain.value = "DPP_NILAI_LAIN";
-  optNilaiLain.textContent = "DPP NL";
-
-  const optPpn = document.createElement("option");
-  optPpn.value = "PPN";
-  optPpn.textContent = "PPN";
-
-  benchmarkSelect.appendChild(optDpp);
-  benchmarkSelect.appendChild(optNilaiLain);
-  benchmarkSelect.appendChild(optPpn);
+  // Built from the schema's list, so a benchmark added there cannot be missing
+  // from the panel (and the panel cannot offer one the session cannot store).
+  for (const benchmark of BENCHMARK_TYPES) {
+    const option = document.createElement("option");
+    option.value = benchmark;
+    option.textContent = BENCHMARK_LABELS[benchmark];
+    benchmarkSelect.appendChild(option);
+  }
 
   benchmarkWrap.appendChild(benchmarkLabel);
   benchmarkWrap.appendChild(benchmarkSelect);
@@ -406,6 +422,11 @@ export function injectComparerModal(): void {
   checkerToleranceInput.placeholder = "Toleransi";
   checkerToleranceInput.className = "ch-comparer-tolerance-input";
   checkerToleranceInput.title = "Toleransi selisih parameter yang tidak perlu ditampilkan (default 0)";
+
+  // The popup's stored defaults, applied while the modal is built — the panel
+  // owns these controls for the life of the modal, so a later fetch would be a
+  // race with the user's first click.
+  const storedChecker = applyStoredCheckerDefaults(benchmarkSelect, checkerToleranceInput);
 
   const checkerLeftGroup = document.createElement("div");
   checkerLeftGroup.className = "ch-comparer-btn-left";
@@ -425,14 +446,12 @@ export function injectComparerModal(): void {
   checkerExportCsvBtn.textContent = RESULT_EXPORT_LABELS.csv;
   checkerExportCsvBtn.title = "Ekspor hasil pengecekan ke file CSV";
 
-  // Status filter dropdown for Pengecekan
+  // Status filter dropdown for Pengecekan. "ALL" is the empty selection, which
+  // applyCheckerStatusFilter already treats as "no filter"; the rest come from
+  // the schema so the panel and the stored default can never disagree.
   const checkerFilterOptions: { value: string; label: string }[] = [
     { value: "ALL", label: "Semua Status" },
-    { value: "DPP_BERBEDA", label: "DPP Berbeda" },
-    { value: "DPP_NILAI_LAIN_BERBEDA", label: "DPP NL Berbeda" },
-    { value: "PPN_BERBEDA", label: "PPN Berbeda" },
-    { value: "DUA_BERBEDA", label: "Dua Nilai Berbeda" },
-    { value: "DATA_TIDAK_LENGKAP", label: "Data tidak lengkap" },
+    ...CHECKER_STATUSES.map((status) => ({ value: status, label: CHECKER_STATUS_LABELS[status] })),
   ];
 
   const checkerFilterWrap = document.createElement("div");
@@ -468,7 +487,8 @@ export function injectComparerModal(): void {
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.value = opt.value;
-    if (opt.value === "ALL") cb.checked = true;
+    if (opt.value === "ALL") cb.checked = storedChecker.statusFilter.length === 0;
+    else cb.checked = storedChecker.statusFilter.includes(opt.value as never);
     checkerFilterCheckboxes.push(cb);
 
     const span = document.createElement("span");
@@ -701,6 +721,27 @@ function applyStoredComparerDefaults(
   toleranceInput.value = session.tolerance > 0 ? String(session.tolerance) : "";
   dailyDatesInput.value = defaults.dailyDates;
   dailyDatesInput.classList.toggle("ch-hidden", !session.dailyEnabled);
+}
+
+/**
+ * Apply the popup's Checker defaults to the session and the two inputs that
+ * mirror the first two of them. The third — the status filter — is applied by
+ * the caller, which builds the checkboxes from the returned value.
+ *
+ * Returns the stored filter so the caller does not have to read the snapshot a
+ * second time: `getPreferences()` is cheap, but reading it twice could in
+ * principle observe two different values if a storage event lands in between.
+ */
+function applyStoredCheckerDefaults(
+  benchmarkSelect: HTMLSelectElement,
+  toleranceInput: HTMLInputElement,
+): { statusFilter: string[] } {
+  const defaults = getPreferences().checkerDefaults;
+  applyCheckerDefaults(checkerSession, defaults);
+  benchmarkSelect.value = checkerSession.benchmark;
+  // Same rule as the comparer's box: an empty field means "no tolerance".
+  toleranceInput.value = checkerSession.tolerance > 0 ? String(checkerSession.tolerance) : "";
+  return { statusFilter: checkerSession.statusFilter };
 }
 
 // ── Which side of the transaction this page shows ─────────
