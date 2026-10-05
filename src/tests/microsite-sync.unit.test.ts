@@ -1131,6 +1131,50 @@ describe("microsite — hosting files", () => {
       /Cache-Control:\s*public, max-age=0, must-revalidate/,
     );
   });
+
+  it("gives the CSS and JS a real cache rule instead of the catch-all", () => {
+    // Both fell through to the `/*` rule above, so ~31 KB was revalidated on
+    // every page view. They are NOT immutable like the fonts: there is no build
+    // step to hash a filename, so a year's cache would serve a fixed stylesheet
+    // to returning visitors for a year after it was corrected. must-revalidate
+    // is the part that has to survive — it is what stops this becoming the next
+    // stale-asset bug in the other direction.
+    for (const dir of ["css", "js"]) {
+      const block = pageHeaders.match(new RegExp(`/assets/${dir}/\\*\\s*\\n\\s*Cache-Control:([^\\n]*)`));
+      expect(
+        block?.[1],
+        `_headers has no Cache-Control rule for /assets/${dir}/* — it falls through to the HTML rule and is revalidated on every visit`,
+      ).toBeDefined();
+      expect(
+        block?.[1],
+        `/assets/${dir}/* must revalidate: with no content hash, an immutable cache would pin a hand-edited file for a year`,
+      ).toMatch(/must-revalidate/);
+      expect(
+        block?.[1],
+        `/assets/${dir}/* must not be immutable — see the note on the fonts rule above`,
+      ).not.toMatch(/immutable/);
+    }
+  });
+
+  it("never leaves an element labelled by `title` alone", () => {
+    // The toolbar mockup labelled its two icon-only buttons with `title` and
+    // nothing else. `title` is not reliably announced and cannot be focused, so
+    // a screen reader read a list of injected buttons in which two items had
+    // silently gone missing. The mockup is now one labelled `role="img"`, so a
+    // `title` anywhere is a label with no announcement and no keyboard route
+    // to it — unless it rides on an element that is hidden or has its own
+    // accessible name.
+    const unlabelled = [
+      ...stripComments(microsite).matchAll(/<([a-z]+)([^>]*\btitle="([^"]*)"[^>]*)>/g),
+    ]
+      .filter(([, , attrs]) => !/aria-label=/.test(attrs) && !/aria-hidden="true"/.test(attrs))
+      .map(([, tag, , title]) => `<${tag} title="${title}">`);
+
+    expect(
+      unlabelled.join("; "),
+      "these elements use `title` as their only label — it is not reliably announced and not keyboard reachable",
+    ).toBe("");
+  });
 });
 
 // ── Popup preferences ───────────────────────────────────────────────────

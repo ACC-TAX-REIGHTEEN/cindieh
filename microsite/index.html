@@ -241,7 +241,14 @@
     </div>
     <p class="hero-note">Gratis · tanpa akun · tanpa langganan · lisensi MIT</p>
 
-    <div class="toolbar-demo reveal">
+    <!-- role="img" because this is an ILLUSTRATION of a toolbar, not a toolbar.
+         Read as a list it lied: the two icon-only buttons were labelled by
+         `title` alone, which screen readers do not reliably announce and
+         keyboard users cannot reach, so the list simply lost two items with no
+         hint anything was missing. One labelled image says what it is and hands
+         the fake controls to the presentation layer, which is where they belong.
+         Nothing in here is focusable, so nothing is lost by it. -->
+    <div class="toolbar-demo reveal" role="img" aria-label="Mockup toolbar e-Faktur PPN Keluaran Coretax: 5 tombol Cindieh yang disuntikkan — Ekspor, Unduh PDF, Ambil data, Bandingkan data penjualan, dan No. Faktur — ditambah satu kotak Cari Referensi, berdiri tepat di sebelah tombol bawaan portal yang berwarna abu-abu.">
       <div class="td-chrome">
         <div class="td-dots"><span></span><span></span><span></span></div>
         <div class="td-url">coretaxdjp.pajak.go.id/e-invoice-portal/output-tax</div>
@@ -253,8 +260,8 @@
           <span class="ct-btn">Cari</span>
           <span class="cd-btn"><svg class="cd-ic" aria-hidden="true"><use href="#i-download"/></svg>Ekspor<svg class="cd-ic cd-chev" aria-hidden="true"><use href="#i-chevron"/></svg></span>
           <span class="cd-btn"><svg class="cd-ic" aria-hidden="true"><use href="#i-download"/></svg>Unduh PDF</span>
-          <span class="cd-btn cd-btn-icon" title="Ambil data dari sistem"><svg class="cd-ic" aria-hidden="true"><use href="#i-refresh"/></svg></span>
-          <span class="cd-btn cd-btn-icon" title="Bandingkan data penjualan"><svg class="cd-ic" aria-hidden="true"><use href="#i-list"/></svg></span>
+          <span class="cd-btn cd-btn-icon"><svg class="cd-ic" aria-hidden="true"><use href="#i-refresh"/></svg></span>
+          <span class="cd-btn cd-btn-icon"><svg class="cd-ic" aria-hidden="true"><use href="#i-list"/></svg></span>
           <span class="cd-btn"><svg class="cd-ic" aria-hidden="true"><use href="#i-filter"/></svg>No. Faktur</span>
           <span class="ct-input"><svg class="cd-ic" aria-hidden="true"><use href="#i-search"/></svg>Cari Referensi…</span>
         </div>

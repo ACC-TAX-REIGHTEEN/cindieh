@@ -21,6 +21,20 @@
 /assets/img/*
   Cache-Control: public, max-age=604800
 
+# CSS and JS are hand-edited too — this folder has no build step, so there is no
+# content hash to put in the URL and a file name cannot change on every edit.
+# That is exactly why these are NOT immutable like the fonts above: a one-year
+# cache would keep serving a fixed stylesheet to returning visitors for a year
+# after it was fixed. must-revalidate buys the part that matters instead — a day
+# of freshness with no revalidation round-trip on repeat visits, then a 304 when
+# nothing has changed. Without this rule they fell through to the `/*` catch-all
+# above and were revalidated on every single page view.
+/assets/css/*
+  Cache-Control: public, max-age=86400, must-revalidate
+
+/assets/js/*
+  Cache-Control: public, max-age=86400, must-revalidate
+
 /sitemap.xml
   Cache-Control: public, max-age=3600
 

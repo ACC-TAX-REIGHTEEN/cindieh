@@ -257,7 +257,22 @@ anything because Cloudflare Pages recognises them by name:
 - **`_headers`** — cache and security rules. The fonts get a one-year
   `immutable` cache (there is no bundler to hash filenames, so a font change
   means renaming the file); the HTML is `max-age=0, must-revalidate` so a
-  hand-edited canonical can never be served stale.
+  hand-edited canonical can never be served stale. The stylesheet and script get
+  `max-age=86400, must-revalidate`, which is the same reasoning pointed the other
+  way: they are hand-edited too, so making them immutable would pin a corrected
+  file for a year of returning visitors. Without their own rule they fell
+  through to the `/*` catch-all and were revalidated on **every** page view —
+  about 31 KB, which is why `microsite-sync` asserts they have a rule, that it
+  revalidates, and that it is not `immutable`.
+- **The toolbar mockup is one `role="img"`, not a list of buttons.** It reads
+  like a literal toolbar, and for a while it was announced as one — with two
+  items silently missing, because the icon-only buttons were labelled by `title`
+  alone. `title` is not reliably announced and cannot be focused, so there was no
+  way to reach those two labels at all. The mockup is an *illustration*, so it
+  is now one labelled image and the fake controls inside are presentation. The
+  visible caption is unchanged; the `aria-label` carries the same claim for
+  anyone who cannot see it. `microsite-sync` fails on any element that reaches
+  for `title` as its only label, so the pattern cannot come back.
 - **`404.html`** — served for any missing path.
 - **`robots.txt` / `sitemap.xml`** — plain files, no framework involved.
 
