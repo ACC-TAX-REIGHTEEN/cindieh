@@ -50,19 +50,131 @@
 <link rel="preload" href="assets/fonts/space-grotesk-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/plex-sans-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/css/microsite.css">
+<!-- Two nodes in one @graph. The FAQPage is the reason this block needs a
+     guard rather than a shrug: Google requires a FAQPage answer to be VISIBLE
+     on the page, so structured data that drifts from the <details> below
+     describes content no visitor can see. microsite-sync parses both and
+     fails when they disagree — regenerate the entries from the summaries
+     rather than editing the JSON by hand. -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  "name": "Cindieh",
-  "applicationCategory": "BrowserApplication",
-  "applicationSubCategory": "Ekstensi browser untuk portal DJP Coretax",
-  "operatingSystem": "Chrome, Edge, Firefox",
-  "description": "Ekstensi browser yang menyuntikkan tombol satu-klik ke portal DJP Coretax: ekspor XLSX/CSV semua halaman, unduh PDF massal, filter nomor faktur, pencarian referensi, komparator faktur, dan pengecekan keakuratan nilai DPP/PPN.",
-  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "IDR" },
-  "license": "https://opensource.org/license/mit",
-  "softwareHelp": "https://github.com/allababbot/cindieh",
-  "url": "https://cindieh.pages.dev/"
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "Cindieh",
+      "softwareVersion": "2.1.0",
+      "applicationCategory": "BrowserApplication",
+      "applicationSubCategory": "Ekstensi browser untuk portal DJP Coretax",
+      "operatingSystem": "Chrome, Edge, Firefox",
+      "description": "Ekstensi browser yang menyuntikkan tombol satu-klik ke portal DJP Coretax: ekspor XLSX/CSV semua halaman, unduh PDF massal, filter nomor faktur, pencarian referensi, komparator faktur, dan pengecekan keakuratan nilai DPP/PPN.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "IDR"
+      },
+      "isAccessibleForFree": true,
+      "license": "https://opensource.org/license/mit",
+      "softwareHelp": "https://github.com/allababbot/cindieh",
+      "downloadUrl": "https://github.com/allababbot/cindieh/releases/latest/download/cindieh-chrome.zip",
+      "image": "https://cindieh.pages.dev/assets/img/og.jpg",
+      "inLanguage": "id-ID",
+      "url": "https://cindieh.pages.dev/"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Apakah Cindieh mengirim data pajak saya ke server lain?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Tidak. Semua pemrosesan terjadi lokal di browser. Ekstensi hanya berkomunikasi dengan coretaxdjp.pajak.go.id — domain yang sama dengan yang sudah Anda buka. Tidak ada server backend Cindieh yang menerima data faktur Anda."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Permission apa saja yang diminta, dan kenapa?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Tiga permission inti: activeTab, storage, dan akses host ke coretaxdjp.pajak.go.id. Satu permission opsional, notifications, hanya diminta saat Anda menyalakan saklar notifikasi di popup. Tidak ada permission ke domain lain, cookies, atau riwayat browser."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Apakah Cindieh bisa memodifikasi data di Coretax?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Tidak. Ekstensi hanya membaca data yang sudah dikembalikan API, menambahkan UI di atas halaman, dan mengunduh file. Cindieh tidak pernah mengirim data baru ke Coretax atau mengubah data yang sudah ada."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Browser apa saja yang didukung?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Chrome dan Edge versi Chromium modern, serta Firefox 109+. Instalasi via \"Load Unpacked\" untuk Chrome/Edge, atau file .xpi untuk Firefox."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Kok \"Cari Referensi\" tidak menemukan faktur saya?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Pencocokan dilakukan terhadap awalan nomor referensi, bukan sembarang posisi di dalamnya — mode itu terbukti jauh lebih cepat di server Coretax. Ketik sebagian awal referensi (bisa lebih pendek), lalu Enter. Jika tetap kosong, panel menyatakan \"tidak ditemukan\" dan berhenti, bukan mencoba mode lambat di belakang layar."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Apa yang terjadi kalau DJP mengubah tampilan Coretax?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Tergantung jenis perubahan: jika ID tombol berubah, tombol Cindieh mungkin tidak muncul. Jika nama field API berubah, kolom terkait akan kosong di file ekspor dan muncul peringatan di console browser. Jika mekanisme autentikasi berubah, proses pengambilan data bisa gagal dengan timeout."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Apakah Cindieh memerlukan akun atau registrasi?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Tidak. Ekstensi langsung berfungsi setelah dipasang dan Anda login ke Coretax seperti biasa — tidak ada akun, registrasi, atau kunci lisensi."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Apakah legal menggunakan ekstensi pihak ketiga di portal pemerintah?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Sudah ditinjau, dan tinjauan itu tidak menemukan pelanggaran. Pasal 30 UU ITE (akses tanpa hak): Cindieh hanya berjalan pada sesi login resmi milik Wajib Pajak sendiri, tanpa penerobosan, pembobolan, atau bypass autentikasi, sehingga aksesnya sah. Pasal 32 UU ITE (perusakan data elektronik): seluruh fitur bersifat baca-saja — tidak ada instruksi yang mengubah, memanipulasi, memalsukan, atau menghapus data di server DJP. Ketentuan portal yang melarang otomatisasi mengganggu ketersediaan layanan: Cindieh memakai batas ukuran halaman resmi portal, jeda antar request, dan circuit breaker yang menghentikan proses otomatis setelah tiga galat berturut-turut. Catatan: tinjauan ini mencakup UU ITE dan ketentuan portal, bukan penilaian hukum atas keadaan spesifik perusahaan Anda — bila penggunaan Cindieh dalam pekerjaan Anda menimbulkan implikasi hukum, mintalah penilaian kepada penasihat hukum Anda. Rinciannya terbuka di LEGAL_COMPLIANCE.md."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Apakah Cindieh gratis?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Gratis sepenuhnya dan akan tetap gratis — tanpa akun, tanpa langganan, tanpa kunci lisensi. Kode sumbernya terbuka di GitHub di bawah lisensi MIT: bebas dipakai, dimodifikasi, dan didistribusikan ulang, bahkan untuk keperluan komersial, selama atribusi diberikan."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Bagaimana cara memasang Cindieh?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Lihat bagian Instalasi & unduhan. Ringkasnya: unduh cindieh-chrome.zip (ekstrak, lalu Load unpacked di chrome://extensions/) atau cindieh-firefox.xpi (Install Add-on From File… di about:addons). Kalau lebih suka membangun sendiri, semuanya tersedia dalam satu perintah: pnpm run release:assets."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Apakah file ekspor kompatibel dengan Excel versi lama?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "File XLSX menggunakan format Excel 2007+. File CSV menggunakan encoding UTF‑8 dengan BOM agar karakter Indonesia tampil benar. Keduanya didukung Excel 2007 ke atas."
+          }
+        }
+      ]
+    }
+  ]
 }
 </script>
 </head>

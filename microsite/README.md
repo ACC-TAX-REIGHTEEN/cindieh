@@ -66,6 +66,25 @@ microsite/
 - **`prefers-reduced-motion` is honoured in JS, not only in CSS.** The reveal
   skips its `IntersectionObserver` entirely rather than animating and letting
   the media query undo it afterwards.
+- **The `FAQPage` is generated from the visible FAQ, and the suite proves it.**
+  The `ld+json` block is one `@graph` holding `SoftwareApplication` (now with
+  `softwareVersion`, `downloadUrl`, `image`, `inLanguage`,
+  `isAccessibleForFree`) and a `FAQPage` whose eleven entries come from the
+  `<details>`/`<summary>` pairs. Nothing validated that block before, so it could
+  have become invalid JSON — or kept claiming a version the extension stopped
+  shipping — with no build step objecting.
+
+  Google requires every `FAQPage` answer to be **visible on the page**, which is
+  what makes this worth a guard: structured data that drifts from the markup
+  describes text no visitor can see. The suite therefore parses both sides and
+  asserts the question count matches, every visible question is present, and
+  **each JSON-LD answer is exactly the text the page shows**. That last
+  comparison is written the way it is on purpose. The first version checked the
+  *visible* answer against the page — the page asserting it contains itself —
+  and passed a counterfactual in which the structured answer had been edited
+  into something the page never shows. Regenerate the entries from the
+  summaries rather than hand-editing the JSON.
+
 - **One `<main>`, and a skip link that actually skips.** The landing page had
   nine `<section>`s and nothing wrapping them, so there was no main landmark
   to jump to and a keyboard user had to tab through the topbar's eight links

@@ -1424,6 +1424,103 @@ describe("microsite — heading outline never skips a level", () => {
   }
 });
 
+// ── Structured data ──────────────────────────────────────────────────────
+
+describe("microsite — JSON-LD matches what the page actually shows", () => {
+  // Nothing here validated the ld+json block before this: it could have become
+  // invalid JSON, or kept claiming a version the extension stopped shipping,
+  // and no step of the build would have said so. FAQPage raises the stakes —
+  // Google requires each answer to be VISIBLE on the page, so a copy that
+  // drifts from the <details> below is structured data for text nobody can see.
+
+  /** Visible text: tags stripped, the page's entities decoded, whitespace folded. */
+  const plain = (html: string): string =>
+    html
+      .replace(/<[^>]*>/g, "")
+      .replace(/&amp;/g, "&")
+      .replace(/&mdash;|&#8212;/g, "\u2014")
+      .replace(/&ndash;|&#8211;/g, "\u2013")
+      .replace(/&hellip;/g, "\u2026")
+      .replace(/&times;/g, "\u00d7")
+      .replace(/&rarr;/g, "\u2192")
+      .replace(/&larr;/g, "\u2190")
+      .replace(/&middot;/g, "\u00b7")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;|&apos;/g, "\u2019")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const ldSource = microsite.match(
+    /<script type="application\/ld\+json">([\s\S]*?)<\/script>/,
+  )?.[1];
+
+  const parsed = (): { "@graph": { "@type": string }[] } => JSON.parse(ldSource ?? "");
+
+  /** The questions a reader can actually open, straight from the markup. */
+  const visibleFaq = [
+    ...microsite.matchAll(
+      /<details class="faq-item"[^>]*>\s*<summary>([\s\S]*?)<\/summary>\s*<p class="faq-a">([\s\S]*?)<\/p>/g,
+    ),
+  ].map((m) => ({ question: plain(m[1]), answer: plain(m[2]) }));
+
+  it("parses as JSON and declares both nodes", () => {
+    expect(ldSource, "index.html has no application/ld+json block").toBeDefined();
+    let graph: { "@type": string }[];
+    try {
+      graph = parsed()["@graph"];
+    } catch (error) {
+      throw new Error(`the ld+json block is not valid JSON: ${(error as Error).message}`);
+    }
+    expect(graph.map((n) => n["@type"]), "the @graph lost a node").toEqual([
+      "SoftwareApplication",
+      "FAQPage",
+    ]);
+  });
+
+  it("declares the version the extension actually ships", () => {
+    const app = parsed()["@graph"].find((n) => n["@type"] === "SoftwareApplication") as
+      | { softwareVersion?: string }
+      | undefined;
+    expect(app?.softwareVersion, "SoftwareApplication lost softwareVersion").toBe(
+      (manifest as ManifestShape & { version?: string }).version,
+    );
+  });
+
+  it("describes exactly the FAQ the page shows", () => {
+    expect(
+      visibleFaq.length,
+      "no <details>/<summary> pairs matched — this suite can no longer see the visible FAQ",
+    ).toBeGreaterThan(0);
+
+    const page = parsed()["@graph"].find((n) => n["@type"] === "FAQPage") as
+      | { mainEntity?: { name: string; acceptedAnswer: { text: string } }[] }
+      | undefined;
+    const entries = page?.mainEntity ?? [];
+
+    expect(
+      entries.length,
+      `the FAQPage lists ${entries.length} questions but the page shows ${visibleFaq.length}`,
+    ).toBe(visibleFaq.length);
+
+    for (const { question, answer } of visibleFaq) {
+      const entry = entries.find((e) => plain(e.name) === question);
+      expect(
+        entry,
+        `the FAQPage is missing the question "${question}", which the page asks`,
+      ).toBeDefined();
+      // Compare the JSON-LD's answer against the visible one, NOT the visible
+      // answer against the page: `visibleFaq` is extracted from the page, so the
+      // latter is the page asserting it contains itself. That version passed a
+      // counterfactual in which the structured answer was edited into text the
+      // page never shows — which is precisely the thing Google penalises.
+      expect(
+        plain(entry!.acceptedAnswer.text),
+        `the FAQPage answer for "${question}" is not the text the page shows — structured data must describe visible content`,
+      ).toBe(answer);
+    }
+  });
+});
+
 // ── Landmarks and the skip link ──────────────────────────────────────────
 
 describe("microsite — one main landmark and a skip link that skips", () => {
