@@ -12,7 +12,7 @@
 import { extractFilenameHintFromBody } from "./page-context";
 import type { ExportSource } from "./page-context";
 import { debugLog, debugError } from "./debug";
-import { mergeRows, collectFields } from "./scraper-helpers";
+import { mergeRows, collectFields, describePdfItem } from "./scraper-helpers";
 import {
   xhrRequest as xhrRequestFn,
   xhrRequestByInvoice as xhrRequestByInvoiceFn,
@@ -229,7 +229,10 @@ export async function scrapePaginated(
  * Download all withholding slip PDFs for the given rows.
  * Sends SCRAPE_PROGRESS and DOWNLOAD_PDF_ITEM messages.
  *
- * @returns Number of failed downloads.
+ * @returns The failure count AND the slip number of each failure. The count is
+ * what the panel leads with; the names are what make it actionable — without
+ * them a 300-slip run reports "4 gagal" and the Wajib Pajak has to re-run the
+ * whole thing to find out which four.
  */
 export async function downloadBulkWithholdingPdf(
   captured: CapturedRequest,
@@ -237,9 +240,12 @@ export async function downloadBulkWithholdingPdf(
   page: number,
   totalElapsed: string,
   ctx: ScraperContext,
-): Promise<number> {
+): Promise<{ failureCount: number; failedItems: string[] }> {
   let failureCount = 0;
   let consecutiveFailures = 0;
+  // Every failure is named: the slip number is the only thing that ties a
+  // failed download back to a row once the run is over.
+  const failedItems: string[] = [];
   const total = allData.length;
   debugLog(`Starting Bulk PDF download for ${total} items...`);
 
@@ -247,7 +253,8 @@ export async function downloadBulkWithholdingPdf(
     if (ctx.isStopRequested()) break;
 
     const row = allData[i];
-    const status = `Mengunduh PDF ${i + 1}/${total}: ${row.WithholdingSlipNumber || "..."}`;
+    const slip = describePdfItem(row, "WITHHOLDING_SLIPS");
+    const status = `Mengunduh PDF ${i + 1}/${total}: ${slip}`;
 
     ctx.sendToContent({
       type: "SCRAPE_PROGRESS",
@@ -269,7 +276,8 @@ export async function downloadBulkWithholdingPdf(
       if (ctx.isStopRequested()) break;
       failureCount++;
       consecutiveFailures++;
-      debugError(`Gagal unduh PDF idx ${i}:`, err);
+      failedItems.push(slip);
+      debugError(`Gagal unduh PDF idx ${i} (${slip}):`, err);
       if (consecutiveFailuresExhausted(ctx, consecutiveFailures)) {
         throw new Error(`${consecutiveFailures} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`);
       }
@@ -277,7 +285,7 @@ export async function downloadBulkWithholdingPdf(
     await ctx.delay(scaleDelay(800, pacingOf(ctx)));
   }
 
-  return failureCount;
+  return { failureCount, failedItems };
 }
 
 // ── Main scraping orchestrator ────────────────────────
@@ -337,8 +345,15 @@ export async function startScraping(
     // without firing one PDF request per slip.
     const withholdingPdfRun = captured.source === "WITHHOLDING_SLIPS" && !options.skipPdf;
     let failureCount = 0;
+    let failedItems: string[] = [];
     if (withholdingPdfRun) {
-      failureCount = await downloadBulkWithholdingPdf(captured, allData, page, totalElapsed, ctx);
+      ({ failureCount, failedItems } = await downloadBulkWithholdingPdf(
+        captured,
+        allData,
+        page,
+        totalElapsed,
+        ctx,
+      ));
     }
     if (ctx.isStopRequested()) return;
 
@@ -353,6 +368,7 @@ export async function startScraping(
       source: captured.source,
       partial: failureCount > 0,
       failureCount,
+      failedItems,
       // A withholding run IS a bulk PDF download — same message, different job.
       kind: withholdingPdfRun ? "pdf" : "scrape",
     });
@@ -382,6 +398,9 @@ export async function startPdfDownload(
   const startTime = Date.now();
   let failureCount = 0;
   let consecutiveFailures = 0;
+  // Named for the same reason as the withholding loop: the count alone cannot be
+  // acted on once a 300-row run is over.
+  const failedItems: string[] = [];
   const total = data.length;
 
   debugLog(`▶ Starting Bulk PDF download for ${total} efaktur items (source: ${source})...`);
@@ -404,7 +423,7 @@ export async function startPdfDownload(
     }
 
     const row = data[i];
-    const ref = (row.Reference as string) || (row.TaxInvoiceNumber as string) || "...";
+    const ref = describePdfItem(row, source);
     const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
 
     ctx.sendToContent({
@@ -427,6 +446,7 @@ export async function startPdfDownload(
       if (ctx.isStopRequested()) return;
       failureCount++;
       consecutiveFailures++;
+      failedItems.push(ref);
       debugError(`Gagal unduh PDF efaktur idx ${i} (${ref}):`, err);
       if (consecutiveFailuresExhausted(ctx, consecutiveFailures)) {
         ctx.sendToContent({
@@ -455,6 +475,7 @@ export async function startPdfDownload(
     source,
     partial: failureCount > 0,
     failureCount,
+    failedItems,
     kind: "pdf",
   });
 }

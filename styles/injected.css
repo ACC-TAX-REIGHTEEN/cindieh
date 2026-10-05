@@ -142,6 +142,25 @@
     font-style: italic;
 }
 
+/* Per-file failure list: the names a bulk PDF run could not fetch.
+   Uses --ch-bad for the heading only. The item text stays --ch-text-dark, not
+   a status hue on a tint, because 11px muted text has to clear 4.5:1. */
+.ch-f-failures {
+    width: 100%;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--ch-text-dark);
+    background: var(--ch-bad-tint);
+    border-left: 2px solid var(--ch-bad);
+    border-radius: 3px;
+    padding: 6px 8px;
+    margin-top: 6px;
+    max-height: 96px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
 /* Mini Progress Bar inside the floating unit */
 .ch-f-progress-container {
     width: 100%;

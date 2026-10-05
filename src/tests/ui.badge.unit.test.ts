@@ -180,6 +180,42 @@ describe("panel state transitions", () => {
     expect(doc.getElementById("ch-f-total")!.textContent).toBe("10");
   });
 
+  it("updatePanelComplete lists the individual files that failed", () => {
+    // The count alone is not actionable across a large batch, so the panel
+    // names each one in its own block below the status line.
+    updatePanelComplete(10, 3, "1.2s", 2, "pdf", ["SZ-0447/07/26", "SZ-0448/07/26"]);
+    const list = doc.getElementById("ch-f-failures")!;
+    expect(list.textContent).toBe("SZ-0447/07/26\nSZ-0448/07/26");
+    expect(list.classList.contains("ch-hidden")).toBe(false);
+  });
+
+  it("keeps the failure list hidden when a run names nothing", () => {
+    updatePanelComplete(10, 3, "1.2s", 0);
+    const list = doc.getElementById("ch-f-failures")!;
+    expect(list.textContent).toBe("");
+    expect(list.classList.contains("ch-hidden")).toBe(true);
+  });
+
+  it("clears a stale failure list when the next run starts or the panel goes idle", () => {
+    // The common case is a successful retry after a partial one; a leftover list
+    // from the previous run sitting under a fresh completion would be a lie.
+    updatePanelComplete(10, 3, "1.2s", 1, "pdf", ["SZ-0447/07/26"]);
+    expect(doc.getElementById("ch-f-failures")!.classList.contains("ch-hidden")).toBe(false);
+
+    updatePanelProgress(0, 0, "0s", "Menangkap request");
+    expect(doc.getElementById("ch-f-failures")!.classList.contains("ch-hidden")).toBe(true);
+
+    updatePanelComplete(10, 3, "1.2s", 1, "pdf", ["SZ-0449/07/26"]);
+    updatePanelIdle();
+    expect(doc.getElementById("ch-f-failures")!.classList.contains("ch-hidden")).toBe(true);
+  });
+
+  it("updatePanelError drops the failure list along with the progress numbers", () => {
+    updatePanelComplete(10, 3, "1.2s", 1, "pdf", ["SZ-0447/07/26"]);
+    updatePanelError("Proses dihentikan.");
+    expect(doc.getElementById("ch-f-failures")!.classList.contains("ch-hidden")).toBe(true);
+  });
+
   it("updatePanelComplete uses the PDF success phrasing on withholding pages", () => {
     vi.mocked(isWithholdingPage).mockReturnValue(true);
     updatePanelComplete(7, 1, "5.0s");

@@ -1,5 +1,60 @@
 import { describe, it, expect } from "vitest";
-import { buildEfakturDownloadUrl, buildEfakturPdfBody, getRowDedupeKey, mergeRows, collectFields } from "../content/scraper-helpers";
+import {
+  buildEfakturDownloadUrl,
+  buildEfakturPdfBody,
+  collectFields,
+  describePdfItem,
+  getRowDedupeKey,
+  mergeRows,
+  UNIDENTIFIED_PDF_ITEM,
+} from "../content/scraper-helpers";
+
+describe("describePdfItem", () => {
+  // The label a bulk-download row is reported under, both in the progress line
+  // and in the failure list. It must lead with the same token the generated
+  // filename leads with, so the panel and the downloads folder agree.
+  it("leads with the Referensi for an e-faktur row", () => {
+    expect(
+      describePdfItem(
+        { Reference: "SZ-0447/07/26", TaxInvoiceNumber: "010.000-26.00000001", LetterNumber: "L1" },
+        "OUTPUT_TAX",
+      ),
+    ).toBe("SZ-0447/07/26");
+  });
+
+  it("falls back to the invoice number when the row has no Referensi", () => {
+    expect(
+      describePdfItem({ TaxInvoiceNumber: "010.000-26.00000001", LetterNumber: "L1" }, "INPUT_TAX"),
+    ).toBe("010.000-26.00000001");
+  });
+
+  it("uses the slip number first on a Bukti Potong row", () => {
+    expect(
+      describePdfItem(
+        { WithholdingSlipNumber: "BP-001", WithholdingSlipsNumber: "BP-001", Reference: "X" },
+        "WITHHOLDING_SLIPS",
+      ),
+    ).toBe("BP-001");
+  });
+
+  it("accepts the second Bukti Potong spelling the PDF filename builder also accepts", () => {
+    // export-source.ts documents the two spellings: WithholdingSlipNumber from
+    // the bulk-PDF flow, WithholdingSlipsNumber from the filename builder.
+    expect(describePdfItem({ WithholdingSlipsNumber: "BP-777" }, "WITHHOLDING_SLIPS")).toBe("BP-777");
+  });
+
+  it("never returns an empty string, so a failure is always attributable", () => {
+    expect(describePdfItem({ Id: 7 }, "OUTPUT_TAX")).toBe(UNIDENTIFIED_PDF_ITEM);
+    expect(describePdfItem({}, "WITHHOLDING_SLIPS")).toBe(UNIDENTIFIED_PDF_ITEM);
+    expect(describePdfItem({ Reference: "   " }, "OUTPUT_TAX")).toBe(UNIDENTIFIED_PDF_ITEM);
+  });
+
+  it("treats null and undefined identifiers as absent", () => {
+    expect(
+      describePdfItem({ Reference: null, TaxInvoiceNumber: undefined, LetterNumber: "L9" }, "OUTPUT_TAX"),
+    ).toBe("L9");
+  });
+});
 
 describe("buildEfakturDownloadUrl", () => {
   it("extracts base URL when einvoiceportal/api/ is present", () => {

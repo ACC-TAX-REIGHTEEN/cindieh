@@ -3,6 +3,8 @@
 // ============================================================
 // Extracted from scraper.ts for testability.
 // No DOM or browser API dependencies.
+
+import type { ExportSource } from "./page-context";
 // ============================================================
 
 /**
@@ -114,6 +116,37 @@ export function mergeRows(
     }
   }
   return added;
+}
+
+/** Shown for a row that carries none of the identifiers below. */
+export const UNIDENTIFIED_PDF_ITEM = "(tanpa identitas)";
+
+/**
+ * The name a bulk-download row is reported under — both in the progress line
+ * while the run is in flight, and in the failure list afterwards.
+ *
+ * Download order is the only thing that ties a failure back to a row once the
+ * run is over, so a run that reports "4 gagal" has to be able to say WHICH four.
+ * The ladders mirror the two shapes the PDF filename builder already walks
+ * (downloader.ts): a Bukti Potong slip is identified by its slip number, which
+ * arrives under two spellings depending on which flow captured it (see
+ * export-source.ts), and an e-faktur row by its Referensi — the same token the
+ * generated filename starts with, so the panel and the downloads folder agree.
+ */
+export function describePdfItem(
+  row: Record<string, unknown>,
+  source: ExportSource,
+): string {
+  const text = (value: unknown): string => String(value ?? "").trim();
+  const candidates =
+    source === "WITHHOLDING_SLIPS"
+      ? [row.WithholdingSlipNumber, row.WithholdingSlipsNumber, row.DocumentNumber]
+      : [row.Reference, row.TaxInvoiceNumber, row.LetterNumber, row.ReturnNumber];
+  for (const candidate of candidates) {
+    const label = text(candidate);
+    if (label) return label;
+  }
+  return UNIDENTIFIED_PDF_ITEM;
 }
 
 /**

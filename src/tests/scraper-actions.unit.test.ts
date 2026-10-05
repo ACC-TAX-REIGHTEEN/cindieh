@@ -16,6 +16,7 @@ import {
   scrapeByInvoices,
   startScraping,
   startPdfDownload,
+  downloadBulkWithholdingPdf,
   consecutiveFailuresExhausted,
 } from "../content/scraper-actions";
 import type { ScraperContext } from "../content/scraper-actions";
@@ -511,6 +512,62 @@ describe("scrapeByInvoices", () => {
     expect(ctx.sendToContent).toHaveBeenCalledWith(expect.objectContaining({
       type: "SCRAPE_COMPLETE", partial: true, failureCount: 2,
     }));
+  });
+
+  it("names each failed e-faktur download, in run order", async () => {
+    // A bare failureCount would force a re-run of the whole batch just to learn
+    // which invoices are missing, so the completion carries the names.
+    vi.mocked(xhrDownloadEfakturPdf).mockRejectedValueOnce(new Error("fail"))
+      .mockResolvedValueOnce("pdf")
+      .mockRejectedValueOnce(new Error("fail"));
+    const ctx = makeCtx({ maxErrors: 2 });
+    await startPdfDownload(
+      [
+        { Reference: "SZ-0447/07/26" },
+        { Reference: "SZ-0448/07/26" },
+        { TaxInvoiceNumber: "010.000-26.00000003" },
+      ],
+      makeCaptured("OUTPUT_TAX"),
+      ctx,
+    );
+    expect(ctx.sendToContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SCRAPE_COMPLETE",
+        failureCount: 2,
+        failedItems: ["SZ-0447/07/26", "010.000-26.00000003"],
+      }),
+    );
+  });
+
+  it("sends an empty failedItems list for a fully successful bulk download", async () => {
+    vi.mocked(xhrDownloadEfakturPdf).mockResolvedValue("pdf");
+    const ctx = makeCtx();
+    await startPdfDownload([{ Reference: "SZ-1/07/26" }], makeCaptured("OUTPUT_TAX"), ctx);
+    const sendSpy = ctx.sendToContent as ReturnType<typeof vi.fn>;
+    const completion = sendSpy.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((m) => m.type === "SCRAPE_COMPLETE");
+    expect(completion?.failedItems).toEqual([]);
+    expect(completion?.partial).toBe(false);
+  });
+
+  it("names each failed Bukti Potong download by slip number", async () => {
+    // The withholding loop is the other PDF path and has its own identifier
+    // ladder, so it needs its own pin: a slip number, never a Referensi.
+    vi.mocked(xhrDownloadWithholdingPdf).mockRejectedValueOnce(new Error("fail"))
+      .mockResolvedValueOnce("pdf");
+    const ctx = makeCtx();
+    const hasil = await downloadBulkWithholdingPdf(
+      makeCaptured("WITHHOLDING_SLIPS"),
+      [
+        { WithholdingSlipNumber: "BP-001", Reference: "SZ-1" },
+        { WithholdingSlipNumber: "BP-002" },
+      ],
+      1,
+      "0.0s",
+      ctx,
+    );
+    expect(hasil).toEqual({ failureCount: 1, failedItems: ["BP-001"] });
   });
 });
 

@@ -40,6 +40,14 @@ export interface ScrapeComplete {
   cancelled?: boolean;
   /** Invoice numbers whose targeted lookup exhausted all retries. */
   failedInvoices?: string[];
+  /**
+   * Names of the individual rows whose download failed, in run order. A bare
+   * count ("4 gagal") is not actionable across a 300-file run, so the producer
+   * names each one — via describePdfItem(), the same label the progress line
+   * used while the run was in flight. Absent means the producer does not name
+   * them: a data scrape downloads nothing per row.
+   */
+  failedItems?: string[];
   failureCount?: number; // exhausted invoice lookups or failed PDF downloads
   /**
    * What produced this completion. A bulk PDF run and a data scrape both end in

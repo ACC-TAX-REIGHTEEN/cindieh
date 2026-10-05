@@ -105,6 +105,41 @@ export function skippedInvoicesMessage(
   );
 }
 
+/** How many failed download names the panel lists before summarizing the rest. */
+export const MAX_LISTED_FAILED_ITEMS = 8;
+
+/**
+ * Panel line naming the individual rows a bulk download could not fetch.
+ *
+ * The count alone forces the Wajib Paypal to re-run the whole run to find out
+ * which files are missing — in a 300-slip withholding batch that is minutes of
+ * portal traffic to learn one number. The list is capped so a bad session
+ * (every file failing) cannot flood the panel.
+ *
+ * Returns null when nothing failed or when the producer named nothing: a bare
+ * count is still reported by the panel's completion line, so silence here means
+ * "no names available", not "no failures".
+ */
+export function failedItemsNotice(items: readonly string[] | undefined): string | null {
+  if (!items?.length) return null;
+  const listed = items.slice(0, MAX_LISTED_FAILED_ITEMS).join(", ");
+  const rest = items.length - MAX_LISTED_FAILED_ITEMS;
+  return `${items.length} file gagal: ${listed}${rest > 0 ? ` (+${rest} lainnya)` : ""}. ` +
+    `Berkas lain tetap tersimpan.`;
+}
+
+/**
+ * The same names, one per line, for the panel's expandable list. Separate from
+ * failedItemsNotice so the one-line summary can stay short while the detail
+ * block holds the full list.
+ */
+export function failedItemsDetail(items: readonly string[] | undefined): string {
+  if (!items?.length) return "";
+  const listed = items.slice(0, MAX_LISTED_FAILED_ITEMS);
+  const rest = items.length - listed.length;
+  return rest > 0 ? `${listed.join("\n")}\n…dan ${rest} lainnya` : listed.join("\n");
+}
+
 export function scrapeErrorMessage(message?: string): string {
   return `${message || "Proses gagal."} Ekspor dan pemeriksaan otomatis dibatalkan. Periksa sesi Coretax dan filter, lalu jalankan ulang.`;
 }

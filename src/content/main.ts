@@ -13,7 +13,7 @@ import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode, type StoredExportMode } f
 import { isOutputTaxPage, isSupportedExportPage } from "./page-context";
 import { createMessageDispatcher } from "./postmessage-guard";
 import { generateBridgeToken, getBridgeToken, getActiveRunId, isCurrentRunMessage, postToScraper } from "./bridge";
-import { currentRunHandlers, scrapeErrorMessage } from "./scrape-result";
+import { currentRunHandlers, scrapeErrorMessage, failedItemsNotice } from "./scrape-result";
 import { runLifecycle } from "./run-lifecycle";
 import type { ScrapeComplete } from "./scraper-types";
 import {
@@ -319,6 +319,7 @@ const pageMessageDispatcher = createMessageDispatcher({
         complete.elapsed || "0s",
         undefined,
         complete.kind,
+        complete.failedItems,
       );
 
       // A run can come back short without failing: a targeted No. Faktur scrape
@@ -326,6 +327,13 @@ const pageMessageDispatcher = createMessageDispatcher({
       // bulk PDF run only returns the rows it downloaded. The Run withholds the
       // notice for a PDF run, whose pre-download dialog already named them.
       if (outcome.shortfall?.notice) updatePanelStatus(outcome.shortfall.notice);
+
+      // A bulk PDF run that named its failures says so here. updatePanelComplete
+      // owns the per-file list; this adds the one-line summary above it, and
+      // only when names actually arrived — the completion line already carries
+      // the bare count for a run that could not name them.
+      const failureNotice = failedItemsNotice(complete.failedItems);
+      if (failureNotice) updatePanelStatus(failureNotice);
 
       // Desktop notification is opt-in and raised by the background worker;
       // see completion-notice.ts for why the hand-off goes through storage.

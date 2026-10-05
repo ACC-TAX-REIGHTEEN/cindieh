@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { createMessageDispatcher } from "../content/postmessage-guard";
 import {
   currentRunHandlers,
+  failedItemsDetail,
+  failedItemsNotice,
   findMissingInvoices,
   incompleteResultMessage,
+  MAX_LISTED_FAILED_ITEMS,
   missingInvoicesMessage,
   scrapeErrorMessage,
   skippedInvoicesMessage,
@@ -13,6 +16,51 @@ import {
 // wording, and the dispatcher wrapper. Accepting, rejecting and consuming a
 // result are state transitions and moved to run-lifecycle.ts (ADR-0014); those
 // rules are pinned in run-lifecycle.unit.test.ts.
+
+// ── Naming the files a bulk PDF run could not fetch ────────────────────────
+// The point of this report is that a count alone ("4 gagal") is not actionable
+// in a 300-file run: the Wajib Pajak would have to re-run the whole thing to
+// learn which four were missing. These pin that the names actually arrive, that
+// the list is capped so a wholly-failed session cannot flood the panel, and that
+// "no names" stays silent rather than inventing an empty headline.
+
+describe("failed download names", () => {
+  it("names every failure in the panel line", () => {
+    const notice = failedItemsNotice(["SZ-0447/07/26", "SZ-0448/07/26"]);
+    expect(notice).toBe(
+      "2 file gagal: SZ-0447/07/26, SZ-0448/07/26. Berkas lain tetap tersimpan.",
+    );
+  });
+
+  it("caps the listed names and says how many were withheld", () => {
+    const items = Array.from({ length: 12 }, (_, i) => `BP-${i}`);
+    const notice = failedItemsNotice(items);
+    expect(notice).toContain(`12 file gagal:`);
+    expect(notice).toContain(`(+${12 - MAX_LISTED_FAILED_ITEMS} lainnya)`);
+  });
+
+  it("returns null when the producer named nothing", () => {
+    // Silence here means "no names available", not "no failures": the panel's
+    // completion line still carries the bare failureCount.
+    expect(failedItemsNotice(undefined)).toBeNull();
+    expect(failedItemsNotice([])).toBeNull();
+  });
+
+  it("puts one name per line in the detail block, capped the same way", () => {
+    const items = Array.from({ length: 3 }, (_, i) => `BP-${i}`);
+    expect(failedItemsDetail(items)).toBe("BP-0\nBP-1\nBP-2");
+
+    const many = Array.from({ length: MAX_LISTED_FAILED_ITEMS + 2 }, (_, i) => `BP-${i}`);
+    const detail = failedItemsDetail(many);
+    expect(detail.split("\n")).toHaveLength(MAX_LISTED_FAILED_ITEMS + 1);
+    expect(detail.endsWith("…dan 2 lainnya")).toBe(true);
+  });
+
+  it("renders an empty detail block when there is nothing to name", () => {
+    expect(failedItemsDetail(undefined)).toBe("");
+    expect(failedItemsDetail([])).toBe("");
+  });
+});
 
 describe("result warnings and errors", () => {
   it("includes every failed invoice and actionable Indonesian instructions", () => {

@@ -8,6 +8,7 @@
 import { isWithholdingPage } from "./page-context";
 import { getExportBtnEl, getExportDropdownBtnEl, getScrapeBtnEl } from "./button-state";
 import { debugLog } from "./debug";
+import { failedItemsDetail } from "./scrape-result";
 
 // ── Floating Info State ──────────────────────────────
 
@@ -39,6 +40,8 @@ interface FloatingElements {
   statPages: HTMLSpanElement;
   statTime: HTMLSpanElement;
   progressBar: HTMLDivElement;
+  /** The per-file failure list; hidden whenever the current run named none. */
+  failureList: HTMLDivElement;
 }
 
 let els: FloatingElements | null = null;
@@ -92,10 +95,18 @@ export function injectBadge() {
   progressBar.className = "ch-f-progress-bar";
   progressContainer.appendChild(progressBar);
 
+  // Names of the individual files a bulk download could not fetch. Kept out of
+  // the one-line status so the panel stays readable when everything succeeds,
+  // and out of the completion line because it is capped there.
+  const failureList = document.createElement("div");
+  failureList.id = "ch-f-failures";
+  failureList.className = "ch-f-failures ch-hidden";
+
   statsEl.appendChild(totalStat.item);
   statsEl.appendChild(pagesStat.item);
   statsEl.appendChild(timeStat.item);
   statsEl.appendChild(statusText);
+  statsEl.appendChild(failureList);
   statsEl.appendChild(progressContainer);
 
   // Create badge element
@@ -130,7 +141,20 @@ export function injectBadge() {
     statPages: pagesStat.val,
     statTime: timeStat.val,
     progressBar,
+    failureList,
   };
+}
+
+/**
+ * Show or clear the per-file failure list. Every panel transition routes through
+ * here so a stale list from a previous run can never sit under a fresh
+ * completion — the common case is a successful retry after a partial one.
+ */
+function setFailureList(items: readonly string[] | undefined): void {
+  if (!els) return;
+  const detail = failedItemsDetail(items);
+  els.failureList.textContent = detail;
+  els.failureList.classList.toggle("ch-hidden", detail === "");
 }
 
 function setIdlePanelContent(): void {
@@ -140,6 +164,7 @@ function setIdlePanelContent(): void {
   els.statTime.textContent = "-";
   els.statusText.textContent = getIdlePanelStatus();
   els.progressBar.style.width = "0%";
+  setFailureList(undefined);
 }
 
 function getExportButtonIcon(kind: ExportButtonKind): string {
@@ -184,6 +209,7 @@ export function updatePanelProgress(total: number, page: number, elapsed: string
   if (!els || !statsEl) return;
   isPanelRunning = true;
   statsEl.closest("#ch-floating-info-container")?.classList.add("ch-panel-open");
+  setFailureList(undefined);
   els.statTotal.textContent = total.toLocaleString("id-ID");
   els.statPages.textContent = String(page);
   els.statTime.textContent = elapsed;
@@ -220,6 +246,7 @@ export function updatePanelComplete(
   elapsed: string,
   failureCount?: number,
   kind?: "scrape" | "pdf",
+  failedItems?: readonly string[],
 ): void {
   if (!els || !statsEl) return;
   isPanelRunning = false;
@@ -227,6 +254,7 @@ export function updatePanelComplete(
   els.statTotal.textContent = total.toLocaleString("id-ID");
   els.statPages.textContent = String(pages);
   els.statTime.textContent = elapsed;
+  setFailureList(failedItems);
 
   if (failureCount && failureCount > 0) {
     const succeeded = total - failureCount;
@@ -256,6 +284,7 @@ export function updatePanelError(message: string): void {
   isPanelRunning = false;
   statsEl.closest("#ch-floating-info-container")?.classList.add("ch-panel-open");
   els.statusText.textContent = `${message}`;
+  setFailureList(undefined);
 
   if (isWithholdingPage()) {
     setExportButtonState(getExportBtnEl(), "pdf", false);
