@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { makeXhrRequest, xhrRequest, xhrRequestByInvoice } from "../content/scraper-xhr";
+import { makeXhrRequest, xhrRequest, xhrRequestByInvoice , readGridTotal } from "../content/scraper-xhr";
 import { MockXHR, stubXHR } from "./__mocks__/xhr-mock";
 import type { CapturedRequest } from "../content/scraper-types";
 
@@ -16,6 +16,44 @@ function makeCaptured(overrides: Partial<CapturedRequest> = {}): CapturedRequest
     ...overrides,
   };
 }
+
+// The portal row count is the only way to tell a short page that ENDS the
+// data from a short page the server produced by capping its page size. These
+// pin how the count is read, including every way it can be absent.
+describe("readGridTotal", () => {
+  it("reads the count from the inner Payload", () => {
+    expect(readGridTotal({ Payload: { Data: [], Total: 1234 } })).toBe(1234);
+    expect(readGridTotal({ Payload: { Data: [], TotalRecords: 7 } })).toBe(7);
+    expect(readGridTotal({ Payload: { Data: [], TotalCount: 8 } })).toBe(8);
+    expect(readGridTotal({ Payload: { Data: [], Count: 9 } })).toBe(9);
+  });
+
+  it("falls back to a count on the envelope", () => {
+    expect(readGridTotal({ Total: 42, Payload: { Data: [] } })).toBe(42);
+  });
+
+  it("prefers the inner payload over the envelope", () => {
+    expect(readGridTotal({ Total: 42, Payload: { Data: [], Total: 7 } })).toBe(7);
+  });
+
+  it("returns null when no count is present, so callers read it as unknown", () => {
+    expect(readGridTotal({ Payload: { Data: [] } })).toBeNull();
+    expect(readGridTotal({})).toBeNull();
+    expect(readGridTotal(null)).toBeNull();
+    expect(readGridTotal("nonsense")).toBeNull();
+  });
+
+  it("rejects a count that is not a usable number", () => {
+    // A negative or NaN count would make every run look truncated.
+    expect(readGridTotal({ Payload: { Data: [], Total: -1 } })).toBeNull();
+    expect(readGridTotal({ Payload: { Data: [], Total: NaN } })).toBeNull();
+    expect(readGridTotal({ Payload: { Data: [], Total: "1200" } })).toBeNull();
+  });
+
+  it("accepts a genuine zero, which is a real answer", () => {
+    expect(readGridTotal({ Payload: { Data: [], Total: 0 } })).toBe(0);
+  });
+});
 
 describe("makeXhrRequest", () => {
   let instances: MockXHR[];

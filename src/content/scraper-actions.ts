@@ -172,7 +172,7 @@ export async function scrapePaginated(
   captured: CapturedRequest,
   step: number,
   ctx: ScraperContext,
-): Promise<{ allData: Record<string, unknown>[]; page: number }> {
+): Promise<{ allData: Record<string, unknown>[]; page: number; truncated: boolean; expectedTotal: number | null }> {
   const allData: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   let page = 0;
@@ -181,11 +181,23 @@ export async function scrapePaginated(
   let errorCount = 0;
   const startTime = Date.now();
   const { delayMs } = getPaginateConfig(captured.source, pacingOf(ctx));
+  // Set when the server's own count says more rows exist than we collected. It
+  // does NOT stop the loop — it can be a stale count — but it is reported, so a
+  // short export can never again be indistinguishable from a complete one.
+  let truncated = false;
+  // The largest matching-row count the server has claimed so far.
+  let expectedTotal: number | null = null;
 
   while (keepGoing && !ctx.isStopRequested()) {
     page++;
     try {
-      const rows = await xhrRequestFn(captured, first, step, ctx.timeout, ...signalArgs(ctx));
+      const { rows, total } = await xhrRequestFn(
+        captured,
+        first,
+        step,
+        ctx.timeout,
+        ...signalArgs(ctx),
+      );
       if (ctx.isStopRequested()) break;
       const newRows = mergeRows(allData, seen, rows);
 
@@ -201,7 +213,27 @@ export async function scrapePaginated(
         status: `Page ${page}: ${rows.length} baris, ${newRows.length} baru`,
       });
 
+      // Trust the server's count over the page shape whenever it gives one.
+      if (total !== null && (expectedTotal === null || total > expectedTotal)) {
+        expectedTotal = total;
+      }
+      if (expectedTotal !== null && allData.length < expectedTotal) {
+        truncated = true;
+        debugLog(
+          `Halaman pendek di ${allData.length}/${expectedTotal} baris — server mungkin membatasi Rows=${step}.`,
+        );
+      }
+
       if (rows.length < step) {
+        keepGoing = false;
+      } else if (newRows.length === 0) {
+        // A FULL page that added nothing new, while First keeps advancing,
+        // means the server is not honouring the offset -- every further page
+        // will be the same rows. Without this the loop requests forever, which
+        // is both a hang and a sustained load on the portal.
+        debugLog(
+          `Halaman penuh tanpa baris baru di First=${first} -- server mengabaikan offset, scrape dihentikan.`,
+        );
         keepGoing = false;
       } else {
         first += step;
@@ -220,7 +252,7 @@ export async function scrapePaginated(
     }
   }
 
-  return { allData, page };
+  return { allData, page, truncated, expectedTotal };
 }
 
 // ── Bulk PDF download — withholding slips ─────────────
@@ -321,7 +353,7 @@ export async function startScraping(
 
     const { step } = getPaginateConfig(captured.source);
 
-    const { allData, page } = await scrapePaginated(captured, step, ctx);
+    const { allData, page, truncated, expectedTotal } = await scrapePaginated(captured, step, ctx);
 
     if (ctx.isStopRequested()) {
       debugLog("⏹ Stopped by user.");
@@ -369,6 +401,8 @@ export async function startScraping(
       partial: failureCount > 0,
       failureCount,
       failedItems,
+      truncated,
+      expectedTotal: expectedTotal ?? undefined,
       // A withholding run IS a bulk PDF download — same message, different job.
       kind: withholdingPdfRun ? "pdf" : "scrape",
     });

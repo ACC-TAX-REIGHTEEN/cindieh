@@ -23,6 +23,17 @@ import type { ScraperContext } from "../content/scraper-actions";
 import { createScrapeRuns } from "../content/scraper-run";
 import { xhrRequest, xhrRequestByInvoice, xhrDownloadEfakturPdf, xhrDownloadWithholdingPdf } from "../content/scraper-xhr";
 import type { CapturedRequest } from "../content/scraper-types";
+import type { GridPage } from "../content/scraper-xhr";
+
+/**
+ * The shape the pagination loop now reads: rows plus the server own count of
+ * matching rows. `total` defaults to null, which is the normal case for the
+ * endpoints that report no count -- the loop must treat null as unknown, never
+ * as zero rows.
+ */
+function gridPage(rows: Record<string, unknown>[], total: number | null = null): GridPage {
+  return { rows, total };
+}
 
 const mockedXhrRequest = vi.mocked(xhrRequest);
 const mockedXhrRequestByInvoice = vi.mocked(xhrRequestByInvoice);
@@ -115,23 +126,100 @@ describe("scrapePaginated", () => {
 
   it("collects rows across pages until a short page", async () => {
     mockedXhrRequest
-      .mockResolvedValueOnce([{ Reference: "R1" }, { Reference: "R2" }])
-      .mockResolvedValueOnce([{ Reference: "R3" }])
-      .mockResolvedValueOnce([{ Reference: "R4" }]);
+      .mockResolvedValueOnce(gridPage([{ Reference: "R1" }, { Reference: "R2" }]))
+      .mockResolvedValueOnce(gridPage([{ Reference: "R3" }]))
+      .mockResolvedValueOnce(gridPage([{ Reference: "R4" }]));
     const ctx = makeCtx();
 
-    const { allData, page } = await scrapePaginated(makeCaptured(), 2, ctx);
+    const { allData, page, truncated } = await scrapePaginated(makeCaptured(), 2, ctx);
 
     expect(page).toBe(2);
+    expect(truncated).toBe(false);
     expect(allData).toEqual([{ Reference: "R1" }, { Reference: "R2" }, { Reference: "R3" }]);
     expect(mockedXhrRequest).toHaveBeenCalledTimes(2);
   });
 
+  // The silent-truncation case: the server caps the page size below what we
+  // asked for, so page 1 comes back short. Before this change the loop read
+  // "short page" as "that is all of it" and reported a clean success over a
+  // fraction of the grid.
+  it("flags truncation when the server reports more rows than it served", async () => {
+    // A short page with a much larger claimed total: the server capped its
+    // page size below the step we asked for. A SHORT page is used on purpose,
+    // so the loop terminates the way it would against the real portal.
+    mockedXhrRequest.mockResolvedValue(gridPage([{ Reference: "R1" }], 9000));
+    const ctx = makeCtx();
+
+    const { allData, page, truncated } = await scrapePaginated(makeCaptured(), 2, ctx);
+
+    expect(allData).toHaveLength(1);
+    expect(page).toBe(1);
+    expect(truncated).toBe(true);
+  });
+
+  it("does not flag truncation when the count matches what was collected", async () => {
+    mockedXhrRequest.mockResolvedValue(gridPage([{ Reference: "R1" }], 1));
+    const ctx = makeCtx();
+
+    const { truncated } = await scrapePaginated(makeCaptured(), 2, ctx);
+    expect(truncated).toBe(false);
+  });
+
+  it("treats an absent count as unknown, not as a discrepancy", async () => {
+    // Most endpoints report no count. That must never read as truncation, or
+    // every run on those grids would cry wolf.
+    mockedXhrRequest.mockResolvedValue(gridPage([{ Reference: "R1" }]));
+    const ctx = makeCtx();
+
+    const { truncated } = await scrapePaginated(makeCaptured(), 2, ctx);
+    expect(truncated).toBe(false);
+  });
+
+  it("stops instead of looping forever when a full page adds nothing new", async () => {
+    // The server ignoring First: every page is full of rows we already hold.
+    // Before the no-progress guard this requested forever -- a hang and a
+    // sustained load on the portal. Page 1 legitimately establishes the rows,
+    // so the guard fires on page 2: that is the second request, and only the
+    // pause between them was ever paid.
+    mockedXhrRequest.mockResolvedValue(gridPage([{ Reference: "R1" }, { Reference: "R2" }]));
+    const ctx = makeCtx();
+
+    const { allData, page } = await scrapePaginated(makeCaptured(), 2, ctx);
+
+    expect(allData).toHaveLength(2);
+    expect(page).toBe(2);
+    expect(mockedXhrRequest).toHaveBeenCalledTimes(2);
+    expect(ctx.delay).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the largest count seen when the server's figure moves between pages", async () => {
+    mockedXhrRequest
+      .mockResolvedValueOnce(gridPage([{ Reference: "R1" }], 1))
+      .mockResolvedValueOnce(gridPage([{ Reference: "R2" }], 5000))
+      .mockResolvedValueOnce(gridPage([], 5000));
+    const ctx = makeCtx();
+
+    const { truncated } = await scrapePaginated(makeCaptured(), 1, ctx);
+    expect(truncated).toBe(true);
+  });
+
+  it("still stops on a short page when no count is available", async () => {
+    // The old heuristic remains the loop's stop condition; it just is no longer
+    // the ONLY thing that can be concluded from a short page.
+    mockedXhrRequest.mockResolvedValue(gridPage([{ Reference: "R1" }]));
+    const ctx = makeCtx();
+
+    const { page, allData } = await scrapePaginated(makeCaptured(), 5, ctx);
+    expect(page).toBe(1);
+    expect(allData).toHaveLength(1);
+    expect(ctx.delay).not.toHaveBeenCalled();
+  });
+
   it("paces between full pages via ctx.delay(delayMs)", async () => {
     mockedXhrRequest
-      .mockResolvedValueOnce([{ Reference: "R1" }])
-      .mockResolvedValueOnce([{ Reference: "R2" }])
-      .mockResolvedValueOnce([]); // short page stops the loop
+      .mockResolvedValueOnce(gridPage([{ Reference: "R1" }]))
+      .mockResolvedValueOnce(gridPage([{ Reference: "R2" }]))
+      .mockResolvedValueOnce(gridPage([])); // short page stops the loop
     const ctx = makeCtx();
     const delaySpy = ctx.delay as ReturnType<typeof vi.fn>;
 
@@ -144,9 +232,9 @@ describe("scrapePaginated", () => {
 
   it("paces SPT at the slower delay", async () => {
     mockedXhrRequest
-      .mockResolvedValueOnce([{ Reference: "R1" }])
-      .mockResolvedValueOnce([{ Reference: "R2" }])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce(gridPage([{ Reference: "R1" }]))
+      .mockResolvedValueOnce(gridPage([{ Reference: "R2" }]))
+      .mockResolvedValueOnce(gridPage([]));
     const ctx = makeCtx();
     const delaySpy = ctx.delay as ReturnType<typeof vi.fn>;
 
@@ -190,7 +278,7 @@ describe("scrapePaginated", () => {
   });
 
   it("stops early when ctx.isStopRequested returns true", async () => {
-    mockedXhrRequest.mockResolvedValue([{ Reference: "R1" }]);
+    mockedXhrRequest.mockResolvedValue(gridPage([{ Reference: "R1" }]));
     const ctx = makeCtx({ isStopRequested: () => true });
 
     const { allData, page } = await scrapePaginated(makeCaptured(), 1, ctx);
@@ -204,8 +292,8 @@ describe("scrapePaginated", () => {
     // A full first page is what makes the loop pace, so the step has to match
     // the row count; the short second page then ends the run.
     mockedXhrRequest
-      .mockResolvedValueOnce([{ Reference: "R1" }, { Reference: "R2" }])
-      .mockResolvedValueOnce([{ Reference: "R3" }]);
+      .mockResolvedValueOnce(gridPage([{ Reference: "R1" }, { Reference: "R2" }]))
+      .mockResolvedValueOnce(gridPage([{ Reference: "R3" }]));
     const ctx = makeCtx({ getPacing: () => "sabar" });
 
     await scrapePaginated(makeCaptured(), 2, ctx);
@@ -216,8 +304,8 @@ describe("scrapePaginated", () => {
 
   it("keeps the code's own floor when nothing sets a pacing", async () => {
     mockedXhrRequest
-      .mockResolvedValueOnce([{ Reference: "R1" }, { Reference: "R2" }])
-      .mockResolvedValueOnce([{ Reference: "R3" }]);
+      .mockResolvedValueOnce(gridPage([{ Reference: "R1" }, { Reference: "R2" }]))
+      .mockResolvedValueOnce(gridPage([{ Reference: "R3" }]));
     const ctx = makeCtx();
 
     await scrapePaginated(makeCaptured(), 2, ctx);
@@ -245,7 +333,7 @@ describe("scrapePaginated", () => {
 
     runs.cancel();
     const replacement = runs.start(3)!;
-    mockedXhrRequest.mockResolvedValueOnce([{ Reference: "NEW" }]);
+    mockedXhrRequest.mockResolvedValueOnce(gridPage([{ Reference: "NEW" }]));
     const newCtx = makeCtx({ signal: replacement.signal, isStopRequested: () => !replacement.isCurrent() });
     await oldWork;
     expect(requestSignal?.aborted).toBe(true);
@@ -261,7 +349,7 @@ describe("scrapePaginated", () => {
   });
 
   it("passes First/Rows and timeout through to the XHR call", async () => {
-    mockedXhrRequest.mockResolvedValue([{ Reference: "R1" }]);
+    mockedXhrRequest.mockResolvedValue(gridPage([{ Reference: "R1" }]));
     const ctx = makeCtx({ timeout: 12345 });
 
     await scrapePaginated(makeCaptured(), 50, ctx);
@@ -431,7 +519,7 @@ describe("scrapeByInvoices", () => {
   beforeEach(() => { vi.resetAllMocks(); });
 
   it("emits one error and no completion when pagination fails after collecting data", async () => {
-    mockedXhrRequest.mockResolvedValueOnce(Array.from({ length: 500 }, (_, i) => ({ Id: i })))
+    mockedXhrRequest.mockResolvedValueOnce(gridPage(Array.from({ length: 500 }, (_, i) => ({ Id: i }))))
       .mockRejectedValue(new Error("failure"));
     const ctx = makeCtx();
     await startScraping(async () => makeCaptured(), ctx);
@@ -455,12 +543,36 @@ describe("scrapeByInvoices", () => {
     mockedXhrRequest.mockImplementation(async () => {
       stop = true;
       if (reject) throw new Error("late failure");
-      return [{ Id: 1 }];
+      return gridPage([{ Id: 1 }]);
     });
     const ctx = makeCtx({ isStopRequested: () => stop });
     await startScraping(async () => makeCaptured(), ctx);
     expect(mockedXhrRequest).toHaveBeenCalledTimes(1);
     expect(ctx.sendToContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries the server's own row count to the completion so the panel can name it", async () => {
+    // The portal says 9.000 rows; our capped page returns 1. The completion
+    // must carry BOTH numbers, because "the file is short" without "short of
+    // what" is not actionable.
+    mockedXhrRequest.mockResolvedValue(gridPage([{ Id: 1 }], 9000));
+    const ctx = makeCtx();
+    await startScraping(async () => makeCaptured(), ctx);
+    const complete = vi.mocked(ctx.sendToContent).mock.calls
+      .map(([msg]) => msg)
+      .find((msg) => msg.type === "SCRAPE_COMPLETE");
+    expect(complete).toMatchObject({ truncated: true, total: 1, expectedTotal: 9000 });
+  });
+
+  it("omits expectedTotal when the portal reports no count at all", async () => {
+    mockedXhrRequest.mockResolvedValue(gridPage([{ Id: 1 }]));
+    const ctx = makeCtx();
+    await startScraping(async () => makeCaptured(), ctx);
+    const complete = vi.mocked(ctx.sendToContent).mock.calls
+      .map(([msg]) => msg)
+      .find((msg) => msg.type === "SCRAPE_COMPLETE");
+    expect(complete?.expectedTotal).toBeUndefined();
+    expect(complete?.truncated).toBeFalsy();
   });
 });
 
@@ -475,7 +587,7 @@ describe("scrapeByInvoices", () => {
     if (source === "OUTPUT_TAX") {
       await startPdfDownload(rows, makeCaptured(source), ctx);
     } else {
-      mockedXhrRequest.mockResolvedValue(rows);
+      mockedXhrRequest.mockResolvedValue(gridPage(rows));
       await startScraping(async () => makeCaptured(source), ctx);
     }
     expect(download).toHaveBeenCalledTimes(2);
@@ -494,7 +606,7 @@ describe("scrapeByInvoices", () => {
     if (source === "OUTPUT_TAX") {
       await startPdfDownload(rows, makeCaptured(source), ctx);
     } else {
-      mockedXhrRequest.mockResolvedValue(rows);
+      mockedXhrRequest.mockResolvedValue(gridPage(rows));
       await startScraping(async () => makeCaptured(source), ctx);
     }
     expect(download).toHaveBeenCalledTimes(1);
@@ -583,7 +695,7 @@ describe("data-only withholding scrape", () => {
   });
 
   it("collects the rows without downloading a single PDF", async () => {
-    mockedXhrRequest.mockResolvedValue([{ Id: 1 }, { Id: 2 }]);
+    mockedXhrRequest.mockResolvedValue(gridPage([{ Id: 1 }, { Id: 2 }]));
     const ctx = makeCtx();
 
     await startScraping(async () => makeCaptured("WITHHOLDING_SLIPS"), ctx, { skipPdf: true });
@@ -596,7 +708,7 @@ describe("data-only withholding scrape", () => {
   });
 
   it("still bulk-downloads when the flag is absent", async () => {
-    mockedXhrRequest.mockResolvedValue([{ Id: 1 }]);
+    mockedXhrRequest.mockResolvedValue(gridPage([{ Id: 1 }]));
     vi.mocked(xhrDownloadWithholdingPdf).mockResolvedValue("pdf");
     const ctx = makeCtx();
 
@@ -632,7 +744,7 @@ describe("pacing preset", () => {
   it("scales the bulk withholding PDF delay", async () => {
     vi.mocked(xhrDownloadWithholdingPdf).mockResolvedValue("pdf");
     // The withholding flow scrapes first (one short page) and then downloads.
-    mockedXhrRequest.mockResolvedValue([{ Id: 1 }]);
+    mockedXhrRequest.mockResolvedValue(gridPage([{ Id: 1 }]));
     const ctx = makeCtx({ getPacing: () => "hati-hati" });
 
     await startScraping(async () => makeCaptured("WITHHOLDING_SLIPS"), ctx);

@@ -13,7 +13,12 @@ import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode, type StoredExportMode } f
 import { isOutputTaxPage, isSupportedExportPage } from "./page-context";
 import { createMessageDispatcher } from "./postmessage-guard";
 import { generateBridgeToken, getBridgeToken, getActiveRunId, isCurrentRunMessage, postToScraper } from "./bridge";
-import { currentRunHandlers, scrapeErrorMessage, failedItemsNotice } from "./scrape-result";
+import {
+  currentRunHandlers,
+  failedItemsNotice,
+  scrapeErrorMessage,
+  truncatedResultNotice,
+} from "./scrape-result";
 import { runLifecycle } from "./run-lifecycle";
 import type { ScrapeComplete } from "./scraper-types";
 import {
@@ -43,7 +48,13 @@ import {
 } from "./ui";
 import { handlePdfDownload } from "./downloader";
 import { registerShortcuts } from "./shortcuts";
-import { applyDebugPreference, debugLog, debugError, DEBUG_STORAGE_KEY } from "./debug";
+import {
+  applyDebugPreference,
+  debugLog,
+  debugWarn,
+  debugError,
+  DEBUG_STORAGE_KEY,
+} from "./debug";
 import {
   initDebugForPageWorld,
   mirrorDebugToPageWorld,
@@ -327,6 +338,20 @@ const pageMessageDispatcher = createMessageDispatcher({
       // bulk PDF run only returns the rows it downloaded. The Run withholds the
       // notice for a PDF run, whose pre-download dialog already named them.
       if (outcome.shortfall?.notice) updatePanelStatus(outcome.shortfall.notice);
+
+      // A short page is only the end of the data if the server agrees it is.
+      // When it does not, the panel says the export may be incomplete rather
+      // than leaving a partial file looking like a finished one.
+      if (complete.truncated) {
+        updatePanelStatus(truncatedResultNotice(complete.total, complete.expectedTotal ?? null));
+        debugWarn(
+          "Scrape terpotong: " +
+            complete.total +
+            " dari " +
+            (complete.expectedTotal ?? "tak diketahui") +
+            " baris terkumpul.",
+        );
+      }
 
       // A bulk PDF run that named its failures says so here. updatePanelComplete
       // owns the per-file list; this adds the one-line summary above it, and

@@ -140,6 +140,30 @@ export function failedItemsDetail(items: readonly string[] | undefined): string 
   return rest > 0 ? `${listed.join("\n")}\n…dan ${rest} lainnya` : listed.join("\n");
 }
 
+/**
+ * Panel notice for a run the server says is longer than what we collected.
+ *
+ * The user already has a file in hand, so the useful thing is to say plainly
+ * that it may be short, name both counts, and point at the one action that
+ * fixes it (a narrower period filter). `expected` is null only if the portal
+ * withheld the count entirely, which is why the fallback phrase exists.
+ */
+export function truncatedResultNotice(
+  collected: number,
+  expected: number | null,
+): string {
+  const target =
+    expected === null ? "jumlah yang tidak disebutkan portal" : expected.toLocaleString("id-ID") + " baris";
+  return (
+    "Data mungkin belum lengkap: terkumpul " +
+    collected.toLocaleString("id-ID") +
+    " dari " +
+    target +
+    ". Coretax tampaknya membatasi jumlah baris per halaman, jadi jalankan " +
+    "scrape ulang dengan filter masa yang lebih sempit."
+  );
+}
+
 export function scrapeErrorMessage(message?: string): string {
   return `${message || "Proses gagal."} Ekspor dan pemeriksaan otomatis dibatalkan. Periksa sesi Coretax dan filter, lalu jalankan ulang.`;
 }

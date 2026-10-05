@@ -10,6 +10,7 @@ import {
   missingInvoicesMessage,
   scrapeErrorMessage,
   skippedInvoicesMessage,
+  truncatedResultNotice,
 } from "../content/scrape-result";
 
 // This module is the PURE half: the missing-invoice diff, the per-caller report
@@ -63,6 +64,25 @@ describe("failed download names", () => {
 });
 
 describe("result warnings and errors", () => {
+  it("says a short export may be incomplete, with both counts and a way out", () => {
+    // The whole point of the flag: a partial file must never look like a
+    // finished one. The notice names what was collected, what was expected,
+    // and the one action that fixes it.
+    const message = truncatedResultNotice(500, 9000);
+    expect(message).toContain("Data mungkin belum lengkap");
+    expect(message).toContain("500");
+    expect(message).toContain("9.000");
+    expect(message).toContain("filter masa yang lebih sempit");
+  });
+
+  it("says the portal stated no count rather than inventing one", () => {
+    const message = truncatedResultNotice(500, null);
+    expect(message).toContain("500");
+    expect(message).toContain("tidak disebutkan portal");
+    expect(message).not.toContain("NaN");
+    expect(message).not.toContain("undefined");
+  });
+
   it("includes every failed invoice and actionable Indonesian instructions", () => {
     const message = incompleteResultMessage({ failedInvoices: ["001", "002"], failureCount: 2 });
     expect(message).toContain("Faktur gagal: 001, 002.");

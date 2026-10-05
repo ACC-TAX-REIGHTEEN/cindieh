@@ -83,6 +83,67 @@ export function makeXhrRequest(
   timeout: number,
   signal?: AbortSignal,
 ): Promise<Record<string, unknown>[]> {
+  return makeXhrRequestPage(captured, bodyOverrides, timeout, signal).then((p) => p.rows);
+}
+
+/**
+ * One page of grid rows plus the row total the SERVER believes it has.
+ *
+ * The total is the point. scrapePaginated() has exactly one stop condition —
+ * "this page came back shorter than the page size I asked for" — and the
+ * response parser used to throw away everything except Payload.Data, so the
+ * portal's own count of matching rows was never available. If the server capped
+ * Rows below what we asked for, that short page looked like the end of the data
+ * and the run reported "Complete" having silently collected a fraction of the
+ * grid. Carrying the total lets the caller CHECK completeness instead of
+ * inferring it from a shape.
+ *
+ * `total` is null when the response carries no recognisable count field, which
+ * is the normal case for some endpoints — callers must treat null as "unknown",
+ * never as "zero rows".
+ */
+export interface GridPage {
+  rows: Record<string, unknown>[];
+  /** Rows the server says match this filter, or null when it did not say. */
+  total: number | null;
+}
+
+/**
+ * Field names the grid endpoints have been observed to report the matching row
+ * count under. Checked in order; the first numeric one wins. Kept here rather
+ * than in the loop so the parser and the capture path agree on what counts.
+ */
+export const TOTAL_COUNT_FIELDS = [
+  "Total",
+  "TotalRecords",
+  "TotalCount",
+  "Count",
+  "RecordsTotal",
+  "TotalRow",
+] as const;
+
+/** Pull the count out of a parsed grid payload, or null when there is none. */
+export function readGridTotal(payload: unknown): number | null {
+  if (!payload || typeof payload !== "object") return null;
+  const bag = payload as Record<string, unknown>;
+  const inner = (bag.Payload ?? bag.payload) as Record<string, unknown> | undefined;
+  // Prefer the inner payload's own count; fall back to the envelope.
+  for (const source of [inner, bag]) {
+    if (!source || typeof source !== "object") continue;
+    for (const field of TOTAL_COUNT_FIELDS) {
+      const value = (source as Record<string, unknown>)[field];
+      if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
+    }
+  }
+  return null;
+}
+
+export function makeXhrRequestPage(
+  captured: CapturedRequest,
+  bodyOverrides: Record<string, unknown>,
+  timeout: number,
+  signal?: AbortSignal,
+): Promise<GridPage> {
   return withXhr(signal, (xhr, resolve, reject) => {
     xhr.open("POST", captured.url, true);
     for (const [k, v] of Object.entries(captured.headers)) {
@@ -95,7 +156,10 @@ export function makeXhrRequest(
           const data = JSON.parse(xhr.responseText) as {
             Payload?: { Data?: Record<string, unknown>[] };
           };
-          resolve(data?.Payload?.Data || []);
+          resolve({
+            rows: data?.Payload?.Data || [],
+            total: readGridTotal(data),
+          });
         } catch {
           reject(new Error(`Parse error di ${JSON.stringify(bodyOverrides)}`));
         }
@@ -112,7 +176,12 @@ export function makeXhrRequest(
 }
 
 /**
- * Request a single page of paginated data.
+ * Request a single page of paginated grid data.
+ *
+ * Returns the rows AND the server own count of matching rows, so the
+ * pagination loop can tell a short page that ends the data apart from a
+ * short page the server produced by capping its page size. The loop used
+ * to have no way to make that distinction.
  */
 export function xhrRequest(
   captured: CapturedRequest,
@@ -120,8 +189,8 @@ export function xhrRequest(
   rows: number,
   timeout: number,
   signal?: AbortSignal,
-): Promise<Record<string, unknown>[]> {
-  return makeXhrRequest(captured, { First: first, Rows: rows }, timeout, signal);
+): Promise<GridPage> {
+  return makeXhrRequestPage(captured, { First: first, Rows: rows }, timeout, signal);
 }
 
 /**

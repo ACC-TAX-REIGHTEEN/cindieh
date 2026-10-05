@@ -38,6 +38,21 @@ export interface ScrapeComplete {
   partial?: boolean;
   /** Reserved for explicitly reported cancellation; actions currently emit no completion on stop. */
   cancelled?: boolean;
+  /**
+   * The server reported MORE matching rows than the scrape collected.
+   *
+   * This is the fingerprint of a silent truncation: the portal capped its
+   * page size below what we asked for, so the first short page looked like
+   * the end of the data. The result is still handed over -- a partial export
+   * beats none -- but the panel says so instead of an unqualified success.
+   */
+  truncated?: boolean;
+  /**
+   * The largest matching-row count the server claimed during the run, when it
+   * claimed one. Carried alongside `truncated` so the notice can name the
+   * number the portal itself gave instead of gesturing at "some rows".
+   */
+  expectedTotal?: number;
   /** Invoice numbers whose targeted lookup exhausted all retries. */
   failedInvoices?: string[];
   /**
