@@ -41,8 +41,8 @@ const comparison: ComparisonResult = {
   status: "BERBEDA",
 };
 const checker: CheckResult = {
-  reference: "000123", buyerName: "Pembeli", invoiceDate: "01/07/2026",
-  buyerTIN: "0012345678901234", taxInvoiceNumber: "04012600023333322",
+  reference: "000123", counterpartyName: "Pembeli", invoiceDate: "01/07/2026",
+  counterpartyTIN: "0012345678901234", taxInvoiceNumber: "04012600023333322",
   dppSystem: 1234567.890123, dppNilaiLainSystem: 1131687.125678, ppnSystem: 0,
   dppExpected: 1234567, dppNilaiLainExpected: 1131687, ppnExpected: 0,
   dppDiff: -0.1234567, dppNilaiLainDiff: 0.9876543, ppnDiff: 0,
@@ -206,9 +206,26 @@ describe("result XLSX rows and AOA readback", () => {
     expectNumeric(sheet.I2, (benchmark === "DPP" ? checker.dppNilaiLainDiff : checker.dppDiff)!, RESULT_DIFFERENCE_FORMAT);
     expectNumeric(sheet.J2, (benchmark === "PPN" ? checker.dppNilaiLainDiff : checker.ppnDiff)!, RESULT_DIFFERENCE_FORMAT);
     expectText(sheet.B2, checker.reference);
-    expectText(sheet.E2, checker.buyerTIN);
+    expectText(sheet.E2, checker.counterpartyTIN);
     expect(rows[0][8]).toBe(benchmark === "DPP" ? "Selisih DPP NL" : "Selisih DPP");
     expect(rows[0][9]).toBe(benchmark === "PPN" ? "Selisih DPP NL" : "Selisih PPN");
+  });
+
+  it.each([
+    ["pembeli", ["Nama Pembeli", "NPWP/NIK Pembeli"]],
+    ["penjual", ["Nama Penjual", "NPWP/NIK Penjual"]],
+  ] as const)("heads the checker export with the %s counterparty", (side, expected) => {
+    // The sheet has to say what the grid says; a PPN Masukan export labelled
+    // "Pembeli" would name the taxpayer's own side.
+    const header = buildCheckerExportRows([checker], "DPP", side)[0];
+    expect(header[3]).toBe(expected[0]);
+    expect(header[4]).toBe(expected[1]);
+  });
+
+  it("keeps the PPN Keluaran header as the default", () => {
+    const header = buildCheckerExportRows([checker], "DPP")[0];
+    expect(header[3]).toBe("Nama Pembeli");
+    expect(header[4]).toBe("NPWP/NIK Pembeli");
   });
 
   it("leaves incomplete checker amounts blank and preserves invoice fallback identifiers", () => {

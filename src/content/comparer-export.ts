@@ -1,6 +1,7 @@
 // Pure result grids for the AOA writer; display formatting never changes values.
 import type { ComparisonResult } from "./comparer";
 import type { BenchmarkType, CheckResult } from "./checker-logic";
+import { COUNTERPARTY_LABEL, type Counterparty } from "./result-columns";
 
 export type ResultExportRows = (string | number | null)[][];
 
@@ -25,17 +26,21 @@ export function buildComparisonExportRows(
 export function buildCheckerExportRows(
   results: readonly CheckResult[],
   benchmark: BenchmarkType,
+  counterparty: Counterparty = "pembeli",
 ): ResultExportRows {
   return [
     [
-      "No", "Referensi", "Tanggal", "Nama Pembeli", "NPWP/NIK Pembeli",
+      "No", "Referensi", "Tanggal",
+      `Nama ${COUNTERPARTY_LABEL[counterparty]}`,
+      `NPWP/NIK ${COUNTERPARTY_LABEL[counterparty]}`,
       "DPP", "DPP NL", "PPN",
       benchmark === "DPP" ? "Selisih DPP NL" : "Selisih DPP",
       benchmark === "PPN" ? "Selisih DPP NL" : "Selisih PPN",
       "Status",
     ],
     ...results.map((r, idx) => [
-      idx + 1, r.reference || r.taxInvoiceNumber, r.invoiceDate, r.buyerName, r.buyerTIN,
+      idx + 1, r.reference || r.taxInvoiceNumber, r.invoiceDate,
+      r.counterpartyName, r.counterpartyTIN,
       r.dppSystem, r.dppNilaiLainSystem, r.ppnSystem,
       benchmark === "DPP" ? r.dppNilaiLainDiff : r.dppDiff,
       benchmark === "PPN" ? r.dppNilaiLainDiff : r.ppnDiff,

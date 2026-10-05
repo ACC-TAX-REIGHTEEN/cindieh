@@ -17,12 +17,17 @@ import {
   resultExportFilename,
   type ResultExportFormat,
 } from "./comparer-export";
-import { comparisonColumns, checkerColumns, type ResultColumn } from "./result-columns";
+import {
+  checkerColumns,
+  comparisonColumns,
+  type Counterparty,
+  type ResultColumn,
+} from "./result-columns";
 import { startScrape } from "./main-actions";
 import { runLifecycle } from "./run-lifecycle";
 import { getPreferences } from "./preferences";
 import { debugError } from "./debug";
-import { isOutputTaxPage } from "./page-context";
+import { isOutputTaxPage, isVatInvoicePage } from "./page-context";
 import { showPanel, updatePanelProgress } from "./ui-badge";
 import { postToScraper } from "./bridge";
 import {
@@ -698,6 +703,35 @@ function applyStoredComparerDefaults(
   dailyDatesInput.classList.toggle("ch-hidden", !session.dailyEnabled);
 }
 
+// ── Which side of the transaction this page shows ─────────
+// PPN Keluaran rows carry the BUYER; PPN Masukan rows carry the SELLER. The
+// checker reads the same three amounts either way, so this decides only the
+// column words. Read per render rather than per injection so an SPA move
+// between the two grids cannot leave the header describing the wrong side.
+function currentCounterparty(): Counterparty {
+  return isOutputTaxPage() ? "pembeli" : "penjual";
+}
+
+/**
+ * The grid's own name for the "still scraping" notice. The checker runs on both
+ * PPN grids now, and telling someone on PPN Masukan that Cindieh is fetching
+ * "data PPN Keluaran" is simply the wrong grid.
+ */
+function currentGridLabel(): string {
+  return isOutputTaxPage() ? "PPN Keluaran" : "PPN Masukan";
+}
+
+
+/**
+ * Whether a result row's double-click can jump to that invoice in the Coretax
+ * grid. Only PPN Keluaran gets the Referensi filter injected — main.ts injects
+ * the toolbar and grid filters on isOutputTaxPage() alone — so on PPN Masukan
+ * the affordance would silently do nothing.
+ */
+function canSearchReferenceInGrid(): boolean {
+  return isOutputTaxPage();
+}
+
 // ── Open / Close ──────────────────────────────────────
 
 export function openComparerModal(targetTab: "compare" | "check" = "compare"): void {
@@ -708,10 +742,10 @@ export function openComparerModal(targetTab: "compare" | "check" = "compare"): v
 
     const tabCheckerBtn = document.getElementById("ch-tab-checker");
     if (tabCheckerBtn) {
-      tabCheckerBtn.classList.toggle("ch-hidden", !isOutputTaxPage());
+      tabCheckerBtn.classList.toggle("ch-hidden", !isVatInvoicePage());
     }
 
-    if (targetTab === "check" && isOutputTaxPage()) {
+    if (targetTab === "check" && isVatInvoicePage()) {
       switchTab("check");
     } else {
       switchTab("compare");
@@ -758,7 +792,8 @@ function handleCheck(): void {
 
   if (decision.action === "needScrape") {
     renderResults();
-    statusMsg.textContent = "Belum ada data. Mohon tunggu, sedang melakukan scraping data PPN Keluaran terlebih dahulu...";
+    statusMsg.textContent =
+      `Belum ada data. Mohon tunggu, sedang melakukan scraping data ${currentGridLabel()} terlebih dahulu...`;
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
     runLifecycle.request({ kind: "compare" });
     startScrape(SCRAPE_DEPS);
@@ -808,7 +843,8 @@ function handleCheckerCheck(): void {
 
   const scrapedData = runLifecycle.result()?.data ?? null;
   if (!scrapedData || scrapedData.length === 0) {
-    statusMsg.textContent = "Belum ada data. Mohon tunggu, sedang melakukan scraping data PPN Keluaran terlebih dahulu...";
+    statusMsg.textContent =
+      `Belum ada data. Mohon tunggu, sedang melakukan scraping data ${currentGridLabel()} terlebih dahulu...`;
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
     runLifecycle.request({ kind: "check" });
     startScrape(SCRAPE_DEPS);
@@ -1051,7 +1087,7 @@ function renderCheckerResults(): void {
   );
   checkerSession.currentPage = currentPage;
 
-  const columns = checkerColumns(checkerSession.benchmark);
+  const columns = checkerColumns(checkerSession.benchmark, currentCounterparty());
 
   const table = document.createElement("table");
   table.className = "ch-comparer-table";
@@ -1075,7 +1111,7 @@ function renderCheckerResults(): void {
       tr.classList.add("ch-comparer-row-viewed");
     }
 
-    if (searchKey) {
+    if (searchKey && canSearchReferenceInGrid()) {
       tr.addEventListener("dblclick", () => {
         checkerSession.viewedRefs.add(searchKey);
         renderCheckerResults();
@@ -1136,7 +1172,11 @@ function handleExportResults(format: ResultExportFormat): void {
 function handleCheckerExportResults(format: ResultExportFormat): void {
   if (checkerSession.results.length === 0) return;
 
-  const rows = buildCheckerExportRows(checkerSession.results, checkerSession.benchmark);
+  const rows = buildCheckerExportRows(
+    checkerSession.results,
+    checkerSession.benchmark,
+    currentCounterparty(),
+  );
   const filename = resultExportFilename(CHECKER_EXPORT_BASENAME, format);
   if (format === "csv") {
     downloadCSVFile(rows, filename);

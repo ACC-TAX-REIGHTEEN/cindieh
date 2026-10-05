@@ -93,7 +93,11 @@ Cara kerja: cukup **copy dari Excel, lalu paste** ke panel Komparator. Tidak per
 
 Tab kedua di panel yang sama dengan Komparator. Fitur ini memeriksa apakah nilai **DPP**, **DPP Nilai Lain**, dan **PPN** pada faktur yang sudah tercatat di Coretax konsisten secara aritmetika — berguna untuk menemukan faktur yang nilai dasarnya terlanjur salah sebelum dilaporkan.
 
-Cara pakai: buka panel **Bandingkan** (ikon daftar di toolbar), pilih tab **Pengecekan Keakuratan Nilai**, pilih **Acuan**, isi **Toleransi** bila perlu, lalu klik **Periksa**. Bila data belum ada, Cindieh menarik data PPN Keluaran terlebih dahulu secara otomatis (sama seperti Komparator). Tab ini hanya muncul di halaman e-Faktur **PPN Keluaran**.
+Cara pakai: buka panel **Bandingkan** (ikon daftar di toolbar), pilih tab **Pengecekan Keakuratan Nilai**, pilih **Acuan**, isi **Toleransi** bila perlu, lalu klik **Periksa**. Bila data belum ada, Cindieh menarik data grid tersebut terlebih dahulu secara otomatis (sama seperti Komparator). Tab ini muncul di halaman e-Faktur **PPN Keluaran** dan **PPN Masukan**.
+
+Kolom nama pihak lain menyesuaikan gridnya: di PPN Keluaran kolomnya **Nama Pembeli**, di PPN Masukan **Nama Penjual** — karena faktur masuk menunjuk penjualan orang lain, bukan milik Wajib Pajak sendiri. Perhitungan DPP / DPP NL / PPN-nya identik di kedua halaman: yang diperiksa adalah konsistensi aritmetika satu faktur, bukan pencocokan antar faktur.
+
+> **Kenapa Komparator tidak ikut ke PPN Masukan?** Komparator mencocokkan catatan internal dengan Coretax berdasarkan kolom **Referensi**. Referensi di PPN Masukan adalah referensi milik **penjual**, jadi bisa sama antar faktur dari penjual berbeda dan sering kosong — tidak ada kunci yang bisa diandalkan untuk pencocokan.
 
 **Acuan** menentukan nilai mana yang dianggap benar, nilai mana yang dihitung darinya, dan nilai mana yang diperiksa:
 

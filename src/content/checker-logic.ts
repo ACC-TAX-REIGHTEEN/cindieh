@@ -11,8 +11,14 @@ export type BenchmarkType = "DPP" | "DPP_NILAI_LAIN" | "PPN";
 export interface CheckResult {
   taxInvoiceNumber: string;
   invoiceDate: string;
-  buyerName: string;
-  buyerTIN: string;
+  /**
+   * The other party on the invoice, whatever side of the transaction they sit
+   * on: on PPN Keluaran that is the buyer, on PPN Masukan the seller. The
+   * checker works per row and never matches across rows, so which side it is
+   * changes only the column label, never the arithmetic.
+   */
+  counterpartyName: string;
+  counterpartyTIN: string;
   reference: string;
 
   dppSystem: number | null;
@@ -146,6 +152,23 @@ export function checkRowAccuracy(
   const rawDate = row.TaxInvoiceDate || row.DocumentDate || row.Date || "";
   const invoiceDate = formatDate(rawDate);
 
+  // Counterparty resolution is source-agnostic: a PPN Keluaran row never
+  // carries SellerTaxpayerName and a PPN Masukan row never carries BuyerName, so
+  // one chain serves both. The export-spec column lists are the authority on
+  // which spelling each grid sends.
+  const counterpartyName = String(
+    row.BuyerName ||
+      row.BuyerTaxpayerNameClear ||
+      row.BuyerTaxpayerName ||
+      row.SellerTaxpayerName ||
+      row.SellerTaxpayerNameClear ||
+      row.SellerName ||
+      "",
+  );
+  const counterpartyTIN = String(
+    row.BuyerTIN || row.BuyerTin || row.SellerTIN || row.SellerTin || "",
+  );
+
   const taxInvoiceNumber = String(
     row.TaxInvoiceNumber ||
       row.LetterNumber ||
@@ -158,8 +181,8 @@ export function checkRowAccuracy(
   return {
     taxInvoiceNumber,
     invoiceDate,
-    buyerName: String(row.BuyerName || row.BuyerTaxpayerNameClear || row.BuyerTaxpayerName || ""),
-    buyerTIN: String(row.BuyerTIN || row.BuyerTin || ""),
+    counterpartyName,
+    counterpartyTIN,
     reference: String(row.Reference || ""),
 
     dppSystem,

@@ -7,6 +7,7 @@ import {
   isOutputReturnPage,
   isInputReturnPage,
   isEfakturPage,
+  isVatInvoicePage,
   isSptPage,
   isWithholdingPage,
   isSupportedExportPage,
@@ -79,6 +80,32 @@ describe("isInputReturnPage", () => {
   });
   it("rejects input-tax page", () => {
     expect(isInputReturnPage(URLS.inputTax)).toBe(false);
+  });
+});
+
+describe("isVatInvoicePage", () => {
+  // The Checker runs on both PPN grids; the Comparer deliberately does not,
+  // because a PPN Masukan Referensi is the SELLER's own and is neither unique
+  // across a taxpayer's purchases nor reliably present.
+  it.each([
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax", true],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-tax", true],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-return", false],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-return", false],
+    ["https://coretaxdjp.pajak.go.id/returnsheets-portal/value-added-tax-return", false],
+    ["https://coretaxdjp.pajak.go.id/withholding-slips-portal/my-withholding-slips", false],
+  ])("%s -> %s", (url, expected) => {
+    expect(isVatInvoicePage(url)).toBe(expected);
+  });
+
+  it("matches isEfakturPage exactly on the two PPN grids", () => {
+    for (const url of [
+      "https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax",
+      "https://coretaxdjp.pajak.go.id/e-invoice-portal/input-tax",
+    ]) {
+      expect(isVatInvoicePage(url)).toBe(true);
+      expect(isEfakturPage(url)).toBe(true);
+    }
   });
 });
 

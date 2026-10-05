@@ -127,8 +127,12 @@ A reverse check: only Coretax invoices dated on the given days of month (1–31)
 _Avoid_: day filter, daily date mode
 
 **Pengecekan (Checker)**:
-The value-accuracy tab of the panel (next to the Comparer): every scraped PPN Keluaran row's DPP, DPP Nilai Lain, and PPN are tested against the chosen **Acuan**; only rows that differ or carry incomplete data are ever listed.
+The value-accuracy tab of the panel (next to the Comparer): every scraped PPN Keluaran or PPN Masukan row's DPP, DPP Nilai Lain, and PPN are tested against the chosen **Acuan**; only rows that differ or carry incomplete data are ever listed. It runs on both VAT grids because it tests ONE invoice's arithmetic at a time — never a match between invoices.
 _Avoid_: accuracy check, validation, audit
+
+**Counterparty**:
+The other party on an invoice the Checker lists: the **Buyer** on PPN Keluaran, the **Seller** on PPN Masukan. The panel's column header and the exported sheet's header both follow it. Which party it is changes no arithmetic — only the words.
+_Avoid_: calling the PPN Masukan counterparty a "pembeli"
 
 **Acuan (Benchmark)**:
 The value a checker run treats as ground truth — **DPP**, **DPP NL**, or **PPN** (`BenchmarkType`) — which decides both the two derived values and the two columns compared.

@@ -49,6 +49,20 @@ export function isInputReturnPage(url = location.href): boolean {
 	return normalizedUrl.includes("/e-invoice-portal") && normalizedUrl.includes("input-return");
 }
 
+/**
+ * The e-faktur VAT grids the Penge-driving features can run on.
+ *
+ * Penge-cekan Keakuratan Nilai works here because it tests ONE invoice's
+ * arithmetic at a time: whether DPP, DPP Nilai Lain and PPN agree with each
+ * other does not depend on whose invoice it is. The Comparer is deliberately
+ * NOT here — it matches internal records to Coretax by Referensi, and a
+ * PPN Masukan Referensi is whatever the SELLER filed, so it is neither unique
+ * across a taxpayer's purchases nor reliably present.
+ */
+export function isVatInvoicePage(url = location.href): boolean {
+	return isOutputTaxPage(url) || isInputTaxPage(url);
+}
+
 export function isEfakturPage(url = location.href): boolean {
 	return (
 		isOutputTaxPage(url) ||

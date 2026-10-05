@@ -17,8 +17,8 @@ function comparison(overrides: Partial<ComparisonResult> = {}): ComparisonResult
 
 function check(overrides: Partial<CheckResult> = {}): CheckResult {
   return {
-    reference: "000123", buyerName: "Pembeli", invoiceDate: "01/07/2026",
-    buyerTIN: "0012345678901234", taxInvoiceNumber: "04012600023333322",
+    reference: "000123", counterpartyName: "Pembeli", invoiceDate: "01/07/2026",
+    counterpartyTIN: "0012345678901234", taxInvoiceNumber: "04012600023333322",
     dppSystem: 1000, dppNilaiLainSystem: 916, ppnSystem: 100,
     dppExpected: 1000, dppNilaiLainExpected: 916, ppnExpected: 100,
     dppDiff: 5, dppNilaiLainDiff: -4, ppnDiff: 3,
@@ -181,6 +181,24 @@ describe("checkerColumns", () => {
 
   it("shows the raw checker status, unlike the comparer's friendly label", () => {
     expect(cells(checkerColumns("DPP"), check({ benchmark: "DPP" }))[9]).toBe("DPP NL Berbeda");
+  });
+
+  it("names the counterparty for the side of the transaction", () => {
+    // PPN Masukan carries the SELLER. Calling that column "Nama Pembeli" there
+    // would describe the taxpayer's own side and mislead.
+    expect(labels(checkerColumns("DPP", "pembeli"))[3]).toBe("Nama Pembeli");
+    expect(labels(checkerColumns("DPP", "penjual"))[3]).toBe("Nama Penjual");
+    // The default stays the PPN Keluaran wording, so existing callers are unchanged.
+    expect(labels(checkerColumns("DPP"))).toEqual(labels(checkerColumns("DPP", "pembeli")));
+  });
+
+  it("keeps the seller column at the same position and width as the buyer's", () => {
+    const asBuyer = checkerColumns("DPP", "pembeli");
+    const asSeller = checkerColumns("PPN", "penjual");
+    expect(asSeller).toHaveLength(asBuyer.length);
+    expect(asSeller[3]!.className).toBe(asBuyer[3]!.className);
+    // Only the label differs — the counterparty cell reads the same field.
+    expect(cells(asSeller, check())[3]).toBe(cells(asBuyer, check())[3]);
   });
 
   it("returns a fresh array each call, so a caller cannot corrupt the schema", () => {

@@ -246,13 +246,65 @@ describe("checkAllRowsAccuracy", () => {
   });
 });
 
+describe("counterparty resolution across both PPN grids", () => {
+  const amounts = { SellingPrice: 12000000, OtherTaxBase: 11000000, VAT: 0 };
+
+  it("reads the buyer from a PPN Keluaran row", () => {
+    const r = checkRowAccuracy(
+      { ...amounts, BuyerName: "PT PEMBELI", BuyerTIN: "01.234.567.8-901.000" },
+      "DPP",
+    );
+    expect(r?.counterpartyName).toBe("PT PEMBELI");
+    expect(r?.counterpartyTIN).toBe("01.234.567.8-901.000");
+  });
+
+  it("reads the seller from a PPN Masukan row", () => {
+    const r = checkRowAccuracy(
+      { ...amounts, SellerTaxpayerName: "PT PENJUAL", SellerTIN: "09.876.543.2-101.000" },
+      "DPP",
+    );
+    expect(r?.counterpartyName).toBe("PT PENJUAL");
+    expect(r?.counterpartyTIN).toBe("09.876.543.2-101.000");
+  });
+
+  it("prefers the buyer when a row somehow carries both sides", () => {
+    const r = checkRowAccuracy(
+      { ...amounts, BuyerName: "PT PEMBELI", SellerTaxpayerName: "PT PENJUAL" },
+      "DPP",
+    );
+    expect(r?.counterpartyName).toBe("PT PEMBELI");
+  });
+
+  it("leaves the counterparty blank rather than inventing one", () => {
+    const r = checkRowAccuracy({ ...amounts, Reference: "SZ-1/07/26" }, "DPP", 999999);
+    expect(r?.counterpartyName).toBe("");
+    expect(r?.counterpartyTIN).toBe("");
+  });
+
+  it("reaches the same verdict on the same amounts from either grid", () => {
+    // The arithmetic is per invoice and side-agnostic: which party is NAMED is
+    // the only thing the transaction side changes.
+    const keluar = checkRowAccuracy(
+      { ...amounts, BuyerName: "PT SAMA", SellerTaxpayerName: "PT LAIN" },
+      "DPP_NILAI_LAIN",
+    );
+    const masuk = checkRowAccuracy(
+      { ...amounts, SellerTaxpayerName: "PT SAMA", BuyerName: "PT LAIN" },
+      "DPP_NILAI_LAIN",
+    );
+    expect(masuk?.status).toBe(keluar?.status);
+    expect(masuk?.dppDiff).toBe(keluar?.dppDiff);
+    expect(masuk?.ppnDiff).toBe(keluar?.ppnDiff);
+  });
+});
+
 describe("applyCheckerStatusFilter", () => {
   function makeMockResult(status: string): CheckResult {
     return {
       taxInvoiceNumber: "001",
       invoiceDate: "01/01/2026",
-      buyerName: "",
-      buyerTIN: "",
+      counterpartyName: "",
+      counterpartyTIN: "",
       reference: "",
       dppSystem: 100,
       dppNilaiLainSystem: 50,
@@ -301,8 +353,8 @@ describe("formatCheckSummary", () => {
     const mockResult = {
       taxInvoiceNumber: "001",
       invoiceDate: "01/01/2026",
-      buyerName: "",
-      buyerTIN: "",
+      counterpartyName: "",
+      counterpartyTIN: "",
       reference: "",
       dppSystem: 100,
       dppNilaiLainSystem: 50,

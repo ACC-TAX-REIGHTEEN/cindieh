@@ -134,17 +134,39 @@ const CHECKER_DIFFS: Record<BenchmarkType, readonly [CheckerDiffSpec, CheckerDif
   ],
 };
 
+/**
+ * Which side of the transaction the counterparty sits on. The checker tests one
+ * invoice's arithmetic at a time, so the only thing a side changes is the words
+ * in the column header and the field the cell reads — never the maths.
+ */
+export type Counterparty = "pembeli" | "penjual";
+
+export const COUNTERPARTY_LABEL: Record<Counterparty, string> = {
+  pembeli: "Pembeli",
+  penjual: "Penjual",
+};
+
+const CHECKER_COUNTERPARTY_COLUMN: Record<Counterparty, ResultColumn<CheckResult>> = {
+  // PPN Keluaran: the invoice's buyer.
+  pembeli: textColumn("Nama Pembeli", "ch-col-buyer", (r) => r.counterpartyName),
+  // PPN Masukan: the same column, but the invoice's SELLER. Labelling it
+  // "Pembeli" there would describe the taxpayer's own side and mislead.
+  penjual: textColumn("Nama Penjual", "ch-col-buyer", (r) => r.counterpartyName),
+};
+
 const CHECKER_COLUMNS: readonly ResultColumn<CheckResult>[] = [
   numberColumn<CheckResult>(),
   // A row with no Referensi falls back to its tax-invoice number, as the
   // exported sheet does.
   textColumn("Referensi", "ch-col-ref", (r) => r.reference || r.taxInvoiceNumber),
   textColumn("Tanggal", "ch-col-date", (r) => r.invoiceDate),
-  textColumn("Nama Pembeli", "ch-col-buyer", (r) => r.buyerName),
   amountColumn("DPP", "ch-col-num", (r) => r.dppSystem),
   amountColumn("DPP NL", "ch-col-num-wide", (r) => r.dppNilaiLainSystem),
   amountColumn("PPN", "ch-col-num", (r) => r.ppnSystem),
 ];
+
+/** Where the counterparty column sits: after No, Referensi and Tanggal. */
+const CHECKER_COUNTERPARTY_INDEX = 3;
 
 /** Where the two difference columns go: after the three system amounts. */
 const CHECKER_DIFF_INDEX = 7;
@@ -165,7 +187,10 @@ const CHECKER_STATUS_COLUMN: ResultColumn<CheckResult> = textColumn(
  * session value is what fixes the header text. Resolve per row and the table
  * keeps behaving identically if that ever stops being true.
  */
-export function checkerColumns(benchmark: BenchmarkType): ResultColumn<CheckResult>[] {
+export function checkerColumns(
+  benchmark: BenchmarkType,
+  counterparty: Counterparty = "pembeli",
+): ResultColumn<CheckResult>[] {
   const labels = CHECKER_DIFFS[benchmark];
   const diffCells = labels.map(
     (spec, slot): ResultColumn<CheckResult> => ({
@@ -176,7 +201,9 @@ export function checkerColumns(benchmark: BenchmarkType): ResultColumn<CheckResu
     }),
   );
   return [
-    ...CHECKER_COLUMNS.slice(0, CHECKER_DIFF_INDEX),
+    ...CHECKER_COLUMNS.slice(0, CHECKER_COUNTERPARTY_INDEX),
+    CHECKER_COUNTERPARTY_COLUMN[counterparty],
+    ...CHECKER_COLUMNS.slice(CHECKER_COUNTERPARTY_INDEX, CHECKER_DIFF_INDEX),
     ...diffCells,
     // CHECKER_COLUMNS stops at the insertion point, so the status column that
     // used to follow it has to be appended here.
