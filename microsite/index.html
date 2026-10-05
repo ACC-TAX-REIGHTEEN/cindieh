@@ -68,6 +68,12 @@
 </head>
 <body>
 
+<!-- The first thing a keyboard user reaches. Off-screen until focused
+     (see .skip-link), then it jumps past the sticky topbar's eight links
+     straight to the page's content. It has to be FIRST: a skip link that
+     sits behind eight links in the tab order is not a skip link. -->
+<a class="skip-link btn btn-primary" href="#konten">Lompat ke konten utama</a>
+
 <!-- Icon sprite (toolbar mockup) -->
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
   <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 21h16"/></symbol>
@@ -78,7 +84,11 @@
   <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
 </svg>
 
-<div class="topbar">
+<!-- <header> rather than <div> so this is the page's banner landmark. It used
+     to be a plain div, which meant the only <header> was the hero — and the
+     hero has just moved inside <main>, where a <header> is no longer a
+     banner. Changing this element first keeps the landmark. -->
+<header class="topbar">
   <div class="wrap">
     <a class="brand" href="#top" aria-label="Cindieh — ke atas"><img src="assets/img/icon-32.png" width="22" height="22" alt="">Cindieh</a>
     <nav class="navlinks" aria-label="Navigasi utama">
@@ -93,7 +103,13 @@
       <a href="https://coretaxdjp.pajak.go.id" class="btn btn-ghost btn-sm" target="_blank" rel="noopener noreferrer">Buka Coretax<span class="sr-only"> (terbuka di tab baru)</span></a>
     </div>
   </div>
-</div>
+</header>
+
+<!-- One <main> for the whole page. `tabindex="-1"` is what lets the skip
+     link actually MOVE focus here rather than only scroll: without it the
+     target is not focusable and a screen reader keeps reading from the
+     topbar. -->
+<main id="konten" tabindex="-1">
 
 <!-- HERO -->
 <header class="hero" id="top">
@@ -671,6 +687,8 @@ pnpm run build</pre>
     </div>
   </div>
 </section>
+
+</main>
 
 <footer>
   <div class="wrap">

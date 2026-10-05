@@ -84,6 +84,15 @@ const flat = (text: string): string =>
 const page = flat(microsite);
 
 /**
+ * Markup, minus its comments. Both guards that scan the DOM's own vocabulary
+ * need this: an explanatory comment about a fix naturally names the element it
+ * changed ("<!-- the hero moved inside <main> -->"), and counting that as a
+ * second <main> punishes the documentation for existing. Caught by the
+ * landmark guard reddening itself on its own commit.
+ */
+const stripComments = (html: string): string => html.replace(/<!--[\s\S]*?-->/g, "");
+
+/**
  * Both facts are searched INSIDE their own table rather than page-wide: the
  * page says "BP-" and "storage" in other places too (a sample PDF name, the
  * FAQ), and a page-wide search would keep passing after the table itself went
@@ -724,6 +733,10 @@ describe("microsite — colour contrast", () => {
     [".feat-steps li::before number", "--stamp-dark", "--paper", 12, 600],
     [".feat-problem", "--ink-soft", "--paper", 15, 400],
     [".feat-side h3", "--ink-soft", "--card", 13, 400],
+    // The skip link reuses .btn/.btn-primary, so it is the same --paper-on-
+    // --ink pair the buttons already prove — but it is a distinct usage, and
+    // this table exists to enumerate usages rather than tokens.
+    [".skip-link", "--paper", "--ink", 14.5, 600],
     [".role-item .path", "--only-ct-ink", "--only-ct-tint", 12.5, 400, CARD],
     [".role-item .who", "--ink", "--card", 15, 600],
     [".sd-node .lbl", "--ink-soft", "--card", 11, 400],
@@ -1330,7 +1343,7 @@ describe("microsite — heading outline never skips a level", () => {
   // isolation would pass a page that skips inside every one of them.
 
   const outlineOf = (html: string): { level: number; text: string }[] =>
-    [...html.matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/g)].map((m) => ({
+    [...stripComments(html).matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/g)].map((m) => ({
       level: Number(m[1]),
       text: flat(m[2].replace(/<[^>]*>/g, "")).trim(),
     }));
@@ -1407,6 +1420,63 @@ describe("microsite — heading outline never skips a level", () => {
             `orphans it from its siblings and from the .feat-side/.install-card rules`,
         ).toBe(1);
       }
+    });
+  }
+});
+
+// ── Landmarks and the skip link ──────────────────────────────────────────
+
+describe("microsite — one main landmark and a skip link that skips", () => {
+  // The landing page had nine <section>s and nothing wrapping them: no main
+  // landmark for a screen reader to jump to, and a keyboard user had to tab
+  // through the topbar's eight links before reaching any content. privacy.html
+  // already had a <main>; index.html and 404.html did not.
+
+  const FOCUSABLE = /<a\s[^>]*href=|<button\b|<input\b|<select\b|<textarea\b/gi;
+
+  for (const [name, html] of [
+    ["index.html", microsite],
+    ["privacy.html", privacyPolicy],
+    ["404.html", notFoundPage],
+  ] as const) {
+    const stripped = stripComments(html);
+    const body = stripped.slice(stripped.indexOf("<body>") + 6, stripped.indexOf("</body>"));
+    const skip = body.match(/<a\b[^>]*class="[^"]*\bskip-link\b[^"]*"[^>]*>/)?.[0];
+
+    it(`${name} exposes exactly one main landmark`, () => {
+      expect(
+        [...stripComments(html).matchAll(/<main\b/g)].length,
+        `${name} must expose exactly one <main>; zero means no landmark, two means the page is ambiguous`,
+      ).toBe(1);
+    });
+
+    it(`${name} puts its skip link ahead of everything focusable`, () => {
+      if (skip === undefined) {
+        // A skip link is only worth having when there is something to skip, so
+        // its absence is a failure only when focusable content precedes <main>.
+        // privacy.html legitimately qualifies: <main> is its first element, so
+        // a skip link there would jump nowhere.
+        const before = body.slice(0, body.search(/<main\b/));
+        expect(
+          [...before.matchAll(FOCUSABLE)].length,
+          `${name} has focusable content before <main> but no skip link — a keyboard user has to tab through all of it first`,
+        ).toBe(0);
+        return;
+      }
+
+      // The defining property: a skip link sitting behind eight links in the
+      // tab order is not a skip link.
+      expect(
+        [...body.slice(0, body.indexOf(skip)).matchAll(FOCUSABLE)].length,
+        `${name} places focusable content BEFORE its skip link, which defeats the point of it`,
+      ).toBe(0);
+
+      const target = skip.match(/href="#([^"]+)"/)?.[1];
+      expect(target, `${name} skip link has no in-page target`).toBeDefined();
+      expect(
+        html.includes(`id="${target!}"`),
+        `${name} skip link points at #${target}, which exists in no element — it would reload the page instead`,
+      ).toBe(true);
     });
   }
 });

@@ -66,6 +66,42 @@ microsite/
 - **`prefers-reduced-motion` is honoured in JS, not only in CSS.** The reveal
   skips its `IntersectionObserver` entirely rather than animating and letting
   the media query undo it afterwards.
+- **One `<main>`, and a skip link that actually skips.** The landing page had
+  nine `<section>`s and nothing wrapping them, so there was no main landmark
+  to jump to and a keyboard user had to tab through the topbar's eight links
+  before reaching any content. `index.html` and `404.html` now wrap their body
+  in `<main>`; `privacy.html` already had one. The topbar became a `<header>`
+  in the same change, because it used to be a `<div>` and the only `<header>`
+  was the hero — which has just moved *inside* `<main>`, where a `<header>` is
+  no longer a banner. Changing the element first is what keeps the landmark.
+  `<main id="konten" tabindex="-1">`: the `tabindex` is load-bearing, because
+  without it the skip target is not focusable and the link only scrolls while a
+  screen reader keeps reading from the topbar.
+
+  The skip link is the first thing in `<body>`, and "first" is the whole claim:
+  one behind eight links is not a skip link. `microsite-sync.unit.test.ts`
+  asserts each page has exactly one `<main>`, that **nothing focusable precedes
+  the skip link**, and that its `href="#…"` target exists. A page is only
+  *required* to have one when focusable content precedes its `<main>`, which is
+  why `privacy.html` legitimately has none — there, `<main>` is already the
+  first element and a skip link would jump nowhere.
+
+  Both guards that scan the DOM's own vocabulary strip HTML comments first.
+  An explanatory comment about a fix naturally names the element it changed
+  (`<!-- the hero moved inside <main> -->`), and the landmark guard reddened
+  itself on the commit that added it by counting that as a second `<main>`.
+
+  The skip link reuses `.btn`/`.btn-primary` so its contrast pair is one the
+  page already proves, and that reuse needed one guard of its own: the button
+  hover nudge is `.btn:hover{transform:translateY(-1.5px)}`, which is exactly
+  `(0,2,0)` — the same specificity as `.skip-link:focus` — and sits LATER in
+  the file. A pointer resting near the top-left, which is where the skip link
+  lands, would therefore win the cascade and nudge the link by a pixel and a
+  half instead of revealing it, so a keyboard user would press Tab and see
+  nothing happen. The hover rule is `.btn:not(.skip-link):hover` for that
+  reason; **do not drop the `:not()`**, and note that under
+  `prefers-reduced-motion` the reduced-motion override carries the same
+  exclusion, because `transform:none` there would leave the link stuck visible.
 - **Heading levels are pinned, because the outline is a contract.** The page
   shipped thirteen `<h4>`s sitting directly under `<h2>` section headings with no
   `<h3>` between them, so every screen reader announced a level it could not
