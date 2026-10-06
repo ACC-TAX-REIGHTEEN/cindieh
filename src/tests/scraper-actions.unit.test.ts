@@ -359,6 +359,8 @@ describe("scrapePaginated", () => {
       0,
       50,
       12345,
+      undefined,
+      {},
     );
   });
 });

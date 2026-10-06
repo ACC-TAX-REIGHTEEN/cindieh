@@ -164,6 +164,44 @@ export function truncatedResultNotice(
   );
 }
 
+/**
+ * What a batch run reports once it is over.
+ *
+ * With no usable server-side total, the per-period row counts ARE the
+ * completeness evidence, so the panel states them. A period that returned
+ * nothing between non-empty neighbours is the finding that can change a
+ * filing, so it leads; a period that failed is called out separately, because
+ * "no rows" and "could not be fetched" are different problems with different
+ * fixes.
+ */
+export function batchResultNotice(summary: {
+  counts: { period: string; rows: number; error?: string }[];
+  totalRows: number;
+  emptyPeriods: string[];
+  failedPeriods: string[];
+}): string {
+  const headline =
+    `${summary.counts.length} masa pajak, ${summary.totalRows.toLocaleString("id-ID")} baris`;
+
+  if (summary.failedPeriods.length) {
+    return (
+      headline +
+      ". Masa gagal diambil: " +
+      summary.failedPeriods.join(", ") +
+      ". Coba ekspor kembali."
+    );
+  }
+  if (summary.emptyPeriods.length) {
+    return (
+      headline +
+      ". Masa tanpa baris: " +
+      summary.emptyPeriods.join(", ") +
+      " -- periksa di portal apakah ada data di masa tersebut."
+    );
+  }
+  return headline + ".";
+}
+
 export function scrapeErrorMessage(message?: string): string {
   return `${message || "Proses gagal."} Ekspor dan pemeriksaan otomatis dibatalkan. Periksa sesi Coretax dan filter, lalu jalankan ulang.`;
 }

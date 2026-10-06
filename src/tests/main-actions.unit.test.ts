@@ -55,6 +55,7 @@ function makeDeps(overrides: Partial<ActionDeps> = {}): ActionDeps {
     updatePanelError: vi.fn(),
     getMultiInvoiceNumbers: vi.fn(() => []),
     isEfakturPage: vi.fn(() => true),
+    isBatchPage: vi.fn(() => true),
     // The real predicate over the documented default threshold, so the cases
     // below exercise the shipped decision instead of a stub that always says yes.
     shouldConfirmBulkDownload: vi.fn((count: number) =>

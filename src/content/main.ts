@@ -16,6 +16,7 @@ import { generateBridgeToken, getBridgeToken, getActiveRunId, isCurrentRunMessag
 import {
   currentRunHandlers,
   failedItemsNotice,
+  batchResultNotice,
   scrapeErrorMessage,
   truncatedResultNotice,
 } from "./scrape-result";
@@ -108,6 +109,7 @@ import { describeCompletion, publishCompletion, SHOW_PANEL_REQUEST_KEY } from ".
 import {
   createActionDeps,
   handleExportAction,
+  startBatchExport,
   startScrape,
   triggerSearch,
   scrapeIntentForFormat,
@@ -401,6 +403,14 @@ const pageMessageDispatcher = createMessageDispatcher({
       // notice for a PDF run, whose pre-download dialog already named them.
       if (outcome.shortfall?.notice) updatePanelStatus(outcome.shortfall.notice);
 
+      // A batch has no server-side total to check against, so its
+      // per-period row counts are the completeness evidence and the panel
+      // reports them. Says it AFTER the completion line, which owns "selesai".
+      if (complete.periods) {
+        updatePanelStatus(batchResultNotice(complete.periods));
+        debugLog("Batch selesai:", complete.periods);
+      }
+
       // A short page is only the end of the data if the server agrees it is.
       // When it does not, the panel says the export may be incomplete rather
       // than leaving a partial file looking like a finished one.
@@ -548,6 +558,13 @@ document.addEventListener("ch:export-xlsx", () => {
 // Export CSV
 document.addEventListener("ch:export-csv", () => {
   handleExportAction("csv", actionDeps);
+});
+
+// Year-wide batch export, chosen from the export dropdown on PPN Keluaran.
+// The panel stays the progress surface for the whole multi-minute run, and any
+// export control doubles as its stop through the shared running path above.
+document.addEventListener("ch:export-batch", () => {
+  startBatchExport(actionDeps);
 });
 
 // Export PDF

@@ -80,6 +80,10 @@ _Avoid_: filename, name hint
 What tells one scraped row from another, so a row that appears on two pages is collected once. It is the portal's own per-row id — RecordId, then AggregateIdentifier — named with the field it came from. Invoice numbers are not identities: on PPN Masukan the Referensi belongs to the seller and repeats across invoices, so keying on it would drop real rows (ADR-0016).
 _Avoid_: row id, unique key, hash
 
+**Period sweep** (batch masa):
+Fetching every tax period of one year from the PPN Keluaran grid as a single Run, so the rows share one dedupe set and arrive as one file. The period is a request-body filter, so the sweep re-requests the same grid once per `TD.007MM` code derived from the request the portal itself made. Completeness rests on the per-period row counts rather than a server total, because this endpoint's count is not one (ADR-0018).
+_Avoid_: batch export, year export, multi-month scrape
+
 **PDF download**:
 Getting a PDF (e-faktur or bukti potong) out of Coretax into the browser under extension-owned naming. Comes in two modes that differ only in where the PDF request originates and where the invoice metadata comes from.
 _Avoid_: bulk PDF, PDF export

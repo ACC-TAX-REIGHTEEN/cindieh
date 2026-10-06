@@ -11,7 +11,7 @@
 // ============================================================
 
 import { type ExportData, type ExportMode, exportXLSX, exportCSV } from "./exporter";
-import { isEfakturPage } from "./page-context";
+import { isEfakturPage, isOutputTaxPage } from "./page-context";
 import { showPanel, updatePanelProgress, updatePanelError, updatePanelIdle } from "./ui-badge";
 import { getMultiInvoiceNumbers } from "./ui-filters";
 import { postToScraper } from "./bridge";
@@ -51,6 +51,12 @@ export interface ActionDeps {
    * main.ts — so it arrives here as a function rather than as run state.
    */
   getExportMode: () => ExportMode;
+  /**
+   * Whether the year-wide batch export is available here. Injected for the same
+   * reason isEfakturPage is: the answer belongs to the page, not to this module,
+   * and a test double has to be able to say no.
+   */
+  isBatchPage: () => boolean;
   /**
    * Both writers are typed as possibly-async: `exportXLSX` must load the
    * SheetJS chunk before it can write, while `exportCSV` is synchronous and
@@ -94,6 +100,9 @@ export function createActionDeps(getExportMode: () => ExportMode): ActionDeps {
     updatePanelIdle,
     getMultiInvoiceNumbers,
     isEfakturPage: () => isEfakturPage(),
+    // PPN Keluaran only: the one grid whose period filter was measured to be
+    // scriptable, and whose twelve months form a single meaningful export.
+    isBatchPage: () => isOutputTaxPage(),
     shouldConfirmBulkDownload: (count) =>
       shouldConfirmBulkDownload(count, getPreferences().bulkConfirmThreshold),
     getExportMode,
@@ -228,6 +237,67 @@ export function startPdfDownload(data: Record<string, unknown>[], deps: ActionDe
   runLifecycle.noteRequestedInvoices(requested);
   deps.showPanel();
   deps.postToScraper({ type: "START_PDF_DOWNLOAD", data: filtered });
+  return true;
+}
+
+/**
+ * How many months one batch export sweeps: a whole tax year, which is the unit
+ * a filing is actually prepared in.
+ */
+export const BATCH_MONTHS = 12;
+
+/**
+ * Body of the batch confirmation.
+ *
+ * The run is long enough -- measured at roughly four minutes under our own
+ * pacing for a taxpayer of this size -- that starting it by accident costs a
+ * wait and a stop. It says what it will do, that the panel shows progress, and
+ * that it can be stopped, none of which the click itself conveys.
+ */
+export function batchConfirmMessage(): string {
+  return (
+    "Ekspor satu tahun mengambil seluruh 12 masa pajak dalam satu file.\n\n" +
+    "Prosesnya bisa memakan waktu beberapa menit. Panel menampilkan progres per masa, " +
+    "dan proses bisa dihentikan kapan saja.\n\n" +
+    "Lanjutkan?"
+  );
+}
+
+/**
+ * Start a year-wide export: ONE Run that sweeps every tax period of the year.
+ *
+ * Returns false when the flow did not start -- the page does not support it, a
+ * run is already in flight, or the confirmation was declined -- so the caller
+ * can tell "nothing started" from "running", exactly as startPdfDownload does.
+ *
+ * A declined confirmation leaves nothing behind: no Run is begun and nothing is
+ * posted, because no completion would ever arrive to settle one.
+ */
+export function startBatchExport(deps: ActionDeps): boolean {
+  if (!deps.isBatchPage()) {
+    globalThis.alert?.("Ekspor satu tahun hanya tersedia di halaman PPN Keluaran.");
+    return false;
+  }
+  if (runLifecycle.isRunning()) {
+    globalThis.alert?.(
+      "Masih ada proses yang berjalan. Hentikan atau tunggu sampai selesai sebelum memulai ekspor satu tahun.",
+    );
+    return false;
+  }
+  if (!globalThis.confirm?.(batchConfirmMessage())) return false;
+
+  // The XLSX export is requested up front so the completed rows are written out
+  // without a second click; the batch is a data scrape, so it asks for rows only.
+  runLifecycle.request({ kind: "export", format: "xlsx" });
+  runLifecycle.begin("scrape");
+  deps.showPanel();
+  deps.updatePanelProgress(0, 0, "0s", "Menangkap request dari Angular...");
+  debugLog("[Cindieh] starting batch export over", BATCH_MONTHS, "periods");
+  deps.postToScraper({
+    type: "START_SCRAPE",
+    skipPdf: true,
+    batchMonths: BATCH_MONTHS,
+  });
   return true;
 }
 

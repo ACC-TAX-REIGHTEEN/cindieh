@@ -67,6 +67,9 @@ const FORMAT_EXPORT_EVENT: Record<StoredExportFormat, string> = {
   csv: "ch:export-csv",
 };
 
+/** The document event the year-wide batch export listens for (see main.ts). */
+const BATCH_EXPORT_EVENT = "ch:export-batch";
+
 /**
  * Apply the stored default: move the check mark onto that format's item. Called
  * at startup (before the toolbar exists — the injection then marks the items it
@@ -621,6 +624,32 @@ function buildExportDropdown(
 
   menu.appendChild(xlsxItem);
   menu.appendChild(csvItem);
+
+  // The year-wide sweep, PPN Keluaran only — it is the one grid whose period
+  // filter was measured to be scriptable and whose twelve months are a single
+  // meaningful export. Offered here rather than as its own toolbar button so it
+  // costs no space on the ten pages that cannot use it.
+  if (isOutputTaxPage()) {
+    const batchItem = document.createElement("button");
+    batchItem.type = "button";
+    batchItem.className = "ch-export-dropdown-item";
+    batchItem.id = "ch-export-batch-item";
+    const batchIcon = document.createElement("span");
+    batchIcon.className = "pi pi-calendar";
+    batchIcon.setAttribute("aria-hidden", "true");
+    batchItem.appendChild(batchIcon);
+    batchItem.appendChild(document.createTextNode("Ekspor 1 Tahun (12 Masa)"));
+    batchItem.title =
+      "Mengambil seluruh masa pajak dalam satu file. Prosesnya lama\u2014panel menampilkan progres per masa.";
+    menu.appendChild(batchItem);
+
+    batchItem.addEventListener("click", (e: MouseEvent) => {
+      e.stopPropagation();
+      setMenuOpen(menu, false);
+      document.dispatchEvent(new CustomEvent(BATCH_EXPORT_EVENT));
+    });
+  }
+
   exportDropdown.appendChild(menu);
 
   // Mark the format the popup stores as the user's usual pick. The menu is

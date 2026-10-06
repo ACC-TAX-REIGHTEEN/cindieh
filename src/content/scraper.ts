@@ -25,6 +25,7 @@ import {
 import { extractMasaPajak } from "./tax-date";
 import { debugLog, debugError } from "./debug";
 import type { CapturedRequest, ScrapeMessage } from "./scraper-types";
+import { batchMonthCount } from "./scrape-batch";
 import {
   startScraping,
   startPdfDownload,
@@ -154,7 +155,10 @@ import { REFERENCE_FIELD, REFERENCE_FAST_MATCH_MODE } from "./reference-search";
     handlers: {
       START_SCRAPE: (msg) => {
         runAction(msg, (runCtx) =>
-          startScraping(() => makeInterceptRequest(runCtx), runCtx, { skipPdf: msg.skipPdf === true }),
+          startScraping(() => makeInterceptRequest(runCtx), runCtx, {
+            skipPdf: msg.skipPdf === true,
+            batchMonths: batchMonthCount(msg.batchMonths),
+          }),
         );
       },
 

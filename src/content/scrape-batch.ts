@@ -1,0 +1,211 @@
+// ============================================================
+// SCRAPE-BATCH.TS — one Run across many tax periods
+// ============================================================
+// A year-wide export is the same scrape twelve times over, once per
+// `TaxInvoicePeriod`, and the thing that makes it a feature rather
+// than twelve exports is that it stays ONE Run: the rows land in one
+// dedupe set, one completion, one file.
+//
+// Measured on the live portal (2026-10-06) rather than assumed:
+//
+// - The period is a request-body filter. `TaxInvoicePeriod` goes in
+//   `body.Filters` with MatchMode "equals" and its value is a code of
+//   the form `TD.007MM` — a fixed three-digit prefix plus a two-digit
+//   month. `TD.00708` is August. `TaxInvoiceYear` is a SEPARATE
+//   filter, so a period and a year are two edits, not one.
+// - The server honours `Rows` up to at least 5000, so nothing here
+//   depends on a page-size assumption.
+// - 44,237 rows across three periods produced ZERO duplicates, and
+//   every row carried `RecordId` — so the O(1) dedupe key applies and
+//   `stableStringify` never runs.
+// - `Payload.TotalRecords` is NOT a row count: it answers every page
+//   size with `Rows + 1`. See scraper-xhr.ts. Nothing below trusts it.
+//
+// Pure on purpose: no DOM, no browser API, so every rule here is unit
+// tested rather than discovered on a portal.
+// ============================================================
+
+/** The body key the portal's grid requests carry their filters under. */
+const FILTERS_KEY = "Filters";
+
+/** The filter property that selects the tax period. */
+export const PERIOD_PROPERTY = "TaxInvoicePeriod";
+
+/** How many rows one period contributed, and whether it fetched cleanly. */
+export interface PeriodCount {
+  /** The `TD.` code that was requested. */
+  period: string;
+  /** Rows collected for it, after cross-period dedupe. */
+  rows: number;
+  /** The message when the period could not be fetched at all. */
+  error?: string;
+}
+
+/**
+ * What a whole batch produced, in the shape the panel reports it.
+ *
+ * `emptyPeriods` exists because the server's own count is unusable: with
+ * nothing trustworthy to compare against, the one anomaly that is detectable
+ * is a period that came back empty while its neighbours did not. That is a
+ * month that silently vanished, and it has to be said out loud rather than
+ * shipped as a short year.
+ */
+export interface PeriodSummary {
+  counts: PeriodCount[];
+  /** Total rows across every period. */
+  totalRows: number;
+  /** Periods that returned nothing although others returned something. */
+  emptyPeriods: string[];
+  /** Periods that failed outright. */
+  failedPeriods: string[];
+}
+
+/**
+ * How many months a batch request asks for, or undefined when it is not a batch.
+ *
+ * A message crosses a world boundary and nothing guarantees a sane number: zero
+ * would sweep nothing and report an empty year, a negative or absurd one would
+ * either throw mid-run or hammer the portal. Anything that is not a whole number
+ * from 1 to 12 is not a batch, so it degrades to the ordinary single-period
+ * scrape rather than into a bad run.
+ */
+export function batchMonthCount(requested: unknown): number | undefined {
+  if (typeof requested !== "number" || !Number.isFinite(requested)) return undefined;
+  const months = Math.trunc(requested);
+  return months >= 1 && months <= 12 ? months : undefined;
+}
+
+/** The filter property that selects the tax year. */
+export const YEAR_PROPERTY = "TaxInvoiceYear";
+
+/** One entry of the portal's `body.Filters` array. */
+interface GridFilter {
+  PropertyName?: string;
+  Value?: unknown;
+  MatchMode?: string;
+  CaseSensitive?: boolean;
+}
+
+function parseBody(rawBody: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(rawBody) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function filtersOf(body: Record<string, unknown>): GridFilter[] {
+  const filters = body[FILTERS_KEY];
+  return Array.isArray(filters) ? (filters as GridFilter[]) : [];
+}
+
+/**
+ * The fixed part of a period code, or null when the value is not one.
+ *
+ * `TD.00708` yields `TD.007`, leaving `08` as the part that moves. Only the
+ * PORTAL's own value may be used as the source: a prefix invented locally
+ * would produce twelve period values the portal has never heard of, and every
+ * one of them would come back empty.
+ */
+export function periodPrefix(periodValue: string): string | null {
+  const match = String(periodValue ?? "").match(/^(.*\d{3})(0[1-9]|1[0-2])$/);
+  return match ? match[1] : null;
+}
+
+/** One period code from a prefix and a 1-based month. */
+export function periodCode(prefix: string, month: number): string {
+  return `${prefix}${String(month).padStart(2, "0")}`;
+}
+
+/**
+ * The period codes for a run, oldest month first.
+ *
+ * Derived from the value the captured request already carries, so the codes are
+ * the portal's own. Returns an empty list when the captured value is not a
+ * period code, because the alternative — guessing — returns twelve empty
+ * periods and reads as "this taxpayer has no data".
+ */
+export function planPeriods(periodValue: string, count = 12): string[] {
+  const prefix = periodPrefix(periodValue);
+  if (!prefix) return [];
+  const months = Math.max(0, Math.min(12, Math.trunc(count)));
+  return Array.from({ length: months }, (_, i) => periodCode(prefix, i + 1));
+}
+
+/**
+ * Body overrides that re-request the grid for one period.
+ *
+ * `Filters` is replaced wholesale because the portal's body merge is shallow:
+ * overriding one nested entry is not expressible, so the array is rebuilt with
+ * only the period's `Value` changed. MatchMode, CaseSensitive and every other
+ * filter — `TaxInvoiceStatus` and the taxpayer identifiers among them — are
+ * carried through untouched.
+ *
+ * Throws when the captured body has no period filter at all: a batch silently
+ * requested without one would scrape the SAME period twelve times and report
+ * twelve periods' worth of one month's rows.
+ */
+export function overridesForPeriod(
+  capturedRawBody: string,
+  period: string,
+  first: number,
+  rows: number,
+): Record<string, unknown> {
+  const body = parseBody(capturedRawBody);
+  const filters = filtersOf(body);
+  const index = filters.findIndex((f) => f?.PropertyName === PERIOD_PROPERTY);
+  if (index < 0) {
+    throw new Error(`Request tidak punya filter ${PERIOD_PROPERTY} — batch masa tidak bisa dijalankan.`);
+  }
+  const next = filters.map((f, i) => (i === index ? { ...f, Value: period } : { ...f }));
+  return { [FILTERS_KEY]: next, First: first, Rows: rows };
+}
+
+/** The period the captured request is currently filtered to, or null. */
+export function capturedPeriod(capturedRawBody: string): string | null {
+  const found = filtersOf(parseBody(capturedRawBody)).find(
+    (f) => f?.PropertyName === PERIOD_PROPERTY,
+  );
+  return typeof found?.Value === "string" ? found.Value : null;
+}
+
+/**
+ * The year the captured request is filtered to, or null.
+ *
+ * A batch sweeps every month of ONE year, so its filename has to name the year.
+ * The grid's own period hint would otherwise produce a file named for a single
+ * month -- a January export that quietly holds twelve -- which is the one name a
+ * filing would never be checked against.
+ */
+export function capturedYear(capturedRawBody: string): string | null {
+  const found = filtersOf(parseBody(capturedRawBody)).find(
+    (f) => f?.PropertyName === YEAR_PROPERTY,
+  );
+  const value = found?.Value;
+  const text = value === undefined || value === null ? "" : String(value).trim();
+  return /^(20|19)\d{2}$/.test(text) ? text : null;
+}
+
+/**
+ * Roll per-period counts into what the panel reports.
+ *
+ * A period is called empty only when it produced nothing AND at least one other
+ * period produced something — a taxpayer genuinely idle for a month is normal,
+ * so flagging every zero would train the user to ignore the flag. A period that
+ * FAILED is listed separately: that is a transport problem, not a quiet month.
+ */
+export function summarisePeriods(counts: PeriodCount[]): PeriodSummary {
+  const failedPeriods = counts.filter((c) => c.error).map((c) => c.period);
+  const withRows = counts.filter((c) => !c.error && c.rows > 0).map((c) => c.period);
+  const emptyPeriods =
+    withRows.length > 0
+      ? counts.filter((c) => !c.error && c.rows === 0).map((c) => c.period)
+      : [];
+  return {
+    counts,
+    totalRows: counts.reduce((sum, c) => sum + c.rows, 0),
+    emptyPeriods,
+    failedPeriods,
+  };
+}

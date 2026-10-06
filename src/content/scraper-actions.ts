@@ -11,7 +11,7 @@
 
 import { extractFilenameHintFromBody } from "./page-context";
 import type { ExportSource } from "./page-context";
-import { debugLog, debugError } from "./debug";
+import { debugLog, debugError, debugWarn } from "./debug";
 import { sendScrapeComplete } from "./scrape-result-transfer";
 import { mergeRows, collectFields, describePdfItem } from "./scraper-helpers";
 import {
@@ -21,6 +21,14 @@ import {
   xhrDownloadEfakturPdf as xhrDownloadEfakturPdfFn,
 } from "./scraper-xhr";
 import type { CapturedRequest, ScrapeMessage } from "./scraper-types";
+import {
+  capturedPeriod,
+  capturedYear,
+  overridesForPeriod,
+  planPeriods,
+  summarisePeriods,
+  type PeriodCount,
+} from "./scrape-batch";
 import {
   DEFAULT_DELAY_PRESET,
   scaleDelay,
@@ -169,13 +177,45 @@ function pacingOf(ctx: ScraperContext): DelayPreset {
  *
  * @returns Accumulated rows and total page count. Throws on retry exhaustion.
  */
+/**
+ * The rows one Run has collected so far, and the keys already in them.
+ *
+ * A batch is one Run over many periods, so the periods must share ONE
+ * accumulator: a fresh set per period would collect the same invoice twice,
+ * once per period, which is precisely what the dedupe key exists to prevent.
+ */
+export interface ScrapeAccumulator {
+  allData: Record<string, unknown>[];
+  seen: Set<string>;
+}
+
+/**
+ * The shape `scrapePaginated` returns. `rowsBefore` is what the run held
+ * before this call, which is how a batch learns how much each period added
+ * without the loop having to diff two arrays itself.
+ */
+export interface ScrapePaginatedResult {
+  allData: Record<string, unknown>[];
+  page: number;
+  truncated: boolean;
+  expectedTotal: number | null;
+}
+
+/**
+ * Collect every page of one grid.
+ *
+ * `overrides` carries the batch period's request-body changes and is merged
+ * into every page request, so one call collects one whole period. `accumulator`
+ * is what makes the batch one Run rather than twelve.
+ */
 export async function scrapePaginated(
   captured: CapturedRequest,
   step: number,
   ctx: ScraperContext,
-): Promise<{ allData: Record<string, unknown>[]; page: number; truncated: boolean; expectedTotal: number | null }> {
-  const allData: Record<string, unknown>[] = [];
-  const seen = new Set<string>();
+  overrides: Record<string, unknown> = {},
+  accumulator: ScrapeAccumulator = { allData: [], seen: new Set<string>() },
+): Promise<ScrapePaginatedResult> {
+  const { allData, seen } = accumulator;
   let page = 0;
   let first = 0;
   let keepGoing = true;
@@ -197,7 +237,8 @@ export async function scrapePaginated(
         first,
         step,
         ctx.timeout,
-        ...signalArgs(ctx),
+        ctx.signal,
+        overrides,
       );
       if (ctx.isStopRequested()) break;
       const newRows = mergeRows(allData, seen, rows);
@@ -334,9 +375,9 @@ export async function downloadBulkWithholdingPdf(
 export async function startScraping(
   interceptRequest: () => Promise<CapturedRequest>,
   ctx: ScraperContext,
-  options: { skipPdf?: boolean } = {},
+  options: { skipPdf?: boolean; batchMonths?: number } = {},
 ): Promise<void> {
-  debugLog("▶ Starting scrape...");
+  debugLog(`▶ Starting scrape${options.batchMonths ? ` (${options.batchMonths} masa)` : ""}...`);
   if (ctx.isStopRequested()) return;
 
   try {
@@ -354,11 +395,91 @@ export async function startScraping(
 
     const { step } = getPaginateConfig(captured.source);
 
-    const { allData, page, truncated, expectedTotal } = await scrapePaginated(captured, step, ctx);
+    // The codes come from the request the portal just made, not from anything
+    // invented here. A captured request with no period filter cannot be swept:
+    // doing it anyway would re-scrape ONE period N times and report a year's
+    // worth of a month's rows, so it fails loudly instead.
+    const periods = options.batchMonths
+      ? planPeriods(capturedPeriod(captured.rawBody) ?? "", options.batchMonths)
+      : [];
+    if (options.batchMonths && periods.length === 0) {
+      throw new Error(
+        "Permintaan grid ini tidak punya filter masa pajak, jadi ekspor satu tahun tidak bisa dijalankan.",
+      );
+    }
+    const accumulator: ScrapeAccumulator = { allData: [], seen: new Set<string>() };
+    const periodCounts: PeriodCount[] = [];
+
+    let page = 0;
+    let truncated = false;
+    let expectedTotal: number | null = null;
+
+    // One period at a time, into ONE accumulator. The row counts are taken
+    // around each call rather than from the server: the server's count is per
+    // period and, on this endpoint, is not a count at all (see readGridTotal).
+    for (const [index, period] of periods.entries()) {
+      if (ctx.isStopRequested()) break;
+      const before = accumulator.allData.length;
+      let result: ScrapePaginatedResult;
+      try {
+        // Throws when the captured request has no period filter, which is the
+        // case where a "batch" would silently re-scrape one period N times.
+        result = await scrapePaginated(
+          captured,
+          step,
+          ctx,
+          overridesForPeriod(captured.rawBody, period, 0, step),
+          accumulator,
+        );
+      } catch (err) {
+        // A period that cannot even be requested is recorded and the sweep
+        // continues: eleven months of a year is worth more than none, and the
+        // summary lists it as failed rather than quietly short.
+        const message = err instanceof Error ? err.message : String(err);
+        periodCounts.push({ period, rows: accumulator.allData.length - before, error: message });
+        debugError(`❌ Masa ${period} gagal:`, message);
+        continue;
+      }
+      page += result.page;
+      periodCounts.push({ period, rows: accumulator.allData.length - before });
+      truncated = truncated || result.truncated;
+      ctx.sendToContent({
+        type: "SCRAPE_PROGRESS",
+        total: accumulator.allData.length,
+        page,
+        elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}s`,
+        status: `Masa ${index + 1}/${periods.length} (${period}) — ${accumulator.allData.length} baris`,
+      });
+      // Between periods the pause is the run's own, not a page's, so it is
+      // paced like every other inter-request delay: it may only ever be slower.
+      if (index + 1 < periods.length && !ctx.isStopRequested()) {
+        await ctx.delay(scaleDelay(100, pacingOf(ctx)));
+      }
+    }
+
+    if (periods.length === 0) {
+      const result = await scrapePaginated(captured, step, ctx, {}, accumulator);
+      page = result.page;
+      truncated = result.truncated;
+      expectedTotal = result.expectedTotal;
+    } else if (truncated) {
+      // The per-period counts cannot be compared against one total, so the
+      // server's claim is dropped rather than reported against the whole year.
+      expectedTotal = null;
+    }
+
+    const allData = accumulator.allData;
+    const periodSummary = periods.length > 0 ? summarisePeriods(periodCounts) : null;
 
     if (ctx.isStopRequested()) {
       debugLog("⏹ Stopped by user.");
       return;
+    }
+
+    if (periodSummary?.emptyPeriods.length) {
+      debugWarn(
+        `Masa kosong di tengah periode berisi data: ${periodSummary.emptyPeriods.join(", ")}`,
+      );
     }
 
     const fieldSet = collectFields(allData);
@@ -371,6 +492,15 @@ export async function startScraping(
     if (!filenameHint && captured.source.startsWith("PPH_21_")) {
       filenameHint = ctx.getMasaPajakFromDOM();
       debugLog("Filename hint from DOM:", filenameHint);
+    }
+
+    // A batch covers a whole year, so it is named for the YEAR. The grid's own
+    // hint names one month, and a file called "072026" that holds twelve months
+    // is worse than no name at all. Falls back to the month hint when the
+    // request carries no year filter, which is still honest.
+    if (periods.length > 0) {
+      filenameHint = capturedYear(captured.rawBody) || filenameHint;
+      debugLog("Batch filename hint (year):", filenameHint);
     }
 
     // A withholding scrape normally IS a bulk PDF download. An XLSX/CSV export
@@ -404,6 +534,7 @@ export async function startScraping(
       failedItems,
       truncated,
       expectedTotal: expectedTotal ?? undefined,
+      periods: periodSummary ?? undefined,
       // A withholding run IS a bulk PDF download — same message, different job.
       kind: withholdingPdfRun ? "pdf" : "scrape",
     });

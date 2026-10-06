@@ -2,6 +2,7 @@
 // These types are used by the injected page-context scraper script.
 
 import type { ExportSource } from "./page-context";
+import type { PeriodSummary } from "./scrape-batch";
 
 export interface CapturedRequest {
   url: string;
@@ -84,6 +85,13 @@ export interface ScrapeComplete {
    * Absent means a data scrape (the behaviour before this field existed).
    */
   kind?: "scrape" | "pdf";
+  /**
+   * What each period contributed. Present only on a batch run, and it is the
+   * ONLY completeness signal there: the server's count is per period and means
+   * nothing once several are concatenated (and on this endpoint is not a count
+   * at all), so the per-period row counts are what the panel reports.
+   */
+  periods?: PeriodSummary;
 }
 
 /**
@@ -130,7 +138,26 @@ export type FromContentMessage = (
    * where the same scrape normally ends by bulk-downloading every slip's PDF;
    * an XLSX/CSV export wants the rows without that download.
    */
-  | { type: "START_SCRAPE"; skipPdf?: boolean }
+  | {
+      type: "START_SCRAPE";
+      skipPdf?: boolean;
+      /**
+       * Sweep this many tax periods instead of the one the grid is filtered to.
+       *
+       * A count, not a list of codes, on purpose: the period codes can only be
+       * derived from the request the portal itself made (`TD.00708` and a fixed
+       * three-digit prefix), and that request lives in the MAIN world. Asking the
+       * content script to invent codes would produce twelve values the portal has
+       * never heard of, every one of which comes back empty.
+       *
+       * The sweep is ONE Run: the rows share a dedupe set and arrive as a single
+       * result, which is what keeps one invoice from being collected twice.
+       *
+       * Absent means the ordinary single-period scrape, so every existing sender
+       * keeps working unchanged.
+       */
+      batchMonths?: number;
+    }
   | { type: "STOP_SCRAPE" }
   | { type: "RESET_SCRAPER" }
   | { type: "START_PDF_DOWNLOAD"; data: Record<string, unknown>[] }

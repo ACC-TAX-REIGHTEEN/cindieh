@@ -215,8 +215,16 @@ export function xhrRequest(
   rows: number,
   timeout: number,
   signal?: AbortSignal,
+  extraOverrides: Record<string, unknown> = {},
 ): Promise<GridPage> {
-  return makeXhrRequestPage(captured, { First: first, Rows: rows }, timeout, signal);
+  // The page's own First/Rows win over a caller's defaults: a batch passes the
+  // period's Filters here, and every page of it must paginate normally.
+  return makeXhrRequestPage(
+    captured,
+    { ...extraOverrides, First: first, Rows: rows },
+    timeout,
+    signal,
+  );
 }
 
 /**

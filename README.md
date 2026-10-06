@@ -147,6 +147,22 @@ Klik ikon Cindieh di toolbar browser untuk membuka pengaturan. Semua preferensi 
 | **Bersihkan cache** | Membuang data yang sudah diambil di tab portal, sehingga ekspor berikutnya mengambil ulang dari Coretax. |
 | **Reset preferensi** | Mengembalikan seluruh pengaturan di atas ke nilai bawaan. Format export dan Log debug tidak ikut direset. |
 
+### Ekspor satu tahun (PPN Keluaran)
+
+Menu **Ekspor** di halaman PPN Keluaran punya satu entri tambahan: **Ekspor 1 Tahun (12 Masa)**. Satu klik mengambil seluruh dua belas masa pajak dan menulisnya ke satu berkas: satu proses, satu panel progress, satu file.
+
+| | |
+|---|---|
+| Halaman | PPN Keluaran saja. Di halaman lain entri ini tidak muncul. |
+| Isi file | Seluruh masa pajak dalam satu tahun pajak. |
+| Nama file | Dinamai untuk **tahunnya** (`FPK-2026.xlsx`), bukan untuk satu bulan, karena isinya dua belas bulan. |
+| Perkiraan waktu | Sekitar 4 menit bagi Wajib Pajak besar pada kecepatan pacing normal, memakai jeda antar-halaman yang sama seperti ekspor biasa. Kecepatan yang lebih lambat memperpanjang waktu ini, tidak pernah memendekkannya. |
+| Menghentikan | Tombol ekspor mana pun membatalkan proses, seperti ekspor biasa. |
+
+Setelah selesai, panel menyebut jumlah masa dan jumlah baris. Bila ada masa yang **balik kosong di tengah masa lain yang berisi data**, panel menyebutkannya: itu tanda ada bulan yang hilang, dan tidak ada jumlah total dari portal yang bisa dipakai sebagai pembanding (lihat catatan di bawah). Masa yang gagal diambil disebut terpisah dari masa yang memang kosong, karena dua masalah itu punya dua perbaikan berbeda.
+
+> **Catatan.** Keseluruhan proses adalah **satu Run**: semua masa berbagi satu daftar data dan satu set deduplikasi, sehingga faktur yang muncul di dua masa tetap tercatat satu kali. Kalau prosesnya dipecah menjadi dua belas proses terpisah, satu invoice bisa terhitung dua kali tanpa disadari.
+
 ### Pintasan papan ketik
 
 Keduanya memakai `Ctrl` (atau `Cmd` di macOS) + `Shift`, dan hanya aktif di halaman portal yang didukung Cindieh. Saat saklar utama dimatikan, keduanya diam.
