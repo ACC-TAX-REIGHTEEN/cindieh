@@ -1,0 +1,465 @@
+// ============================================================
+// UI-CHECKER.TS — the "Pengecekan Keakuratan Nilai" tab
+// ============================================================
+// The accuracy check's arithmetic was already pure in
+// checker-logic.ts (ADR-0003); its VIEW was not. It lived inside
+// ui-comparer.ts, which by the audit's count meant one 1.268-line
+// module building two views, two sessions, two tables, two filters
+// and two export paths — with the checker's view reachable only
+// through the comparer's test file. This is that tab's own view
+// module, and it follows the project's DI convention: a
+// `createCheckerView(deps)` factory plus a production singleton, so
+// a test can drive the tab without an overlay or a portal.
+//
+// What it does NOT do: decide anything about tax. The benchmark,
+// the tolerance and the per-row verdicts all arrive from
+// checker-logic.ts; the labels it renders come from the preference
+// schema; the grid markup it renders comes from result-grid-view.ts;
+// and the overlay it lives in comes from ui-panel.ts.
+// ============================================================
+
+import { downloadXLSXFile, downloadCSVFile, RESULT_NUMBER_FORMAT, RESULT_DIFFERENCE_FORMAT } from "./exporter";
+import {
+  buildCheckerExportRows,
+  CHECKER_EXPORT_BASENAME,
+  RESULT_EXPORT_LABELS,
+  resultExportFilename,
+  type ResultExportFormat,
+} from "./comparer-export";
+import { checkerColumns, type Counterparty } from "./result-columns";
+import { runLifecycle, type RunLifecycle } from "./run-lifecycle";
+import { getPreferences } from "./preferences";
+import { isOutputTaxPage } from "./page-context";
+import {
+  appendPagination,
+  buildHeaderRow,
+  buildResultRow,
+  buildStatusFilterMenu,
+  makeRowInteractive,
+  reportResultExportFailure,
+  PAGE_SIZE,
+  type StatusFilterMenu,
+} from "./result-grid-view";
+import { currentGridLabel, openPanel, scrapeForPanel, searchReference } from "./ui-panel";
+import { computePagination } from "./comparer-logic";
+import {
+  applyCheckerDefaults,
+  applyCheckerStatusFilter,
+  checkAllRowsAccuracy,
+  createCheckerSession,
+  formatCheckSummary,
+  BENCHMARK_TYPES,
+  CHECKER_STATUSES,
+  type BenchmarkType,
+  type CheckerSession,
+} from "./checker-logic";
+
+/**
+ * Panel label per benchmark value. Kept here rather than in the preference
+ * schema because a label is presentation: the schema owns the VALUES, and this
+ * is the only place they are rendered.
+ */
+export const BENCHMARK_LABELS: Record<BenchmarkType, string> = {
+  DPP: "DPP",
+  DPP_NILAI_LAIN: "DPP NL",
+  PPN: "PPN",
+};
+
+/** Panel label per checker status-filter key, in the schema's own order. */
+export const CHECKER_STATUS_LABELS: Record<string, string> = {
+  DPP_BERBEDA: "DPP Berbeda",
+  DPP_NILAI_LAIN_BERBEDA: "DPP NL Berbeda",
+  PPN_BERBEDA: "PPN Berbeda",
+  DUA_BERBEDA: "Dua Nilai Berbeda",
+  DATA_TIDAK_LENGKAP: "Data tidak lengkap",
+};
+
+// ── The view's seam ───────────────────────────────────
+
+/**
+ * Everything the Pengecekan tab needs that is NOT its own. The Run is injected
+ * whole rather than as the two or three calls the tab makes on it, because a
+ * test can then build a real one with `createRunLifecycle()` and drive the
+ * "no data yet" path and the settled-run path for real.
+ */
+export interface CheckerViewDeps {
+  /** The Run whose result the check reads, and which the check owes. */
+  run: RunLifecycle;
+  /** Fetch the grid when the check has no rows to read yet. */
+  scrape: () => void;
+  /** Show the panel on this tab — a pending check lands with the panel closed. */
+  openCheckTab: () => void;
+  /** Fill the portal's Referensi filter for a double-clicked row. */
+  searchReference: (reference: string) => void;
+  /** The grid's own name, for the "still fetching" notice. */
+  gridLabel: () => string;
+  /** Which side of the transaction this page shows — decides the column words. */
+  counterparty: () => Counterparty;
+  /** Whether a double-clicked row can actually be searched in the portal grid. */
+  canSearchInGrid: () => boolean;
+}
+
+/** One instance of the tab: its root, its controls, and its rendering. */
+export interface CheckerView {
+  /** Mount point for the panel shell. */
+  readonly root: HTMLElement;
+  /** Built by `inject()`; null until then. */
+  filterMenu: StatusFilterMenu | null;
+  /** Build the tab's controls and wire their events. Idempotent. */
+  inject(): void;
+  /** Draw the current results, pagination and filter state. */
+  render(): void;
+  /** "Periksa": check the Run's rows, scraping first when there are none. */
+  runCheck(): void;
+  /** Re-check after a benchmark or tolerance change. */
+  rerun(): void;
+  /** Run a check the Run owes — the panel reopens on this tab. */
+  runPending(): void;
+  exportResults(format: ResultExportFormat): void;
+}
+
+export function createCheckerView(deps: CheckerViewDeps): CheckerView {
+  const session: CheckerSession = createCheckerSession();
+
+  const root = document.createElement("div");
+  root.id = "ch-comparer-view-checker";
+  root.className = "ch-comparer-view ch-hidden";
+
+  let filterMenu: StatusFilterMenu | null = null;
+  let benchmarkSelect: HTMLSelectElement | null = null;
+  let toleranceInput: HTMLInputElement | null = null;
+  let injected = false;
+
+  // ── Stored defaults ────────────────────────────────
+
+  /**
+   * Apply the popup's Checker defaults to the session and the two inputs that
+   * mirror the first two of them. The third — the status filter — is applied by
+   * the menu builder, which takes the stored selection to seed its checkboxes.
+   */
+  function applyStoredDefaults(): string[] {
+    const defaults = getPreferences().checkerDefaults;
+    applyCheckerDefaults(session, defaults);
+    if (benchmarkSelect) benchmarkSelect.value = session.benchmark;
+    // Same rule as the comparer's box: an empty field means "no tolerance".
+    if (toleranceInput) {
+      toleranceInput.value = session.tolerance > 0 ? String(session.tolerance) : "";
+    }
+    return session.statusFilter;
+  }
+
+  // ── Inject ─────────────────────────────────────────
+
+  function inject(): void {
+    if (injected) return;
+    injected = true;
+
+    const btnRow = document.createElement("div");
+    btnRow.className = "ch-comparer-btn-row";
+
+    const checkBtn = document.createElement("button");
+    checkBtn.id = "ch-checker-check-btn";
+    checkBtn.className = "ch-comparer-btn ch-comparer-btn-primary";
+    checkBtn.textContent = "Periksa";
+
+    const benchmarkWrap = document.createElement("div");
+    benchmarkWrap.className = "ch-checker-benchmark-wrap";
+
+    const benchmarkLabel = document.createElement("label");
+    benchmarkLabel.className = "ch-checker-benchmark-label";
+    benchmarkLabel.htmlFor = "ch-checker-benchmark-select";
+    benchmarkLabel.textContent = "Acuan:";
+
+    const select = document.createElement("select") as HTMLSelectElement;
+    select.id = "ch-checker-benchmark-select";
+    select.className = "ch-checker-benchmark-select";
+
+    // Built from the schema's list, so a benchmark added there cannot be missing
+    // from the panel (and the panel cannot offer one the session cannot store).
+    for (const benchmark of BENCHMARK_TYPES) {
+      const option = document.createElement("option");
+      option.value = benchmark;
+      option.textContent = BENCHMARK_LABELS[benchmark];
+      select.appendChild(option);
+    }
+    benchmarkSelect = select;
+
+    benchmarkWrap.appendChild(benchmarkLabel);
+    benchmarkWrap.appendChild(benchmarkSelect);
+
+    const tolerance = document.createElement("input") as HTMLInputElement;
+    tolerance.id = "ch-checker-tolerance";
+    tolerance.type = "number";
+    tolerance.min = "0";
+    tolerance.step = "1";
+    tolerance.placeholder = "Toleransi";
+    tolerance.className = "ch-comparer-tolerance-input";
+    tolerance.title = "Toleransi selisih parameter yang tidak perlu ditampilkan (default 0)";
+    toleranceInput = tolerance;
+
+    // The popup's stored defaults, applied while the tab is built — the panel
+    // owns these controls for the life of the modal, so a later fetch would be a
+    // race with the user's first click.
+    const storedFilter = applyStoredDefaults();
+
+    const leftGroup = document.createElement("div");
+    leftGroup.className = "ch-comparer-btn-left";
+    leftGroup.appendChild(checkBtn);
+    leftGroup.appendChild(benchmarkWrap);
+    leftGroup.appendChild(toleranceInput);
+
+    const exportBtn = document.createElement("button");
+    exportBtn.id = "ch-checker-export-btn";
+    exportBtn.className = "ch-comparer-btn ch-comparer-btn-primary";
+    exportBtn.textContent = RESULT_EXPORT_LABELS.xlsx;
+    exportBtn.title = "Ekspor hasil pengecekan ke file Excel";
+
+    const exportCsvBtn = document.createElement("button");
+    exportCsvBtn.id = "ch-checker-export-csv-btn";
+    exportCsvBtn.className = "ch-comparer-btn";
+    exportCsvBtn.textContent = RESULT_EXPORT_LABELS.csv;
+    exportCsvBtn.title = "Ekspor hasil pengecekan ke file CSV";
+
+    // "ALL" is the empty selection, which applyCheckerStatusFilter already
+    // treats as "no filter"; the rest come from the schema so the panel and the
+    // stored default can never disagree.
+    const menu = buildStatusFilterMenu({
+      idPrefix: "ch-checker",
+      options: CHECKER_STATUSES.map((status) => ({
+        value: status,
+        label: CHECKER_STATUS_LABELS[status],
+      })),
+      selected: storedFilter,
+      onApply: (values) => {
+        session.statusFilter = values;
+        session.currentPage = 1;
+        render();
+      },
+    });
+    filterMenu = menu;
+
+    const rightGroup = document.createElement("div");
+    rightGroup.className = "ch-comparer-btn-right";
+    rightGroup.appendChild(menu.wrap);
+    rightGroup.appendChild(exportBtn);
+    rightGroup.appendChild(exportCsvBtn);
+
+    btnRow.appendChild(leftGroup);
+    btnRow.appendChild(rightGroup);
+
+    const statusMsg = document.createElement("div");
+    statusMsg.id = "ch-checker-status";
+    statusMsg.className = "ch-comparer-status";
+
+    const results = document.createElement("div");
+    results.id = "ch-checker-results";
+    results.className = "ch-comparer-results ch-hidden";
+
+    root.appendChild(btnRow);
+    root.appendChild(statusMsg);
+    root.appendChild(results);
+
+    // ── Event wiring ────────────────────────────────
+
+    checkBtn.addEventListener("click", runCheck);
+
+    select.addEventListener("change", () => {
+      session.benchmark = select.value as BenchmarkType;
+      rerun();
+    });
+
+    tolerance.addEventListener("change", () => {
+      const val = parseInt(tolerance.value, 10);
+      session.tolerance = isNaN(val) || val < 0 ? 0 : val;
+      rerun();
+    });
+
+    exportBtn.addEventListener("click", () => exportResults("xlsx"));
+    exportCsvBtn.addEventListener("click", () => exportResults("csv"));
+  }
+
+  // ── Check handlers ────────────────────────────────
+
+  function check(scrapedData: Record<string, unknown>[]): void {
+    session.results = checkAllRowsAccuracy(
+      scrapedData,
+      session.benchmark,
+      session.tolerance,
+    );
+    session.currentPage = 1;
+    renderAfterCheck();
+  }
+
+  function runCheck(): void {
+    const statusMsg = document.getElementById("ch-checker-status");
+    if (!statusMsg) return;
+
+    const scrapedData = deps.run.result()?.data ?? null;
+    if (!scrapedData || scrapedData.length === 0) {
+      statusMsg.textContent =
+        `Belum ada data. Mohon tunggu, sedang melakukan scraping data ${deps.gridLabel()} terlebih dahulu...`;
+      statusMsg.className = "ch-comparer-status ch-comparer-status-info";
+      deps.run.request({ kind: "check" });
+      deps.scrape();
+      return;
+    }
+
+    check(scrapedData);
+  }
+
+  function rerun(): void {
+    const scrapedData = deps.run.result()?.data ?? null;
+    if (!scrapedData || scrapedData.length === 0) return;
+    check(scrapedData);
+  }
+
+  function runPending(): void {
+    const scrapedData = deps.run.result()?.data ?? null;
+    if (!scrapedData || scrapedData.length === 0) return;
+
+    deps.openCheckTab();
+    check(scrapedData);
+  }
+
+  // ── Render ─────────────────────────────────────────
+
+  function renderAfterCheck(): void {
+    render();
+
+    const statusMsg = document.getElementById("ch-checker-status");
+    if (statusMsg) {
+      statusMsg.textContent = formatCheckSummary(session.results);
+      statusMsg.className = "ch-comparer-status ch-comparer-status-info";
+    }
+  }
+
+  function render(): void {
+    const container = document.getElementById("ch-checker-results");
+    if (!container) return;
+
+    container.classList.remove("ch-hidden");
+    container.innerHTML = "";
+
+    const filterWrap = document.getElementById("ch-checker-filter-wrap");
+    if (filterWrap) filterWrap.classList.remove("ch-hidden");
+
+    if (session.results.length === 0) {
+      if (filterWrap) filterWrap.classList.add("ch-hidden");
+      container.textContent = "Semua faktur sesuai.";
+      return;
+    }
+
+    const filtered = applyCheckerStatusFilter(session.results, session.statusFilter);
+    const { totalPages, currentPage, startIndex, pageRows } = computePagination(
+      filtered,
+      PAGE_SIZE,
+      session.currentPage,
+    );
+    session.currentPage = currentPage;
+
+    const columns = checkerColumns(session.benchmark, deps.counterparty());
+
+    const table = document.createElement("table");
+    table.className = "ch-comparer-table";
+    table.appendChild(buildHeaderRow(columns));
+
+    const tbody = document.createElement("tbody");
+    pageRows.forEach((r, idx) => {
+      const tr = buildResultRow(columns, r, startIndex, idx);
+      const searchKey = r.reference || r.taxInvoiceNumber;
+      makeRowInteractive(
+        tr,
+        searchKey
+          ? "Klik 1x untuk melihat teks lengkap, klik 2x untuk mencari di Coretax"
+          : "Klik 1x untuk melihat teks lengkap",
+      );
+
+      if (session.viewedRefs.has(searchKey)) {
+        tr.classList.add("ch-comparer-row-viewed");
+      }
+
+      if (searchKey && deps.canSearchInGrid()) {
+        tr.addEventListener("dblclick", () => {
+          session.viewedRefs.add(searchKey);
+          render();
+          deps.searchReference(searchKey);
+        });
+      }
+
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    container.appendChild(table);
+
+    if (totalPages > 1) {
+      appendPagination(container, session.currentPage, totalPages, (page) => {
+        session.currentPage = page;
+        render();
+      });
+    }
+  }
+
+  // ── Export ─────────────────────────────────────────
+
+  function exportResults(format: ResultExportFormat): void {
+    if (session.results.length === 0) return;
+
+    const rows = buildCheckerExportRows(
+      session.results,
+      session.benchmark,
+      deps.counterparty(),
+    );
+    const filename = resultExportFilename(CHECKER_EXPORT_BASENAME, format);
+    // CSV is hand-rolled and synchronous: no chunk load, so no failure to report.
+    if (format === "csv") {
+      downloadCSVFile(rows, filename);
+      return;
+    }
+    void downloadXLSXFile(rows, filename, "Pengecekan", {
+      numberFormats: {
+        5: RESULT_NUMBER_FORMAT, 6: RESULT_NUMBER_FORMAT, 7: RESULT_NUMBER_FORMAT,
+        8: RESULT_DIFFERENCE_FORMAT, 9: RESULT_DIFFERENCE_FORMAT,
+      },
+    }).catch((err: unknown) => reportResultExportFailure(err, "ch-checker-status"));
+  }
+
+  const view: CheckerView = {
+    root,
+    filterMenu: null,
+    inject() {
+      inject();
+      view.filterMenu = filterMenu;
+    },
+    render,
+    runCheck,
+    rerun,
+    runPending,
+    exportResults,
+  };
+  return view;
+}
+
+// ── Production view ───────────────────────────────────
+
+/**
+ * The tab as the panel builds it. Every dep here is a project singleton rather
+ * than a browser API, so the factory above exists for tests that want their own
+ * Run instead of the shared one.
+ */
+export const checkerView: CheckerView = createCheckerView({
+  run: runLifecycle,
+  scrape: scrapeForPanel,
+  openCheckTab: () => openPanel("check"),
+  searchReference,
+  gridLabel: currentGridLabel,
+  counterparty: () => (isOutputTaxPage() ? "pembeli" : "penjual"),
+  // Only PPN Keluaran gets the Referensi filter injected — main.ts injects the
+  // toolbar and grid filters on isOutputTaxPage() alone — so on PPN Masukan the
+  // double-click would silently do nothing.
+  canSearchInGrid: isOutputTaxPage,
+});
+
+/** Run the check a Run owes, from main.ts's `currentRunHandlers` dispatcher. */
+export function runPendingCheck(): void {
+  checkerView.runPending();
+}

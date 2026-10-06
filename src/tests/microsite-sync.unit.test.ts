@@ -69,7 +69,7 @@ const sitemapXml = read("../../microsite/sitemap.xml");
 // footer both send a reader there), so it is read here as a source of truth in
 // its own right. See the "legal copy" block at the end of this file.
 const legalCompliance = read("../../LEGAL_COMPLIANCE.md");
-const uiComparerSource = read("../content/ui-comparer.ts");
+const uiCheckerSource = read("../content/ui-checker.ts");
 const extensionPreferencesSource = read("../shared/extension-preferences.ts");
 const comparerExportSource = read("../content/comparer-export.ts");
 const exporterSource = read("../content/exporter.ts");
@@ -142,24 +142,35 @@ const statusLegend = (id: string): string =>
  * The checker's status-filter options, read from the TWO places that own them
  * rather than from one array literal in the panel.
  *
- * `ui-comparer.ts` builds its filter menu with `document.createElement`, so the
+ * `ui-checker.ts` builds its filter menu with `document.createElement`, so the
  * labels have no exported array to import and are read from the source. It used
- * to be one list there — the values AND the labels in a single `{ value, label }`
- * table — and the parser found it there.
- * The values moved to the preference schema (CHECKER_STATUSES) when the popup
- * gained stored checker defaults, and the labels stayed in the panel, so the
- * options are now a spread over a schema-driven map. A parser still pointed at
- * the old array would have returned just the "ALL" reset entry and then passed
- * VACUOUSLY for the rest of the suite -- which is precisely the silence this
- * suite exists to prevent. Each half is asserted non-empty by its callers, and
+ * to be one list in ui-comparer.ts — the values AND the labels in a single
+ * `{ value, label }` table — and the parser found it there. The values moved to
+ * the preference schema (CHECKER_STATUSES) when the popup gained stored checker
+ * defaults, and the labels stayed with the tab, so the options are now a spread
+ * over a schema-driven map. A parser still pointed at the old array would have
+ * returned just the "ALL" reset entry and then passed VACUOUSLY for the rest of
+ * the suite -- which is precisely the silence this suite exists to prevent.
+ * `checkerLabelKeys` THROWS rather than returning an empty match, so the labels'
+ * second move reports itself here instead of quietly matching nothing, and
  * `gives every checker status a panel label and no extra ones` below
  * additionally proves the panel's map and the schema agree key for key.
  */
+
+/** The keys the checker VIEW labels, in its own declaration order. */
+const checkerLabelKeys = (): string[] => {
+  const labelled =
+    uiCheckerSource.match(/const CHECKER_STATUS_LABELS: Record<string, string> = \{([\s\S]*?)\n\};/)?.[1];
+  if (labelled === undefined) {
+    throw new Error("CHECKER_STATUS_LABELS not found in ui-checker.ts — update this suite");
+  }
+  return [...labelled.matchAll(/([A-Z_]+): "([^"]+)"/g)].map((m) => m[1]);
+};
 const checkerFilterOptions = (): readonly { value: string; label: string }[] => {
   const valuesBody =
     extensionPreferencesSource.match(/CHECKER_STATUSES = \[([\s\S]*?)\] as const;/)?.[1] ?? "";
   const labelsBody =
-    uiComparerSource.match(/const CHECKER_STATUS_LABELS: Record<string, string> = \{([\s\S]*?)\n\};/)?.[1] ??
+    uiCheckerSource.match(/const CHECKER_STATUS_LABELS: Record<string, string> = \{([\s\S]*?)\n\};/)?.[1] ??
     "";
 
   const labels = new Map(
@@ -432,9 +443,7 @@ describe("microsite — status labels", () => {
     // The schema drives the popup's checkboxes and the panel's labels the map
     // separately, so a key added to one and not the other has to be reported
     // here rather than surfacing as an unlabelled checkbox.
-    const labelled =
-      uiComparerSource.match(/const CHECKER_STATUS_LABELS: Record<string, string> = \{([\s\S]*?)\n\};/)![1];
-    const keys = [...labelled.matchAll(/([A-Z_]+): "([^"]+)"/g)].map((m) => m[1]);
+    const keys = checkerLabelKeys();
     const expected = checkerFilterOptions().map((option) => option.value);
 
     expect(keys).toEqual(expected);

@@ -449,6 +449,9 @@ describe("comparison UI validation and exports", () => {
 describe("the panel as a modal dialog", () => {
   let doc: FakeDoc;
   let ui: typeof import("../content/ui-comparer");
+  // Opening and closing the panel belongs to the OVERLAY, not to either tab,
+  // so it is asserted against the shell module rather than ui-comparer.ts.
+  let panel: typeof import("../content/ui-panel");
 
   /** Fire a keydown on an element, as a real press would bubble. */
   function press(target: FakeEl, key: string): void {
@@ -467,6 +470,7 @@ describe("the panel as a modal dialog", () => {
       Object.assign(create(tag), { disabled: false, checked: false }),
     );
     ui = await import("../content/ui-comparer");
+    panel = await import("../content/ui-panel");
     ui.injectComparerModal();
     // Opening the panel pre-fills the textarea from the clipboard, so a test
     // that opens it needs the API to exist. Rejects are already swallowed by
@@ -491,12 +495,12 @@ describe("the panel as a modal dialog", () => {
 
   it("moves focus into the panel when it opens", () => {
     doc.focusCalls.length = 0;
-    ui.openComparerModal("compare");
+    panel.openPanel("compare");
     expect(doc.focusCalls[0]).toBe(modal());
   });
 
   it("closes on Escape", () => {
-    ui.openComparerModal("compare");
+    panel.openPanel("compare");
     expect(isClosed()).toBe(false);
 
     press(overlay(), "Escape");
@@ -505,7 +509,7 @@ describe("the panel as a modal dialog", () => {
   });
 
   it("ignores every other key", () => {
-    ui.openComparerModal("compare");
+    panel.openPanel("compare");
     press(overlay(), "Enter");
     press(overlay(), "a");
     expect(isClosed()).toBe(false);
@@ -515,7 +519,7 @@ describe("the panel as a modal dialog", () => {
     // Dismissing a 300-row comparison because the user meant to close a
     // dropdown would be a harsh reading of one gesture, so the first Escape
     // takes the menu and a second takes the panel.
-    ui.openComparerModal("compare");
+    panel.openPanel("compare");
     const menu = doc.getElementById("ch-comparer-filter-menu")!;
     const toggle = doc.getElementById("ch-comparer-filter-toggle")!;
     for (const listener of toggle.listeners.click ?? []) {

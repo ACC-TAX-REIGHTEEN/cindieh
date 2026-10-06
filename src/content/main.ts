@@ -32,7 +32,9 @@ import {
   updatePanelProgress,
   updatePanelStatus,
 } from "./ui-badge";
-import { injectComparerModal, openComparerModal, runPendingCompare, runPendingCheck } from "./ui-comparer";
+import { injectComparerModal, runPendingCompare } from "./ui-comparer";
+import { runPendingCheck } from "./ui-checker";
+import { openPanel } from "./ui-panel";
 import {
   clearFilterTimers,
   injectGridFilters,
@@ -527,7 +529,7 @@ document.addEventListener("ch:scrape-start", () => {
 
 // Open compare modal
 document.addEventListener("ch:compare-open", () => {
-  openComparerModal();
+  openPanel();
 });
 
 // Search a reference in Coretax (from the comparer table)

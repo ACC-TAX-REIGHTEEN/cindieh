@@ -1,35 +1,50 @@
 // ============================================================
-// UI-COMPARER.TS — Modal for paste & compare & accuracy check
+// UI-COMPARER.TS — the panel that hosts BOTH tabs
 // ============================================================
-// Thin view over a ComparerSession (comparer-logic.ts) and
-// CheckerSession (checker-logic.ts): builds the modal DOM with
-// tab navigation, wires events, and renders session state.
+// This module is the composition root of the comparison panel and
+// the view of its "Bandingkan Data Penjualan" tab. The panel's other
+// tab, "Pengecekan Keakuratan Nilai", lives in ui-checker.ts;
+// the markup both result grids render lives in
+// result-grid-view.ts; and the overlay's own behaviour — which tab
+// is showing, opening, closing, Escape, handing a reference back to
+// the portal — lives in ui-panel.ts.
+//
+// The split is a seam, not a shuffle: each tab is now buildable and
+// testable without the other, and the panel's cross-tab wiring (the
+// two filter menus, the Escape key, the click-outside handler) is
+// the only place the two are joined.
 // ============================================================
 
 import type { ComparisonResult } from "./comparer";
-import { downloadXLSXFile, downloadCSVFile, RESULT_NUMBER_FORMAT, RESULT_DIFFERENCE_FORMAT } from "./exporter";
+import { downloadXLSXFile, downloadCSVFile, RESULT_NUMBER_FORMAT } from "./exporter";
 import {
   buildComparisonExportRows,
-  buildCheckerExportRows,
-  CHECKER_EXPORT_BASENAME,
   COMPARISON_EXPORT_BASENAME,
   RESULT_EXPORT_LABELS,
   resultExportFilename,
   type ResultExportFormat,
 } from "./comparer-export";
-import {
-  checkerColumns,
-  comparisonColumns,
-  type Counterparty,
-  type ResultColumn,
-} from "./result-columns";
-import { startScrape } from "./main-actions";
+import { comparisonColumns } from "./result-columns";
 import { runLifecycle } from "./run-lifecycle";
 import { getPreferences } from "./preferences";
-import { debugError } from "./debug";
-import { isOutputTaxPage, isVatInvoicePage } from "./page-context";
-import { showPanel, updatePanelProgress } from "./ui-badge";
-import { postToScraper } from "./bridge";
+import {
+  appendPagination,
+  buildHeaderRow,
+  buildResultRow,
+  buildStatusFilterMenu,
+  makeRowInteractive,
+  reportResultExportFailure,
+  PAGE_SIZE,
+  type StatusFilterMenu,
+} from "./result-grid-view";
+import { checkerView } from "./ui-checker";
+import {
+  closePanel,
+  currentGridLabel,
+  scrapeForPanel,
+  searchReference,
+  switchTab,
+} from "./ui-panel";
 import {
   applyComparerDefaults,
   applyStatusFilter,
@@ -42,79 +57,30 @@ import {
   runComparison as runSessionComparison,
   type ComparerSession,
 } from "./comparer-logic";
-import {
-  applyCheckerDefaults,
-  applyCheckerStatusFilter,
-  checkAllRowsAccuracy,
-  createCheckerSession,
-  formatCheckSummary,
-  BENCHMARK_TYPES,
-  CHECKER_STATUSES,
-  type BenchmarkType,
-  type CheckerSession,
-} from "./checker-logic";
 
-/**
- * Panel label per benchmark value. Kept here rather than in the preference
- * schema because a label is presentation: the schema owns the VALUES, and this
- * is the only place they are rendered.
- */
-const BENCHMARK_LABELS: Record<BenchmarkType, string> = {
-  DPP: "DPP",
-  DPP_NILAI_LAIN: "DPP NL",
-  PPN: "PPN",
-};
-
-/** Panel label per checker status-filter key, in the schema's own order. */
-const CHECKER_STATUS_LABELS: Record<string, string> = {
-  DPP_BERBEDA: "DPP Berbeda",
-  DPP_NILAI_LAIN_BERBEDA: "DPP NL Berbeda",
-  PPN_BERBEDA: "PPN Berbeda",
-  DUA_BERBEDA: "Dua Nilai Berbeda",
-  DATA_TIDAK_LENGKAP: "Data tidak lengkap",
-};
-
-const PAGE_SIZE = 10;
-
-/**
- * The panel asks for a scrape on its own — "Periksa" with no grid data yet —
- * which is not the export path and does not need a full ActionDeps. Supplying
- * the three calls a bare scrape uses keeps the dependency explicit at the call
- * site instead of reaching for production defaults the panel never touches.
- */
-const SCRAPE_DEPS = { showPanel, updatePanelProgress, postToScraper };
-
-// ── Sessions ───────────────────────────────────────────
+// ── Session ───────────────────────────────────────────
 
 const session: ComparerSession = createComparerSession();
-const checkerSession: CheckerSession = createCheckerSession();
 
-// ── Switch Tabs ───────────────────────────────────────
+/** The tab's status line and result grid, for the messages that name them. */
+const STATUS_ID = "ch-comparer-status";
+const RESULTS_ID = "ch-comparer-results";
+const FILTER_WRAP_ID = "ch-comparer-filter-wrap";
 
-function switchTab(tab: "compare" | "check"): void {
+/** The status filter's own rows, in panel order. */
+const FILTER_OPTIONS = [
+  { value: "COCOK", label: "Cocok" },
+  { value: "DPP_BERBEDA", label: "DPP Berbeda" },
+  { value: "PPN_BERBEDA", label: "PPN Berbeda" },
+  { value: "BERBEDA", label: "Berbeda" },
+  { value: "TIDAK_DITEMUKAN", label: "Tidak ditemukan" },
+  { value: "HANYA_CORETAX", label: "Hanya di Coretax" },
+];
 
-  const tabCompareBtn = document.getElementById("ch-tab-compare");
-  const tabCheckerBtn = document.getElementById("ch-tab-checker");
-  const viewCompare = document.getElementById("ch-comparer-view-compare");
-  const viewChecker = document.getElementById("ch-comparer-view-checker");
-
-  if (tabCompareBtn && tabCheckerBtn && viewCompare && viewChecker) {
-    if (tab === "compare") {
-      tabCompareBtn.classList.add("ch-comparer-tab-active");
-      tabCheckerBtn.classList.remove("ch-comparer-tab-active");
-      viewCompare.classList.remove("ch-hidden");
-      viewChecker.classList.add("ch-hidden");
-    } else {
-      tabCheckerBtn.classList.add("ch-comparer-tab-active");
-      tabCompareBtn.classList.remove("ch-comparer-tab-active");
-      viewChecker.classList.remove("ch-hidden");
-      viewCompare.classList.add("ch-hidden");
-    }
-  }
-}
-
-// ── Inject the comparer modal ──────────────────────────
-
+/**
+ * Inject the panel. Both tabs are built here because both are children of the
+ * one overlay; everything each tab owns itself lives in its own module.
+ */
 export function injectComparerModal(): void {
   if (document.getElementById("ch-comparer-modal")) return;
 
@@ -134,9 +100,9 @@ export function injectComparerModal(): void {
   // Named after what the two tabs actually do, since the panel has no visible
   // heading to point aria-labelledby at.
   modal.setAttribute("aria-label", "Perbandingan data dan pengecekan akuratan nilai");
-  // Focusable so openComparerModal() can move focus into the panel: Escape is
-  // handled on the overlay (see below) and would otherwise never be delivered
-  // while focus still sits on the portal's own button.
+  // Focusable so openPanel() can move focus into the panel: Escape is handled
+  // on the overlay (see below) and would otherwise never be delivered while
+  // focus still sits on the portal's own button.
   modal.tabIndex = -1;
 
   // Header
@@ -213,7 +179,7 @@ export function injectComparerModal(): void {
   pasteSection.appendChild(pasteHeader);
   pasteSection.appendChild(textarea);
 
-  // Button row: Periksa (left) ... Export Excel + CSV (right)
+  // Button row: Periksa (left) ... filter + Export Excel + CSV (right)
   const btnRow = document.createElement("div");
   btnRow.className = "ch-comparer-btn-row";
 
@@ -309,68 +275,22 @@ export function injectComparerModal(): void {
   exportCsvBtn.title = "Ekspor hasil perbandingan ke file CSV";
   exportCsvBtn.disabled = true;
 
-  // Status filter dropdown (next to Export) — custom dropdown with checkboxes
-  const filterOptions: { value: string; label: string }[] = [
-    { value: "ALL", label: "Semua Status" },
-    { value: "COCOK", label: "Cocok" },
-    { value: "DPP_BERBEDA", label: "DPP Berbeda" },
-    { value: "PPN_BERBEDA", label: "PPN Berbeda" },
-    { value: "BERBEDA", label: "Berbeda" },
-    { value: "TIDAK_DITEMUKAN", label: "Tidak ditemukan" },
-    { value: "HANYA_CORETAX", label: "Hanya di Coretax" },
-  ];
-
-  const filterWrap = document.createElement("div");
-  filterWrap.id = "ch-comparer-filter-wrap";
-  filterWrap.className = "ch-comparer-filter-wrap";
-
-  const filterToggle = document.createElement("button");
-  filterToggle.type = "button";
-  filterToggle.id = "ch-comparer-filter-toggle";
-  filterToggle.className = "ch-comparer-filter-toggle";
-  filterToggle.title = "Filter berdasarkan status";
-
-  const filterToggleLabel = document.createElement("span");
-  filterToggleLabel.className = "ch-comparer-filter-toggle-label";
-  filterToggleLabel.textContent = "Semua Status";
-
-  const filterToggleIcon = document.createElement("span");
-  filterToggleIcon.className = "pi pi-chevron-down";
-  filterToggleIcon.setAttribute("aria-hidden", "true");
-
-  filterToggle.appendChild(filterToggleLabel);
-  filterToggle.appendChild(filterToggleIcon);
-
-  const filterMenu = document.createElement("div");
-  filterMenu.id = "ch-comparer-filter-menu";
-  filterMenu.className = "ch-comparer-filter-menu ch-hidden";
-
-  const filterCheckboxes: HTMLInputElement[] = [];
-  for (const opt of filterOptions) {
-    const item = document.createElement("label");
-    item.className = "ch-comparer-filter-item";
-
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.value = opt.value;
-    if (opt.value === "ALL") cb.checked = true;
-    filterCheckboxes.push(cb);
-
-    const span = document.createElement("span");
-    span.textContent = opt.label;
-
-    item.appendChild(cb);
-    item.appendChild(span);
-    filterMenu.appendChild(item);
-  }
-
-  filterWrap.appendChild(filterToggle);
-  filterWrap.appendChild(filterMenu);
-  filterWrap.classList.add("ch-hidden");
+  // Status filter dropdown (next to Export). Seeded from the session, because the
+  // popup's stored filter has to survive the modal being re-injected.
+  const filterMenu: StatusFilterMenu = buildStatusFilterMenu({
+    idPrefix: "ch-comparer",
+    options: FILTER_OPTIONS,
+    selected: session.statusFilter,
+    onApply: (values) => {
+      session.statusFilter = values as ComparisonResult["status"][];
+      session.currentPage = 1;
+      renderResults();
+    },
+  });
 
   const rightGroup = document.createElement("div");
   rightGroup.className = "ch-comparer-btn-right";
-  rightGroup.appendChild(filterWrap);
+  rightGroup.appendChild(filterMenu.wrap);
   rightGroup.appendChild(exportBtn);
   rightGroup.appendChild(exportCsvBtn);
 
@@ -378,11 +298,11 @@ export function injectComparerModal(): void {
   btnRow.appendChild(rightGroup);
 
   const statusMsg = document.createElement("div");
-  statusMsg.id = "ch-comparer-status";
+  statusMsg.id = STATUS_ID;
   statusMsg.className = "ch-comparer-status";
 
   const results = document.createElement("div");
-  results.id = "ch-comparer-results";
+  results.id = RESULTS_ID;
   results.className = "ch-comparer-results ch-hidden";
 
   viewCompare.appendChild(pasteSection);
@@ -390,168 +310,32 @@ export function injectComparerModal(): void {
   viewCompare.appendChild(statusMsg);
   viewCompare.appendChild(results);
 
-  // ── View 2: Pengecekan Keakuratan Nilai ────────────────
-  const viewChecker = document.createElement("div");
-  viewChecker.id = "ch-comparer-view-checker";
-  viewChecker.className = "ch-comparer-view ch-hidden";
-
-  const checkerBtnRow = document.createElement("div");
-  checkerBtnRow.className = "ch-comparer-btn-row";
-
-  const checkerCheckBtn = document.createElement("button");
-  checkerCheckBtn.id = "ch-checker-check-btn";
-  checkerCheckBtn.className = "ch-comparer-btn ch-comparer-btn-primary";
-  checkerCheckBtn.textContent = "Periksa";
-
-  const benchmarkWrap = document.createElement("div");
-  benchmarkWrap.className = "ch-checker-benchmark-wrap";
-
-  const benchmarkLabel = document.createElement("label");
-  benchmarkLabel.className = "ch-checker-benchmark-label";
-  benchmarkLabel.htmlFor = "ch-checker-benchmark-select";
-  benchmarkLabel.textContent = "Acuan:";
-
-  const benchmarkSelect = document.createElement("select");
-  benchmarkSelect.id = "ch-checker-benchmark-select";
-  benchmarkSelect.className = "ch-checker-benchmark-select";
-
-  // Built from the schema's list, so a benchmark added there cannot be missing
-  // from the panel (and the panel cannot offer one the session cannot store).
-  for (const benchmark of BENCHMARK_TYPES) {
-    const option = document.createElement("option");
-    option.value = benchmark;
-    option.textContent = BENCHMARK_LABELS[benchmark];
-    benchmarkSelect.appendChild(option);
-  }
-
-  benchmarkWrap.appendChild(benchmarkLabel);
-  benchmarkWrap.appendChild(benchmarkSelect);
-
-  const checkerToleranceInput = document.createElement("input");
-  checkerToleranceInput.id = "ch-checker-tolerance";
-  checkerToleranceInput.type = "number";
-  checkerToleranceInput.min = "0";
-  checkerToleranceInput.step = "1";
-  checkerToleranceInput.placeholder = "Toleransi";
-  checkerToleranceInput.className = "ch-comparer-tolerance-input";
-  checkerToleranceInput.title = "Toleransi selisih parameter yang tidak perlu ditampilkan (default 0)";
-
-  // The popup's stored defaults, applied while the modal is built — the panel
-  // owns these controls for the life of the modal, so a later fetch would be a
-  // race with the user's first click.
-  const storedChecker = applyStoredCheckerDefaults(benchmarkSelect, checkerToleranceInput);
-
-  const checkerLeftGroup = document.createElement("div");
-  checkerLeftGroup.className = "ch-comparer-btn-left";
-  checkerLeftGroup.appendChild(checkerCheckBtn);
-  checkerLeftGroup.appendChild(benchmarkWrap);
-  checkerLeftGroup.appendChild(checkerToleranceInput);
-
-  const checkerExportBtn = document.createElement("button");
-  checkerExportBtn.id = "ch-checker-export-btn";
-  checkerExportBtn.className = "ch-comparer-btn ch-comparer-btn-primary";
-  checkerExportBtn.textContent = RESULT_EXPORT_LABELS.xlsx;
-  checkerExportBtn.title = "Ekspor hasil pengecekan ke file Excel";
-
-  const checkerExportCsvBtn = document.createElement("button");
-  checkerExportCsvBtn.id = "ch-checker-export-csv-btn";
-  checkerExportCsvBtn.className = "ch-comparer-btn";
-  checkerExportCsvBtn.textContent = RESULT_EXPORT_LABELS.csv;
-  checkerExportCsvBtn.title = "Ekspor hasil pengecekan ke file CSV";
-
-  // Status filter dropdown for Pengecekan. "ALL" is the empty selection, which
-  // applyCheckerStatusFilter already treats as "no filter"; the rest come from
-  // the schema so the panel and the stored default can never disagree.
-  const checkerFilterOptions: { value: string; label: string }[] = [
-    { value: "ALL", label: "Semua Status" },
-    ...CHECKER_STATUSES.map((status) => ({ value: status, label: CHECKER_STATUS_LABELS[status] })),
-  ];
-
-  const checkerFilterWrap = document.createElement("div");
-  checkerFilterWrap.id = "ch-checker-filter-wrap";
-  checkerFilterWrap.className = "ch-comparer-filter-wrap ch-hidden";
-
-  const checkerFilterToggle = document.createElement("button");
-  checkerFilterToggle.type = "button";
-  checkerFilterToggle.id = "ch-checker-filter-toggle";
-  checkerFilterToggle.className = "ch-comparer-filter-toggle";
-  checkerFilterToggle.title = "Filter berdasarkan status";
-
-  const checkerFilterToggleLabel = document.createElement("span");
-  checkerFilterToggleLabel.className = "ch-comparer-filter-toggle-label";
-  checkerFilterToggleLabel.textContent = "Semua Status";
-
-  const checkerFilterToggleIcon = document.createElement("span");
-  checkerFilterToggleIcon.className = "pi pi-chevron-down";
-  checkerFilterToggleIcon.setAttribute("aria-hidden", "true");
-
-  checkerFilterToggle.appendChild(checkerFilterToggleLabel);
-  checkerFilterToggle.appendChild(checkerFilterToggleIcon);
-
-  const checkerFilterMenu = document.createElement("div");
-  checkerFilterMenu.id = "ch-checker-filter-menu";
-  checkerFilterMenu.className = "ch-comparer-filter-menu ch-hidden";
-
-  const checkerFilterCheckboxes: HTMLInputElement[] = [];
-  for (const opt of checkerFilterOptions) {
-    const item = document.createElement("label");
-    item.className = "ch-comparer-filter-item";
-
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.value = opt.value;
-    if (opt.value === "ALL") cb.checked = storedChecker.statusFilter.length === 0;
-    else cb.checked = storedChecker.statusFilter.includes(opt.value as never);
-    checkerFilterCheckboxes.push(cb);
-
-    const span = document.createElement("span");
-    span.textContent = opt.label;
-
-    item.appendChild(cb);
-    item.appendChild(span);
-    checkerFilterMenu.appendChild(item);
-  }
-
-  checkerFilterWrap.appendChild(checkerFilterToggle);
-  checkerFilterWrap.appendChild(checkerFilterMenu);
-
-  const checkerRightGroup = document.createElement("div");
-  checkerRightGroup.className = "ch-comparer-btn-right";
-  checkerRightGroup.appendChild(checkerFilterWrap);
-  checkerRightGroup.appendChild(checkerExportBtn);
-  checkerRightGroup.appendChild(checkerExportCsvBtn);
-
-  checkerBtnRow.appendChild(checkerLeftGroup);
-  checkerBtnRow.appendChild(checkerRightGroup);
-
-  const checkerStatusMsg = document.createElement("div");
-  checkerStatusMsg.id = "ch-checker-status";
-  checkerStatusMsg.className = "ch-comparer-status";
-
-  const checkerResults = document.createElement("div");
-  checkerResults.id = "ch-checker-results";
-  checkerResults.className = "ch-comparer-results ch-hidden";
-
-  viewChecker.appendChild(checkerBtnRow);
-  viewChecker.appendChild(checkerStatusMsg);
-  viewChecker.appendChild(checkerResults);
+  // ── View 2: Pengecekan Keakuratan Nilai ────────────
+  // Built by its own module; the panel only hosts it.
+  checkerView.inject();
 
   body.appendChild(viewCompare);
-  body.appendChild(viewChecker);
+  body.appendChild(checkerView.root);
 
   modal.appendChild(header);
   modal.appendChild(body);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
-  // ── Event wiring ──────────────────────────────────
+  // ── Cross-tab wiring ─────────────────────────────
+  // The two tabs are joined exactly here: their filter menus answer the same
+  // Escape key and the same click-outside, and nothing below knows which tab a
+  // control belongs to.
+  const filterMenus = [filterMenu, checkerView.filterMenu].filter(
+    (menu): menu is StatusFilterMenu => menu !== null,
+  );
 
   tabCompareBtn.addEventListener("click", () => switchTab("compare"));
   tabCheckerBtn.addEventListener("click", () => switchTab("check"));
 
-  closeBtn.addEventListener("click", closeComparerModal);
+  closeBtn.addEventListener("click", closePanel);
   overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) closeComparerModal();
+    if (e.target === overlay) closePanel();
   });
   // Escape closes the panel. The listener lives on the OVERLAY rather than on
   // document, so the master-switch teardown that removes the element also drops
@@ -564,15 +348,22 @@ export function injectComparerModal(): void {
   // harsh reading of the same gesture.
   overlay.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    const menus = [filterMenu, checkerFilterMenu];
-    const openMenu = menus.find((menu) => !menu.classList.contains("ch-hidden"));
+    const openMenu = filterMenus.find((menu) => !menu.menu.classList.contains("ch-hidden"));
     if (openMenu) {
       e.stopPropagation();
-      openMenu.classList.add("ch-hidden");
+      openMenu.close();
       return;
     }
-    closeComparerModal();
+    closePanel();
   });
+
+  document.addEventListener("click", (e: MouseEvent) => {
+    for (const menu of filterMenus) {
+      if (!menu.wrap.contains(e.target as Node)) menu.close();
+    }
+  });
+
+  // ── View 1 event wiring ─────────────────────────
 
   checkBtn.addEventListener("click", handleCheck);
 
@@ -585,14 +376,14 @@ export function injectComparerModal(): void {
     exportBtn.disabled = true;
     exportCsvBtn.disabled = true;
     textarea.classList.remove("ch-hidden");
-    const toggleIcon = document.getElementById("ch-comparer-toggle-icon");
-    if (toggleIcon) toggleIcon.className = "pi pi-chevron-up";
+    const icon = document.getElementById("ch-comparer-toggle-icon");
+    if (icon) icon.className = "pi pi-chevron-up";
     results.classList.add("ch-hidden");
     results.innerHTML = "";
     statusMsg.textContent = "";
     statusMsg.className = "ch-comparer-status";
-    const filterWrap = document.getElementById("ch-comparer-filter-wrap");
-    if (filterWrap) filterWrap.classList.add("ch-hidden");
+    const wrap = document.getElementById(FILTER_WRAP_ID);
+    if (wrap) wrap.classList.add("ch-hidden");
   });
 
   exportBtn.addEventListener("click", () => handleExportResults("xlsx"));
@@ -619,60 +410,6 @@ export function injectComparerModal(): void {
     rerunFromTextarea();
   });
 
-  const applyFilter = () => {
-    const checked = filterCheckboxes.filter((cb) => cb.checked).map((cb) => cb.value);
-    if (checked.includes("ALL")) {
-      session.statusFilter = [];
-      filterToggleLabel.textContent = "Semua Status";
-    } else if (checked.length === 0) {
-      session.statusFilter = [];
-      filterToggleLabel.textContent = "Semua Status";
-    } else {
-      session.statusFilter = checked.filter((v) => v !== "ALL") as ComparisonResult["status"][];
-      filterToggleLabel.textContent = `${session.statusFilter.length} status`;
-    }
-    session.currentPage = 1;
-    renderResults();
-  };
-
-  // Seed the status filter from the stored defaults. An empty list is the
-  // session's own "all statuses", so the checkbox row stays untouched then.
-  if (session.statusFilter.length > 0) {
-    const wanted = new Set<string>(session.statusFilter);
-    filterCheckboxes.forEach((cb) => {
-      cb.checked = cb.value === "ALL" ? false : wanted.has(cb.value);
-    });
-    filterToggleLabel.textContent = `${session.statusFilter.length} status`;
-  }
-
-  filterToggle.addEventListener("click", (e: MouseEvent) => {
-    e.stopPropagation();
-    filterMenu.classList.toggle("ch-hidden");
-  });
-
-  filterCheckboxes.forEach((cb) => {
-    cb.addEventListener("change", () => {
-      if (cb.value === "ALL" && cb.checked) {
-        filterCheckboxes.forEach((other) => {
-          if (other.value !== "ALL") other.checked = false;
-        });
-      } else if (cb.value !== "ALL" && cb.checked) {
-        const allCb = filterCheckboxes.find((c) => c.value === "ALL");
-        if (allCb) allCb.checked = false;
-      }
-      applyFilter();
-    });
-  });
-
-  document.addEventListener("click", (e: MouseEvent) => {
-    if (!filterWrap.contains(e.target as Node)) {
-      filterMenu.classList.add("ch-hidden");
-    }
-    if (!checkerFilterWrap.contains(e.target as Node)) {
-      checkerFilterMenu.classList.add("ch-hidden");
-    }
-  });
-
   toggleBtn.addEventListener("click", () => {
     const isHidden = textarea.classList.contains("ch-hidden");
     textarea.classList.toggle("ch-hidden", !isHidden);
@@ -685,56 +422,6 @@ export function injectComparerModal(): void {
       handleCheck();
     }
   });
-
-  // ── View 2 (Pengecekan) Event wiring ──────────────
-
-  const applyCheckerFilter = () => {
-    const checked = checkerFilterCheckboxes.filter((cb) => cb.checked).map((cb) => cb.value);
-    if (checked.includes("ALL") || checked.length === 0) {
-      checkerSession.statusFilter = [];
-      checkerFilterToggleLabel.textContent = "Semua Status";
-    } else {
-      checkerSession.statusFilter = checked.filter((v) => v !== "ALL");
-      checkerFilterToggleLabel.textContent = `${checkerSession.statusFilter.length} status`;
-    }
-    checkerSession.currentPage = 1;
-    renderCheckerResults();
-  };
-
-  checkerFilterToggle.addEventListener("click", (e: MouseEvent) => {
-    e.stopPropagation();
-    checkerFilterMenu.classList.toggle("ch-hidden");
-  });
-
-  checkerFilterCheckboxes.forEach((cb) => {
-    cb.addEventListener("change", () => {
-      if (cb.value === "ALL" && cb.checked) {
-        checkerFilterCheckboxes.forEach((other) => {
-          if (other.value !== "ALL") other.checked = false;
-        });
-      } else if (cb.value !== "ALL" && cb.checked) {
-        const allCb = checkerFilterCheckboxes.find((c) => c.value === "ALL");
-        if (allCb) allCb.checked = false;
-      }
-      applyCheckerFilter();
-    });
-  });
-
-  checkerCheckBtn.addEventListener("click", handleCheckerCheck);
-
-  benchmarkSelect.addEventListener("change", () => {
-    checkerSession.benchmark = benchmarkSelect.value as BenchmarkType;
-    rerunChecker();
-  });
-
-  checkerToleranceInput.addEventListener("change", () => {
-    const val = parseInt(checkerToleranceInput.value, 10);
-    checkerSession.tolerance = isNaN(val) || val < 0 ? 0 : val;
-    rerunChecker();
-  });
-
-  checkerExportBtn.addEventListener("click", () => handleCheckerExportResults("xlsx"));
-  checkerExportCsvBtn.addEventListener("click", () => handleCheckerExportResults("csv"));
 }
 
 // ── Stored defaults ───────────────────────────────────
@@ -756,104 +443,10 @@ function applyStoredComparerDefaults(
   dailyDatesInput.classList.toggle("ch-hidden", !session.dailyEnabled);
 }
 
-/**
- * Apply the popup's Checker defaults to the session and the two inputs that
- * mirror the first two of them. The third — the status filter — is applied by
- * the caller, which builds the checkboxes from the returned value.
- *
- * Returns the stored filter so the caller does not have to read the snapshot a
- * second time: `getPreferences()` is cheap, but reading it twice could in
- * principle observe two different values if a storage event lands in between.
- */
-function applyStoredCheckerDefaults(
-  benchmarkSelect: HTMLSelectElement,
-  toleranceInput: HTMLInputElement,
-): { statusFilter: string[] } {
-  const defaults = getPreferences().checkerDefaults;
-  applyCheckerDefaults(checkerSession, defaults);
-  benchmarkSelect.value = checkerSession.benchmark;
-  // Same rule as the comparer's box: an empty field means "no tolerance".
-  toleranceInput.value = checkerSession.tolerance > 0 ? String(checkerSession.tolerance) : "";
-  return { statusFilter: checkerSession.statusFilter };
-}
-
-// ── Which side of the transaction this page shows ─────────
-// PPN Keluaran rows carry the BUYER; PPN Masukan rows carry the SELLER. The
-// checker reads the same three amounts either way, so this decides only the
-// column words. Read per render rather than per injection so an SPA move
-// between the two grids cannot leave the header describing the wrong side.
-function currentCounterparty(): Counterparty {
-  return isOutputTaxPage() ? "pembeli" : "penjual";
-}
-
-/**
- * The grid's own name for the "still scraping" notice. The checker runs on both
- * PPN grids now, and telling someone on PPN Masukan that Cindieh is fetching
- * "data PPN Keluaran" is simply the wrong grid.
- */
-function currentGridLabel(): string {
-  return isOutputTaxPage() ? "PPN Keluaran" : "PPN Masukan";
-}
-
-
-/**
- * Whether a result row's double-click can jump to that invoice in the Coretax
- * grid. Only PPN Keluaran gets the Referensi filter injected — main.ts injects
- * the toolbar and grid filters on isOutputTaxPage() alone — so on PPN Masukan
- * the affordance would silently do nothing.
- */
-function canSearchReferenceInGrid(): boolean {
-  return isOutputTaxPage();
-}
-
-// ── Open / Close ──────────────────────────────────────
-
-export function openComparerModal(targetTab: "compare" | "check" = "compare"): void {
-  const overlay = document.getElementById("ch-comparer-overlay");
-  if (overlay) {
-    overlay.classList.remove("ch-hidden");
-    overlay.style.display = "flex";
-    // Move focus into the panel first. Escape is handled on the overlay, so a
-    // focus still sitting on the portal's own button would leave the one key a
-    // dialog user reaches for doing nothing. The branch below then hands focus
-    // to the textarea when there is one to type into.
-    const modalEl = document.getElementById("ch-comparer-modal");
-    if (modalEl) modalEl.focus({ preventScroll: true });
-
-    const tabCheckerBtn = document.getElementById("ch-tab-checker");
-    if (tabCheckerBtn) {
-      tabCheckerBtn.classList.toggle("ch-hidden", !isVatInvoicePage());
-    }
-
-    if (targetTab === "check" && isVatInvoicePage()) {
-      switchTab("check");
-    } else {
-      switchTab("compare");
-      const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
-      if (textarea) {
-        textarea.focus();
-        navigator.clipboard.readText().then((text) => {
-          if (text && !textarea.value) {
-            textarea.value = text;
-          }
-        }).catch(() => {});
-      }
-    }
-  }
-}
-
-export function closeComparerModal(): void {
-  const overlay = document.getElementById("ch-comparer-overlay");
-  if (overlay) {
-    overlay.style.display = "none";
-    overlay.classList.add("ch-hidden");
-  }
-}
-
-// ── Check handlers for Bandingkan ─────────────────────
+// ── Check handlers ────────────────────────────────────
 
 function handleCheck(): void {
-  const statusMsg = document.getElementById("ch-comparer-status");
+  const statusMsg = document.getElementById(STATUS_ID);
   if (!statusMsg) return;
 
   const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
@@ -876,7 +469,7 @@ function handleCheck(): void {
       `Belum ada data. Mohon tunggu, sedang melakukan scraping data ${currentGridLabel()} terlebih dahulu...`;
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
     runLifecycle.request({ kind: "compare" });
-    startScrape(SCRAPE_DEPS);
+    scrapeForPanel();
     return;
   }
 
@@ -889,6 +482,7 @@ function rerunFromTextarea(): void {
   runPendingCompare();
 }
 
+/** Re-run the comparison a finished Run owed it — main.ts calls this. */
 export function runPendingCompare(): void {
   const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
   const datesInput = document.getElementById("ch-comparer-daily-dates") as HTMLInputElement;
@@ -905,7 +499,7 @@ export function runPendingCompare(): void {
 
 function renderComparisonError(message: string): void {
   renderResults();
-  const statusMsg = document.getElementById("ch-comparer-status");
+  const statusMsg = document.getElementById(STATUS_ID);
   if (statusMsg) {
     statusMsg.textContent = message;
     statusMsg.className = "ch-comparer-status ch-comparer-status-error";
@@ -915,64 +509,12 @@ function renderComparisonError(message: string): void {
   if (toggleIcon) toggleIcon.className = "pi pi-chevron-up";
 }
 
-// ── Check handlers for Pengecekan ─────────────────────
-
-function handleCheckerCheck(): void {
-  const statusMsg = document.getElementById("ch-checker-status");
-  if (!statusMsg) return;
-
-  const scrapedData = runLifecycle.result()?.data ?? null;
-  if (!scrapedData || scrapedData.length === 0) {
-    statusMsg.textContent =
-      `Belum ada data. Mohon tunggu, sedang melakukan scraping data ${currentGridLabel()} terlebih dahulu...`;
-    statusMsg.className = "ch-comparer-status ch-comparer-status-info";
-    runLifecycle.request({ kind: "check" });
-    startScrape(SCRAPE_DEPS);
-    return;
-  }
-
-  checkerSession.results = checkAllRowsAccuracy(
-    scrapedData,
-    checkerSession.benchmark,
-    checkerSession.tolerance,
-  );
-  checkerSession.currentPage = 1;
-  renderCheckerAfterCheck();
-}
-
-function rerunChecker(): void {
-  const scrapedData = runLifecycle.result()?.data ?? null;
-  if (!scrapedData || scrapedData.length === 0) return;
-
-  checkerSession.results = checkAllRowsAccuracy(
-    scrapedData,
-    checkerSession.benchmark,
-    checkerSession.tolerance,
-  );
-  checkerSession.currentPage = 1;
-  renderCheckerAfterCheck();
-}
-
-export function runPendingCheck(): void {
-  const scrapedData = runLifecycle.result()?.data ?? null;
-  if (!scrapedData || scrapedData.length === 0) return;
-
-  openComparerModal("check");
-  checkerSession.results = checkAllRowsAccuracy(
-    scrapedData,
-    checkerSession.benchmark,
-    checkerSession.tolerance,
-  );
-  checkerSession.currentPage = 1;
-  renderCheckerAfterCheck();
-}
-
-// ── Render Bandingkan results table ───────────────────
+// ── Render results table ──────────────────────────────
 
 function renderAfterComparison(): void {
   renderResults();
 
-  const statusMsg = document.getElementById("ch-comparer-status");
+  const statusMsg = document.getElementById(STATUS_ID);
   if (statusMsg) {
     statusMsg.textContent = formatStatusSummary(buildStatusSummary(session.results));
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
@@ -984,84 +526,6 @@ function renderAfterComparison(): void {
   if (toggleIcon) toggleIcon.className = "pi pi-chevron-down";
 }
 
-/**
- * Append the page controls both result grids use. Kept in one place because
- * the two grids showed byte-identical markup that had to be changed twice.
- */
-function appendPagination(
-  container: HTMLElement,
-  currentPage: number,
-  totalPages: number,
-  onGoTo: (page: number) => void,
-): void {
-  const pagination = document.createElement("div");
-  pagination.className = "ch-comparer-pagination";
-
-  const prevBtn = document.createElement("button");
-  prevBtn.type = "button";
-  prevBtn.className = "ch-comparer-page-btn";
-  prevBtn.textContent = "Sebelumnya";
-  prevBtn.disabled = currentPage === 1;
-  prevBtn.addEventListener("click", () => {
-    if (currentPage > 1) onGoTo(currentPage - 1);
-  });
-
-  const pageInfo = document.createElement("span");
-  pageInfo.className = "ch-comparer-page-info";
-  pageInfo.textContent = `Halaman ${currentPage} dari ${totalPages}`;
-
-  const nextBtn = document.createElement("button");
-  nextBtn.type = "button";
-  nextBtn.className = "ch-comparer-page-btn";
-  nextBtn.textContent = "Berikutnya";
-  nextBtn.disabled = currentPage === totalPages;
-  nextBtn.addEventListener("click", () => {
-    if (currentPage < totalPages) onGoTo(currentPage + 1);
-  });
-
-  pagination.appendChild(prevBtn);
-  pagination.appendChild(pageInfo);
-  pagination.appendChild(nextBtn);
-  container.appendChild(pagination);
-}
-
-/** Build `<thead>` from a column schema. */
-function buildHeaderRow<T>(columns: readonly ResultColumn<T>[]): HTMLElement {
-  const thead = document.createElement("thead");
-  const headerRow = document.createElement("tr");
-  for (const column of columns) {
-    const th = document.createElement("th");
-    th.textContent = column.label;
-    th.className = column.className;
-    headerRow.appendChild(th);
-  }
-  thead.appendChild(headerRow);
-  return thead;
-}
-
-/**
- * Build one `<tr>` from a column schema. `startIndex` is the 0-based index of
- * the page's first row within the whole filtered set, so "No" keeps counting
- * across pages.
- */
-function buildResultRow<T>(
-  columns: readonly ResultColumn<T>[],
-  row: T,
-  startIndex: number,
-  offset: number,
-): HTMLTableRowElement {
-  const tr = document.createElement("tr") as HTMLTableRowElement;
-  for (const column of columns) {
-    const value = column.value(row, startIndex + offset);
-    const td = document.createElement("td");
-    td.textContent = value;
-    td.title = value;
-    td.className = column.numeric ? `${column.className} ch-comparer-num` : column.className;
-    tr.appendChild(td);
-  }
-  return tr;
-}
-
 function renderResults(): void {
   const exportBtn = document.getElementById("ch-comparer-export-btn") as HTMLButtonElement;
   if (exportBtn) exportBtn.disabled = session.results.length === 0;
@@ -1069,13 +533,13 @@ function renderResults(): void {
   // nothing in either format, so leaving one enabled would promise a file.
   const exportCsvBtn = document.getElementById("ch-comparer-export-csv-btn") as HTMLButtonElement;
   if (exportCsvBtn) exportCsvBtn.disabled = session.results.length === 0;
-  const container = document.getElementById("ch-comparer-results");
+  const container = document.getElementById(RESULTS_ID);
   if (!container) return;
 
   container.classList.remove("ch-hidden");
   container.innerHTML = "";
 
-  const filterWrap = document.getElementById("ch-comparer-filter-wrap");
+  const filterWrap = document.getElementById(FILTER_WRAP_ID);
   if (filterWrap) filterWrap.classList.toggle("ch-hidden", session.results.length === 0);
 
   if (session.results.length === 0) {
@@ -1102,15 +566,12 @@ function renderResults(): void {
     }
 
     const isNotFound = r.status === "TIDAK_DITEMUKAN";
-    tr.style.cursor = "pointer";
-    tr.title = isNotFound
-      ? "Klik 1x untuk melihat teks lengkap"
-      : "Klik 1x untuk melihat teks lengkap, klik 2x untuk mencari di Coretax";
-
-    tr.addEventListener("click", (e: MouseEvent) => {
-      if ((e.target as HTMLElement).tagName === "BUTTON" || (e.target as HTMLElement).tagName === "INPUT") return;
-      tr.classList.toggle("ch-comparer-row-expanded");
-    });
+    makeRowInteractive(
+      tr,
+      isNotFound
+        ? "Klik 1x untuk melihat teks lengkap"
+        : "Klik 1x untuk melihat teks lengkap, klik 2x untuk mencari di Coretax",
+    );
 
     if (!isNotFound) {
       tr.addEventListener("dblclick", () => {
@@ -1133,103 +594,10 @@ function renderResults(): void {
   }
 }
 
-// ── Render Pengecekan results table ───────────────────
-
-function renderCheckerAfterCheck(): void {
-  renderCheckerResults();
-
-  const statusMsg = document.getElementById("ch-checker-status");
-  if (statusMsg) {
-    statusMsg.textContent = formatCheckSummary(checkerSession.results);
-    statusMsg.className = "ch-comparer-status ch-comparer-status-info";
-  }
-}
-
-function renderCheckerResults(): void {
-  const container = document.getElementById("ch-checker-results");
-  if (!container) return;
-
-  container.classList.remove("ch-hidden");
-  container.innerHTML = "";
-
-  const filterWrap = document.getElementById("ch-checker-filter-wrap");
-  if (filterWrap) filterWrap.classList.remove("ch-hidden");
-
-  if (checkerSession.results.length === 0) {
-    if (filterWrap) filterWrap.classList.add("ch-hidden");
-    container.textContent = "Semua faktur sesuai.";
-    return;
-  }  const filtered = applyCheckerStatusFilter(checkerSession.results, checkerSession.statusFilter);
-  const { totalPages, currentPage, startIndex, pageRows } = computePagination(
-    filtered,
-    PAGE_SIZE,
-    checkerSession.currentPage,
-  );
-  checkerSession.currentPage = currentPage;
-
-  const columns = checkerColumns(checkerSession.benchmark, currentCounterparty());
-
-  const table = document.createElement("table");
-  table.className = "ch-comparer-table";
-  table.appendChild(buildHeaderRow(columns));
-
-  const tbody = document.createElement("tbody");
-  pageRows.forEach((r, idx) => {
-    const tr = buildResultRow(columns, r, startIndex, idx);
-    const searchKey = r.reference || r.taxInvoiceNumber;
-    tr.style.cursor = "pointer";
-    tr.title = searchKey
-      ? "Klik 1x untuk melihat teks lengkap, klik 2x untuk mencari di Coretax"
-      : "Klik 1x untuk melihat teks lengkap";
-
-    tr.addEventListener("click", (e: MouseEvent) => {
-      if ((e.target as HTMLElement).tagName === "BUTTON" || (e.target as HTMLElement).tagName === "INPUT") return;
-      tr.classList.toggle("ch-comparer-row-expanded");
-    });
-
-    if (checkerSession.viewedRefs.has(searchKey)) {
-      tr.classList.add("ch-comparer-row-viewed");
-    }
-
-    if (searchKey && canSearchReferenceInGrid()) {
-      tr.addEventListener("dblclick", () => {
-        checkerSession.viewedRefs.add(searchKey);
-        renderCheckerResults();
-        searchReference(searchKey);
-      });
-    }
-
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
-  container.appendChild(table);
-
-  if (totalPages > 1) {
-    appendPagination(container, checkerSession.currentPage, totalPages, (page) => {
-      checkerSession.currentPage = page;
-      renderCheckerResults();
-    });
-  }
-}
-
-// ── Export results to XLSX ────────────────────────────
-
-/**
- * Report a failed spreadsheet export in the panel instead of letting the
- * rejection die silently — the click handler is fire-and-forget, and the most
- * likely cause is the SheetJS chunk failing to load.
- */
-function reportExportFailure(err: unknown): void {
-  debugError("Gagal mengekspor hasil ke Excel", err);
-  const statusMsg = document.getElementById("ch-comparer-status");
-  if (statusMsg) {
-    statusMsg.textContent = "Gagal membuat berkas Excel. Coba ekspor kembali.";
-    statusMsg.className = "ch-comparer-status ch-comparer-status-error";
-  }
-}
+// ── Export results ────────────────────────────────────
 
 function handleExportResults(format: ResultExportFormat): void {
-  const container = document.getElementById("ch-comparer-results");
+  const container = document.getElementById(RESULTS_ID);
   if (!container || container.classList.contains("ch-hidden")) return;
 
   if (session.results.length === 0) return;
@@ -1246,45 +614,5 @@ function handleExportResults(format: ResultExportFormat): void {
     numberFormats: Object.fromEntries(
       Array.from({ length: 5 }, (_, i) => [firstAmount + i, RESULT_NUMBER_FORMAT]),
     ),
-  }).catch(reportExportFailure);
-}
-
-function handleCheckerExportResults(format: ResultExportFormat): void {
-  if (checkerSession.results.length === 0) return;
-
-  const rows = buildCheckerExportRows(
-    checkerSession.results,
-    checkerSession.benchmark,
-    currentCounterparty(),
-  );
-  const filename = resultExportFilename(CHECKER_EXPORT_BASENAME, format);
-  if (format === "csv") {
-    downloadCSVFile(rows, filename);
-    return;
-  }
-  void downloadXLSXFile(rows, filename, "Pengecekan", {
-    numberFormats: {
-      5: RESULT_NUMBER_FORMAT, 6: RESULT_NUMBER_FORMAT, 7: RESULT_NUMBER_FORMAT,
-      8: RESULT_DIFFERENCE_FORMAT, 9: RESULT_DIFFERENCE_FORMAT,
-    },
-  }).catch(reportExportFailure);
-}
-
-// ── Search reference in Coretax ───────────────────────
-
-function searchReference(reference: string): void {
-  closeComparerModal();
-
-  const input =
-    (document.getElementById("ch-toolbar-filter-reference") as HTMLInputElement) ||
-    (document.getElementById("ch-grid-filter-reference") as HTMLInputElement);
-
-  if (input) {
-    input.value = reference;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  }
-
-  document.dispatchEvent(
-    new CustomEvent("ch:search-reference", { detail: { reference } }),
-  );
-}
+  }).catch((err: unknown) => reportResultExportFailure(err, STATUS_ID));
+}
