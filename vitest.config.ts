@@ -9,7 +9,7 @@
 // regression — new logic shipping without tests — does. Raise them as coverage
 // improves; never lower them to make a red build green.
 //
-// Measured 2026-10-02 on the whole suite (1230 tests). The modules that hold
+// Measured 2026-10-06 on the whole suite (1454 tests). The modules that hold
 // the baseline down are recorded in AGENTS.md so a low number reads as a known
 // gap rather than a mystery.
 
@@ -38,14 +38,21 @@ export default defineConfig({
 
       // Baseline floors. Global, so a new well-tested module may raise the
       // average while an untested one still drags it down.
-      // Raised from 80/72/74/82 after the column-schema extraction, then again
-      // by the run-lifecycle extraction (ADR-0014), then on branches and
-      // functions by the export-source spec extraction (ADR-0015), then to
-      // 81.2/73.5/76.4/83.3 as the suite grew past 1280 tests; the measured
-      // numbers are now 83.73/76.58/79.59/85.55. The microsite legal-copy
-      // guards live in src/tests (excluded here), so that suite is neutral to
-      // these numbers — the headroom above the previous floors was already
-      // there and is now locked in rather than left as slack.
+      //
+      // Raised from 80/72/74/82 after the column-schema extraction, again by
+      // the run-lifecycle extraction (ADR-0014), again on branches and
+      // functions by the export-source spec extraction (ADR-0015), to
+      // 81.2/73.5/76.4/83.3 as the suite grew past 1280 tests, to
+      // 83.4/76.3/79.2/85.2 after the bulk-PDF failure naming and the checker
+      // defaults, and now to 87.7/81.3/83.7/89.3 once the Pengecekan tab
+      // became its own view module with its own render suite. The measured
+      // numbers are 88.03/81.71/84.10/89.72.
+      //
+      // The cushion is deliberately ~0.3-0.4 points, the same gap the floors
+      // have always kept: enough that ordinary churn cannot redden the build,
+      // small enough that shipping new logic without tests does. The microsite
+      // legal-copy guards live in src/tests (excluded here), so that suite is
+      // neutral to these numbers.
       //
       // Statements and lines were left alone for ADR-0015 even though the new
       // module is 100% covered: exporter.ts shrank 675 -> 381 lines, so its
@@ -54,10 +61,10 @@ export default defineConfig({
       // uncovered code, tighter ratio — not a regression to paper over, and not
       // a reason to lower a floor.
       thresholds: {
-        statements: 83.4,
-        branches: 76.3,
-        functions: 79.2,
-        lines: 85.2,
+        statements: 87.7,
+        branches: 81.3,
+        functions: 83.7,
+        lines: 89.3,
       },
     },
   },
