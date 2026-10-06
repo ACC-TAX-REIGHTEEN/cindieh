@@ -12,6 +12,7 @@
 import { extractFilenameHintFromBody } from "./page-context";
 import type { ExportSource } from "./page-context";
 import { debugLog, debugError } from "./debug";
+import { sendScrapeComplete } from "./scrape-result-transfer";
 import { mergeRows, collectFields, describePdfItem } from "./scraper-helpers";
 import {
   xhrRequest as xhrRequestFn,
@@ -389,7 +390,7 @@ export async function startScraping(
     }
     if (ctx.isStopRequested()) return;
 
-    ctx.sendToContent({
+    sendScrapeComplete(ctx.sendToContent, {
       type: "SCRAPE_COMPLETE",
       data: allData,
       fields: [...fieldSet],
@@ -499,7 +500,7 @@ export async function startPdfDownload(
     `✅ PDF download complete: ${total - failureCount}/${total} succeeded, ${failureCount} failed in ${totalElapsed}`,
   );
 
-  ctx.sendToContent({
+  sendScrapeComplete(ctx.sendToContent, {
     type: "SCRAPE_COMPLETE",
     data,
     fields: [],
@@ -611,7 +612,7 @@ export async function scrapeByInvoices(
   const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
   const fieldSet = collectFields(allData);
 
-  ctx.sendToContent({
+  sendScrapeComplete(ctx.sendToContent, {
     type: "SCRAPE_COMPLETE",
     data: allData,
     fields: [...fieldSet],

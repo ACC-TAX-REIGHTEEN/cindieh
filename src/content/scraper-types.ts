@@ -27,7 +27,20 @@ export interface ScrapeProgress {
 
 export interface ScrapeComplete {
   type: "SCRAPE_COMPLETE";
+  /**
+   * The rows. Empty when `dataChunks` is set: a large result travels as
+   * SCRAPE_DATA_CHUNK messages and the completion only names the count, so
+   * a receiver that lost a chunk sees an obviously empty result instead of
+   * a plausible-looking partial one. See scrape-result-transfer.ts.
+   */
   data: Record<string, unknown>[];
+  /**
+   * How many SCRAPE_DATA_CHUNK messages must have arrived before this
+   * completion. Absent means the rows are in `data` — which is every run
+   * below the chunk threshold and every message sent before chunking
+   * existed, so an older receiver keeps working unchanged.
+   */
+  dataChunks?: number;
   fields: string[];
   total: number;
   pages: number;
@@ -73,6 +86,21 @@ export interface ScrapeComplete {
   kind?: "scrape" | "pdf";
 }
 
+/**
+ * One slice of a large result, sent before the completion that names how
+ * many slices to expect. Ordering is the receiver's problem: postMessage
+ * between one pair preserves order, but the receiver indexes by `index`
+ * anyway rather than trusting arrival.
+ */
+export interface ScrapeDataChunkMessage {
+  type: "SCRAPE_DATA_CHUNK";
+  /** 0-based position in the transfer. */
+  index: number;
+  /** How many chunks the whole transfer is. */
+  chunks: number;
+  rows: Record<string, unknown>[];
+}
+
 export interface ScrapeError {
   type: "SCRAPE_ERROR";
   message: string;
@@ -81,6 +109,7 @@ export interface ScrapeError {
 export type ScrapeMessage = (
   | ScrapeProgress
   | ScrapeComplete
+  | ScrapeDataChunkMessage
   | ScrapeError
   | { type: "INJECTED_READY" }
   /**

@@ -698,3 +698,181 @@ describe("main boot — completion notifications", () => {
     expect(container.classList.contains("ch-panel-open")).toBe(true);
   });
 });
+
+// ── A large result crossing the bridge ──────────────────────────────
+
+// The seam suite proves the chunker and the reassembler agree. These prove the
+// CONTENT SCRIPT actually reassembles: the receiver is a handler in a world
+// entry, and the only way to know it was wired in is to send a chunked result
+// through the guarded message path and read the Run back.
+
+describe("main boot — a chunked scrape result", () => {
+  type Env = Awaited<ReturnType<typeof bootMain>>;
+
+  /**
+   * Boot with a live Run. Both halves are needed: every page message is gated
+   * on the CURRENT run id, and the popup's cache clear is what assigns one;
+   * and a completion is only accepted while a Run is in flight, which is what
+   * begin() is for. Between them they are what a scrape in progress looks like
+   * from the isolated world.
+   */
+  async function bootRunning(): Promise<{ env: Env; runId: number; run: import("../content/run-lifecycle").RunLifecycle }> {
+    const env = await bootMain();
+    env.fire("load");
+    await env.resolveStored({ [ENABLED_KEY]: true, [NOTIFY_ON_COMPLETE_KEY]: true });
+    env.emitStorageChange({ [RESET_REQUEST_KEY]: { newValue: 1 } });
+    const { getActiveRunId } = await import("../content/bridge");
+    const run = (await import("../content/run-lifecycle")).runLifecycle;
+    run.begin("scrape");
+    return { env, runId: getActiveRunId(), run };
+  }
+
+  function fromPage(env: Env, data: Record<string, unknown>): void {
+    env.fire("message", {
+      source: env.win,
+      origin: PORTAL_ORIGIN,
+      data: { ...data, direction: "FROM_PAGE", token: env.token() },
+    });
+  }
+
+  const rows = (count: number): Record<string, unknown>[] =>
+    Array.from({ length: count }, (_, i) => ({ RecordId: i }));
+
+  it("hands the Run every row the chunks carried", async () => {
+    const { env, runId, run } = await bootRunning();
+
+    fromPage(env, { type: "SCRAPE_DATA_CHUNK", index: 0, chunks: 3, rows: rows(3), runId });
+    fromPage(env, { type: "SCRAPE_DATA_CHUNK", index: 1, chunks: 3, rows: rows(3), runId });
+    fromPage(env, { type: "SCRAPE_DATA_CHUNK", index: 2, chunks: 3, rows: rows(1), runId });
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: [],
+      dataChunks: 3,
+      fields: ["RecordId"],
+      total: 7,
+      pages: 2,
+      elapsed: "2s",
+      source: "OUTPUT_TAX",
+      runId,
+    });
+
+    // The completion arrives with no rows of its own, so anything here came
+    // back out of the transfer.
+    expect(run.result()?.data).toHaveLength(7);
+  });
+
+  it("assembles out of arrival order, by index", async () => {
+    const { env, runId, run } = await bootRunning();
+
+    // The portal does not reorder postMessage, but the index is the contract
+    // and the rows have to come out in it regardless.
+    for (const index of [1, 0]) {
+      fromPage(env, {
+        type: "SCRAPE_DATA_CHUNK",
+        index,
+        chunks: 2,
+        rows: [{ RecordId: index }],
+        runId,
+      });
+    }
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: [],
+      dataChunks: 2,
+      fields: ["RecordId"],
+      total: 2,
+      pages: 1,
+      elapsed: "1s",
+      source: "OUTPUT_TAX",
+      runId,
+    });
+
+    expect(run.result()?.data?.map((r) => r.RecordId)).toEqual([0, 1]);
+  });
+
+  it("reports an incomplete transfer instead of exporting what did arrive", async () => {
+    const { env, runId, run } = await bootRunning();
+
+    // Two chunks are promised; only one turns up.
+    fromPage(env, { type: "SCRAPE_DATA_CHUNK", index: 0, chunks: 2, rows: rows(2), runId });
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: [],
+      dataChunks: 2,
+      total: 4,
+      pages: 1,
+      elapsed: "1s",
+      source: "OUTPUT_TAX",
+      runId,
+    });
+
+    // A short grid and a lost chunk look identical once exported, which is the
+    // one thing the truncated-export notice exists to rule out. So the Run
+    // keeps nothing at all.
+    expect(run.result()).toBeNull();
+    expect(run.isRunning()).toBe(true);
+  });
+
+  it("announces an incomplete transfer, so a quiet panel is not the only sign", async () => {
+    const { env, runId } = await bootRunning();
+
+    fromPage(env, { type: "SCRAPE_DATA_CHUNK", index: 0, chunks: 2, rows: rows(2), runId });
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: [],
+      dataChunks: 2,
+      total: 4,
+      pages: 1,
+      elapsed: "1s",
+      source: "OUTPUT_TAX",
+      runId,
+    });
+    await flush();
+
+    const write = env.extensionWrites.find((w) => COMPLETION_STORAGE_KEY in w);
+    const record = write?.[COMPLETION_STORAGE_KEY] as { kind?: string; detail?: string } | undefined;
+    expect(record?.kind).toBe("error");
+    expect(record?.detail).toContain("Transfer hasil tidak lengkap");
+  });
+
+  it("still settles an inline result exactly as before", async () => {
+    // The chunked path must not have become the only path.
+    const { env, runId, run } = await bootRunning();
+
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: rows(3),
+      fields: ["RecordId"],
+      total: 3,
+      pages: 1,
+      elapsed: "1s",
+      source: "OUTPUT_TAX",
+      runId,
+    });
+
+    expect(run.result()?.data).toHaveLength(3);
+  });
+
+  it("does not carry one run's chunks into the next", async () => {
+    const { env, runId, run } = await bootRunning();
+
+    // A transfer that never completed leaves chunks behind; the next run's
+    // first chunk must not be able to answer for the one that just ended.
+    fromPage(env, { type: "SCRAPE_DATA_CHUNK", index: 0, chunks: 2, rows: rows(9), runId });
+    run.abort();
+    run.begin("scrape");
+
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: [],
+      dataChunks: 2,
+      total: 2,
+      pages: 1,
+      elapsed: "1s",
+      source: "OUTPUT_TAX",
+      runId,
+    });
+
+    expect(run.result()).toBeNull();
+  });
+});

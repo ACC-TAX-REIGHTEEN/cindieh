@@ -76,6 +76,10 @@ _Avoid_: format mode, output style
 The fragment extracted from a grid request's filters (masa pajak, year) that seeds export and PDF filenames.
 _Avoid_: filename, name hint
 
+**Deduplication key**:
+What tells one scraped row from another, so a row that appears on two pages is collected once. It is the portal's own per-row id — RecordId, then AggregateIdentifier — named with the field it came from. Invoice numbers are not identities: on PPN Masukan the Referensi belongs to the seller and repeats across invoices, so keying on it would drop real rows (ADR-0016).
+_Avoid_: row id, unique key, hash
+
 **PDF download**:
 Getting a PDF (e-faktur or bukti potong) out of Coretax into the browser under extension-owned naming. Comes in two modes that differ only in where the PDF request originates and where the invoice metadata comes from.
 _Avoid_: bulk PDF, PDF export

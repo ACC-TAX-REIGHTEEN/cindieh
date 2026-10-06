@@ -19,3 +19,5 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0013 | [SheetJS is loaded as a separate chunk, not bundled into the content script](0013-sheetjs-as-a-lazy-chunk.md) | Accepted |
 | 0014 | [Run state lives in run-lifecycle; the bridge keeps run identity](0014-run-lifecycle-owns-run-state.md) | Accepted |
 | 0015 | [Each export source is one declaration](0015-one-declaration-per-export-source.md) | Accepted |
+| 0016 | [A scraped row's identity is the portal's own id field](0016-stable-row-identity-for-deduplication.md) | Accepted |
+| 0017 | [A large scrape result crosses the bridge in chunks](0017-chunked-scrape-result-transfer.md) | Accepted |

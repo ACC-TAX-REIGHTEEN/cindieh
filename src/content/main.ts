@@ -20,7 +20,14 @@ import {
   truncatedResultNotice,
 } from "./scrape-result";
 import { runLifecycle } from "./run-lifecycle";
-import type { ScrapeComplete } from "./scraper-types";
+import type { ScrapeComplete, ScrapeDataChunkMessage } from "./scraper-types";
+import {
+  addResultChunk,
+  createResultChunkBuffer,
+  missingResultChunks,
+  resetResultChunks,
+  resolveResultRows,
+} from "./result-chunks";
 import {
   destroyBadge,
   injectBadge,
@@ -226,6 +233,11 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 // scraper with duplicate start commands.
 let scraperResendArmed = true;
 
+// The chunks of the result transfer in flight. One at a time: the
+// completion that follows a transfer empties it, so a second transfer
+// can never interleave with the first.
+const resultChunks = createResultChunkBuffer();
+
 const observer = new MutationObserver(() => {
   const url = location.href;
   if (url !== lastUrl) {
@@ -342,9 +354,31 @@ const pageMessageDispatcher = createMessageDispatcher({
       }
     },
 
+    SCRAPE_DATA_CHUNK: (msg) => {
+      addResultChunk(resultChunks, msg as unknown as ScrapeDataChunkMessage);
+    },
+
     SCRAPE_COMPLETE: (msg) => {
       const complete = msg as unknown as ScrapeComplete;
-      const outcome = runLifecycle.complete(complete);
+      const expected = complete.dataChunks;
+      const rows = resolveResultRows(resultChunks, complete);
+      const missing = expected === undefined ? [] : missingResultChunks(resultChunks, expected);
+      resetResultChunks(resultChunks);
+
+      if (rows === null) {
+        // The transfer lost a chunk. Exporting what did arrive would be
+        // indistinguishable from a short grid, which is the one thing
+        // the truncated-export notice exists to rule out.
+        const message =
+          `Transfer hasil tidak lengkap: ${missing.length} bagian data tidak diterima. ` +
+          "Coba ekspor kembali.";
+        debugError(message);
+        updatePanelError(message);
+        publishIncomplete(message);
+        return;
+      }
+
+      const outcome = runLifecycle.complete({ ...complete, data: rows });
 
       if (outcome.kind === "rejected") {
         updatePanelError(outcome.message);

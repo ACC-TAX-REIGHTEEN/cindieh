@@ -182,12 +182,34 @@ describe("buildEfakturPdfBody", () => {
 });
 
 describe("getRowDedupeKey", () => {
-  it("returns RecordId when present", () => {
-    expect(getRowDedupeKey({ RecordId: "rec-123", Name: "Test" })).toBe("rec-123");
+  it("names the identity space a RecordId came from", () => {
+    expect(getRowDedupeKey({ RecordId: "rec-123", Name: "Test" })).toBe("RecordId:rec-123");
   });
 
-  it("falls back to AggregateIdentifier when RecordId is missing", () => {
-    expect(getRowDedupeKey({ AggregateIdentifier: "agg-456" })).toBe("agg-456");
+  it("names the identity space an AggregateIdentifier came from", () => {
+    expect(getRowDedupeKey({ AggregateIdentifier: "agg-456" })).toBe("AggregateIdentifier:agg-456");
+  });
+
+  it("keeps the two identity spaces from colliding", () => {
+    // They are separate counters on the portal. A bare "5" from each used to
+    // produce the same key, and one row's id swallowed an unrelated row's.
+    expect(getRowDedupeKey({ RecordId: 5 })).not.toBe(
+      getRowDedupeKey({ AggregateIdentifier: 5 }),
+    );
+  });
+
+  it("treats a zero id as an id, not as a missing one", () => {
+    // `||` skipped 0 and fell through to the whole-row fallback, so a row keyed
+    // by RecordId on one page could not be recognised on the next.
+    expect(getRowDedupeKey({ RecordId: 0, Name: "Test" })).toBe("RecordId:0");
+    expect(getRowDedupeKey({ RecordId: 0 })).not.toBe(getRowDedupeKey({ Name: "Test" }));
+  });
+
+  it("treats an empty or null id as a missing one", () => {
+    expect(getRowDedupeKey({ RecordId: "", AggregateIdentifier: "agg-456" }))
+      .toBe("AggregateIdentifier:agg-456");
+    expect(getRowDedupeKey({ RecordId: null, AggregateIdentifier: "agg-456" }))
+      .toBe("AggregateIdentifier:agg-456");
   });
 
   it("produces a deterministic key (key-order independent) when RecordId/AggregateIdentifier are missing", () => {
@@ -200,7 +222,22 @@ describe("getRowDedupeKey", () => {
   });
 
   it("prefers RecordId over AggregateIdentifier when both are present", () => {
-    expect(getRowDedupeKey({ RecordId: "rec-1", AggregateIdentifier: "agg-1" })).toBe("rec-1");
+    expect(getRowDedupeKey({ RecordId: "rec-1", AggregateIdentifier: "agg-1" }))
+      .toBe("RecordId:rec-1");
+  });
+
+  it("gives two rows the same key however their id values are typed", () => {
+    // One page may hand the id back as a number and the next as a string.
+    expect(getRowDedupeKey({ RecordId: 7 })).toBe(getRowDedupeKey({ RecordId: "7" }));
+  });
+
+  it("still deduplicates an id-less row across pages", () => {
+    const seen = new Set<string>();
+    const first = { Name: "Test", Amount: 100 };
+    const second = { Amount: 100, Name: "Test" };
+    seen.add(getRowDedupeKey(first));
+    seen.add(getRowDedupeKey(second));
+    expect(seen.size).toBe(1);
   });
 });
 

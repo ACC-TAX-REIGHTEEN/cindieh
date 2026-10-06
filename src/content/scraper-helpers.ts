@@ -63,17 +63,39 @@ export function buildEfakturPdfBody(
 }
 
 /**
- * Generate a deduplication key for a data row.
- * Uses RecordId, AggregateIdentifier, or a deterministic JSON fallback.
+ * The identity fields the portal gives a row, in the order they are trusted.
  *
- * The JSON fallback sorts object keys so that two rows with identical
- * field values but different key ordering produce the SAME key
- * (preventing missed deduplication). If a row is not a plain object,
- * it is stringified directly.
+ * These are the portal's own per-row identifiers. Invoice numbers are
+ * deliberately NOT here: on PPN Masukan the Referensi belongs to the SELLER and
+ * repeats across one taxpayer's invoices, so treating it as an identity would
+ * merge rows that are genuinely different. A grid carrying neither id falls
+ * back to the whole row rather than guessing an identity for it.
+ */
+const DEDUPE_ID_FIELDS = ["RecordId", "AggregateIdentifier"] as const;
+
+/**
+ * Generate a deduplication key for a data row.
+ *
+ * Two properties make the key STABLE across the pages of one run:
+ *
+ * - Presence is tested with `undefined`/`null`/`""`, not truthiness. `0` is a
+ *   legal RecordId, and `||` skipped it, so such a row fell through to the
+ *   whole-row fallback and could not be recognised as the row it already was.
+ * - The key names WHICH identity space the value came from. RecordId and
+ *   AggregateIdentifier are separate counters on the portal, and the bare
+ *   `"5"` they used to produce could collide across the two — one row's id
+ *   swallowing an unrelated row's.
+ *
+ * The JSON fallback sorts object keys so that two rows with identical field
+ * values but different key ordering produce the SAME key (preventing missed
+ * deduplication). If a row is not a plain object, it is stringified directly.
  */
 export function getRowDedupeKey(row: Record<string, unknown>): string {
-  const id = row.RecordId || row.AggregateIdentifier;
-  if (id) return String(id);
+  for (const field of DEDUPE_ID_FIELDS) {
+    const value = row[field];
+    if (value === undefined || value === null || value === "") continue;
+    return `${field}:${String(value)}`;
+  }
   return stableStringify(row);
 }
 
