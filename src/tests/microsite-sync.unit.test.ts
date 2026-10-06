@@ -41,6 +41,7 @@ import {
   NEVER_CONFIRM_THRESHOLD,
   normalizeFilenamePrefix,
 } from "../shared/extension-preferences";
+import { SHORTCUTS } from "../content/shortcuts";
 
 // ── Fixtures, read from disk on every run ──────────────────────────────────
 
@@ -298,19 +299,40 @@ describe("microsite — permissions", () => {
 // ── Shortcuts ──────────────────────────────────────────────────────────────
 
 describe("microsite — keyboard shortcuts", () => {
-  // `shortcuts.ts` registers its keys inline instead of exporting a table, so
-  // the keys are read from its source. If that module is ever rewritten around
-  // a constant, this parser finds nothing and says so instead of passing
-  // silently.
-  const shortcutKeys = [
-    ...new Set([...shortcutsSource.matchAll(/e\.key === "([A-Za-z])"/g)].map((m) => m[1].toUpperCase())),
-  ];
+  // `shortcuts.ts` DECLARES its two bindings as an exported SHORTCUTS table,
+  // which is also what the README and the handler read, so the keys are
+  // imported rather than parsed. If that export is ever removed or renamed,
+  // this import stops compiling — which is the loudest possible failure.
+  const shortcutKeys = SHORTCUTS.flatMap((shortcut) =>
+    shortcut.keys.map((key) => key.toUpperCase()),
+  );
 
   it("finds the shortcut keys the content script registers", () => {
     expect(
       shortcutKeys.length,
       "no shortcut keys parsed from shortcuts.ts — update the parser in this suite",
     ).toBeGreaterThan(0);
+  });
+
+  it("declares every registered shortcut, and the handler reads the declaration", () => {
+    // The keys moved out of `e.key === "E"` literals and into SHORTCUTS, which
+    // the handler reads. The old parser would now find nothing and this suite
+    // would go quiet on the move, so the keys are read from the exported table
+    // itself and cross-checked against the microsite's own spelling.
+    expect(SHORTCUTS.length).toBeGreaterThan(0);
+    for (const { combo } of SHORTCUTS) {
+      expect(
+        page.includes(combo),
+        `microsite does not document the ${combo} shortcut`,
+      ).toBe(true);
+    }
+
+    // And the documented keys are exactly the declared ones, in both
+    // directions: a stale Ctrl+Shift+X on the page fails, a removed
+    // declaration leaves the page documenting a key nothing answers to.
+    const declaredCombos = SHORTCUTS.map((s) => s.combo).sort();
+    const pageCombos = [...new Set(page.match(/Ctrl\+Shift\+[A-Z]/g) ?? [])].sort();
+    expect(pageCombos).toEqual(declaredCombos);
   });
 
   it("documents every registered shortcut", () => {
@@ -325,6 +347,16 @@ describe("microsite — keyboard shortcuts", () => {
   it("documents the Shift modifier the handler requires", () => {
     expect(shortcutsSource).toMatch(/\.shiftKey/);
     expect(page.includes("Shift"), "microsite never mentions the Shift modifier").toBe(true);
+  });
+
+  it("offers a way to remove the shortcut listener", () => {
+    // A document-level listener that outlives the master-switch teardown keeps
+    // answering Ctrl+Shift+E on a page whose controls have all been removed.
+    expect(
+      shortcutsSource,
+      "registerShortcuts no longer returns an unregister function",
+    ).toMatch(/\): \(\) => void \{/);
+    expect(shortcutsSource).toMatch(/removeEventListener\("keydown"/);
   });
 });
 

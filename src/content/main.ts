@@ -48,6 +48,32 @@ import {
 } from "./ui";
 import { handlePdfDownload } from "./downloader";
 import { registerShortcuts } from "./shortcuts";
+
+/**
+ * Removes the keyboard-shortcut listener, or null while none is installed.
+ *
+ * Held here rather than inside shortcuts.ts so the listener's lifetime follows
+ * the page state: applyPageState() installs it when the extension is on and
+ * drops it on teardown, which is the only way the two can be kept in step. A
+ * document-level listener that outlives the toolbar is exactly the half-removed
+ * state teardownInjectedUi() exists to prevent.
+ */
+let unregisterShortcuts: (() => void) | null = null;
+
+function startShortcuts(): void {
+  // Re-registering without unregistering first would leave two listeners on
+  // document, and one Ctrl+Shift+E would then toggle twice -- i.e. not at all.
+  unregisterShortcuts?.();
+  unregisterShortcuts = registerShortcuts(
+    () => runLifecycle.isRunning(),
+    () => extensionEnabled,
+  );
+}
+
+function stopShortcuts(): void {
+  unregisterShortcuts?.();
+  unregisterShortcuts = null;
+}
 import {
   applyDebugPreference,
   debugLog,
@@ -527,6 +553,8 @@ function applyPageState(): void {
     return;
   }
 
+  startShortcuts();
+
   if (isSupportedExportPage()) {
     debugLog("Supported page detected, ensuring injection...");
     injectBadge();
@@ -553,6 +581,7 @@ function applyPageState(): void {
  * still look clickable.
  */
 function teardownInjectedUi(): void {
+  stopShortcuts();
   removeExportButton();
   clearFilterTimers();
   destroyBadge();
@@ -596,7 +625,6 @@ function onNavigate(): void {
 function init(): void {
   void loadExportModePreference();
   debugLog("Extension starting up on page...", window.location.href);
-  registerShortcuts(() => runLifecycle.isRunning());
 
   // First paint waits for the stored preferences, so a disabled extension never
   // paints at all. preferencesReady resolves even when storage is unavailable

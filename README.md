@@ -147,6 +147,17 @@ Klik ikon Cindieh di toolbar browser untuk membuka pengaturan. Semua preferensi 
 | **Bersihkan cache** | Membuang data yang sudah diambil di tab portal, sehingga ekspor berikutnya mengambil ulang dari Coretax. |
 | **Reset preferensi** | Mengembalikan seluruh pengaturan di atas ke nilai bawaan. Format export dan Log debug tidak ikut direset. |
 
+### Pintasan papan ketik
+
+Keduanya memakai `Ctrl` (atau `Cmd` di macOS) + `Shift`, dan hanya aktif di halaman portal yang didukung Cindieh. Saat saklar utama dimatikan, keduanya diam.
+
+| Pintasan | Fungsi |
+|---|---|
+| `Ctrl+Shift+E` | Buka/tutup menu ekspor. Diabaikan ketika sedang berjalan, supaya dua proses tidak berlomba untuk grid yang sama. |
+| `Ctrl+Shift+S` | Batalkan proses yang sedang berjalan. |
+
+Daftar ini bukan tabel terpisah: `SHORTCUTS` di [`src/content/shortcuts.ts`](src/content/shortcuts.ts) adalah satu-satunya sumber, dan handler, README, serta halaman situs membacanya dari sana.
+
 ## Instalasi & Build
 
 ### 1. Persiapan
