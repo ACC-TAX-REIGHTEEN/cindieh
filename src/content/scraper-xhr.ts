@@ -122,8 +122,27 @@ export const TOTAL_COUNT_FIELDS = [
   "TotalRow",
 ] as const;
 
-/** Pull the count out of a parsed grid payload, or null when there is none. */
-export function readGridTotal(payload: unknown): number | null {
+/**
+ * Pull the count out of a parsed grid payload, or null when there is none.
+ *
+ * `rowsRequested` is what the request asked for, and it exists to throw away one
+ * specific lie. Coretax's `/einvoiceportal/api/outputinvoice/list` answers EVERY
+ * page size with `Payload.TotalRecords = Rows + 1` — measured across Rows of 10,
+ * 100, 500, 1000, 2000 and 5000, where the count tracked the request and not the
+ * grid (a 500-row page reported 501 and a 5000-row page reported 5001, so the
+ * grid holds at least 5000 rows and the "count" was never its size). Read as a
+ * total, it says the grid has one row more than we asked to see, which is true
+ * of every export and would have made the truncation notice fire on every
+ * complete one.
+ *
+ * So a value of exactly `rowsRequested + 1` is discarded and the search
+ * continues. Discarding it costs the caller nothing they can rely on anyway: a
+ * grid that genuinely holds `Rows + 1` rows still ends when its second page
+ * comes back short, and a genuinely truncated run is still caught by the
+ * no-progress guard. Passing no `rowsRequested` keeps the old behaviour for any
+ * caller that cannot say what it asked for.
+ */
+export function readGridTotal(payload: unknown, rowsRequested?: number): number | null {
   if (!payload || typeof payload !== "object") return null;
   const bag = payload as Record<string, unknown>;
   const inner = (bag.Payload ?? bag.payload) as Record<string, unknown> | undefined;
@@ -132,7 +151,9 @@ export function readGridTotal(payload: unknown): number | null {
     if (!source || typeof source !== "object") continue;
     for (const field of TOTAL_COUNT_FIELDS) {
       const value = (source as Record<string, unknown>)[field];
-      if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) continue;
+      if (rowsRequested !== undefined && value === rowsRequested + 1) continue;
+      return value;
     }
   }
   return null;
@@ -158,7 +179,12 @@ export function makeXhrRequestPage(
           };
           resolve({
             rows: data?.Payload?.Data || [],
-            total: readGridTotal(data),
+            // The page size is read back out of the overrides so an endpoint
+            // that echoes it as its count is caught here, once.
+            total: readGridTotal(
+              data,
+              typeof bodyOverrides.Rows === "number" ? bodyOverrides.Rows : undefined,
+            ),
           });
         } catch {
           reject(new Error(`Parse error di ${JSON.stringify(bodyOverrides)}`));

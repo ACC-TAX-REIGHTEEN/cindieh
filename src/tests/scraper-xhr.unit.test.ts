@@ -39,6 +39,46 @@ describe("readGridTotal", () => {
   it("returns null when no count is present, so callers read it as unknown", () => {
     expect(readGridTotal({ Payload: { Data: [] } })).toBeNull();
     expect(readGridTotal({})).toBeNull();
+  });
+
+  // Measured against the live portal on 2026-10-06:
+  // /einvoiceportal/api/outputinvoice/list answered Rows=10 with
+  // TotalRecords 11, Rows=100 with 101 ... Rows=5000 with 5001. The number
+  // tracked the page size, never the grid.
+  describe("a count that merely echoes the page size", () => {
+    it.each([
+      [10, 11],
+      [100, 101],
+      [500, 501],
+      [1000, 1001],
+      [2000, 2001],
+      [5000, 5001],
+    ])("rejects TotalRecords %i reported against Rows %i", (rows, reported) => {
+      expect(readGridTotal({ Payload: { Data: [], TotalRecords: reported } }, rows)).toBeNull();
+    });
+
+    it("still believes a count that is not the echo", () => {
+      // The real grid holds at least 5000 rows, so anything else is a count.
+      expect(readGridTotal({ Payload: { Data: [], TotalRecords: 8421 } }, 500)).toBe(8421);
+      expect(readGridTotal({ Payload: { Data: [], TotalRecords: 400 } }, 500)).toBe(400);
+    });
+
+    it("falls through to another field rather than stopping at the echo", () => {
+      expect(
+        readGridTotal({ Payload: { Data: [], Total: 501, TotalRecords: 501 } }, 500),
+      ).toBeNull();
+      expect(
+        readGridTotal({ Payload: { Data: [], Count: 9000, TotalRecords: 501 } }, 500),
+      ).toBe(9000);
+    });
+
+    it("trusts the echo when the caller cannot say what it asked for", () => {
+      expect(readGridTotal({ Payload: { Data: [], TotalRecords: 501 } })).toBe(501);
+    });
+
+    it("does not touch a total from an endpoint that reports it honestly", () => {
+      expect(readGridTotal({ Payload: { Data: [], TotalRecords: 501 } }, 100)).toBe(501);
+    });
     expect(readGridTotal(null)).toBeNull();
     expect(readGridTotal("nonsense")).toBeNull();
   });
@@ -171,6 +211,48 @@ describe("xhrRequest", () => {
     const sentBody = JSON.parse(instances[0].send.mock.calls[0][0] as string);
     expect(sentBody.First).toBe(500);
     expect(sentBody.Rows).toBe(1000);
+  });
+
+  // The live endpoint's own behaviour, measured 2026-10-06: every page size
+  // came back with Payload.TotalRecords = Rows + 1. Taken as a count, a
+  // complete 500-row export would read as "500 of 501" and the panel would
+  // call it truncated. This is the path that produced that number.
+  describe("a page the portal padded its own count onto", () => {
+    const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ RecordId: i }));
+
+    it("hands back no total, so a complete export is not called short", async () => {
+      const promise = xhrRequest(makeCaptured(), 0, 500, 30000);
+      instances[0]._triggerLoad(
+        JSON.stringify({ Payload: { Data: rows(500), TotalRecords: 501 } }),
+      );
+
+      const page = await promise;
+
+      expect(page.rows).toHaveLength(500);
+      expect(page.total).toBeNull();
+    });
+
+    it("still reports a count that is not the echo", async () => {
+      const promise = xhrRequest(makeCaptured(), 0, 500, 30000);
+      instances[0]._triggerLoad(
+        JSON.stringify({ Payload: { Data: rows(500), TotalRecords: 8421 } }),
+      );
+
+      expect((await promise).total).toBe(8421);
+    });
+
+    it("leaves the untruncated run to the short page, which is what ends it", async () => {
+      // Rows=500 asked, 1 row back: the page is short, so the loop stops on
+      // its own. The count never had to be the thing that noticed.
+      const promise = xhrRequest(makeCaptured(), 0, 500, 30000);
+      instances[0]._triggerLoad(
+        JSON.stringify({ Payload: { Data: rows(1), TotalRecords: 501 } }),
+      );
+
+      const page = await promise;
+      expect(page.rows.length).toBeLessThan(500);
+      expect(page.total).toBeNull();
+    });
   });
 });
 
