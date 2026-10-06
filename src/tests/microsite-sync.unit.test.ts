@@ -309,6 +309,65 @@ describe("microsite — permissions", () => {
 
 // ── Shortcuts ──────────────────────────────────────────────────────────────
 
+/** The year-wide entry, whose page scope is itself part of what is checked. */
+const EXPORT_YEAR_LABEL = "Ekspor 1 Tahun (12 Masa)";
+
+/** The menu entries the page claims the export dropdown offers. */
+const EXPORT_MENU_LABELS = ["Ekspor XLSX", "Ekspor CSV", EXPORT_YEAR_LABEL];
+
+describe("microsite — export menu entries", () => {
+  // The export dropdown is the ONE place a new export path is offered, so a new
+  // entry added there and forgotten on the page is exactly the drift this suite
+  // exists to catch. The labels are read out of ui.ts rather than restated, so
+  // renaming a menu item in the code renames it in the expectation too.
+  const dropdownSource = read("../content/ui.ts");
+
+  /** Every label the dropdown offers, in the order it appends them. */
+  function dropdownLabels(): string[] {
+    return [...dropdownSource.matchAll(/createTextNode\("([^"]+)"\)/g)].map((m) => m[1]);
+  }
+
+  it("finds the export menu labels the dropdown builds", () => {
+    expect(
+      dropdownLabels().length,
+      "no menu labels parsed from ui.ts — update the parser in this suite",
+    ).toBeGreaterThan(0);
+  });
+
+  it("documents every export menu entry the dropdown offers", () => {
+    for (const label of dropdownLabels()) {
+      expect(
+        page.includes(label),
+        `microsite does not document the "${label}" menu entry`,
+      ).toBe(true);
+    }
+  });
+
+  it("advertises no export menu entry the dropdown does not offer", () => {
+    // The reverse direction, which is what a stale page looks like: a label the
+    // page still advertises for a menu item that no longer exists.
+    const labels = dropdownLabels();
+    for (const label of EXPORT_MENU_LABELS) {
+      expect(
+        labels,
+        `microsite advertises the "${label}" menu entry, which the dropdown no longer offers`,
+      ).toContain(label);
+    }
+  });
+
+  it("scopes the year-wide entry to the page it actually works on", () => {
+    // The batch entry is built only on PPN Keluaran, so claiming it "works
+    // everywhere" would be the same drift in the other direction.
+    expect(page).toContain(EXPORT_YEAR_LABEL);
+    const batchBuild = dropdownSource.slice(
+      dropdownSource.indexOf("if (isOutputTaxPage()) {"),
+      dropdownSource.indexOf("if (isOutputTaxPage()) {") + 1200,
+    );
+    expect(batchBuild).toContain("isOutputTaxPage");
+    expect(batchBuild).toContain(EXPORT_YEAR_LABEL);
+  });
+});
+
 describe("microsite — keyboard shortcuts", () => {
   // `shortcuts.ts` DECLARES its two bindings as an exported SHORTCUTS table,
   // which is also what the README and the handler read, so the keys are
