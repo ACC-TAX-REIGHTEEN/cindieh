@@ -78,6 +78,24 @@ const FILTER_OPTIONS = [
 ];
 
 /**
+ * The document-level handler that closes an open status-filter menu when the
+ * click lands outside it. Module state so the modal can replace it instead of
+ * stacking another one, and so teardown can hand the document back.
+ */
+let menusOutsideClickHandler: ((e: MouseEvent) => void) | null = null;
+
+/**
+ * Drop the panel's document-level click handler. Called by the master-switch
+ * teardown, which removes the overlay but cannot unregister anything. Safe to
+ * call when no handler is registered, and safe to call twice.
+ */
+export function removeMenusOutsideClickHandler(): void {
+  if (!menusOutsideClickHandler) return;
+  document.removeEventListener("click", menusOutsideClickHandler);
+  menusOutsideClickHandler = null;
+}
+
+/**
  * Inject the panel. Both tabs are built here because both are children of the
  * one overlay; everything each tab owns itself lives in its own module.
  */
@@ -360,11 +378,17 @@ export function injectComparerModal(): void {
     closePanel();
   });
 
-  document.addEventListener("click", (e: MouseEvent) => {
+  // Click outside a filter menu closes it. Registered through a tracked
+  // handler rather than inline: `document` outlives the panel, so a handler
+  // left behind by the master-switch teardown would keep running on every page
+  // click and a rebuilt modal would stack a second one beside it.
+  removeMenusOutsideClickHandler();
+  menusOutsideClickHandler = (e: MouseEvent) => {
     for (const menu of filterMenus) {
       if (!menu.wrap.contains(e.target as Node)) menu.close();
     }
-  });
+  };
+  document.addEventListener("click", menusOutsideClickHandler);
 
   // ── View 1 event wiring ─────────────────────────
 

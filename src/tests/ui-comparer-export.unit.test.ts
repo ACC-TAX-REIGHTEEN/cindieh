@@ -567,6 +567,20 @@ describe("the panel as a modal dialog", () => {
     expect(overlay().listeners.keydown).toHaveLength(1);
   });
 
+  it("replaces, never stacks, the menus' click-outside handler", () => {
+    // One handler on `document`, however many times the panel is rebuilt.
+    expect(doc.listenerCount("click")).toBe(1);
+
+    // A teardown removed the modal, so the next injection really rebuilds it.
+    doc.getElementById("ch-comparer-modal")!.remove();
+    ui.injectComparerModal();
+    expect(doc.listenerCount("click")).toBe(1);
+
+    // And the teardown path hands `document` back.
+    ui.removeMenusOutsideClickHandler();
+    expect(doc.listenerCount("click")).toBe(0);
+  });
+
   it("parks the portal behind the panel and restores it on close", () => {
     // aria-modal claims the content behind the dialog is inert; the DOM has to
     // keep that claim, or Tab walks out of the dialog into the portal.

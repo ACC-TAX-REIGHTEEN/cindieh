@@ -40,7 +40,11 @@ import {
   updatePanelProgress,
   updatePanelStatus,
 } from "./ui-badge";
-import { injectComparerModal, runPendingCompare } from "./ui-comparer";
+import {
+  injectComparerModal,
+  removeMenusOutsideClickHandler,
+  runPendingCompare,
+} from "./ui-comparer";
 import { runPendingCheck } from "./ui-checker";
 import { openPanel } from "./ui-panel";
 import {
@@ -641,6 +645,9 @@ function teardownInjectedUi(): void {
   for (const id of TEARDOWN_ELEMENT_IDS) {
     document.getElementById(id)?.remove();
   }
+  // The panel's document-level click handler goes with it: the element removal
+  // above takes the overlay's own listeners, not the one on `document`.
+  removeMenusOutsideClickHandler();
   const gridFilter = document.getElementById("ch-grid-filter-reference");
   if (gridFilter) (gridFilter.closest(".ch-grid-filter-container") ?? gridFilter).remove();
 
