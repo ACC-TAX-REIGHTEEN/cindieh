@@ -9,7 +9,7 @@
 // regression — new logic shipping without tests — does. Raise them as coverage
 // improves; never lower them to make a red build green.
 //
-// Measured 2026-10-13 on the whole suite (1584 tests). The modules that hold
+// Measured 2026-10-13 on the whole suite (1598 tests). The modules that hold
 // the baseline down are recorded in AGENTS.md so a low number reads as a known
 // gap rather than a mystery.
 
@@ -45,11 +45,13 @@ export default defineConfig({
       // 81.2/73.5/76.4/83.3 as the suite grew past 1280 tests, to
       // 83.4/76.3/79.2/85.2 after the bulk-PDF failure naming and the checker
       // defaults, to 87.7/81.3/83.7/89.3 once the Pengecekan tab became its own
-      // view module with its own render suite, and now to 91.1/83.9/86.8/92.5
-      // once the three uncovered end-of-chain writers got their own suites:
-      // downloader.ts (96.29 statements, was 44), ui-filters.ts (99.54, was 55)
-      // and exporter's exportCSV/writeXlsxFile (92.19, was ~76). The measured
-      // numbers are 91.56/84.32/87.27/92.99.
+      // view module with its own render suite, to 91.1/83.9/86.8/92.5 once the
+      // three uncovered end-of-chain writers got their own suites — downloader.ts
+      // (96.29 statements, was 44), ui-filters.ts (99.54, was 55) and exporter's
+      // exportCSV/writeXlsxFile (92.19, was ~76) — and now to 92.4/85.4/88.9/93.8
+      // with the in-page event seam in the main boot harness (main.ts 71.82 ->
+      // 90.47 statements, 49.25 -> 72.38 branch). The measured numbers are
+      // 92.79/85.84/89.34/94.18.
       //
       // The cushion is deliberately ~0.4 points, the same gap the floors have
       // always kept: enough that ordinary churn cannot redden the build, small
@@ -63,10 +65,10 @@ export default defineConfig({
       // is covered directly. Do not paper the gap over by lowering a floor; move
       // it by testing the seam underneath.
       thresholds: {
-        statements: 91.1,
-        branches: 83.9,
-        functions: 86.8,
-        lines: 92.5,
+        statements: 92.4,
+        branches: 85.4,
+        functions: 88.9,
+        lines: 93.8,
       },
     },
   },
