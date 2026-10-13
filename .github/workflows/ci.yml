@@ -68,3 +68,12 @@ jobs:
       # build green.
       - name: Coverage ratchet
         run: pnpm test:coverage
+
+      # The builds were only exercised when someone ran them locally before a
+      # release: a broken build.cjs pass, a package step, or a manifest rewrite
+      # that only Firefox's build performs reached release time untested. Each
+      # build produces its dist/cindieh-<browser>/ directory with a manifest
+      # written per browser, so running both catches cross-browser damage on
+      # every push, not on release day.
+      - name: Build extension (both browsers)
+        run: pnpm run build:chrome && pnpm run build:firefox
