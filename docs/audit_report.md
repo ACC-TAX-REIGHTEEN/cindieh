@@ -1,151 +1,103 @@
-# Audit Menyeluruh — Cindieh Extension v2.0.0 (2026-09-24)
+# Audit Menyeluruh — Cindieh Extension v2.2.0 (2026-10-13)
 
-**Tanggal audit:** 2026-09-24
-**Audit sebelumnya:** 2026-08-15
-**Hasil validasi otomatis:** ✅ TypeScript 0 error · ✅ 1.082/1.082 test pass (41 file) · ✅ ESLint 0 error · ✅ Build Chrome sukses
+**Tanggal audit:** 2026-10-13
+**Audit sebelumnya:** 2026-09-24 (mencakup state v2.0.0). Audit ini mencakup rilis **v2.1.0 (2026-09-25)**, **v2.2.0 (2026-10-13)**, dan empat commit setelah rilis 2.2.0.
+**Batas audit:** commit `0c2fc06` (fix(ui): paint the tint pill text from text-safe -ink twins).
+**Hasil validasi otomatis:** ✅ TypeScript 0 error · ✅ 1.544/1.544 test pass (53 file) · ✅ ESLint 0 error · ✅ Build Chrome & Firefox sukses · ✅ Coverage ratchet hijau (88.04 / 82.05 / 84.16 / 89.63 terhadap lantai 87.7 / 81.3 / 83.7 / 89.3).
 
-**Ruang lingkup:** Seluruh `src/`, `popup/`, `manifest.json`, `styles/`, `docs/`, dan toolchain. Audit ini mencakup seluruh perubahan sejak audit 2026-08-15: **ADR-0010** (isolasi run scrape), **ADR-0011 → ADR-0012** (pencarian referensi berhenti saat hasil awalan kosong), fitur **Pengecekan Keakuratan Nilai** (tab kedua panel), modul `checker-logic.ts` / `comparer-export.ts` / `scrape-result.ts` / `scraper-run.ts`, test DOM `ui-filters.ts`, dan perluasan test `ui-badge.ts`.
+**Ruang lingkup:** seluruh `src/`, `popup/`, `styles/`, `microsite/`, `manifest.json`, `tools/`, dan toolchain. Sejak audit sebelumnya: **ADR-0013** (SheetJS lazy chunk), **ADR-0014** (`run-lifecycle.ts` menggantikan `ContentState`), **ADR-0015** (satu deklarasi per source di `export-source.ts`), **ADR-0016** (identitas baris dari `RecordId`), **ADR-0017** (hasil besar melintasi bridge dalam chunk), **ADR-0018** (ekspor satu tahun sebagai satu Run), plus situs publik `microsite/` dengan guard anti-drift, panel popup preferensi lengkap, notifikasi penyelesaian yang membawa pengguna kembali ke halaman asal saat toast diklik, dan Pengecekan Keakuratan Nilai yang kini jalan di PPN Masukan juga.
 
-> Catatan angka: jumlah kasus test di dokumen ini diambil dari `vitest` pada 2026-09-24 (41 file, 1.082 kasus, semuanya hijau), bukan dari dokumentasi versi sebelumnya.
+> Catatan angka: jumlah test (53 file / 1.544 kasus), angka coverage, dan hasil build diambil langsung dari `vitest`, `tsc`, `eslint`, dan `build.cjs` pada 2026-10-13 di commit `0c2fc06` — bukan dari dokumentasi rilis.
 
 ---
 
 ## Ringkasan Eksekutif
 
-Proyek dalam kondisi **sehat**. Tidak ada temuan berseverity **High** atau **Medium**; sisa temuan berkelas **Low/Info** dan seluruhnya berupa utang struktural kecil atau gap dokumentasi, bukan bug. Tidak ada blocker rilis.
+Proyek dalam kondisi **sehat**. Tidak ada temuan berseverity **High** atau **Medium**. Seluruh tujuh rekomendasi audit 2026-09-24 **selesai** — dua di antaranya (persistensi setelan Pengecekan dan pemisahan tab Pengecekan) bergabung menjadi satu refactor struktural yang merapikan panel itu sendiri (`ui-checker.ts` kini punya suite render sendiri), dan satu temuan INFO (`OtherTaxBase = 0`) kini ditutup dengan bukti portal nyata, bukan dibiarkan terbuka. Tidak ada blocker rilis.
 
-Perbedaan besar sejak audit 2026-08-15:
+Tiga tema sisa yang layak dicatat:
 
-- **Test bertambah 531 → 1.082 kasus** (22 → 41 file), termasuk keluarga test baru untuk `checker-logic` (77), `scraper-xhr-cancellation` (45), `scraper-fetch` (12), `scrape-result` (20), dan `ui-comparer-export` (18).
-- **Fitur baru "Pengecekan Keakuratan Nilai"** — pemeriksaan aritmetika DPP / DPP Nilai Lain / PPN per baris faktur. Logikanya murni (`checker-logic.ts`) dan UI-nya menempel pada panel Komparator; tab ini hanya muncul di halaman e-Faktur PPN Keluaran.
-- **ADR bertambah 0010–0012**: run scrape punya identitas + `AbortController` sendiri (ADR-0010), pencarian referensi memakai mode awalan dan **tidak pernah** mengirim `contains` (ADR-0011 → ADR-0012).
-- **Dokumentasi disinkronkan dalam audit ini**: fitur Pengecekan kini terdokumentasi di README + `CONTEXT.md` + source map `AGENTS.md`, klaim widening usang di `RATE_LIMITING.md` diperbaiki.
-
-Dua tema sisa yang layak dicatat: **(a)** `ui-comparer.ts` kini 1.268 baris dan menampung dua fitur dalam satu modul DOM tanpa seam unit-test tersendiri (padahal pola proyek adalah "logika murni + view tipis", lihat ADR-0003), dan **(b)** beberapa nilai kebijakan pajak (11/12, 11%, 12%) masih literal di `checker-logic.ts`.
+- **Asimetri fitur batch**: ekspor satu tahun hanya aktif di PPN Keluaran, padahal `scrape-batch.ts` sengaja ditulis agnostik terhadap source (kode masa berasal dari request yang ditangkap portal, bukan yang disintesis). Perluasannya ke PPN Masukan kebanyakan soal gate, teks konfirmasi, dan verifikasi satu sampel body request di portal nyata.
+- **Gap coverage yang sudah terdokumentasi** (`scraper.ts`, `downloader.ts`, `ui-filters.ts`, jalur cabang `main.ts`/`ui-comparer.ts`) praktis tidak bergerak — logika murninya sudah terpisah dan penuh test; yang tersisa adalah wiring, dan AGENTS.md sendiri mencatatnya sebagai gap yang diketahui.
+- **Dua perbaikan hari ini**: CI kini membangun kedua browser (sebelumnya build hanya jalan bila ada yang mengingatnya secara lokal), dan defect kontras pill pada `injected.css` (yang AGENTS.md catat "out of scope untuk mikro-situs") sudah diperbaiki dengan cara yang sama seperti mikro-situs memperbaiki mirror-nya — kalimat defect itu di AGENTS.md kini usang dan boleh dihapus.
 
 ---
 
-## 1. Status Temuan Audit Sebelumnya
+## 1. Status Temuan Audit Sebelumnya (2026-09-24)
 
-Seluruh 14 temuan audit pertama tetap selesai dan tidak ada yang regresi:
+Seluruh tujuh prioritas selesai, tanpa regresi yang terlihat:
 
-| # | Temuan lama | Severity lama | Status |
-|---|-------------|---------------|--------|
-| 1 | Fetch interceptor tidak cek `__isCindiehBulk` | Medium | ✅ Selesai — `isBulkFetchRequest()` guard ada di `scraper.ts` |
-| 2 | `xhrRequestByInvoice` `JSON.parse` tanpa try-catch | Medium | ✅ Selesai — try-catch + `parseCapturedBody()` defensif |
-| 3 | `getMasaPajakFromDOM` inline regex | Low | ✅ Selesai — `extractMasaPajak()` di `tax-date.ts` |
-| 4 | Test `scrapeByInvoices` retry exhaustion | Low | ✅ Selesai — 6 kasus baru (abort, early-return, backoff, reset, stop) |
-| 5 | Test `ui-filters.ts` tipis | Low | ✅ Selesai — helper murni + DOM (lihat kolom rekomendasi di bawah) |
-| 6 | `bridge.ts` tanpa factory | Low | ✅ Selesai — `createBridge(windowRef?)` + singleton |
-| 7 | Upgrade TypeScript | Low | ✅ Selesai — TS 7 native (ADR-0009) |
-| 8 | Ganti `standard-version` | Low | ✅ Selesai — `release-it` + `@release-it/conventional-changelog` |
-| 9 | Token di postMessage = accepted risk | Low | ✅ Selesai — ADR-0007 |
-| 10 | `createPdfDownloadSession` `setTimeout` global | Quality | ✅ Selesai — `setTimeout`/`clearTimeout` injectable |
-| 11 | `ui-comparer.ts` `innerHTML = "&times;"` | Quality | ✅ Selesai — `textContent = "×"` |
-| 12 | `ui.ts` listener `click` tidak di-remove | Quality | ✅ Selesai — `outsideClickHandler` dilacak & dilepas |
-| 13 | Duplikasi XLSX (`aoa_to_sheet` vs `json_to_sheet`) | Quality | ✅ Diklarifikasi — komentar menjelaskan dua path disengaja |
-| 14 | Rate-limit guard `INJECTED_READY` → `START_SCRAPE` | Low | ✅ Selesai — `scraperResendArmed` (satu resend per injeksi) |
+| # | Temuan | Severity lama | Status |
+|---|--------|---------------|--------|
+| 1 | Persistensi setelan Pengecekan | Low | ✅ Selesai — `CheckerDefaults` masuk `src/shared/extension-preferences.ts`, sesi Pengecekan di-seed via `applyCheckerDefaults()`; popup punya baris "Default Pengecekan" (commit `9d23db6`) |
+| 2 | Angka laju pajak literal di `checker-logic.ts` | Low | ✅ Selesai — `PPN_RATE_PERCENT`, `DPP_NILAI_LAIN_NUMERATOR/DENOMINATOR`, dan `PPN_RATE_ON_NILAI_LAIN` (diturunkan dari dua konstanta, bukan kebetulan 12%) jadi satu sumber; test membaca konstanta, bukan literal (commit `a351628`) |
+| 3 | `ui-comparer.ts` menampung dua fitur tanpa seam | Low | ✅ Selesai — tab Pengecekan pindah ke `ui-checker.ts` (factory `createCheckerView(deps)` + singleton, pola DI modul lain), dengan suite render sendiri `ui-checker.unit.test.ts` (29 kasus); `checker-logic.ts` kini 98% statement (commit `5600bea`; ratchet dinaikkan `f001098`) |
+| 4 | Laporan "nomor faktur tidak ditemukan" | Low | ✅ Selesai — dialog pre-download menyebut nomor yang tak punya baris (`c0ef836`), run melaporkan shortfall-nya (`9da279d`), notifikasi menghitungnya (`a91d914`), dan run bulk PDF menamai berkas individual yang gagal diambil (`6315f4f`) |
+| 5 | Panel tanpa Escape / tanpa semantik dialog | Info | ✅ Selesai — panel `<dialog>` betulan, Escape menutup, satu handler Escape dan klik-di-luar milik `ui-panel.ts` (commit `1c15384`) |
+| 6 | `OtherTaxBase = 0` belum punya perlakuan khusus | Info | ✅ Ditutup 2026-10-13 — bukti portal nyata sudah ada di fixture (DPP 100, DPP NL 0, VAT 11): baris seperti itu memang sah, jadi perbandingan terhadap nilai yang dihitung dari 11/12 × DPP dibuang untuk acuan DPP dan PPN (kolom selisih tampil `-`); saat Acuan DPP Nilai Lain, nilai 0 tetap dipakai sesuai pilihan pengguna. Diperbaiki di `checker-logic.ts` + 5 kasus test baru + catatan README (commit `7c5b915`) |
+| 7 | ~~Hapus branch `keyup` yang "mati"~~ | Info | ✅ Tetap ditutup sebagaimana 2026-09-25 — branch itu hidup, premis kode-matinya keliru |
 
-### Rekomendasi audit 2026-08-15
-
-| # | Rekomendasi lama | Effort | Status |
-|---|------------------|--------|--------|
-| 1 | Test logika DOM `ui-filters.ts` (re-injection & cleanup) | Medium | ✅ **Ditutup** — `ui-filters.unit.test.ts` kini 22 kasus, termasuk blok describe DOM: injection, re-injection bersih, dan unregister listener |
-| 2 | Rapikan `RATE_LIMITING.md` (hapus nomor baris) | Trivial | ✅ **Selesai** — tabel memakai nama fungsi/konstanta. Satu klaim usang ("pengulangan `startswith` → `contains`") yang bertentangan dengan ADR-0012 diperbaiki pada audit ini |
-| 3 | Perluas test `ui-badge.ts` dari 3 smoke test | Low | ✅ **Ditutup** — kini 14 kasus |
-| 4 | (Opsional) Hapus branch `keyup` `ch-multi-invoice-textarea` yang "mati" | Trivial | ✅ **Ditutup pada 2026-09-25 — premis "kode mati" keliru**: `Enter` di textarea itu memang mencegah baris baru dan menulis petunjuk `N nomor siap (klik Download PDF)`, pesan yang berbeda dari hint listener `input` di `ui-filters.ts` (`N nomor faktur terdeteksi`). Tidak ada kode yang dihapus; rinciannya di §3 |
+Tiga kemampuan baru sejak itu yang tidak ada di daftar lama (karena belum dibangun saat audit lama): ekspor satu tahun PPN Keluaran sebagai satu Run (ADR-0018), pemecahan hasil besar lintas bridge menjadi chunk (ADR-0017), dan tab Pengecekan di PPN Masukan dengan kolom yang berpindah dari Nama Pembeli ke Nama Penjual sesuai gridnya.
 
 ---
 
 ## 2. Keamanan
 
-### [INFO] Paparan token bridge — accepted risk (ADR-0007)
+### [INFO] Postur yang tidak berubah ✅
 
-Tidak berubah: token dikirim sebagai field plaintext di `window.postMessage` dan sempat berada di `?token=` pada `<script src>`. Ini disengaja dan terdokumentasi (ADR-0007); MAIN world tidak punya `browser.runtime`, jadi `postMessage` adalah satu-satunya kanal. Mitigasi yang dijaga:
+Tiga permission inti plus `notifications` opsional yang diminta saat saklar dinyalakan; `host_permissions` dan `web_accessible_resources` tetap hanya `coretaxdjp.pajak.go.id`; ADR-0007 (exposure token bridge) dan ADR-0008 (injeksi satu kali) tak berubah. Guard `shouldProcessPageMessage` tidak melemah: property test origin/direction masih 19 kasus di `postmessage.origin.property.test.ts`, dan audit ini tidak melihat adanya jalan pintas baru.
 
-- Token tidak pernah disimpan di `window`; `scraper.ts` membacanya dari elemen `<script>` sendiri.
-- Guard `shouldProcessPageMessage` (source, origin, direction, token) diuji property (`postmessage.origin.property.test.ts`, 19 kasus) — **jangan dilemahkan**.
-- ADR-0008: elemen script dipertahankan hanya sebagai marker id (tanpa token) → satu instance scraper per halaman.
+### [INFO] Permukaan baru dari chunk transfer (ADR-0017) ✅
 
-### [INFO] Run ID adalah korelasi, bukan autentikasi (ADR-0010)
+`SCRAPE_DATA_CHUNK` menambah satu tipe pesan MAIN → isolated. Pemindahannya dijaga oleh modul transfer dengan kontrak eksplisit: completion menyebut`dataChunks`, dan transfer yang tidak lengkap **dilaporkan** bukan di-settle sebagai hasil lengkap. Tidak ada kanal lintas world lain yang terbuka.
 
-ADR-0010 menambahkan ID run monotonik ke pesan yang dimiliki satu operasi, dan pesan dari run lama ditolak. Dokumen ADR menyatakannya eksplisit: ID adalah korelasi, bukan autentikasi — ADR-0007 tetap berlaku. Cakupan test memadai: `scraper-xhr-cancellation.unit.test.ts` (45 kasus, termasuk abort propagation & pesan run lama) dan `scrape-result.unit.test.ts` (20 kasus, termasuk hasil parsial/dibatalkan tidak pernah dianggap hasil lengkap).
+### [INFO] Notifikasi penyelesaian ✅
 
-### [INFO] CSV formula-injection hardening ✅
+`completion-notice.ts` membangun dan memvalidasi record sebelum dipublikasikan; toast yang diklik kembali ke halaman asal via `notificationTabPattern` (pola SPA-stabil: origin plus dua segmen path pertama), perintah "buka panel" dikirim lewat seam storage yang sama dengan perintah popup lain, dan id toast yang bukan `cindieh-completion-` diabaikan. Toast yang mengalah worker-nya kehilangan mapnya dan only falls back ke tab portal mana pun — perilaku yang didokumentasikan, bukan cacat.
 
-`escapeCSV` me-prefix `'` pada nilai berawalan `= + - @ tab CR` dan apostrof; ada property test (`csv.property.test.ts`, 8 kasus) + unit test. XLSX via SheetJS menulis string sebagai sel bertipe string, bukan formula. Postur baik.
+### [INFO] Permintaan tetap minimal ✅
 
-### [INFO] Permukaan baru dari fitur Pengecekan ✅
+Tidak ada permission baru sejak audit lama. Halaman `privacy.html` memeriksa tabel izinnya dua arah terhadap `manifest.json` di CI, jadi satu permission tidak bisa tayang atau menghilang tanpa salah satu sisi merah.
 
-Tab Pengecekan tidak menambah tipe pesan baru ke bridge dan tidak membuka kanal lintas world: ia membaca `contentState.scrapedData` (state lokal isolated world) dan, bila data belum ada, memakai jalur `START_SCRAPE` yang sudah ada plus `pendingCheck`. Tidak ada penurunan postur keamanan.
+### [INFO] Baru: CI membangun kedua browser ✅ (commit `5e8f91d`)
 
-### [INFO] Permintaan minimal — manifest ✅
-
-`host_permissions` dan `web_accessible_resources` dibatasi ke `https://coretaxdjp.pajak.go.id/*`; `use_dynamic_url: true` pada `scraper.js`; permission hanya `activeTab` + `storage`, dengan `notifications` sebagai `optional_permissions` yang diminta saat saklar notifikasi dinyalakan (bukan saat pemasangan). Tidak ada `unlimitedStorage` atau permission berlebihan.
+Sebelumnya build hanya dijalankan seseorang secara lokal sebelum rilis; kini `build:chrome` dan `build:firefox` jalan di setiap push/PR, jadi perubahan `build.cjs` atau rewrite manifest per-browser yang hanya Firefox kena gagal merah di PR, bukan di hari rilis.
 
 ---
 
 ## 3. Kualitas Kode & Temuan Baru
 
-### [LOW] Angka laju pajak sebagai literal di `checker-logic.ts`
+### [LOW] Gap coverage yang terdokumentasi, praktis diam di tempat
 
-**File:** [`checker-logic.ts`](src/content/checker-logic.ts) — fungsi `checkRowAccuracy`
+**File:** [scraper.ts](src/content/scraper.ts), [downloader.ts](src/content/downloader.ts), [ui-filters.ts](src/content/ui-filters.ts), [main.ts](src/content/main.ts), [ui-comparer.ts](src/content/ui-comparer.ts), [ui-panel.ts](src/content/ui-panel.ts)
 
-Fitur Pengecekan ada untuk menandai selisih aritmetika, tetapi aritmetikanya sendiri adalah literal yang tersebar di tiga cabang benchmark: `(dppSystem * 11) / 12`, `dppSystem * 0.11`, `dppNilaiLainSystem * 0.12`, `ppnSystem / 0.11`, `ppnSystem / 0.12`. Nilai-nilai itu juga dipatok ulang di `checker-logic.unit.test.ts`. Bila fraksi DPP Nilai Lain atau tarif PPN berubah, setiap baris akan dilaporkan "Berbeda" tanpa ada test yang gagal lebih dulu.
+Ada yang naik: `ui-checker.ts` 97.31% stmts / 83.33% branch dan `checker-logic.ts` 98% statement menutup sebagian besar gap panel lama. Yang tersisa adalah angka yang AGENTS.md sudah catat sebagai gap yang diketahui, diukur ulang hari ini: `scraper.ts` 39.39% stmts / **28.73% branch** (wiring IIFE MAIN-world), `downloader.ts` 44.44% (dispatch nama PDF), `ui-filters.ts` 55%, `main.ts` branch 49.25%, `ui-comparer.ts` branch 56.32%, `ui-panel.ts` 73.91%, dan `exporter.ts` funcs 56% (entry point unduh yang belum teruji). Komposisinya sama dengan catatan AGENTS.md — angka menyusul, bukan lompatan baru.
 
-**Rekomendasi:** jadikan satu sumber bernama (mis. `PPN_RATE` / `DPP_NILAI_LAIN_FRACTION`) plus komentar yang menyebut dasar kebijakannya, lalu hitung semua cabang dari konstanta itu.
+**Rekomendasi:** perluas harness two-worlds yang ada (`scraper-boot.unit.test.ts`, `main-boot.unit.test.ts`) sampai jalur yang belum teruji tercakup, lalu naikkan lantai ratchet — sesuai AGENTS.md, jangan pernah dilonggarkan sekadar memperhijaukan build.
 
-### [LOW] Setelan Pengecekan tidak dipersistensi
+### [LOW] Batch export terkunci satu halaman, padahal mesinnya agnostik
 
-**File:** [`ui-comparer.ts`](src/content/ui-comparer.ts) (`checkerSession`), [`checker-logic.ts`](src/content/checker-logic.ts) (`createCheckerSession`), [`extension-preferences.ts`](src/shared/extension-preferences.ts) (`ComparerDefaults`)
+**File:** [main-actions.ts](src/content/main-actions.ts) (`isBatchPage: () => isOutputTaxPage()`), [scrape-batch.ts](src/content/scrape-batch.ts)
 
-Panel Komparator punya default yang bisa diatur dari popup (**Default Komparator**: toleransi, tanggal mode harian, filter status), tetapi tab Pengecekan di sebelahnya tidak mengingat apa pun: `createCheckerSession()` memulai dengan `benchmark: "DPP"` dan `tolerance: 0`, dan popup tidak memiliki kontrol untuk Acuan/Toleransi/Filter Status Pengecekan. `checkerSession` juga singleton modul, jadi sesi berulang selalu mulai dari nol.
+`scrape-batch.ts` sengaja tidak tahu halamannya: kode masa berasal dari request yang ditangkap, dan `overridesForPeriod()` mengganti satu nilai `Value` sambil membawa sisa filter apa adanya. Yang mengunci fitur ini ke PPN Keluaran hanya gate di `main-actions`, teks konfirmasi, nama file, dan README/microsite (yang mesti ikut diubah dalam commit yang sama — dijaga `microsite-sync`). Untuk **PPN Masukan**, satu hal perlu diukur di portal nyata: nilai `PropertyName` filter masa pada body request daftar PPN Masukan. `TaxInvoicePeriod` diharapkan dipakai pola yang sama, tapi aturan proyeknya sendiri adalah mengukur, bukan mengasumsikan.
 
-**Rekomendasi:** perluas `ComparerDefaults` (atau tambahkan `CheckerDefaults`) dan seed `checkerSession` dari `getPreferences()` saat modal dibangun — pola yang sudah dipakai `applyStoredComparerDefaults`.
+**Rekomendasi:** satu sampel Network dari portal memutuskan itu; sisanya gate + copy + nama file + sinkronisasi README/microsite.
 
-### [LOW] `ui-comparer.ts` menampung dua fitur tanpa seam
+### [INFO] Panel kini bisa dibuka keyboard (commit `d921003`)
 
-**File:** [`ui-comparer.ts`](src/content/ui-comparer.ts) (1.268 baris)
+Audit lama menandai panel sebagai mouse-only; kini `Ctrl+Shift+B` membukanya. Pintasan itu memakai event `ch:compare-open` yang sama dengan tombol toolbar (semantik on/off panel tetap satu sumber), digate `isVatInvoicePage()` — predikat yang sama yang `ui-panel.ts` pakai untuk halaman tempat dua tab itu hidup. README dan microsite memuat baris pintas itu dalam commit yang sama, jadi guard sync-nya hijau.
 
-Modul ini sekarang membangun dua view (Bandingkan + Pengecekan), dua sesi, dua tabel hasil, dua filter, dan dua jalur export. Pola proyek menyatakan sebaliknya — ADR-0003 memisahkan logika sesi Komparator ke `comparer-logic.ts` dengan `ui-comparer` sebagai view tipis, dan AGENTS.md meminta flow baru ditambahkan sebagai fungsi murni dengan dependensi disuntikkan, bukan menumbuhkan entry script. Bagian logika Pengecekan sudah murni di `checker-logic.ts` (✅), tetapi lapisan view/render-nya belum punya seam maupun file test sendiri; keputusannya hanya diuji lewat `ui-comparer-export.unit.test.ts` (18 kasus) memakai fake DOM.
+### [INFO] Defect kontras `injected.css` ditutup di pihak extension juga (commit `0c2fc06`)
 
-**Rekomendasi:** pisahkan tab Pengecekan ke modul view sendiri (mis. `ui-checker.ts`) dengan pola konteks/DI yang sama seperti `ScraperContext`/`ActionDeps`, lalu beri test render terpisah. Bukan blocker, tetapi biaya perubahannya naik setiap kali fitur ini disentuh.
+AGENTS.md mencatat defect pill `--ch-diff`-pada-`--ch-diff-tint` di `injected.css` sebagai bug yang sama dengan yang dikoreksi mikro-situs, tapi "out of scope" — mirror-nya sudah memakai token `-ink`, sheet aslinya belum. Kini sheet aslinya juga: `--ch-match-ink`, `--ch-diff-ink`, dan `--ch-bad-ink` masuk `:root` `injected.css` dengan nilai yang sama dengan yang token mirror mikro-situs tulis (hue/saturation sama, lightness di-solve ke 5:1), dan tiga situs teks yang sebelumnya gagal AA (`summary-ok`, `summary-warn`, `status-error`) melepas token dasar. Latar, border, dan pill `--ch-info` tetap token dasar karena sudah 4.5:1. Perbaikan ini tidak menggerakkan `microsite-sync`: token dasar tak berubah, jadi pemeriksaan kesetaraan sepuluh pasang tetap hijau. **Catatan AGENTS.md "injected.css still ships the same defect" kini usang** — lihat Prioritas #4.
 
-### [LOW] Panel tidak bisa ditutup dengan Escape; tanpa semantik dialog
+### [INFO] Tool pengukuran portal kini ada di repo
 
-**File:** [`ui-comparer.ts`](src/content/ui-comparer.ts) (`closeComparerModal`, wiring header)
+`tools/` memuat diagnostic masa-batch (commit `9936a9f`) yang mengukur aturan `scrape-batch` langsung terhadap portal. Sampel Network yang dibutuhkan rekomendasi batch-Masukan di atas bisa diambil dengan jalur yang sama — pola "diukur, bukan diasumsikan" sudah punya tempat kerjanya.
 
-`closeComparerModal()` hanya terhubung ke tombol `×` dan klik overlay. Tidak ada handler `Escape` di `src/content`, dan overlay tidak memakai `role="dialog"`/`aria-modal` (pencarian: 0 hasil). Untuk panel yang menutupi grid portal dan memuat tabel panjang, ini menyulitkan pengguna keyboard.
+### [INFO] CHANGELOG sudah sinkron
 
-**Rekomendasi:** tambahkan listener `keydown` Escape saat overlay terbuka (dan lepas saat ditutup), plus `role="dialog"` + `aria-modal="true"` + label pada overlay.
-
-### [INFO] Tidak ada laporan "nomor faktur tidak ditemukan" untuk filter No. Faktur
-
-**File:** [`main-actions.ts`](src/content/main-actions.ts) (`handleExportAction`, jalur `SCRAPE_BY_INVOICES`), [`scrape-result.ts`](src/content/scrape-result.ts) (`incompleteResultMessage`)
-
-Filter No. Faktur menerima daftar nomor (satu per baris / koma / titik koma) lalu menjalankan scrape bertarget. Bila sebagian nomor tidak ada di Coretax, pengguna tidak diberi tahu nomor mana yang tidak ketemu: `ScrapeComplete` membawa `failedInvoices`/`failureCount` yang berarti **error saat lookup**, bukan "nol baris". Ditambah lagi, teks konfirmasi unduhan massal sudah memperingatkan faktur lama "akan dilewati (skip)" tanpa menyebut mana.
-
-**Rekomendasi:** setelah run bertarget, bandingkan daftar nomor yang diminta dengan baris yang terkumpul dan tampilkan ringkasannya (mis. "3 dari 20 nomor faktur tidak ditemukan di Coretax").
-
-### [INFO] Baris dengan `OtherTaxBase = 0` belum punya perlakuan khusus di checker
-
-**File:** [`checker-logic.ts`](src/content/checker-logic.ts) (cabang `DPP`/`DPP_NILAI_LAIN`/`PPN`)
-
-Untuk benchmark `DPP`, nilai DPP Nilai Lain yang diharapkan selalu dihitung `11/12 × DPP`. Baris portal yang sah membawa `OtherTaxBase: 0` (lihat fixture di `src/tests/exporter.processdata.unit.test.ts`) akan dianggap "DPP NL Berbeda". Apakah `0` di situ berarti "DPP Nilai Lain tidak berlaku untuk faktur ini" atau hanya penyederhanaan fixture **belum bisa dipastikan dari kode** — perlu satu sampel halaman PPN Keluaran untuk memutuskan.
-
-**Rekomendasi:** verifikasi dengan data portal nyata sebelum mengubah perilaku; bila `0` memang berarti "tidak berlaku", kecualikan baris tersebut dari perbandingan DPP NL (dan dokumentasikan).
-
-### [INFO] Branch `keyup` `ch-multi-invoice-textarea` — dilaporkan "mati", ternyata hidup
-
-**File:** [`main.ts`](src/content/main.ts) — handler `keyup`, cabang `ch-multi-invoice-textarea`; [`ui-filters.ts`](src/content/ui-filters.ts) — listener `input` pada textarea yang sama
-
-Koreksi 2026-09-25 atas audit 2026-08-15: branch ini **bukan kode mati**. Handler `keyup` memang didaftarkan di level `document`, tetapi cabangnya hanya cocok bila target event ber-id `ch-multi-invoice-textarea` — elemen yang hanya dipasang `injectMultiInvoiceFilter()` di halaman e-Faktur; di halaman lain cabang itu tidak pernah tercapai. Saat pengguna menekan `Enter` di textarea tersebut, handler mencegah baris baru dan menulis petunjuk `N nomor siap (klik Download PDF)`, sedangkan listener `input` di `ui-filters.ts` menulis `N nomor faktur terdeteksi` — dua pesan berbeda yang keduanya terlihat pengguna.
-
-**Keputusan:** tidak ada yang dihapus. Menghapus branch ini adalah **perubahan perilaku** (Enter kembali menyisipkan baris baru dan petunjuk "siap" hilang), sehingga bila kelak dianggap tidak perlu, hapuslah sebagai perubahan yang disengaja beserta test-nya — bukan sebagai "bersih-bersih kode mati".
-
-### [INFO] Fitur Pengecekan & ADR-0010–0012 belum tercatat di CHANGELOG
-
-`CHANGELOG.md` berhenti di rilis **2.0.0 (2026-08-06)**, sedangkan ADR-0010–0012 bertanggal 2026-09-24. Ini konsisten dengan alur proyek (CHANGELOG dihasilkan `release-it` dari commit saat rilis, bukan ditulis manual), jadi bukan cacat — hanya catatan agar fitur Pengecekan ikut masuk pada rilis berikutnya.
+Audit lama mencatat CHANGELOG berhenti di 2.0.0. Kini sampai 2.2.0 karena alur release-it; tidak ada temuan.
 
 ---
 
@@ -155,72 +107,64 @@ Koreksi 2026-09-25 atas audit 2026-08-15: branch ini **bukan kode mati**. Handle
 
 | ADR | Judul | Status |
 |-----|-------|--------|
-| 0001 | PDF Download Emission Module | ✅ Implemented |
-| 0002 | Message Dispatch Seam | ✅ Implemented |
-| 0003 | Comparer Session | ✅ Implemented |
-| 0004 | Export Tree & Tax Date | ✅ Implemented |
-| 0005 | Deferred Refactors (dua context interface) | ✅ Semua selesai |
-| 0006 | Comparer Reference Matching | ✅ Implemented |
-| 0007 | Bridge Token Exposure — accepted risk | ✅ Accepted |
-| 0008 | Scraper Injection One-Time per Page | ✅ Accepted |
-| 0009 | TypeScript 7 native + TS 6 alias | ✅ Accepted |
-| 0010 | Scrape Run Isolation | ✅ Implemented |
-| 0011 | Reference Search Prefix First | ⤴️ Superseded by 0012 (prefix-first tetap) |
-| 0012 | Reference Search Stops on Empty Prefix | ✅ Implemented |
+| 0001–0010, 0012 | tata kelola PDF emission, dispatch seam, session comparer, export tree, context interface, matching comparer, token bridge, injeksi satu kali, run isolation, prefix-first | ✅ Implemented/Accepted |
+| 0009 | TypeScript 7 native + alias TS 6 | ✅ Accepted (compiler tak berubah sejak audit lama) |
+| 0011 | Prefix-first dengan widening | ⤴️ Superseded by 0012 |
+| 0013 | SheetJS lazy chunk | ✅ Implemented — `xlsx-runtime.ts` di-exclude dari coverage dengan sengaja; kebenarannya dites lewat berkas *hasil build*, karena AGENTS.md melarang meng-import source-nya |
+| 0014 | `run-lifecycle.ts` memegang run state | ✅ Implemented — `ContentState` bag-of-fields tidak ada lagi |
+| 0015 | Satu deklarasi per source | ✅ Implemented — `export-source.ts` 100% stmts/branch/lines |
+| 0016 | Identitas baris = id portal | ✅ Implemented — `RecordId`/`AggregateIdentifier` menopang dedupe O(1); test pin `0` sebagai id yang legal |
+| 0017 | Chunk transfer hasil besar | ✅ Implemented |
+| 0018 | Ekspor satu tahun = satu Run | ✅ Implemented — `scrape-batch.ts` 100% stmts/lines |
 
 ### Kepatuhan Two-Worlds Architecture
 
 | Aspek | Status | Catatan |
 |-------|--------|---------|
-| Bridge token tidak di-`window` | ✅ | ADR-0007, ADR-0008 |
-| Guard sebelum dispatch | ✅ | `createMessageDispatcher` tunggal per world; property-tested (19 kasus) |
-| `__isCindiehBulk` flag | ✅ | XHR **dan** fetch (`isBulkFetchRequest`) |
-| Isolated world: hanya relay + UI | ✅ | `main.ts` tidak scrape; fitur Pengecekan juga hanya membaca state lokal |
-| MAIN world: tanpa browser API | ✅ | `scraper.ts` tidak import `browser.*`; `page-pacing.ts` tetap bebas API browser |
-| Idempotensi & siklus hidup run | ✅ | ADR-0008 (satu scraper per halaman) + ADR-0010 (identitas & pembatalan per operasi) |
-| SPA nav reset | ✅ | `RESET_SCRAPER` + `resetContentState` (mencakup `pendingCheck`) |
-| Stateful modul: singleton + factory | ✅ | `bridge`, `contentState`, `createPdfDownloadSession`, `ScraperContext`, identitas run |
-| Timer injectable untuk test | ✅ | `PdfDownloadSessionDeps.setTimeout`, `ScraperContext.setTimeout`, `triggerSearch(scheduleDelay)` |
-| Modul non-entry yang baru terdokumentasi | ✅ | `checker-logic.ts`, `comparer-export.ts`, `scrape-result.ts`, `scraper-run.ts` kini ada di source map AGENTS.md |
+| Guard sebelum dispatch, satu dispatcher per world | ✅ | `createMessageDispatcher` diuji property |
+| MAIN world tanpa browser API | ✅ | `page-pacing.ts` tetap bebas API browser |
+| Idempotensi & identitas run | ✅ | ADR-0008 / ADR-0010 / ADR-0014 |
+| Stateful module = factory + singleton | ✅ | `bridge`, `run-lifecycle`, `checkerView`, `checkerSession` |
+| Teardown permukaan demi permukaan | ✅ | `teardownInterceptors()` dijaga per permukaan; `scraper-boot` membuktikannya dengan property setter yang melempar |
+| Preferensi schema → guard → cache | ✅ | `extension-preferences.ts` satu schema; `preferences.ts` satu translasi; popup hidup via `storage.onChanged` |
+| Microsite tidak drift dari kode | ✅ | `microsite-sync.unit.test.ts` di CI; tabel izin diperiksa dua arah; page list, popup, status legend juga dua arah |
 
 ---
 
 ## 5. Test Coverage
 
-**Total:** 41 file, 1.082 kasus, semuanya hijau (diukur 2026-09-24 dengan `vitest`).
+**Total:** 53 file, 1.544 kasus, semuanya hijau (diukur 2026-10-13, commit `0c2fc06`).
 
-| Area | File test | Kasus | Penilaian |
-|------|-----------|-------|-----------|
-| Bridge & messaging | `bridge.unit`, `postmessage.origin.property` | 9 + 19 | ✅ Property test guard keamanan |
-| Scraper (inti) | `scraper`, `scraper-boot`, `scraper-actions`, `scraper-intercept`, `scraper-helpers`, `scraper-pdf`, `scraper-nets`, `scraper-fetch`, `scraper-xhr`, `scraper-xhr-download`, `scraper-xhr-patches`, `scraper-xhr-cancellation` | 2 + 20 + 39 + 30 + 24 + 41 + 20 + 12 + 13 + 35 + 40 + 45 | ✅ Termasuk retry-exhaustion, pembatalan run, dan patch/teardown |
-| Export & file | `exporter.unit`, `exporter.processdata`, `exporter.property`, `csv.property` | 45 + 36 + 5 + 8 | ✅ Termasuk formula-injection & 11 source |
-| Download | `downloader.unit`, `downloader.property`, `downloader.invalid.property` | 28 + 1 + 2 | ✅ Termasuk base64 invalid & naming |
-| Aksi & hasil content | `main-actions.unit`, `scrape-result.unit`, `main-boot.unit` | 51 + 20 + 23 | ✅ Termasuk penolakan hasil parsial/dibatalkan (`pendingCheck` ikut dicakup) |
-| Konteks halaman & tanggal | `page-context.unit`, `tax-date.unit`, `reference-search.unit` | 60 + 25 + 1 | ✅ Termasuk `isEfakturPage` & mode `startswith` |
-| Komparator & Pengecekan | `comparer.unit`, `comparer-logic.unit`, `checker-logic.unit`, `ui-comparer-export.unit` | 60 + 83 + 77 + 18 | ✅ Logika murni komprehensif; view Pengecekan diuji lewat fake DOM |
-| UI DOM | `ui-filters.unit`, `ui.badge.unit`, `ui-export-dropdown.unit` | 22 + 14 + 9 | ✅ Gap audit lalu sudah ditutup |
-| Preferensi & storage | `preferences.unit`, `extension-preferences.unit`, `debug-preference.unit`, `debug.unit` | 13 + 36 + 25 + 13 | ✅ Termasuk normalizer & guard baca/gagal |
-| Popup & background | `popup.unit`, `background.unit`, `completion-notice.unit` | 33 + 11 + 14 | ✅ Perilaku kontrol & notifikasi |
-| World-entry | `scraper.ts`, `main.ts` | — | ⚠️ Tidak di-unit-test penuh (by design); dijaga lewat `scraper-boot`/`main-boot` |
-| View Pengecekan | — | — | ⚠️ Belum ada seam/file test tersendiri (lihat temuan §3) |
+| Area | File test khas | Catatan |
+|------|----------------|---------|
+| Batch & lifecycle | `scrape-batch.unit` 13, `scrape-batch-helpers.unit` 26, `run-lifecycle.unit` 29 | ADR-0014/0018; masa kosong di tengah masa berisi dilaporkan terpisah dari masa yang gagal diambil |
+| Checker & panel Pengecekan | `checker-logic.unit` 94, `ui-checker.unit` 29 | Termasuk 5 kasus `OtherTaxBase = 0` yang baru; `ui-checker` drivable tanpa overlay |
+| Export & source | `export-source.unit` 18, `export-source.matrix.unit` 32, `exporter.*` 86 | Satu deklarasi per source; matrix menutup kolom dan dua ejaan nomor bukti potong |
+| Persistensi & notifikasi | `extension-preferences.unit` 36, `preferences.unit` 13, `completion-notice.unit` 24 | Normalizer per nilai + guard baca/gagal + ringkasan yang tidak mengumumkan run sebagian sebagai sukses |
+| Pintasan & shell panel | `shortcuts.unit` (3 binding), `ui-panel`/`ui-comparer` | Ctrl+Shift+B digate `isVatInvoicePage` |
+| Wiring dunia | `scraper-boot.unit` 20, `main-boot.unit` 33 | Pembuktian patch/teardown kedua dunia di entry script |
+| Microsite | `microsite-sync.unit` 79 | Kontra-drift fakta, struktur halaman, dan 86 pasang kontras AA — termasuk `404.html` |
+
+Known gap yang menahan rata-rata, sengaja begitu (angka hari ini):
+
+| Area | % Stmts | % Branch | Penjelasan |
+|------|---------|----------|------------|
+| `scraper.ts` | 39.39 | 28.73 | IIFE wiring MAIN-world; dijaga `scraper-boot` |
+| `downloader.ts` | 44.44 | 55.31 | Dispatch nama PDF |
+| `main.ts` | 71.71 | 49.25 | SPA nav + event wiring |
+| `ui-filters.ts` | 55.00 | 55.68 | Toolbar filter DOM |
+| `ui-comparer.ts` | 89.71 | 56.32 | Jalur open/close overlay |
+| `ui-panel.ts` | 73.91 | 54.54 | Konstruksi DOM shell |
+| `exporter.ts` | 81.56 | 84.46 | funcs 56% — entry point unduh |
+| `scraper-types.ts`, `xlsx-runtime.ts` | — | — | Di-exclude dengan sengaja (modul type-only; chunk hasil build ADR-0013) |
+
+Rata-rata global: 88.04 stmts / 82.05 branch / 84.16 funcs / 89.63 lines — semuanya berada di atas lantai masing-masing.
 
 ---
 
 ## 6. Dependensi
 
-| Package | Versi | Catatan |
-|---------|-------|---------|
-| `xlsx` | 0.20.3 | Custom CDN (SheetJS) — pinned, aman; satu-satunya dependensi runtime |
-| `@typescript/native` | ^7.0.2 | Compiler Go-native (ADR-0009) |
-| `typescript` (alias) | npm:@typescript/typescript6@^6.0.2 | API compiler untuk typescript-eslint — **jangan** diubah ke ^7 |
-| `vitest` | ^4.1.5 | Mutakhir ✅ |
-| `esbuild` | ^0.25.12 | Mutakhir ✅ |
-| `eslint` | ^10.3.0 | Mutakhir ✅ |
-| `fast-check` | ^4.7.0 | Mutakhir ✅ |
-| `release-it` + `@release-it/conventional-changelog` | ^21.0.2 / ^12.0.0 | Pengganti `standard-version` ✅ |
-| `archiver` | ^7.0.1 | Dipakai `package.cjs` ✅ |
-
-Tidak ada dependensi runtime selain `xlsx`; semua devDependencies relevan dan terpakai.
+Satu runtime dependency (`xlsx` 0.20.3 dari CDN SheetJS, pinned) tidak berubah sejak audit lama. DevDependencies tetap relevan: `@typescript/native ^7.0.2` sebagai compiler (ADR-0009), alias `typescript` = `npm:@typescript/typescript6@^6.0.2` untuk eslint — **jangan** dinaikkan ke `^7` langsung, lint bakal patah — serta `vitest ^4.1.5`, `esbuild ^0.25.12`, `eslint ^10.3.0`, `fast-check ^4.7.0`, `release-it ^21.0.2` + `@release-it/conventional-changelog ^12.0.0`, `archiver ^7.0.1`. Alias dan compiler harus diangkat berpasangan bila kelak di-upgrade.
 
 ---
 
@@ -228,12 +172,24 @@ Tidak ada dependensi runtime selain `xlsx`; semua devDependencies relevan dan te
 
 | Langkah | Perintah | Hasil |
 |---------|----------|-------|
-| Typecheck | `pnpm typecheck` (`tsc --noEmit`, TS 7 native) | ✅ 0 error |
-| Test | `pnpm test` (vitest, 41 file) | ✅ 1.082/1.082 |
-| Lint | `pnpm lint` (eslint + typescript-eslint) | ✅ 0 error |
-| Build | `pnpm build:chrome` | ✅ Build complete + manifest & aset tersalin |
+| Typecheck | `pnpm typecheck` | ✅ 0 error |
+| Test | `pnpm test` | ✅ 1.544/1.544 (53 file) |
+| Lint | `pnpm lint` | ✅ 0 error |
+| Build Chrome | `pnpm build:chrome` | ✅ manifest dioptimalkan + aset tersalin |
+| Build Firefox | `pnpm build:firefox` | ✅ — dan kini juga di CI, bukan lokal-saja |
+| Coverage ratchet | `pnpm test:coverage` | ✅ semua di atas lantai |
 
-Catatan: pada pnpm 11, jalankan dengan `pnpm --config.verify-deps-before-run=false <cmd>` agar pre-run install (yang gagal karena build script `esbuild` diabaikan) tidak mengganggu; `node_modules` tetap valid. `popup.js` adalah artefak build dari `src/popup/popup.ts` (lihat `build.cjs`), bukan file sumber. `dist/` di-gitignore dan diregenerasi build.
+Catatan pnpm 11+ (turunannya CI memakai pnpm 12): jalankan dengan `pnpm --config.verify-deps-before-run=false <cmd>` agar pre-run install tidak menabrak `ERR_PNPM_IGNORED_BUILDS`. `dist/` di-gitignore dan diregenerasi build; tidak ada yang diedit langsung di sana.
+
+---
+
+## 8. Verifikasi Portal (manual, belum tergantikan unit test)
+
+Satu loop manual tersisa sebelum rilis berikutnya — unit test menjangkau seam dan keputusan, bukan piksel di layar dan perilaku jalan di portal:
+
+1. **Checker `OtherTaxBase = 0`** — buka PPN Keluaran di portal nyata; baris dengan DPP NL 0 plus DPP/PPN valid harusnya tidak masuk daftar "DPP NL Berbeda".
+2. **Warna pill** — ringkasan "Semua faktur sesuai" (tint hijau) dan ringkasan peringatan (tint kuning) harus terbaca jelas; ukuran dihitung ~5-6:1, tapi piksel di portal adalah hakim akhir.
+3. **Ctrl+Shift+B** — panel terbuka di PPN Keluaran dan PPN Masukan, dan di halaman lain (mis. Bukti Potong) event dibiarkan lewat untuk portal.
 
 ---
 
@@ -241,12 +197,10 @@ Catatan: pada pnpm 11, jalankan dengan `pnpm --config.verify-deps-before-run=fal
 
 | # | Temuan | Severity | Effort |
 |---|--------|----------|--------|
-| 1 | Persistensi setelan Pengecekan (Acuan, Toleransi, Filter Status) | Low | Low |
-| 2 | Angka laju pajak di `checker-logic.ts` → satu konstanta bernama | Low | Low |
-| 3 | Pisahkan tab Pengecekan dari `ui-comparer.ts` + seam/file test sendiri | Low | Medium |
-| 4 | Laporan "nomor faktur tidak ditemukan" untuk filter No. Faktur | Low | Low |
-| 5 | Escape + semantik dialog (`role`, `aria-modal`) pada panel | Info | Trivial |
-| 6 | Verifikasi perlakuan `OtherTaxBase = 0` dengan satu sampel portal | Info | Trivial |
-| 7 | ~~Hapus branch `keyup` yang mati di `main.ts`~~ — **ditutup 2026-09-25**: branch tersebut hidup, bukan kode mati (lihat §3) | Info | — |
+| 1 | Jalankan loop manual §8 (perilaku checker baru, warna pill, pintas panel) sebelum rilis berikutnya | Info | Low |
+| 2 | Extend batch export ke PPN Masukan: gate `main-actions`, copy konfirmasi, nama file `FPM-<tahun>`, satu sampel Network untuk `PropertyName` masa, README + microsite di commit yang sama | Low (fitur) | Medium |
+| 3 | Dalami test pada gap coverage §5, lalu naikkan lantai ratchet — sesuai AGENTS.md, tidak boleh dilonggarkan demi build hijau | Low | Medium |
+| 4 | Saat berikutnya menyentuh AGENTS.md: hapus kalimat "injected.css still ships the same defect" — usang sejak `0c2fc06` | Info | Trivial |
+| 5 | Refresh audit ini setelah rilis berikut — cadence yang sudah dipegang sejak audit pertama 2026 | Info | Trivial |
 
-**Kesimpulan:** Tidak ada blocker. Proyek siap untuk iterasi berikutnya. Prioritas terbaik ada di sekitar fitur Pengecekan — memindahkan angka kebijakan pajaknya ke satu konstanta dan menyimpan setelannya — karena itulah area dengan pertumbuhan tercepat saat ini.
+**Kesimpulan:** tidak ada blocker. Utang struktural dari audit 2026-09-24 sudah lunas semuanya; sisa pekerjaan berbentuk asimetri fitur (batch Masukan) dan disiplin yang sudah punya rumah di toolchain (coverage boot-wiring, banding ratchet, loop manual portal).
