@@ -170,6 +170,78 @@ describe("checkRowAccuracy - Benchmark DPP", () => {
   });
 });
 
+describe("checkRowAccuracy - OtherTaxBase = 0", () => {
+  // A live-portal row that does not apply DPP Nilai Lain carries OtherTaxBase 0
+  // next to a correct DPP and PPN (see exporter.processdata fixtures). The
+  // comparison against a derived expectation is dropped, not reported, and its
+  // diff stays null so both grids render "-".
+  it("reports nothing when the row simply does not apply DPP Nilai Lain (acuan DPP)", () => {
+    // DPP 100, DPP NL 0, VAT 11 — the shape the portal actually records.
+    const row = {
+      TaxInvoiceNumber: "0100000000000009",
+      SellingPrice: 100,
+      OtherTaxBase: 0,
+      VAT: 11,
+    };
+    expect(checkRowAccuracy(row, "DPP", 0)).toBeNull();
+  });
+
+  it("still reports a real PPN error on such a row, with no DPP NL diff", () => {
+    const row = {
+      TaxInvoiceNumber: "0100000000000009",
+      SellingPrice: 100000,
+      OtherTaxBase: 0,
+      VAT: 12000,
+    };
+
+    const res = checkRowAccuracy(row, "DPP", 0);
+    expect(res).not.toBeNull();
+    expect(res?.status).toBe("PPN Berbeda");
+    expect(res?.dppNilaiLainDiff).toBeNull();
+  });
+
+  it("exempts the derived DPP NL comparison under acuan PPN as well", () => {
+    // VAT 11000 => expected DPP 100000; DPP NL 0 must not be flagged against
+    // the derived VAT/12% value.
+    const row = {
+      TaxInvoiceNumber: "0100000000000009",
+      SellingPrice: 100000,
+      OtherTaxBase: 0,
+      VAT: 11000,
+    };
+    expect(checkRowAccuracy(row, "PPN", 0)).toBeNull();
+  });
+
+  it("keeps DPP Nilai Lain comparable when it is itself the acuan", () => {
+    // Under acuan DPP Nilai Lain the 0 IS the value the user chose to check
+    // from, so the derived DPP (0) still flags every nonzero DPP — pinned as
+    // intentional scope, not an oversight.
+    const row = {
+      TaxInvoiceNumber: "0100000000000009",
+      SellingPrice: 120000,
+      OtherTaxBase: 0,
+      VAT: 0,
+    };
+
+    const res = checkRowAccuracy(row, "DPP_NILAI_LAIN", 0);
+    expect(res).not.toBeNull();
+    expect(res?.status).toBe("DPP Berbeda");
+    // Not exempt: the 0 is the acuan itself, so its diff is a real (zero) one.
+    expect(res?.dppNilaiLainDiff).toBe(0);
+    expect(res?.dppNilaiLainExpected).toBe(0);
+  });
+
+  it("exempts a string-formatted zero the same way", () => {
+    const row = {
+      TaxInvoiceNumber: "0100000000000009",
+      SellingPrice: 100,
+      OtherTaxBase: "0",
+      VAT: "11",
+    };
+    expect(checkRowAccuracy(row, "DPP", 0)).toBeNull();
+  });
+});
+
 describe("checkRowAccuracy - Benchmark DPP_NILAI_LAIN", () => {
   it("returns null when DPP and PPN match expected from DPP Nilai Lain", () => {
     const row = {

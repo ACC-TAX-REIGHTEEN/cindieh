@@ -117,6 +117,8 @@ Kolom nama pihak lain menyesuaikan gridnya: di PPN Keluaran kolomnya **Nama Pemb
 | **DPP & PPN Berbeda** dsb. | Dua nilai sekaligus tidak sesuai; nama status menyebut pasangan yang berbeda (mis. **DPP NL & PPN Berbeda**, **DPP & DPP NL Berbeda**) |
 | **Data tidak lengkap** | Salah satu dari DPP / DPP NL / PPN kosong atau tidak valid, sehingga tidak bisa dihitung |
 
+Baris yang DPP Nilai Lain-nya **0** berarti faktur tidak menerapkan DPP Nilai Lain — nilainya tidak dijadikan pembanding (tidak dilaporkan sebagai **DPP NL Berbeda**) dan kolom selisihnya tampil sebagai `-`. Pengecualian ini berlaku saat Acuan DPP atau PPN; saat Acuan DPP Nilai Lain sendiri, nilai 0 tetap dipakai seperti yang dipilih.
+
 **Opsi tambahan:**
 - **Toleransi** — selisih yang masih dianggap cocok (untuk pembulatan); selisih di dalam toleransi ditampilkan sebagai `-`
 - **Filter Status** — saring hasil (Semua Status, DPP Berbeda, DPP NL Berbeda, PPN Berbeda, Dua Nilai Berbeda, Data tidak lengkap)

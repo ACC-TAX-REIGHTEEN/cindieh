@@ -176,6 +176,25 @@ export function checkRowAccuracy(
     }
   }
 
+  // ── OtherTaxBase = 0: DPP Nilai Lain does not apply to this row ──
+  // The portal records rows whose DPP and PPN are complete and correct but
+  // whose DPP Nilai Lain is plain 0 (see the live-parse fixtures in
+  // exporter.processdata.unit.test.ts: DPP 100, DPP NL 0, VAT 11). Such a row
+  // does not apply DPP Nilai Lain at all, so a derived expectation
+  // (11/12 × DPP) is not evidence of an error — reporting every such row as
+  // "DPP NL Berbeda" washed the real findings in noise (audit 2026-09-24,
+  // findings §3). Drop the comparison; its diff stays null so the grid and
+  // the export render "-" for it.
+  //
+  // Exempted only where the expected value was DERIVED from another acuan
+  // (benchmarks DPP and PPN). Under the DPP Nilai Lain benchmark the 0 IS the
+  // acuan the user chose, so what is derived from it is left as computed.
+  const nilaiLainNotApplicable =
+    dppNilaiLainSystem === 0 && benchmark !== "DPP_NILAI_LAIN";
+  if (nilaiLainNotApplicable) {
+    dppNilaiLainMismatch = false;
+  }
+
   const incomplete = dppSystem === null || dppNilaiLainSystem === null || ppnSystem === null ||
     dppExpected === null || dppNilaiLainExpected === null || ppnExpected === null ||
     ![dppExpected, dppNilaiLainExpected, ppnExpected,
@@ -263,7 +282,12 @@ export function checkRowAccuracy(
     ppnExpected,
 
     dppDiff: dppSystem !== null && dppExpected !== null ? dppSystem - dppExpected : null,
-    dppNilaiLainDiff: dppNilaiLainSystem !== null && dppNilaiLainExpected !== null ? dppNilaiLainSystem - dppNilaiLainExpected : null,
+    dppNilaiLainDiff:
+      nilaiLainNotApplicable ||
+      dppNilaiLainSystem === null ||
+      dppNilaiLainExpected === null
+        ? null
+        : dppNilaiLainSystem - dppNilaiLainExpected,
     ppnDiff: ppnSystem !== null && ppnExpected !== null ? ppnSystem - ppnExpected : null,
 
     tolerance,
