@@ -9,7 +9,7 @@
 // regression — new logic shipping without tests — does. Raise them as coverage
 // improves; never lower them to make a red build green.
 //
-// Measured 2026-10-06 on the whole suite (1454 tests). The modules that hold
+// Measured 2026-10-13 on the whole suite (1584 tests). The modules that hold
 // the baseline down are recorded in AGENTS.md so a low number reads as a known
 // gap rather than a mystery.
 
@@ -44,27 +44,29 @@ export default defineConfig({
       // functions by the export-source spec extraction (ADR-0015), to
       // 81.2/73.5/76.4/83.3 as the suite grew past 1280 tests, to
       // 83.4/76.3/79.2/85.2 after the bulk-PDF failure naming and the checker
-      // defaults, and now to 87.7/81.3/83.7/89.3 once the Pengecekan tab
-      // became its own view module with its own render suite. The measured
-      // numbers are 88.03/81.71/84.10/89.72.
+      // defaults, to 87.7/81.3/83.7/89.3 once the Pengecekan tab became its own
+      // view module with its own render suite, and now to 91.1/83.9/86.8/92.5
+      // once the three uncovered end-of-chain writers got their own suites:
+      // downloader.ts (96.29 statements, was 44), ui-filters.ts (99.54, was 55)
+      // and exporter's exportCSV/writeXlsxFile (92.19, was ~76). The measured
+      // numbers are 91.56/84.32/87.27/92.99.
       //
-      // The cushion is deliberately ~0.3-0.4 points, the same gap the floors
-      // have always kept: enough that ordinary churn cannot redden the build,
-      // small enough that shipping new logic without tests does. The microsite
+      // The cushion is deliberately ~0.4 points, the same gap the floors have
+      // always kept: enough that ordinary churn cannot redden the build, small
+      // enough that shipping new logic without tests does. The microsite
       // legal-copy guards live in src/tests (excluded here), so that suite is
       // neutral to these numbers.
       //
-      // Statements and lines were left alone for ADR-0015 even though the new
-      // module is 100% covered: exporter.ts shrank 675 -> 381 lines, so its
-      // still-untested download entry points (exportCSV, writeXlsxFile,
-      // exportXLSX) weigh more heavily against a smaller denominator. Same
-      // uncovered code, tighter ratio — not a regression to paper over, and not
-      // a reason to lower a floor.
+      // exporter.exportXLSX — the one entry that awaits the SheetJS chunk — is
+      // still uncovered on purpose: importing the real chunk in a test is what
+      // ADR-0013 forbids, and the loader seam it stands on (createXlsxChunkLoader)
+      // is covered directly. Do not paper the gap over by lowering a floor; move
+      // it by testing the seam underneath.
       thresholds: {
-        statements: 87.7,
-        branches: 81.3,
-        functions: 83.7,
-        lines: 89.3,
+        statements: 91.1,
+        branches: 83.9,
+        functions: 86.8,
+        lines: 92.5,
       },
     },
   },
