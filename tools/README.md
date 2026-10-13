@@ -1,8 +1,91 @@
-# Diagnostik Pencarian Referensi
+# Diagnostik Portal
+
+Skrip console yang ditempel di DevTools untuk menjawab pertanyaan tentang **portal Coretax** dengan pengukuran, bukan tebakan. Semuanya alat investigasi manual: tidak ikut ter-bundle ke `dist/`, dan `pnpm typecheck`, `pnpm test`, serta `pnpm lint` **tidak mencakup direktori `tools/`**.
+
+| Skrip | Pertanyaan yang dijawab | Status |
+|---|---|---|
+| [`reference-search-diagnostic.js`](reference-search-diagnostic.js) | Kenapa pencarian referensi ≤ 6 karakter instan tapi > 6 karakter sangat lambat — lambatnya di server DJP atau di ekstensi/portal? | Sudah dijalankan 24 Sep 2026, hasilnya jadi dasar ADR-0012 |
+| [`masa-batch-diagnostic.js`](masa-batch-diagnostic.js) | Apakah fitur **ekspor satu tahun sekaligus** (batch lintas masa pajak) mungkin di portal, atau terhalang batas portal? Apakah batas halaman server bisa memotong data secara senyap? | Dijalankan Okt 2026 — hasilnya menentukan ADR-0018 dan fitur ekspor satu tahun (77dde73) |
+
+---
+
+## Diagnostik Batch Masa Pajak
+
+> **Status: dijalankan pada portal Coretax, Oktober 2026.** Cakupan pengukuran:
+> endpoint e-Faktur PPN Keluaran, masa TD.00701–TD.00703 tahun 2026 (3 dari 12
+> masa — batas tahun baru Des→Jan belum diukur). Hasil lengkap di bagian
+> "Hasil" di bawah.
+
+### Pertanyaan yang harus dijawab
+
+Ide fitur "ekspor satu tahun sekaligus" yang berarti menjalankan scrape yang sama berulang kali untuk 12 masa. Supaya tidak membangun sesuatu yang portal tidak izinkan, empat hal diukur dulu:
+
+| # | Pertanyaan | Kenapa menentukan |
+|---|---|---|
+| **A** | Apakah masa bisa difilter **dari sisi server**? | Kalau filter masa tidak ada di `body.Filters`, fitur tidak mungkin lewat jalur ini. Nama `PropertyName` **harus dibaca dari request portal sendiri**, bukan ditebak — berbeda antar grid (e-faktur vs SPT vs Bukti Potong). |
+| **B** | Apakah server menghormati `Rows`? | `scrapePaginated()` ([scraper-actions.ts](../src/content/scraper-actions.ts)) berhenti saat `rows.length < step`, dengan `step` = 500 (e-faktur) / 1000 (SPT). Kalau server **meng-clamp** `Rows` di bawah `step`, halaman pertama sudah terlihat "habis", loop berhenti, dan run tetap melaporkan "Complete" dengan data **terpotong tanpa error**. Ini risiko paling senyap di seluruh jalur scrape, dan harus tahu sebelum fitur apa pun yang bergantung pada kelengkapan. |
+| **C** | Apakah respons membawa jumlah total yang bisa dipercaya? | Kalau ada total yang benar, loop bisa memeriksa kelengkapan terhadap angka itu, bukan cuma menebak dari "halaman ini pendek". Skrip referensi menemukan `Payload.Total` "belum tentu jumlah baris" — fase 2 membandingkannya dengan baris nyata agar ketahuan field mana yang benar. |
+| **D** | Berapa lama satu masa, dan adakah jebakan setelah banyak request? | Kalau satu masa butuh 60 detik, dua belas masa = 12 menit. Itu menentukan fitur harus punya progres per masa, bisa dijeda, dan jelas tidak boleh berjalan diam-diam. |
+
+Skrip juga melaporkan apakah baris punya `RecordId` / `AggregateIdentifier`. `getRowDedupeKey()` ([scraper-helpers.ts](../src/content/scraper-helpers.ts)) jatuh ke `stableStringify()` yang rekursif dan mahal kalau keduanya kosong — ini yang menentukan seberapa serius biaya dedupe pada grid tersebut.
+
+### Cara pakai
+
+1. Buka halaman grid di portal Coretax (e-Faktur PPN Keluaran, atau grid lain yang mau diuji).
+2. Pilih **satu** masa pajak di filter portal → klik **Cari** → biarkan tabel tampil. **Jangan** ganti masa setelahnya; skrip mengambil template dari request grid terakhir.
+3. DevTools → Console → tempel seluruh isi `masa-batch-diagnostic.js` → Enter (Chrome mungkin meminta konfirmasi *allow pasting*).
+4. Tunggu blok **KESIMPULAN**. Kalau tabel sudah tampil sebelum skrip ditempel, jalankan manual `__cindiehMasaDiag.jalankan()`.
+5. Untuk menguji grid/masa lain: pilih masa baru di portal, lalu `__cindiehMasaDiag.templateUlang()` dan jalankan ulang.
+
+Perintah:
+
+```
+__cindiehMasaDiag.jalankan()            // seluruh fase 1-4
+__cindiehMasaDiag.jalankan([1, 3])      // hanya fase yang dipilih
+__cindiehMasaDiag.fase2()               // probe batas Rows saja
+__cindiehMasaDiag.fase3(["TD.00701"])  // satu masa, diukur
+__cindiehMasaDiag.hasil                 // data mentah (JSON)
+__cindiehMasaDiag.templateUlang()       // kosongkan template, ambil lagi
+__cindiehMasaDiag.pulihkan()            // lepas semua patch skrip
+```
+
+### Cara membaca KESIMPULAN
+
+Blok **Jawaban singkat** meringkas tiga hal yang harus diputuskan sebelum fitur dikerjakan:
+
+- **Batch lintas masa lewat filter server: YA / belum terbukti.** Kalau `YA`, jalur teknisnya ada: `injectFilters()` ([scraper-xhr-patches.ts](../src/content/scraper-xhr-patches.ts)) sudah generik terhadap `PropertyName`, `SET_SERVER_FILTER` sudah ada di bridge, dan `xhrRequest()` sudah bisa mengirim ulang `First`/`Rows`. Kalau belum terbukti, jangan mulai kodenya — cari dulu arah lain.
+- **Batas `Rows` portal perlu ditangani: YA / tidak terlihat.** `YA` berarti ada pemotongan senyap yang harus diperbaiki **lebih dulu**, karenaEXPORT yang diam-diam kurang baris lebih buruk daripada error.
+- **Jumlah total dari server bisa dipakai: YA / tidak.** `YA` membuka jalan ke pemeriksaan kelengkapan yang jujur; `tidak` berarti andalan pada heuristik "halaman pendek" tetap satu-satunya opsi, dan itu perlu dinyatakan terbuka di UI.
+
+### Hasil
+
+*(dijalankan Oktober 2026 — 3 masa pertama TD.00701–TD.00703, tahun 2026, endpoint e-Faktur PPN Keluaran)*
+
+| Pertanyaan | Jawaban | Angka pendukung |
+|---|---|---|
+| A. Filter masa di server? | **YA** | `TaxInvoicePeriod` (TD.00708) dan `TaxInvoiceYear` (2026) ada di `body.Filters`, MatchMode `equals`; masa TD.007MM = bulan MM — pola yang sama dikenali `tax-date.ts` |
+| B. Server menghormati `Rows`? | **YA, sampai 5000** | Keenam probe (10/100/500/1000/2000/5000) mengembalikan baris sebanyak yang diminta; 5000 baris selesai dalam 1.910 ms |
+| C. Field total yang bisa dipercaya? | **TIDAK — ini yang genting** | `Payload.TotalRecords` = `Rows + 1` di semua probe (10→11, 100→101, 500→501, 1000→1001, 2000→2001, 5000→5001): angkanya mengikuti permintaan, bukan isi grid. Angka seperti itu juga menipu pembacaan total milik ekstensi sendiri — sudah ditambal di `readGridTotal` (3b2f1fb) |
+| D. Durasi per masa / perkiraan 1 tahun? | ~14,7 ribu baris/masa | 44.237 baris untuk 3 masa; perkiraan 1 tahun ≈ 10 menit pada jeda 1,2 dtk milik skrip; ≈ 4 menit pada pacing ekstensi (`step` 500, jeda 100 ms) |
+| Baris tanpa ID (beban `stableStringify`)? | **0 dari 44.237** | Setiap baris punya `RecordId` — kunci dedupe selalu O(1), tanpa fallback hash |
+| Duplikat antara masa (Jan/Feb, Feb/Mar)? | **0** | 44.237 baris = 44.237 unik, dengan kunci yang persis sama dengan `mergeRows` |
+
+**Belum terukur:** masa ke-4 sampai ke-12, khususnya batas tahun baru Des→Jan — kasus bukti kredit yang sempat masuk Januari tahun berikutnya, risiko duplikasi lintas periode yang paling mungkin — dan endpoint selain PPN Keluaran. Fitur yang sudah dikirim menganggap hasil ini berlaku umum untuk masa yang belum diukur.
+
+### Kepatuhan
+
+- Semua request **berurutan**, tidak pernah paralel, dengan jeda `CONFIG.jedaMs` (default 1.200 ms — lebih besar dari jeda normal karena ini sengaja menguji beban, bukan export normal).
+- Hanya membaca data milik sesi login pengguna sendiri, memakai header yang sudah dipakai portal sendiri pada request grid-nya. Nilai `Authorization`/`Cookie` **tidak pernah** dicetak.
+- Hanya memakai URL grid yang portal pakai sendiri; tidak ada URL tebakan. Fase 3 dibatasi `CONFIG.maxMasa` (default 12) supaya tidak berubah jadi pemuatan.
+- Fase 2 sengaja menyentuh batas `Rows`. Itu memang tujuannya, tapi jangan jalankan berulang-ulang pada grid yang sama dalam waktu berdekatan.
+
+---
+
+## Diagnostik Pencarian Referensi
 
 Skrip console untuk menyelidiki laporan: **pencarian referensi dengan ≤ 6 karakter instan, tetapi > 6 karakter sangat lama** (muncul setelah portal sempat gangguan). Tujuannya menjawab satu pertanyaan dengan data: lambatnya di **server DJP**, atau di **ekstensi/portal**.
 
-## Alur pencarian referensi (untuk konteks)
+### Alur pencarian referensi (untuk konteks)
 
 1. `main.ts` menangkap `keyup` Enter pada `#ch-toolbar-filter-reference` / `#ch-grid-filter-reference`.
 2. `postToScraper({ type: "SET_SERVER_FILTER", field: "Reference", value, matchMode: "startswith" })` → `scraper.ts` menyimpan `filterState.Reference` dengan mode tersebut.
@@ -14,14 +97,14 @@ Jadi durasi pencarian = waktu server menjawab query filter + waktu portal merend
 
 > Catatan: langkah 2 dan 4 sudah memakai `startswith` **sejak perbaikan 24 September 2026**. Skrip ini sengaja tetap mengukur `contains` sebagai pembanding — pengukuran aslinya yang membuat perubahan diputuskan, dan sejak ADR-0012 mode itu tidak pernah dikirim ekstensi lagi.
 
-## Cara pakai
+### Cara pakai
 
 1. Buka halaman e-Faktur PPN Keluaran dan pastikan daftar faktur sudah tampil minimal sekali.
 2. (Opsional) ketik referensi yang lambat di kolom **Cari Referensi** Cindieh, atau isi `CONFIG.nilaiPanjang` di awal skrip.
 3. DevTools → Console → tempel seluruh isi `reference-search-diagnostic.js` → Enter (Chrome mungkin meminta konfirmasi *allow pasting*).
 4. Tunggu sampai blok **KESIMPULAN** muncul.
 
-## Apa yang diukur
+### Apa yang diukur
 
 | Jalur | Cara | Artinya |
 |---|---|---|
@@ -36,14 +119,14 @@ Variabel uji: panjang 5, 6, 7, dan panjang penuh; `MatchMode` `contains`, `start
 
 Arti kolom: `durasi ms` pada jalur ekstensi = jendela pengukuran (Enter → request grid selesai → jeda singkat), bukan repaint terakhir — portal bisa menggambar spinner jauh sebelum data tiba (rinciannya ada di `hasil.ekstensi[].stabilMs`). Kolom `total` diambil dari field numerik pertama yang ditemukan di `Payload` dan **belum tentu jumlah baris**; pakai kolom `baris` (`Payload.Data.length`) sebagai acuan. `ttfb` terisi hanya bila iframe menyediakan Resource Timing.
 
-## Cara membaca KESIMPULAN
+### Cara membaca KESIMPULAN
 
 - **"LAMBAT DI SERVER DJP"** → request terisolasi juga lambat. Bukan bug ekstensi; ini sisi server/portal. Langkah berikutnya: pindah ke match mode cepat (lihat temuan di bawah) atau cari via prefix lalu saring lokal.
 - **"SERVER CEPAT"** → biaya ada di jalur portal/ekstensi (klik tombol, render Angular, atau retry). Periksa kolom `request grid` (lebih dari 1 = portal mengirim beberapa request) dan kolom `ms request` vs `durasi ms`.
 - **"ADA JALAN CEPAT"** → salah satu match mode alternatif jauh lebih cepat pada nilai panjang. Kandidat perbaikan di `SET_SERVER_FILTER`; sejak ADR-0012 ekstensi tidak lagi mengirim fallback `contains` bila hasilnya 0 baris.
 - **`hasil cocok = TIDAK`** → filter referensi tampak tidak diterapkan pada request portal (ada baris hasil yang tidak memuat nilai yang dicari).
 
-## Hasil diagnostik 24 September 2026 (portal Coretax)
+### Hasil diagnostik 24 September 2026 (portal Coretax)
 
 Halaman e-Faktur PPN Keluaran, sesi pengguna sendiri, `Rows: 10`. Run 1 dan 2 memakai nilai uji `EE-0309`; run 3 memakai `EE-0300` (referensi yang benar-benar ada, hasilnya 1 baris):
 
@@ -66,7 +149,7 @@ Kesimpulan yang bisa dipertanggungjawabkan:
 
 Temuan sampingan: filter `Reference` di server tampak **case-sensitive** (nilai huruf kecil → 0 baris). `main.ts` sudah mengirim `value.toUpperCase()` — jangan hapus normalisasi itu, dan replika di skrip ini meniru hal yang sama. Kolom `request lain` tetap 0 di ketiga run, jadi `getSingleReferenceData … timer ended` yang muncul di console portal bukan request jaringan (cache internal portal, ~300 ms lalu ~45 ms pada pencarian berikutnya).
 
-## Alat bantu cepat (sementara)
+### Alat bantu cepat (sementara)
 
 ```
 __cindiehRefDiag.cariReferensi("EE-0309/07/26")
@@ -82,10 +165,8 @@ __cindiehRefDiag.hasil        // data mentah (JSON) untuk dikirim ke developer
 __cindiehRefDiag.pulihkan()   // lepas semua patch skrip ini dari halaman
 ```
 
-## Kepatuhan
+### Kepatuhan
 
 - Belasan request, selalu berurutan (tidak pernah paralel), jeda antar request dari `CONFIG.jedaMs` (default 700 ms).
 - `Rows` request uji mengikuti `CONFIG.rows` (default 10, sama dengan grid portal). `cariReferensi()` memakai 100 (batas maksimum opsi UI portal) — bukan di atas batas di [RATE_LIMITING.md](../RATE_LIMITING.md).
 - Hanya membaca data milik sesi login pengguna sendiri.
-
-Skrip ini alat diagnostik manual (tidak ikut ter-bundle ke `dist/`); `pnpm typecheck`, `pnpm test`, dan `pnpm lint` tidak mencakup direktori `tools/`.
