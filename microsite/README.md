@@ -37,6 +37,82 @@ microsite/
 └── README.md
 ```
 
+## House style
+
+Seven rules the page is now held to, three of them by the suite. They exist
+because each one was a real habit of this page rather than a hypothetical
+temptation: the redesign had to remove 11 eyebrows, 77 em-dashes, a synthetic
+italic, a number sequence and a repeated card treatment before the layout read
+as designed rather than assembled.
+
+- **One eyebrow, spent in the hero.** A small-caps category label above every
+  section headline is the single rhythm that makes a page read as a template,
+  and this page had eleven of them for ten heads. The hero keeps its label
+  because there the one thing a visitor cannot infer from the headline is what
+  kind of thing the product is; everywhere else the section's position in the
+  page already says what the section is. The budget is one per three heads, and
+  `microsite-sync` counts both sides. The label also lost its decorative dot,
+  which said nothing the words did not.
+- **No em-dash in rendered text.** There were 77 across the three pages, almost
+  all of them the same "X, Y" the comma already says. Comments are exempt, which
+  is what keeps the rule about the reader rather than the author; the JSON-LD is
+  not exempt, because its FAQ answers are exactly the visible ones.
+- **No italic that the fonts do not ship.** None of the five woff2 files is an
+  italic cut, so every `<em>` was drawn as a *synthesised* oblique, which IBM
+  Plex Sans renders visibly wrong at 14px. Emphasis is weight now, and the
+  literals that were set as `<em>` (`startswith`, `contains`, `case-sensitive`)
+  became `<code>`, which is what they are.
+- **One card treatment per idea.** The settings table is a card; the before /
+  after table is a bare ruled table; the compliance block is one ruled row with
+  an uneven first column and no numbering. Two adjacent sections sharing a
+  treatment is what made them read as one section twice.
+- **A section has to earn its height.** `#kompatibilitas` (three browser badges)
+  and `#roadmap` (one card) were each a full 86px-padded section for content the
+  install cards, the download row and `.dl-note` already said, and both sat on
+  the same `--alt-bg` band as a neighbour, so folding them in cost no rhythm at
+  all. What survived is one sentence each: the host restriction joined the
+  install section's sub, and the store listing is now a status line under the
+  download buttons. Seven sections, not nine.
+- **Every table has a caption.** Seven of them, all `.sr-only` (`.pref-table`
+  plus the four mini-tables, the compare table, the permissions table). The
+  cluster rows in `.pref-table` carry `scope="rowgroup"`. Without captions a
+  screen reader in table-navigation mode had nothing to announce for any of them.
+- **English UI literals carry `lang="en"`.** `Load unpacked`, `Mode Developer`,
+  `Install Add-on From File…`, the store names. The page is `lang="id"`, and an
+  Indonesian screen-reader voice mispronounces every one of them. The tags are
+  invisible to `flat()`/`plain()`, so neither the JSON-LD FAQ equality check nor
+  the popup-control checks can see them.
+- **Only the cuts used above the fold are preloaded.** The two variable faces
+  plus Plex Mono **400**. Mono 400 is there because the hero eyebrow and the
+  mockup's address bar are mono and above the fold: this comment used to claim
+  mono was "far below the fold", which was simply untrue, and the red uppercase
+  line was swapping in after first paint. The 500 and 600 cuts stay unpreloaded
+  because nothing uses them until much further down.
+- **Long lists get grouped, not ruled.** The thirteen popup settings used to be
+  thirteen rows of the same two columns, which asks the reader to hold thirteen
+  rows at once. They are now four clusters following the popup's own sections,
+  one divider per cluster instead of one per row, and a `<tbody>` per cluster so
+  the gap can come from a heading. The suite's reverse check reads
+  `<tr><td>` first cells, so a cluster row (which has a `class`) is invisible to
+  it, exactly as it should be.
+  - **One answer may be several paragraphs.** The legality FAQ used to be a
+    single `<p class="faq-a">` holding all 944 characters, which made it the
+    least scannable thing on the page. It is now three, one per legal ground,
+    and not one word was cut. Both suites that read it had to widen too: they
+    matched `<summary>…</summary><p class="faq-a">(.*?)</p>`, so they read only
+    the FIRST paragraph and would have passed silently on a version that had lost
+    the other two. They now read the whole `<details>` body.
+- **The mobile nav is a strip, not a menu.** Below 760px the nav used to be
+  `display:none`, which left a phone user with a download button and no way to
+  reach any section except the footer's copy. It is now a second compact row
+  that scrolls sideways: every destination is one swipe away, with no menu to
+  open, no focus trap to keep honest, and no JavaScript.
+- **Motion has to mean something.** The toolbar's five injected controls stagger
+  in left to right, because the injection order is the point the mockup exists
+  to make; everything else is hover and press feedback. `prefers-reduced-motion`
+  covers all of it, `.ct-input` included, because a control left at `opacity:0`
+  by a cancelled animation is worse than one that never animated.
+
 ## Conventions
 
 - **Content mirrors the repo.** Feature descriptions, permissions, prefixes,
@@ -51,7 +127,10 @@ microsite/
   reverse, so nothing here may advertise a page, status, or control the code
   does not have.
 - **Feature tabs are CSS-only** (radio technique) so they work without
-  JavaScript; tab inputs are hidden but focusable, never `display:none`.
+  JavaScript; tab inputs carry `.sr-only` (hidden but focusable, never
+  `display:none`) plus the `opacity:0` the technique needs. One utility does the
+  hiding for both the radios and anything else that needs it, rather than the
+  rule being written out twice.
   `microsite.js` upgrades the radio group into a real ARIA tablist — it moves
   `role="tab"`/`aria-selected`/`aria-controls` onto the **labels**, retires the
   radios from both the accessibility tree and the tab order together, and adds

@@ -7,11 +7,11 @@
      stays visible instead of being stuck at opacity:0 forever. -->
 <script>document.documentElement.classList.add("js");</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cindieh — Produktivitas Coretax untuk Staf Pajak | Ekspor XLSX · Unduh PDF Massal · Komparator &amp; Pengecekan Nilai</title>
-<meta name="description" content="Cindieh — ekstensi Chrome &amp; Firefox untuk portal DJP Coretax. Ekspor semua data ke XLSX/CSV, unduh ratusan PDF faktur sekaligus, bandingkan data penjualan, dan cek keakuratan nilai DPP/PPN — satu klik.">
+<title>Cindieh: Produktivitas Coretax untuk Staf Pajak | Ekspor XLSX, Unduh PDF Massal, Komparator &amp; Pengecekan Nilai</title>
+<meta name="description" content="Cindieh, ekstensi Chrome &amp; Firefox untuk portal DJP Coretax. Ekspor semua data ke XLSX/CSV, unduh ratusan PDF faktur sekaligus, bandingkan data penjualan, dan cek keakuratan nilai DPP/PPN, satu klik.">
 <meta name="theme-color" content="#ECEAE1">
 <!--
-  Hosting: Cloudflare Pages, tanpa build step — folder `microsite/` langsung
+  Hosting: Cloudflare Pages, tanpa build step, folder `microsite/` langsung
   dikirim apa adanya (build command kosong, output directory `microsite`).
   Karena URL-nya sudah pasti, canonical dan tag berbagi di bawah boleh absolut;
   SEMUA path aset tetap relatif agar halaman masih jalan kalau dipindah ke
@@ -29,7 +29,7 @@
 <meta property="og:url" content="https://cindieh.pages.dev/">
 <meta property="og:locale" content="id_ID">
 <meta property="og:site_name" content="Cindieh">
-<meta property="og:title" content="Cindieh — Coretax, tanpa klik berulang">
+<meta property="og:title" content="Cindieh: Coretax, tanpa klik berulang">
 <meta property="og:description" content="Ekstensi browser untuk portal DJP Coretax: ekspor XLSX/CSV, unduh PDF massal, komparator faktur, dan pengecekan keakuratan nilai DPP/PPN.">
 <meta property="og:image" content="https://cindieh.pages.dev/assets/img/og.jpg">
 <meta property="og:image:type" content="image/jpeg">
@@ -37,7 +37,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Logo Cindieh di atas latar krem dengan judul dan daftar fitur">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Cindieh — Coretax, tanpa klik berulang">
+<meta name="twitter:title" content="Cindieh: Coretax, tanpa klik berulang">
 <meta name="twitter:description" content="Ekstensi browser untuk portal DJP Coretax: ekspor XLSX/CSV, unduh PDF massal, komparator faktur, dan pengecekan keakuratan nilai.">
 <meta name="twitter:image" content="https://cindieh.pages.dev/assets/img/og.jpg">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/img/icon-32.png">
@@ -45,16 +45,21 @@
 <link rel="icon" type="image/png" sizes="48x48" href="assets/img/icon-48.png">
 <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
 <!-- Type is self-hosted: see the font-face block at the top of microsite.css.
-     The two variable faces are preloaded because the hero uses both; Plex Mono
-     is not, because it only appears far below the fold. -->
+     Three files are preloaded, and the reason for each is different. The two
+     variable faces carry the hero's headline and lede. Plex Mono 400 does too,
+     which this comment used to deny: the hero eyebrow and the mockup's address
+     bar are mono, both above the fold, so its red uppercase line was swapping in
+     after first paint. Only the 500 and 600 cuts stay unpreloaded, because the
+     first thing that uses either is far below the fold. -->
 <link rel="preload" href="assets/fonts/space-grotesk-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/plex-sans-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/plex-mono-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/css/microsite.css">
 <!-- Two nodes in one @graph. The FAQPage is the reason this block needs a
      guard rather than a shrug: Google requires a FAQPage answer to be VISIBLE
      on the page, so structured data that drifts from the <details> below
      describes content no visitor can see. microsite-sync parses both and
-     fails when they disagree — regenerate the entries from the summaries
+     fails when they disagree, regenerate the entries from the summaries
      rather than editing the JSON by hand. -->
 <script type="application/ld+json">
 {
@@ -89,7 +94,7 @@
           "name": "Apakah Cindieh mengirim data pajak saya ke server lain?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Tidak. Semua pemrosesan terjadi lokal di browser. Ekstensi hanya berkomunikasi dengan coretaxdjp.pajak.go.id — domain yang sama dengan yang sudah Anda buka. Tidak ada server backend Cindieh yang menerima data faktur Anda."
+            "text": "Tidak. Semua pemrosesan terjadi lokal di browser. Ekstensi hanya berkomunikasi dengan coretaxdjp.pajak.go.id, domain yang sama dengan yang sudah Anda buka. Tidak ada server backend Cindieh yang menerima data faktur Anda."
           }
         },
         {
@@ -121,7 +126,7 @@
           "name": "Kok \"Cari Referensi\" tidak menemukan faktur saya?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Pencocokan dilakukan terhadap awalan nomor referensi, bukan sembarang posisi di dalamnya — mode itu terbukti jauh lebih cepat di server Coretax. Ketik sebagian awal referensi (bisa lebih pendek), lalu Enter. Jika tetap kosong, panel menyatakan \"tidak ditemukan\" dan berhenti, bukan mencoba mode lambat di belakang layar."
+            "text": "Pencocokan dilakukan terhadap awalan nomor referensi, bukan sembarang posisi di dalamnya, mode itu terbukti jauh lebih cepat di server Coretax. Ketik sebagian awal referensi (bisa lebih pendek), lalu Enter. Jika tetap kosong, panel menyatakan \"tidak ditemukan\" dan berhenti, bukan mencoba mode lambat di belakang layar."
           }
         },
         {
@@ -137,7 +142,7 @@
           "name": "Apakah Cindieh memerlukan akun atau registrasi?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Tidak. Ekstensi langsung berfungsi setelah dipasang dan Anda login ke Coretax seperti biasa — tidak ada akun, registrasi, atau kunci lisensi."
+            "text": "Tidak. Ekstensi langsung berfungsi setelah dipasang dan Anda login ke Coretax seperti biasa, tidak ada akun, registrasi, atau kunci lisensi."
           }
         },
         {
@@ -145,7 +150,7 @@
           "name": "Apakah legal menggunakan ekstensi pihak ketiga di portal pemerintah?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Sudah ditinjau, dan tinjauan itu tidak menemukan pelanggaran. Pasal 30 UU ITE (akses tanpa hak): Cindieh hanya berjalan pada sesi login resmi milik Wajib Pajak sendiri, tanpa penerobosan, pembobolan, atau bypass autentikasi, sehingga aksesnya sah. Pasal 32 UU ITE (perusakan data elektronik): seluruh fitur bersifat baca-saja — tidak ada instruksi yang mengubah, memanipulasi, memalsukan, atau menghapus data di server DJP. Ketentuan portal yang melarang otomatisasi mengganggu ketersediaan layanan: Cindieh memakai batas ukuran halaman resmi portal, jeda antar request, dan circuit breaker yang menghentikan proses otomatis setelah tiga galat berturut-turut. Catatan: tinjauan ini mencakup UU ITE dan ketentuan portal, bukan penilaian hukum atas keadaan spesifik perusahaan Anda — bila penggunaan Cindieh dalam pekerjaan Anda menimbulkan implikasi hukum, mintalah penilaian kepada penasihat hukum Anda. Rinciannya terbuka di LEGAL_COMPLIANCE.md."
+            "text": "Sudah ditinjau, dan tinjauan itu tidak menemukan pelanggaran. Pasal 30 UU ITE (akses tanpa hak): Cindieh hanya berjalan pada sesi login resmi milik Wajib Pajak sendiri, tanpa penerobosan, pembobolan, atau bypass autentikasi, sehingga aksesnya sah. Pasal 32 UU ITE (perusakan data elektronik): seluruh fitur bersifat baca-saja, tidak ada instruksi yang mengubah, memanipulasi, memalsukan, atau menghapus data di server DJP. Ketentuan portal yang melarang otomatisasi mengganggu ketersediaan layanan: Cindieh memakai batas ukuran halaman resmi portal, jeda antar request, dan circuit breaker yang menghentikan proses otomatis setelah tiga galat berturut-turut. Catatan: tinjauan ini mencakup UU ITE dan ketentuan portal, bukan penilaian hukum atas keadaan spesifik perusahaan Anda, bila penggunaan Cindieh dalam pekerjaan Anda menimbulkan implikasi hukum, mintalah penilaian kepada penasihat hukum Anda. Rinciannya terbuka di LEGAL_COMPLIANCE.md."
           }
         },
         {
@@ -153,7 +158,7 @@
           "name": "Apakah Cindieh gratis?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Gratis sepenuhnya dan akan tetap gratis — tanpa akun, tanpa langganan, tanpa kunci lisensi. Kode sumbernya terbuka di GitHub di bawah lisensi MIT: bebas dipakai, dimodifikasi, dan didistribusikan ulang, bahkan untuk keperluan komersial, selama atribusi diberikan."
+            "text": "Gratis sepenuhnya dan akan tetap gratis, tanpa akun, tanpa langganan, tanpa kunci lisensi. Kode sumbernya terbuka di GitHub di bawah lisensi MIT: bebas dipakai, dimodifikasi, dan didistribusikan ulang, bahkan untuk keperluan komersial, selama atribusi diberikan."
           }
         },
         {
@@ -186,7 +191,10 @@
      sits behind eight links in the tab order is not a skip link. -->
 <a class="skip-link btn btn-primary" href="#konten">Lompat ke konten utama</a>
 
-<!-- Icon sprite (toolbar mockup) -->
+<!-- Icon sprite (toolbar mockup). The six glyphs are Feather Icons paths
+     (MIT licensed, https://feathericons.com), inlined rather than pulled from a
+     CDN: this page makes no third-party request at all, which is the same
+     reason the three typefaces are self-hosted. -->
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
   <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 21h16"/></symbol>
   <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
@@ -197,22 +205,25 @@
 </svg>
 
 <!-- <header> rather than <div> so this is the page's banner landmark. It used
-     to be a plain div, which meant the only <header> was the hero — and the
-     hero has just moved inside <main>, where a <header> is no longer a
-     banner. Changing this element first keeps the landmark. -->
+     to be a plain div, which meant the only <header> was the hero. The hero
+     has just moved inside <main>, where a <header> is no longer a banner,
+     so changing this element first is what keeps the landmark. -->
 <header class="topbar">
   <div class="wrap">
-    <a class="brand" href="#top" aria-label="Cindieh — ke atas"><img src="assets/img/icon-32.png" width="22" height="22" alt="">Cindieh</a>
+    <a class="brand" href="#top" aria-label="Cindieh: ke atas"><img src="assets/img/icon-32.png" width="22" height="22" alt="">Cindieh</a>
     <nav class="navlinks" aria-label="Navigasi utama">
       <a href="#fitur">Fitur</a>
       <a href="#pengaturan">Pengaturan</a>
       <a href="#keamanan">Keamanan</a>
-      <a href="#unduhan">Unduh</a>
       <a href="#faq">FAQ</a>
     </nav>
+    <!-- One action in the header, and it is the page's one action. A second
+         ghost button here ("Buka Coretax") meant two download-ish exits in the
+         same 60px bar and a link back to the portal the visitor is already
+         sitting in; the portal is named in the mockup, the permissions table
+         and the compatibility section instead. -->
     <div class="topbar-cta">
-      <a href="#unduhan" class="btn btn-ghost btn-sm">Unduh</a>
-      <a href="https://coretaxdjp.pajak.go.id" class="btn btn-ghost btn-sm" target="_blank" rel="noopener noreferrer">Buka Coretax<span class="sr-only"> (terbuka di tab baru)</span></a>
+      <a href="#unduhan" class="btn btn-primary btn-sm">Unduh</a>
     </div>
   </div>
 </header>
@@ -229,16 +240,14 @@
     <span class="eyebrow">Ekstensi browser untuk portal DJP Coretax</span>
     <h1>Coretax, tanpa <em>klik berulang</em>.</h1>
     <p class="lede">
-      Semua pekerjaan berulang di Coretax selesai lebih cepat: <strong>menyimpan banyak data sekaligus</strong>,
-      <strong>mengunduh ratusan PDF faktur</strong>, mencocokkan catatan penjualan,
-      sampai memeriksa kecocokan angka pajaknya. Tidak ada tab baru, semuanya berjalan
-      di halaman yang sudah Anda pakai.
+      Ekspor semua data ke <strong>XLSX</strong>, unduh <strong>ratusan PDF faktur</strong> dalam satu klik,
+      cocokkan catatan penjualan dengan Coretax, lalu periksa angka pajaknya.
+      Semuanya berjalan di tab yang sudah Anda buka.
     </p>
     <div class="hero-cta">
       <a href="#unduhan" class="btn btn-primary">Unduh</a>
       <a href="#keamanan" class="btn btn-ghost">Bagaimana data saya diamankan?</a>
     </div>
-    <p class="hero-note">Gratis · tanpa akun · tanpa langganan · lisensi MIT</p>
 
     <!-- role="img" because this is an ILLUSTRATION of a toolbar, not a toolbar.
          Read as a list it lied: the two icon-only buttons were labelled by
@@ -246,8 +255,14 @@
          keyboard users cannot reach, so the list simply lost two items with no
          hint anything was missing. One labelled image says what it is and hands
          the fake controls to the presentation layer, which is where they belong.
-         Nothing in here is focusable, so nothing is lost by it. -->
-    <div class="toolbar-demo reveal" role="img" aria-label="Mockup toolbar e-Faktur PPN Keluaran Coretax: 5 tombol Cindieh yang disuntikkan — Ekspor, Unduh PDF, Ambil data, Bandingkan data penjualan, dan No. Faktur — ditambah satu kotak Cari Referensi, berdiri tepat di sebelah tombol bawaan portal yang berwarna abu-abu.">
+         Nothing in here is focusable, so nothing is lost by it.
+
+         What it is NOT is a decorative fake: it is the extension's real toolbar,
+         rebuilt from the same markup and the same palette the portal page
+         injects, so it is a preview of the product rather than a picture of
+         one. The five red controls stagger in left to right for the same
+         reason: the injection order is the point. -->
+    <div class="toolbar-demo reveal" role="img" aria-label="Mockup toolbar e-Faktur PPN Keluaran Coretax: 5 tombol Cindieh yang disuntikkan, yaitu Ekspor, Unduh PDF, Ambil data, Bandingkan data penjualan, dan No. Faktur, ditambah satu kotak Cari Referensi, berdiri tepat di sebelah tombol bawaan portal yang berwarna abu-abu.">
       <div class="td-chrome">
         <div class="td-dots"><span></span><span></span><span></span></div>
         <div class="td-url">coretaxdjp.pajak.go.id/e-invoice-portal/output-tax</div>
@@ -264,7 +279,7 @@
           <span class="cd-btn"><svg class="cd-ic" aria-hidden="true"><use href="#i-filter"/></svg>No. Faktur</span>
           <span class="ct-input"><svg class="cd-ic" aria-hidden="true"><use href="#i-search"/></svg>Cari Referensi…</span>
         </div>
-        <p class="td-caption"><b>5 tombol + 1 kotak pencarian disuntikkan</b> — merah, berdiri persis di sebelah tombol bawaan Coretax (abu-abu).</p>
+        <p class="td-caption"><b>5 tombol + 1 kotak pencarian disuntikkan</b>, merah, berdiri persis di sebelah tombol bawaan Coretax (abu-abu).</p>
       </div>
     </div>
   </div>
@@ -274,33 +289,32 @@
 <section id="untuk-siapa">
   <div class="wrap">
     <div class="section-head reveal">
-      <span class="eyebrow">Untuk siapa</span>
-      <h2>Dibuat untuk halaman yang benar‑benar Anda buka setiap hari</h2>
+            <h2>Dibuat untuk halaman yang benar‑benar Anda buka setiap hari</h2>
       <p class="sub">Setiap fitur Cindieh disusun mengikuti halaman Coretax yang paling sering menyita waktu staf pajak dan konsultan.</p>
     </div>
     <div class="role-grid reveal">
       <div class="role-item">
-        <div class="who">Staf pajak / AR‑AP — PPN Keluaran</div>
+        <div class="who">Staf pajak / AR‑AP: PPN Keluaran</div>
         <span class="path">/e-invoice-portal/output-tax</span>
       </div>
       <div class="role-item">
-        <div class="who">Staf pajak / AR‑AP — PPN Masukan</div>
+        <div class="who">Staf pajak / AR‑AP: PPN Masukan</div>
         <span class="path">/e-invoice-portal/input-tax</span>
       </div>
       <div class="role-item">
-        <div class="who">Staf pajak — Retur PPN Keluaran</div>
+        <div class="who">Staf pajak: Retur PPN Keluaran</div>
         <span class="path">/e-invoice-portal/output-return</span>
       </div>
       <div class="role-item">
-        <div class="who">Staf pajak — Retur PPN Masukan</div>
+        <div class="who">Staf pajak: Retur PPN Masukan</div>
         <span class="path">/e-invoice-portal/input-return</span>
       </div>
       <div class="role-item">
-        <div class="who">Petugas SPT — Lampiran A2 &amp; B2</div>
+        <div class="who">Petugas SPT: Lampiran A2 &amp; B2</div>
         <span class="path">/returnsheets-portal/value-added-tax-return</span>
       </div>
       <div class="role-item">
-        <div class="who">Petugas PPh 21/26 — L1A, L1B, L2, L3</div>
+        <div class="who">Petugas PPh 21/26: L1A, L1B, L2, L3</div>
         <span class="path">/returnsheets-portal/article-21-26-tax-return</span>
       </div>
       <div class="role-item">
@@ -315,19 +329,18 @@
 <section id="fitur" class="alt-bg">
   <div class="wrap">
     <div class="section-head reveal">
-      <span class="eyebrow">Rincian fitur</span>
-      <h2>Tujuh cara Cindieh memangkas pekerjaan berulang</h2>
-      <p class="sub">Semua detail di bawah bersumber langsung dari kode ekstensi — termasuk batasan dan edge case yang sengaja ditangani.</p>
+            <h2>Tujuh cara Cindieh memangkas pekerjaan berulang</h2>
+      <p class="sub">Semua detail di bawah bersumber langsung dari kode ekstensi, termasuk batasan dan edge case yang sengaja ditangani.</p>
     </div>
 
     <div class="tabs">
-      <input type="radio" name="tabs" id="t1" checked>
-      <input type="radio" name="tabs" id="t2">
-      <input type="radio" name="tabs" id="t3">
-      <input type="radio" name="tabs" id="t4">
-      <input type="radio" name="tabs" id="t5">
-      <input type="radio" name="tabs" id="t6">
-      <input type="radio" name="tabs" id="t7">
+      <input type="radio" name="tabs" id="t1" class="sr-only" checked>
+      <input type="radio" name="tabs" id="t2" class="sr-only">
+      <input type="radio" name="tabs" id="t3" class="sr-only">
+      <input type="radio" name="tabs" id="t4" class="sr-only">
+      <input type="radio" name="tabs" id="t5" class="sr-only">
+      <input type="radio" name="tabs" id="t6" class="sr-only">
+      <input type="radio" name="tabs" id="t7" class="sr-only">
 
       <div class="tabs-ui reveal">
         <div class="tab-labels">
@@ -350,26 +363,27 @@
                 <li>Pilih <strong>Ekspor XLSX</strong> atau <strong>Ekspor CSV</strong>.</li>
                 <li>Di halaman PPN Keluaran tersedia pula <strong>Ekspor 1 Tahun (12 Masa)</strong>: seluruh masa pajak setahun dalam satu file, dengan progres per masa di panel.</li>
                 <li>Panel progres muncul otomatis di pojok kanan bawah, menampilkan pengambilan data per halaman.</li>
-                <li>File langsung terunduh ke komputer setelah selesai — satu file, sudah tergabung.</li>
+                <li>File langsung terunduh ke komputer setelah selesai, satu file, sudah tergabung.</li>
               </ol>
             </div>
             <div class="feat-side">
               <h3>Halaman &amp; nama file (11 sumber)</h3>
               <table class="mini-table">
+<caption class="sr-only">Halaman dan awalan nama file untuk sebelas sumber ekspor Cindieh.</caption>
                 <tr><th>Halaman</th><th>Prefix</th></tr>
                 <tr><td>PPN Keluaran</td><td class="filechip" style="margin:0;">FPK‑</td></tr>
                 <tr><td>PPN Masukan</td><td class="filechip" style="margin:0;">FPM‑</td></tr>
                 <tr><td>Retur Keluaran</td><td class="filechip" style="margin:0;">RET‑FPK‑</td></tr>
                 <tr><td>Retur Masukan</td><td class="filechip" style="margin:0;">RET‑FPM‑</td></tr>
                 <tr><td>Lampiran A2 / B2</td><td class="filechip" style="margin:0;">A2‑ / B2‑</td></tr>
-                <tr><td>PPh 21 L1A · L1B · L2 · L3</td><td><span class="filechip">PPH21‑L1A‑</span><span class="filechip">PPH21‑L1B‑</span><span class="filechip">PPH21‑L2‑</span><span class="filechip">PPH21‑L3‑</span></td></tr>
+                <tr><td>PPh 21 L1A, L1B, L2, L3</td><td><span class="filechip">PPH21‑L1A‑</span><span class="filechip">PPH21‑L1B‑</span><span class="filechip">PPH21‑L2‑</span><span class="filechip">PPH21‑L3‑</span></td></tr>
                 <tr><td>Bukti Potong</td><td class="filechip" style="margin:0;">BP‑</td></tr>
               </table>
               <h3 style="margin-top:18px;">Contoh nama file</h3>
               <span class="filechip">FPK-072026.xlsx</span>
               <span class="filechip">A2-072026.xlsx</span>
               <p style="font-size:12.5px;color:var(--ink-soft);margin-top:14px;">Tanggal dikonversi dari ISO (<code>2026-07-01</code>) ke <code>DD/MM/YYYY</code>; pembacaannya diuji untuk berbagai zona waktu (GMT+7 s/d Z) supaya tidak ada nilai yang bergeser sehari.</p>
-              <p style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;">Awalan kustom dari popup ikut menempel di depan — mis. <span class="filechip">PTABC-</span> menghasilkan <span class="filechip">PTABC-FPK-072026.xlsx</span>, berguna saat mengelompokkan berkas per klien.</p>
+              <p style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;">Awalan kustom dari popup ikut menempel di depan, mis. <span class="filechip">PTABC-</span> menghasilkan <span class="filechip">PTABC-FPK-072026.xlsx</span>, berguna saat mengelompokkan berkas per klien.</p>
             </div>
           </div>
         </div>
@@ -383,18 +397,19 @@
                 <li>Klik tombol <strong>Unduh PDF</strong>.</li>
                 <li>Jika total PDF melewati ambang konfirmasi (bawaan: lebih dari 10, bisa diatur di popup), dialog konfirmasi muncul lebih dulu.</li>
                 <li>Progres tampil di panel: "Mengunduh PDF 57/234: …"</li>
-                <li>File tersimpan otomatis ke folder Downloads dengan nama yang informatif — bukan nama bawaan portal.</li>
+                <li>File tersimpan otomatis ke folder Downloads dengan nama yang informatif, bukan nama bawaan portal.</li>
               </ol>
             </div>
             <div class="feat-side">
               <h3>Format nama file</h3>
               <table class="mini-table">
+<caption class="sr-only">Contoh nama file PDF yang dihasilkan unduhan massal.</caption>
                 <tr><th>Sumber</th><th>Contoh</th></tr>
                 <tr><td>PPN Keluaran</td><td class="filechip" style="margin:0;font-size:11px;">SZ‑0447-07-26 - 010.000‑26.…pdf</td></tr>
                 <tr><td>Bukti Potong</td><td class="filechip" style="margin:0;font-size:11px;">07‑2026‑BP‑001‑PT MITRA.pdf</td></tr>
               </table>
               <h3 style="margin-top:18px;">Penanganan otomatis</h3>
-              <p style="font-size:13px;color:var(--ink-soft);">Faktur lama yang PDF‑nya sudah tidak tersedia akan dilewati, bukan menghentikan proses — ringkasan akhir menampilkan berapa yang berhasil dan berapa yang dilewati.</p>
+              <p style="font-size:13px;color:var(--ink-soft);">Faktur lama yang PDF‑nya sudah tidak tersedia akan dilewati, bukan menghentikan proses, ringkasan akhir menampilkan berapa yang berhasil dan berapa yang dilewati.</p>
             </div>
           </div>
         </div>
@@ -405,9 +420,9 @@
               <p class="feat-problem">Anda sering hanya perlu memproses sebagian kecil faktur, misalnya yang gagal validasi atau direvisi. Tanpa filter ini, Anda harus mengunduh semuanya lalu membuang yang tidak perlu.</p>
               <ol class="feat-steps">
                 <li>Klik tombol <strong>No. Faktur</strong> di toolbar.</li>
-                <li>Paste daftar nomor faktur dari Excel — satu per baris, atau dipisah koma/titik‑koma.</li>
+                <li>Paste daftar nomor faktur dari Excel, satu per baris, atau dipisah koma/titik‑koma.</li>
                 <li>Tekan Enter. Hint akan muncul: "X nomor faktur terdeteksi".</li>
-                <li>Jalankan Ekspor atau Unduh PDF — hanya baris yang cocok yang diproses.</li>
+                <li>Jalankan Ekspor atau Unduh PDF, hanya baris yang cocok yang diproses.</li>
               </ol>
             </div>
             <div class="feat-side">
@@ -416,7 +431,7 @@
               <span class="filechip">dipisah koma</span>
               <span class="filechip">dipisah titik‑koma</span>
               <p style="font-size:13px;color:var(--ink-soft);margin-top:14px;">Textarea kosong = tidak ada filter, semua faktur diproses seperti biasa.</p>
-              <p style="font-size:13px;color:var(--ink-soft);margin-top:10px;">Sebelum unduhan dimulai, daftar nomor Anda dicek dulu: nomor yang tidak punya baris disebutkan namanya di dialog konfirmasi — dan setelah selesai, panel melaporkan nomor yang tidak ditemukan di Coretax.</p>
+              <p style="font-size:13px;color:var(--ink-soft);margin-top:10px;">Sebelum unduhan dimulai, daftar nomor Anda dicek dulu: nomor yang tidak punya baris disebutkan namanya di dialog konfirmasi, dan setelah selesai, panel melaporkan nomor yang tidak ditemukan di Coretax.</p>
             </div>
           </div>
         </div>
@@ -427,15 +442,15 @@
               <p class="feat-problem">Coretax dulu punya pencarian berdasarkan kolom Referensi, yaitu nomor referensi internal perusahaan Anda. Fitur ini kemudian dihapus dari portal. Cindieh mengembalikannya.</p>
               <ol class="feat-steps">
                 <li>Buka halaman e‑Faktur PPN Keluaran.</li>
-                <li>Ketik nomor referensi di kotak <strong>Cari Referensi…</strong> — tersedia di toolbar maupun header kolom Referensi.</li>
+                <li>Ketik nomor referensi di kotak <strong>Cari Referensi…</strong>, tersedia di toolbar maupun header kolom Referensi.</li>
                 <li>Tekan Enter. Grid menampilkan hanya faktur yang cocok.</li>
                 <li>Kosongkan input untuk menghapus filter dan memuat ulang semua data.</li>
               </ol>
             </div>
             <div class="feat-side">
               <h3>Detail pencocokan</h3>
-              <p style="font-size:13px;color:var(--ink-soft);">Pencocokan bersifat <strong>awalan</strong> (<em>startswith</em>): ketik sebagian awal nomor referensi. Mode ini dipilih karena jauh lebih cepat daripada pencocokan <em>contains</em> — selisihnya bisa dari 0,15 detik jadi lebih dari 1 menit untuk nilai yang sama.</p>
-              <p style="font-size:13px;color:var(--ink-soft);margin-top:10px;">Nilai otomatis diubah ke huruf besar, karena filter Referensi di server Coretax bersifat <em>case-sensitive</em>. Bila awalan tidak menemukan apa pun, panel melaporkan <strong>tidak ditemukan</strong> dan pencarian berhenti — Cindieh tidak mengulang dengan mode <em>contains</em> yang lambat. Coba ketik awalan yang lebih pendek.</p>
+              <p style="font-size:13px;color:var(--ink-soft);">Pencocokan bersifat <strong>awalan</strong> (<em>startswith</em>): ketik sebagian awal nomor referensi. Mode ini dipilih karena jauh lebih cepat daripada pencocokan <em>contains</em>, selisihnya bisa dari 0,15 detik jadi lebih dari 1 menit untuk nilai yang sama.</p>
+              <p style="font-size:13px;color:var(--ink-soft);margin-top:10px;">Nilai otomatis diubah ke huruf besar, karena filter Referensi di server Coretax bersifat <em>case-sensitive</em>. Bila awalan tidak menemukan apa pun, panel melaporkan <strong>tidak ditemukan</strong> dan pencarian berhenti, Cindieh tidak mengulang dengan mode <em>contains</em> yang lambat. Coba ketik awalan yang lebih pendek.</p>
             </div>
           </div>
         </div>
@@ -446,7 +461,7 @@
               <p class="feat-problem">Mencocokkan data penjualan internal dengan faktur di Coretax biasanya berarti memakai vlookup manual atau membandingkan dua file satu per satu di Excel. Pekerjaan berulang yang rawan salah.</p>
               <ol class="feat-steps">
                 <li>Klik tombol <strong>Bandingkan</strong> (ikon daftar) di toolbar PPN Keluaran.</li>
-                <li>Copy data dari Excel, paste ke textarea — 3 kolom (Referensi, DPP, PPN) atau 4 kolom dengan mode <strong>Ref Lain</strong>.</li>
+                <li>Copy data dari Excel, paste ke textarea, 3 kolom (Referensi, DPP, PPN) atau 4 kolom dengan mode <strong>Ref Lain</strong>.</li>
                 <li>Atur Toleransi selisih, opsi Ref Lain / Mode Harian, dan Filter Status sesuai kebutuhan.</li>
                 <li>Klik <strong>Periksa</strong> (atau <span class="kbd">Ctrl+Enter</span>).</li>
                 <li>Hasil tampil per baris + ringkasan; klik ganda baris untuk langsung mencari referensi itu di grid Coretax.</li>
@@ -463,7 +478,7 @@
                 <span class="status-pill pill-miss"><span class="sw"></span>Tidak ditemukan</span>
                 <span class="status-pill pill-only"><span class="sw"></span>Hanya di Coretax</span>
               </div>
-              <p style="font-size:13px;color:var(--ink-soft);margin-top:14px;"><strong>Mode Harian</strong>: masukkan tanggal (1–31) untuk menemukan faktur yang ada di Coretax pada tanggal itu tapi belum ada di catatan internal Anda.</p>
+              <p style="font-size:13px;color:var(--ink-soft);margin-top:14px;"><strong>Mode Harian</strong>: masukkan tanggal (1-31) untuk menemukan faktur yang ada di Coretax pada tanggal itu tapi belum ada di catatan internal Anda.</p>
             </div>
           </div>
         </div>
@@ -473,8 +488,8 @@
             <div>
               <p class="feat-problem">Faktur yang sudah tercatat di Coretax kadang menyimpan nilai DPP, DPP Nilai Lain, atau PPN yang tidak konsisten. Menemukannya berarti menghitung ulang satu per satu di Excel, dan kalau tidak hati-hati, kesalahan baru ikut dilaporkan.</p>
               <ol class="feat-steps">
-                <li>Buka panel <strong>Bandingkan</strong>, lalu pilih tab <strong>Pengecekan Keakuratan Nilai</strong> — tersedia di halaman PPN Keluaran <strong>dan</strong> PPN Masukan.</li>
-                <li>Pilih <strong>Acuan</strong> — nilai mana yang dianggap benar.</li>
+                <li>Buka panel <strong>Bandingkan</strong>, lalu pilih tab <strong>Pengecekan Keakuratan Nilai</strong>, tersedia di halaman PPN Keluaran <strong>dan</strong> PPN Masukan.</li>
+                <li>Pilih <strong>Acuan</strong>, nilai mana yang dianggap benar.</li>
                 <li>Isi <strong>Toleransi</strong> bila perlu (selisih di dalam toleransi ditampilkan sebagai <code>-</code>).</li>
                 <li>Klik <strong>Periksa</strong>. Bila data belum ada, Cindieh menarik data grid tersebut dulu secara otomatis.</li>
                 <li>Kolom nama pihak lain menyesuaikan gridnya: <strong>Nama Pembeli</strong> di PPN Keluaran, <strong>Nama Penjual</strong> di PPN Masukan. Perhitungannya sama di keduanya.</li>
@@ -485,6 +500,7 @@
             <div class="feat-side">
               <h3>Acuan menentukan apa yang dihitung</h3>
               <table class="mini-table">
+<caption class="sr-only">Perhitungan tiap nilai acuan pada tab Pengebianan Nilai.</caption>
                 <tr><th>Acuan</th><th>Dihitung dari acuan</th></tr>
                 <tr><td>DPP</td><td style="font-size:12.5px;">DPP NL = 11/12 × DPP · PPN = 11% × DPP</td></tr>
                 <tr><td>DPP NL</td><td style="font-size:12.5px;">DPP = 12/11 × DPP NL · PPN = 12% × DPP NL</td></tr>
@@ -510,6 +526,7 @@
             <div class="feat-side">
               <h3>Shortcut aktif</h3>
               <table class="mini-table">
+<caption class="sr-only">Pintasan keyboard yang aktif di halaman yang didukung.</caption>
                 <tr><th>Tombol</th><th>Aksi</th></tr>
                 <tr><td><span class="kbd">Ctrl+Shift+E</span></td><td>Mulai / toggle scrape</td></tr>
                 <tr><td><span class="kbd">Ctrl+Shift+S</span></td><td>Hentikan scrape</td></tr>
@@ -527,11 +544,11 @@
 <section id="sebelum-sesudah">
   <div class="wrap">
     <div class="section-head reveal">
-      <span class="eyebrow">Sebelum &amp; sesudah</span>
-      <h2>Yang berubah bukan datanya — cara Anda mengambilnya</h2>
+            <h2>Yang berubah bukan datanya, melainkan cara Anda mengambilnya</h2>
     </div>
     <div style="overflow-x:auto;" class="reveal">
       <table class="compare-table">
+<caption class="sr-only">Perbandingan pekerjaan manual dengan hasil satu klik Cindieh.</caption>
         <thead><tr><th>Skenario</th><th>Coretax bawaan</th><th>Dengan Cindieh</th></tr></thead>
         <tbody>
           <tr>
@@ -574,29 +591,38 @@
 <section id="pengaturan" class="alt-bg">
   <div class="wrap">
     <div class="section-head reveal">
-      <span class="eyebrow">Pengaturan</span>
-      <h2>Semua preferensi ada di popup ekstensi</h2>
+            <h2>Semua preferensi ada di popup ekstensi</h2>
       <p class="sub">Klik ikon Cindieh di toolbar browser. Preferensi tersimpan lokal di browser Anda dan berlaku di tab portal yang sedang terbuka tanpa perlu reload.</p>
     </div>
     <div style="overflow-x:auto;" class="reveal">
       <table class="pref-table">
-        <thead><tr><th>Kontrol</th><th>Fungsi</th></tr></thead>
+        <caption class="sr-only">Setiap kontrol di popup Cindieh, dikelompokkan mengikuti bagian popup: tampilan dan nama file, kecepatan dan nilai bawaan, diagnostik, serta pemeliharaan.</caption>
         <tbody>
-          <tr><td>Aktifkan Cindieh</td><td>Saklar utama. Saat dimatikan, seluruh tombol dan panel Cindieh dibersihkan dari halaman portal; menyalakannya kembali menyuntik ulang tanpa reload.</td></tr>
-          <tr><td>Format export</td><td><em>Dirapikan</em> (header Indonesia + kolom pilihan) atau <em>Asli</em> (semua field Coretax apa adanya).</td></tr>
-          <tr><td>Format file default</td><td>XLSX atau CSV — ditandai centang di menu ekspor, jadi format langganan Anda langsung terlihat.</td></tr>
-          <tr><td>Ekspor sekali klik</td><td>Opsional (bawaan mati). Satu klik tombol Ekspor langsung mengunduh format default; panah di sebelahnya membuka pilihan lain.</td></tr>
-          <tr><td>Nama file</td><td>Awalan kustom di depan nama file. Mis. <span class="filechip">PTABC-</span> → <span class="filechip">PTABC-FPK-072026.xlsx</span>. Berguna mengelompokkan berkas per klien; nama PDF tidak diubah.</td></tr>
-          <tr><td>Kecepatan</td><td><em>Normal</em> / <em>Hati-hati</em> (2× lebih lambat) / <em>Sabar</em> (4× lebih lambat). Pilihan ini hanya memperlambat — Cindieh tidak pernah lebih cepat dari batas aman Coretax.</td></tr>
-          <tr><td>Unduhan massal</td><td>Ambang konfirmasi (bawaan lebih dari 10 berkas). Isi <code>0</code> untuk tidak pernah bertanya.</td></tr>
-          <tr><td>Default Komparator</td><td>Toleransi selisih DPP/PPN, tanggal mode harian, dan filter status yang terisi otomatis saat panel dibuka.</td></tr>
-          <tr><td>Default Pengecekan</td><td>Acuan yang dihitung ulang (<em>DPP</em> / <em>DPP Nilai Lain</em> / <em>PPN</em>), toleransi selisih nilai, dan filter status yang terisi otomatis saat tab Pengecekan dibuka.</td></tr>
-          <tr><td>Diagnostik · Log debug</td><td>Log <code>[Cindieh]</code> di console halaman, background, dan popup.</td></tr>
-          <tr><td>Diagnostik · Notifikasi saat selesai</td><td>Notifikasi desktop setelah ekspor/unduhan massal — termasuk saat gagal atau hanya sebagian, dan jumlah nomor faktur yang tidak ditemukan. Izin <code>notifications</code> diminta saat saklar dinyalakan (izin opsional, bukan saat pemasangan). Klik notifikasi untuk kembali ke tab prosesnya.</td></tr>
-          <tr><td>Pemeliharaan · Bersihkan cache</td><td>Membuang data hasil tarikan di tab portal, sehingga ekspor berikutnya mengambil ulang dari Coretax.</td></tr>
-          <tr><td>Pemeliharaan · Reset preferensi</td><td>Mengembalikan pengaturan di atas ke nilai bawaan — format export dan log debug tidak ikut direset.</td></tr>
+        <tr class="pref-group"><th scope="rowgroup" colspan="2">Tampilan dan nama file</th></tr>
+        <tr><td>Aktifkan Cindieh</td><td>Saklar utama. Saat dimatikan, seluruh tombol dan panel Cindieh dibersihkan dari halaman portal; menyalakannya kembali menyuntik ulang tanpa reload.</td></tr>
+        <tr><td>Format export</td><td><em>Dirapikan</em> (header Indonesia + kolom pilihan) atau <em>Asli</em> (semua field Coretax apa adanya).</td></tr>
+        <tr><td>Format file default</td><td>XLSX atau CSV, ditandai centang di menu ekspor, jadi format langganan Anda langsung terlihat.</td></tr>
+        <tr><td>Ekspor sekali klik</td><td>Opsional (bawaan mati). Satu klik tombol Ekspor langsung mengunduh format default; panah di sebelahnya membuka pilihan lain.</td></tr>
+        <tr><td>Nama file</td><td>Awalan kustom di depan nama file. Mis. <span class="filechip">PTABC-</span> → <span class="filechip">PTABC-FPK-072026.xlsx</span>. Berguna mengelompokkan berkas per klien; nama PDF tidak diubah.</td></tr>
         </tbody>
-      </table>
+        <tbody>
+        <tr class="pref-group"><th scope="rowgroup" colspan="2">Kecepatan dan nilai bawaan</th></tr>
+        <tr><td>Kecepatan</td><td><em>Normal</em> / <em>Hati-hati</em> (2× lebih lambat) / <em>Sabar</em> (4× lebih lambat). Pilihan ini hanya memperlambat, Cindieh tidak pernah lebih cepat dari batas aman Coretax.</td></tr>
+        <tr><td>Unduhan massal</td><td>Ambang konfirmasi (bawaan lebih dari 10 berkas). Isi <code>0</code> untuk tidak pernah bertanya.</td></tr>
+        <tr><td>Default Komparator</td><td>Toleransi selisih DPP/PPN, tanggal mode harian, dan filter status yang terisi otomatis saat panel dibuka.</td></tr>
+        <tr><td>Default Pengecekan</td><td>Acuan yang dihitung ulang (<em>DPP</em> / <em>DPP Nilai Lain</em> / <em>PPN</em>), toleransi selisih nilai, dan filter status yang terisi otomatis saat tab Pengecekan dibuka.</td></tr>
+        </tbody>
+        <tbody>
+        <tr class="pref-group"><th scope="rowgroup" colspan="2">Diagnostik</th></tr>
+        <tr><td>Log debug</td><td>Log <code>[Cindieh]</code> di console halaman, background, dan popup.</td></tr>
+        <tr><td>Notifikasi saat selesai</td><td>Notifikasi desktop setelah ekspor/unduhan massal, termasuk saat gagal atau hanya sebagian, dan jumlah nomor faktur yang tidak ditemukan. Izin <code>notifications</code> diminta saat saklar dinyalakan (izin opsional, bukan saat pemasangan). Klik notifikasi untuk kembali ke tab prosesnya.</td></tr>
+        </tbody>
+        <tbody>
+        <tr class="pref-group"><th scope="rowgroup" colspan="2">Pemeliharaan</th></tr>
+        <tr><td>Bersihkan cache</td><td>Membuang data hasil tarikan di tab portal, sehingga ekspor berikutnya mengambil ulang dari Coretax.</td></tr>
+        <tr><td>Reset preferensi</td><td>Mengembalikan pengaturan di atas ke nilai bawaan. Format export dan log debug tidak ikut direset.</td></tr>
+        </tbody>
+    </table>
     </div>
   </div>
 </section>
@@ -605,8 +631,7 @@
 <section id="keamanan">
   <div class="wrap">
     <div class="section-head reveal">
-      <span class="eyebrow">Keamanan &amp; privasi data</span>
-      <h2>Data Anda tidak pernah meninggalkan Coretax</h2>
+            <h2>Data Anda tidak pernah meninggalkan Coretax</h2>
       <p class="sub">Semua pemrosesan terjadi lokal di browser Anda. Cindieh tidak memiliki server sendiri.</p>
     </div>
 
@@ -627,32 +652,29 @@
 
     <div class="reveal" style="overflow-x:auto;">
       <table class="perm-table">
+<caption class="sr-only">Permission yang diminta ekstensi, dan tujuan masing-masing.</caption>
         <tr><th>Permission</th><th>Tujuan</th></tr>
         <tr><td>activeTab</td><td>Berinteraksi dengan tab Coretax yang sedang aktif.</td></tr>
         <tr><td>storage</td><td>Menyimpan preferensi seperti format ekspor terakhir dan pengaturan popup.</td></tr>
-        <tr><td>host_permissions</td><td>Hanya ke <code>coretaxdjp.pajak.go.id</code> — mengintersep request API internal Coretax. Tidak ada akses ke domain lain, cookies, atau riwayat browser.</td></tr>
-        <tr><td>notifications <span class="opt-tag">opsional</span></td><td>Hanya diminta saat Anda menyalakan saklar <strong>Notifikasi saat selesai</strong> di popup — untuk notifikasi desktop satu kali itu. Tidak diminta saat pemasangan.</td></tr>
+        <tr><td>host_permissions</td><td>Hanya ke <code>coretaxdjp.pajak.go.id</code>, mengintersep request API internal Coretax. Tidak ada akses ke domain lain, cookies, atau riwayat browser.</td></tr>
+        <tr><td>notifications <span class="opt-tag">opsional</span></td><td>Hanya diminta saat Anda menyalakan saklar <strong>Notifikasi saat selesai</strong> di popup, untuk notifikasi desktop satu kali itu. Tidak diminta saat pemasangan.</td></tr>
       </table>
     </div>
 
     <div class="comply-block reveal">
-      <div class="section-head" style="margin-bottom:26px;">
-        <span class="eyebrow">Kepatuhan kecepatan</span>
+      <div class="section-head">
         <h2 style="font-size:clamp(22px,2.6vw,28px);">Cepat, tapi tidak lebih cepat dari yang diizinkan</h2>
       </div>
       <div class="comply-grid">
-        <div class="comply-card">
-          <div class="cc-num">01</div>
+        <div class="comply-cell">
           <p class="cc-title">Berurutan, satu per satu</p>
-          <p class="cc-text">Permintaan dikirim serial dengan jeda antar request — tidak ada banjir permintaan paralel yang memicu alarm WAF DJP.</p>
+          <p class="cc-text">Permintaan dikirim serial dengan jeda antar request. Tidak ada banjir permintaan paralel yang memicu alarm WAF DJP.</p>
         </div>
-        <div class="comply-card">
-          <div class="cc-num">02</div>
+        <div class="comply-cell">
           <p class="cc-title">Batas halaman resmi</p>
-          <p class="cc-text">Cindieh memakai ukuran halaman yang memang disediakan portal: 500 baris/request untuk e‑Faktur dan 1.000 baris/request untuk SPT.</p>
+          <p class="cc-text">Cindieh memakai ukuran halaman yang memang disediakan portal: 500 baris per request untuk e‑Faktur, 1.000 baris per request untuk SPT.</p>
         </div>
-        <div class="comply-card">
-          <div class="cc-num">03</div>
+        <div class="comply-cell">
           <p class="cc-title">Pacing hanya memperlambat</p>
           <p class="cc-text">Preset <em>Normal / Hati‑hati / Sabar</em> hanya menambah jeda (2× dan 4×). Tidak ada pengaturan yang membuat proses lebih cepat dari batas aman.</p>
         </div>
@@ -662,62 +684,42 @@
   </div>
 </section>
 
-<!-- KOMPATIBILITAS -->
-<section id="kompatibilitas" class="alt-bg">
-  <div class="wrap">
-    <div class="section-head reveal">
-      <span class="eyebrow">Kompatibilitas</span>
-      <h2>Berjalan di browser yang sudah Anda pakai</h2>
-    </div>
-    <div class="browser-row reveal">
-      <div class="browser-badge"><span class="dot"></span>Google Chrome <span class="ok">Manifest V3</span></div>
-      <div class="browser-badge"><span class="dot"></span>Microsoft Edge <span class="ok">Chromium</span></div>
-      <div class="browser-badge"><span class="dot"></span>Mozilla Firefox <span class="ok">.xpi</span></div>
-    </div>
-    <p style="color:var(--ink-soft);font-size:14.5px;max-width:60ch;" class="reveal">
-      Ekstensi hanya aktif di <code>coretaxdjp.pajak.go.id</code> — portal pajak lain seperti DJP Online atau e‑Nofa tidak didukung.
-    </p>
-  </div>
-</section>
 
 <!-- INSTALASI & UNDUHAN -->
 <section id="unduhan" class="alt-bg">
   <div class="wrap">
     <div class="section-head reveal">
-      <span class="eyebrow">Instalasi &amp; unduhan</span>
-      <h2>Pasang dalam dua menit</h2>
-      <p class="sub">Cindieh gratis dan bebas dipasang dari repositori ini. Belum ada versi di Chrome Web Store atau Firefox Add-ons — untuk sekarang, semua yang tercantum di bawah dibangun langsung dari kode sumber terbuka (lisensi MIT).</p>
+            <h2>Pasang dalam dua menit</h2>
+      <p class="sub">Cindieh gratis dan bebas dipasang dari repositori ini. Belum ada versi di <span lang="en">Chrome Web Store</span> atau <span lang="en">Firefox Add-ons</span>, untuk sekarang, semua yang tercantum di bawah dibangun langsung dari kode sumber terbuka (lisensi MIT). Ekstensi hanya aktif di <code>coretaxdjp.pajak.go.id</code>; portal pajak lain seperti DJP Online atau e‑Nofa tidak didukung.</p>
     </div>
 
     <div class="install-grid reveal">
       <div class="install-card">
-        <span class="ic-tag">Chrome · Edge</span>
-        <h3>Load unpacked</h3>
-        <p class="ic-lead">Chrome dan Edge memuat ekstensi langsung dari folder build — tanpa perakitan dan tanpa sertifikat.</p>
+        <h3>Chrome &amp; Edge</h3>
+        <p class="ic-lead">Load unpacked: memuat ekstensi langsung dari folder build, tanpa perakitan dan tanpa sertifikat.</p>
         <ol>
-          <li>Unduh <span class="filechip">cindieh-chrome.zip</span> lewat tombol di bawah, lalu ekstrak — atau bangun sendiri dengan satu perintah.</li>
+          <li>Unduh <span class="filechip">cindieh-chrome.zip</span> lewat tombol di bawah, lalu ekstrak, atau bangun sendiri dengan satu perintah.</li>
           <li>Buka <code>chrome://extensions/</code>.</li>
-          <li>Nyalakan <strong>Mode Developer</strong> di pojok kanan atas.</li>
-          <li>Klik <strong>Load unpacked</strong>, lalu pilih folder <code>dist/cindieh-chrome/</code>.</li>
+          <li>Nyalakan <strong lang="en">Mode Developer</strong> di pojok kanan atas.</li>
+          <li>Klik <strong lang="en">Load unpacked</strong>, lalu pilih folder <code>dist/cindieh-chrome/</code>.</li>
         </ol>
-        <p class="ic-note">Pilih <strong>foldernya</strong>, bukan isi folder — arsip <code>.zip</code> harus diekstrak dulu.</p>
+        <p class="ic-note">Pilih <strong>foldernya</strong>, bukan isi folder, karena arsip <code>.zip</code> harus diekstrak dulu.</p>
       </div>
 
       <div class="install-card">
-        <span class="ic-tag">Firefox</span>
-        <h3>Paket .xpi</h3>
-        <p class="ic-lead">Firefox memasang dari satu file berformat .xpi.</p>
+        <h3>Firefox</h3>
+        <p class="ic-lead">Paket <code>.xpi</code>: memasang dari satu file berformat .xpi.</p>
         <ol>
-          <li>Unduh <span class="filechip">cindieh-firefox.xpi</span> lewat tombol di bawah — atau bangun sendiri dengan <code>pnpm run release:assets</code>.</li>
+          <li>Unduh <span class="filechip">cindieh-firefox.xpi</span> lewat tombol di bawah, atau bangun sendiri dengan <code>pnpm run release:assets</code>.</li>
           <li>Buka <code>about:addons</code>, klik ikon roda gigi (⚙️) di pojok kanan atas.</li>
-          <li>Pilih <strong>Install Add-on From File…</strong>, lalu pilih file <code>.xpi</code>.</li>
+          <li>Pilih <strong lang="en">Install Add-on From File…</strong>, lalu pilih file <code>.xpi</code>.</li>
           <li>Untuk build lokal tanpa tanda tangan Mozilla, set <code>xpinstall.signatures.required</code> menjadi <code>false</code> di <code>about:config</code>.</li>
         </ol>
       </div>
 
-      <div class="install-card">
-        <span class="ic-tag">Semua platform</span>
-        <h3>Build dari sumber</h3>
+      <div class="install-card wide">
+        <h3>Semua platform, dari sumber</h3>
+        <p class="ic-lead">Kode sumbernya terbuka di lisensi MIT. Satu perintah membangun folder siap-load untuk kedua browser plus tiga arsip.</p>
         <pre class="code-block"><span class="cmt"># butuh Node.js + pnpm</span>
 git clone https://github.com/allababbot/cindieh
 cd cindieh
@@ -732,6 +734,12 @@ pnpm run build</pre>
       <a class="btn btn-ghost" href="https://github.com/allababbot/cindieh/releases/latest/download/cindieh-firefox.xpi" rel="noopener">Firefox<span class="btn-sub">cindieh-firefox.xpi</span></a>
       <a class="btn btn-ghost" href="https://github.com/allababbot/cindieh/releases/latest/download/cindieh-source.zip" rel="noopener">Kode sumber<span class="btn-sub">cindieh-source.zip</span></a>
       <p class="dl-note">Tautan selalu menunjuk ke rilis terbaru. Arsip dibangun otomatis oleh <code>pnpm run release:assets</code> dan diunggah sebagai aset GitHub Release setiap kali versi baru diterbitkan.</p>
+    <p class="roadmap-note reveal">
+      <span class="tag">Direncanakan</span>
+      Distribusi ke Chrome Web Store dan Firefox Add-ons. Arsip rilis di atas sudah dibangun
+      otomatis oleh <code>pnpm run release:assets</code> dan diunggah sebagai aset GitHub
+      Release setiap versi baru, jadi saat store siap, cara mengunduhnya tidak berubah.
+    </p>
     </div>
   </div>
 </section>
@@ -740,13 +748,12 @@ pnpm run build</pre>
 <section id="faq">
   <div class="wrap">
     <div class="section-head reveal">
-      <span class="eyebrow">FAQ</span>
-      <h2>Pertanyaan yang paling sering ditanyakan</h2>
+            <h2>Pertanyaan yang paling sering ditanyakan</h2>
     </div>
     <div class="reveal">
       <details class="faq-item" open>
         <summary>Apakah Cindieh mengirim data pajak saya ke server lain?</summary>
-        <p class="faq-a">Tidak. Semua pemrosesan terjadi lokal di browser. Ekstensi hanya berkomunikasi dengan <code>coretaxdjp.pajak.go.id</code> — domain yang sama dengan yang sudah Anda buka. Tidak ada server backend Cindieh yang menerima data faktur Anda.</p>
+        <p class="faq-a">Tidak. Semua pemrosesan terjadi lokal di browser. Ekstensi hanya berkomunikasi dengan <code>coretaxdjp.pajak.go.id</code>, domain yang sama dengan yang sudah Anda buka. Tidak ada server backend Cindieh yang menerima data faktur Anda.</p>
       </details>
       <details class="faq-item">
         <summary>Permission apa saja yang diminta, dan kenapa?</summary>
@@ -758,11 +765,11 @@ pnpm run build</pre>
       </details>
       <details class="faq-item">
         <summary>Browser apa saja yang didukung?</summary>
-        <p class="faq-a">Chrome dan Edge versi Chromium modern, serta Firefox 109+. Instalasi via "Load Unpacked" untuk Chrome/Edge, atau file <code>.xpi</code> untuk Firefox.</p>
+        <p class="faq-a">Chrome dan Edge versi Chromium modern, serta Firefox 109+. Instalasi via <span lang="en">"Load Unpacked"</span> untuk Chrome/Edge, atau file <code>.xpi</code> untuk Firefox.</p>
       </details>
       <details class="faq-item">
         <summary>Kok "Cari Referensi" tidak menemukan faktur saya?</summary>
-        <p class="faq-a">Pencocokan dilakukan terhadap <strong>awalan</strong> nomor referensi, bukan sembarang posisi di dalamnya — mode itu terbukti jauh lebih cepat di server Coretax. Ketik sebagian awal referensi (bisa lebih pendek), lalu Enter. Jika tetap kosong, panel menyatakan "tidak ditemukan" dan berhenti, bukan mencoba mode lambat di belakang layar.</p>
+        <p class="faq-a">Pencocokan dilakukan terhadap <strong>awalan</strong> nomor referensi, bukan sembarang posisi di dalamnya, mode itu terbukti jauh lebih cepat di server Coretax. Ketik sebagian awal referensi (bisa lebih pendek), lalu Enter. Jika tetap kosong, panel menyatakan "tidak ditemukan" dan berhenti, bukan mencoba mode lambat di belakang layar.</p>
       </details>
       <details class="faq-item">
         <summary>Apa yang terjadi kalau DJP mengubah tampilan Coretax?</summary>
@@ -770,15 +777,17 @@ pnpm run build</pre>
       </details>
       <details class="faq-item">
         <summary>Apakah Cindieh memerlukan akun atau registrasi?</summary>
-        <p class="faq-a">Tidak. Ekstensi langsung berfungsi setelah dipasang dan Anda login ke Coretax seperti biasa — tidak ada akun, registrasi, atau kunci lisensi.</p>
+        <p class="faq-a">Tidak. Ekstensi langsung berfungsi setelah dipasang dan Anda login ke Coretax seperti biasa, tidak ada akun, registrasi, atau kunci lisensi.</p>
       </details>
       <details class="faq-item">
         <summary>Apakah legal menggunakan ekstensi pihak ketiga di portal pemerintah?</summary>
-        <p class="faq-a">Sudah ditinjau, dan tinjauan itu tidak menemukan pelanggaran. <strong>Pasal 30 UU ITE</strong> (akses tanpa hak): Cindieh hanya berjalan pada sesi login resmi milik Wajib Pajak sendiri, tanpa penerobosan, pembobolan, atau bypass autentikasi, sehingga aksesnya sah. <strong>Pasal 32 UU ITE</strong> (perusakan data elektronik): seluruh fitur bersifat baca-saja — tidak ada instruksi yang mengubah, memanipulasi, memalsukan, atau menghapus data di server DJP. <strong>Ketentuan portal</strong> yang melarang otomatisasi mengganggu ketersediaan layanan: Cindieh memakai batas ukuran halaman resmi portal, jeda antar request, dan circuit breaker yang menghentikan proses otomatis setelah tiga galat berturut-turut. Catatan: tinjauan ini mencakup UU ITE dan ketentuan portal, bukan penilaian hukum atas keadaan spesifik perusahaan Anda — bila penggunaan Cindieh dalam pekerjaan Anda menimbulkan implikasi hukum, mintalah penilaian kepada penasihat hukum Anda. Rinciannya terbuka di <a href="https://github.com/allababbot/cindieh/blob/main/LEGAL_COMPLIANCE.md" rel="noopener">LEGAL_COMPLIANCE.md</a>.</p>
+        <p class="faq-a">Sudah ditinjau, dan tinjauan itu tidak menemukan pelanggaran.</p>
+        <p class="faq-a"><strong>Pasal 30 UU ITE</strong> (akses tanpa hak): Cindieh hanya berjalan pada sesi login resmi milik Wajib Pajak sendiri, tanpa penerobosan, pembobolan, atau bypass autentikasi, sehingga aksesnya sah. <strong>Pasal 32 UU ITE</strong> (perusakan data elektronik): seluruh fitur bersifat baca-saja, tidak ada instruksi yang mengubah, memanipulasi, memalsukan, atau menghapus data di server DJP. <strong>Ketentuan portal</strong> yang melarang otomatisasi mengganggu ketersediaan layanan: Cindieh memakai batas ukuran halaman resmi portal, jeda antar request, dan circuit breaker yang menghentikan proses otomatis setelah tiga galat berturut-turut. Catatan: tinjauan ini mencakup UU ITE dan ketentuan portal, bukan penilaian hukum atas keadaan spesifik perusahaan Anda, bila penggunaan Cindieh dalam pekerjaan Anda menimbulkan implikasi hukum, mintalah penilaian kepada penasihat hukum Anda.</p>
+        <p class="faq-a">Rinciannya terbuka di <a href="https://github.com/allababbot/cindieh/blob/main/LEGAL_COMPLIANCE.md" rel="noopener">LEGAL_COMPLIANCE.md</a>.</p>
       </details>
       <details class="faq-item">
         <summary>Apakah Cindieh gratis?</summary>
-        <p class="faq-a">Gratis sepenuhnya dan akan tetap gratis — tanpa akun, tanpa langganan, tanpa kunci lisensi. Kode sumbernya terbuka di GitHub di bawah lisensi MIT: bebas dipakai, dimodifikasi, dan didistribusikan ulang, bahkan untuk keperluan komersial, selama atribusi diberikan.</p>
+        <p class="faq-a">Gratis sepenuhnya dan akan tetap gratis, tanpa akun, tanpa langganan, tanpa kunci lisensi. Kode sumbernya terbuka di GitHub di bawah lisensi MIT: bebas dipakai, dimodifikasi, dan didistribusikan ulang, bahkan untuk keperluan komersial, selama atribusi diberikan.</p>
       </details>
       <details class="faq-item">
         <summary>Bagaimana cara memasang Cindieh?</summary>
@@ -792,24 +801,6 @@ pnpm run build</pre>
   </div>
 </section>
 
-<!-- ROADMAP -->
-<section id="roadmap" class="alt-bg">
-  <div class="wrap">
-    <div class="section-head reveal">
-      <span class="eyebrow">Sedang disiapkan</span>
-      <h2>Selanjutnya</h2>
-    </div>
-    <div class="roadmap-stack reveal">
-      <div class="roadmap-card">
-        <span class="tag">Direncanakan</span>
-        <div>
-          <p style="font-weight:600;margin-bottom:6px;">Hadir di Chrome Web Store &amp; Firefox Add‑ons</p>
-          <p style="color:var(--ink-soft);font-size:14.5px;">Arsip rilis (zip Chrome, <code>.xpi</code> Firefox, dan paket sumber untuk pengajuan Mozilla) sudah dibangun otomatis oleh skrip paket proyek — pendistribusian resmi ke store sedang disiapkan.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
 
 </main>
 
@@ -821,8 +812,7 @@ pnpm run build</pre>
         <a href="#fitur">Fitur</a>
         <a href="#pengaturan">Pengaturan</a>
         <a href="#keamanan">Keamanan</a>
-        <a href="#unduhan">Unduh</a>
-        <a href="#faq">FAQ</a>
+          <a href="#faq">FAQ</a>
         <a href="privacy.html">Kebijakan Privasi</a>
         <a href="https://github.com/allababbot/cindieh" rel="noopener">GitHub</a>
       </nav>

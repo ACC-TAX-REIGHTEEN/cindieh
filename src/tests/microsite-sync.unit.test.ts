@@ -857,14 +857,13 @@ describe("microsite — colour contrast", () => {
     [".ct-btn label (portal mock)", "--ink-soft", "--paper-deep", 13, 500],
     [".ct-input text", "--miss-ink", "#fff", 13, 400],
     [".eyebrow", "--stamp-dark", "--paper", 12.5, 400],
-    [".eyebrow on alt-bg", "--stamp-dark", "--paper-alt", 12.5, 400],
-    [".hero-note", "--stamp-dark", "--paper", 12.5, 400],
-    [".install-card .ic-tag", "--stamp-dark", "--card", 11, 400],
     [".perm-table td:first-child", "--stamp-dark", "--paper", 13, 400],
     [".opt-tag", "--stamp-dark", "--stamp-tint", 10, 500],
     [".legal .stamp-note", "--stamp-dark", "--stamp-tint", 11, 400],
     [".legal .none", "--match-ink", "--match-tint", 12.5, 400, PAPER],
-    [".roadmap-card .tag", "--diff-ink", "--diff-tint", 11, 400, CARD],
+    // The distribution status line sits on `.alt-bg`, so its tint composites
+    // over --paper-alt rather than over --paper.
+    [".roadmap-note .tag", "--diff-ink", "--diff-tint", 11, 400, PAPER_ALT],
     [".pill-match (card)", "--match-ink", "--match-tint", 13, 500, CARD],
     [".pill-diff (card)", "--diff-ink", "--diff-tint", 13, 500, CARD],
     [".pill-bad (card)", "--bad-ink", "--bad-tint", 13, 500, CARD],
@@ -875,9 +874,10 @@ describe("microsite — colour contrast", () => {
     [".pill-bad (paper)", "--bad-ink", "--bad-tint", 13, 500, PAPER],
     [".pill-miss (paper)", "--miss-ink", "--miss-tint", 13, 500, PAPER],
     [".pill-only (paper)", "--only-ct-ink", "--only-ct-tint", 13, 500, PAPER],
-    [".compare-table th", "--ink-soft", "--card", 11.5, 600],
-    [".compare-table td.before", "--bad-ink", "--card", 14.5, 400],
-    [".compare-table td.after", "--match-ink", "--card", 14.5, 500],
+    [".compare-table th", "--ink-soft", "--paper", 11.5, 600],
+    [".compare-table td.before", "--bad-ink", "--paper", 14.5, 400],
+    [".compare-table td.after", "--match-ink", "--paper", 14.5, 500],
+    [".pref-group th", "--stamp-dark", "--card", 11.5, 600],
     [".pref-table td", "--ink-soft", "--card", 14, 400],
     [".pref-table td:first-child", "--ink", "--card", 15, 700],
     [".perm-table th", "--ink-soft", "--paper", 11, 600],
@@ -899,10 +899,9 @@ describe("microsite — colour contrast", () => {
     [".sd-node .lbl", "--ink-soft", "--card", 11, 400],
     [".sd-ct .name", "--match-ink", "--match-tint", 14.5, 600, CARD],
     [".sd-other .badge", "--bad-ink", "--bad-tint", 12, 400, CARD],
-    [".comply-card .cc-num", "--stamp", "--card", 12, 600],
-    [".comply-card .cc-text", "--ink-soft", "--card", 13.5, 400],
+    [".comply-cell .cc-text", "--ink-soft", "--paper", 13.5, 400],
+    [".comply-cell .cc-title", "--ink", "--paper", 17, 600],
     [".comply-link a", "--stamp-dark", "--paper", 13.5, 600],
-    [".browser-badge .ok", "--match-ink", "--card", 12, 600],
     [".ic-lead", "--ink-soft", "--card", 13.5, 400],
     [".install-card ol", "--ink-soft", "--card", 13.5, 400],
     [".ic-note", "--ink-soft", "--card", 12.5, 400],
@@ -1477,10 +1476,17 @@ describe("microsite — legal copy matches the published audit", () => {
     .map((c) => c.match(/Pasal (\d+) UU ITE/)?.[1])
     .filter((a): a is string => a !== undefined);
 
-  /** The FAQ answer, located by its own question rather than by page position. */
+  /**
+   * The FAQ answer, located by its own question rather than by page position.
+   * It reads the whole `<details>` body, not one `<p class="faq-a">`: the legal
+   * answer is three paragraphs, one per legal ground, because a 944-character
+   * wall was the least scannable thing on the page. `flat()` strips the tags, so
+   * the extra markup costs these checks nothing and it is strictly more text
+   * for the banned-wording sweep below to inspect.
+   */
   const faqAnswer =
     microsite.match(
-      /<summary>Apakah legal menggunakan[\s\S]*?<\/summary>\s*<p class="faq-a">([\s\S]*?)<\/p>/,
+      /<summary>Apakah legal menggunakan[\s\S]*?<\/summary>([\s\S]*?)<\/details>/,
     )?.[1] ?? "";
 
   it("finds the audit conclusions the page depends on", () => {
@@ -1696,10 +1702,20 @@ describe("microsite — JSON-LD matches what the page actually shows", () => {
 
   const parsed = (): { "@graph": { "@type": string }[] } => JSON.parse(ldSource ?? "");
 
-  /** The questions a reader can actually open, straight from the markup. */
+  /**
+   * The questions a reader can actually open, straight from the markup.
+   *
+   * Each answer is read as the WHOLE `<details>` body rather than one
+   * `<p class="faq-a">`. An answer may legitimately be several paragraphs (the
+   * legal one is, one per legal ground), and the old single-`<p>` pattern read
+   * only the first paragraph of those: it still passed the count check, so the
+   * page could quietly lose two thirds of an answer while the suite stayed
+   * green. `plain()` strips the tags, so a multi-paragraph answer arrives here
+   * as the same string the JSON-LD carries.
+   */
   const visibleFaq = [
     ...microsite.matchAll(
-      /<details class="faq-item"[^>]*>\s*<summary>([\s\S]*?)<\/summary>\s*<p class="faq-a">([\s\S]*?)<\/p>/g,
+      /<details class="faq-item"[^>]*>\s*<summary>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/g,
     ),
   ].map((m) => ({ question: plain(m[1]), answer: plain(m[2]) }));
 
@@ -1816,4 +1832,64 @@ describe("microsite — one main landmark and a skip link that skips", () => {
       ).toBe(true);
     });
   }
+});
+
+// ── House style the page has to keep ─────────────────────────────────────
+
+describe("microsite, house style", () => {
+  // Two rules from the redesign, both mechanical, both checked here because
+  // nothing else in this suite would notice either one going back.
+
+  it("spends its eyebrow budget at most once per three sections", () => {
+    // An eyebrow is the small-caps mono category label above a section
+    // headline. The page used to print one above EVERY section head, which is
+    // the rhythm that makes a page read as a template rather than a page: the
+    // label stops carrying information once it repeats. It is spent once, in
+    // the hero, where the one thing a visitor cannot infer from the headline is
+    // what kind of thing this is.
+    const strip = stripComments(microsite);
+    const heads =
+      [...strip.matchAll(/<section\b/g)].length +
+      [...strip.matchAll(/<header\b[^>]*class="hero"/g)].length;
+    const eyebrows = [...strip.matchAll(/class="eyebrow"/g)].length;
+
+    expect(heads, "the landing page lost its section heads — update this budget").toBeGreaterThan(3);
+    expect(
+      eyebrows,
+      `${eyebrows} eyebrow(s) over ${heads} heads: the budget is one per three, and the label is only worth printing where it adds something`,
+    ).toBeLessThanOrEqual(Math.ceil(heads / 3));
+  });
+
+  it("prints no em-dash a reader can see", () => {
+    // The em-dash was the page's signature tic: 59 of them across three files,
+    // almost all of them the same "X, Y" the comma already says. Comments are
+    // stripped first, because a developer note is not shown to anyone and must
+    // not redden the build; <style> and <script> bodies are not stripped, since
+    // the JSON-LD answers are what search engines print.
+    const offenders: string[] = [];
+    for (const [name, html] of [
+      ["index.html", microsite],
+      ["privacy.html", privacyPolicy],
+      ["404.html", notFoundPage],
+    ] as const) {
+      const shown = stripComments(html);
+      for (const match of shown.matchAll(/[—–]/g)) {
+        const at = match.index!;
+        offenders.push(`${name}: …${shown.slice(Math.max(0, at - 45), at + 45).trim()}…`);
+      }
+    }
+    expect(offenders.join("\n"), "an em-dash is back in the rendered text").toBe("");
+  });
+
+  it("does not synthesise an italic the fonts do not ship", () => {
+    // None of the five woff2 files is an italic cut, so every <em> used to be
+    // drawn as a SYNTHESISED oblique, which IBM Plex Sans renders visibly wrong
+    // at body sizes. The sheet now carries weight instead, and the literal
+    // identifiers became <code>. This pins the outcome rather than the intent:
+    // a stylesheet rule setting font-style:italic anywhere fails here.
+    expect(
+      /font-style\s*:\s*italic/i.test(stripComments(micrositeCss)),
+      "microsite.css sets font-style:italic, but no shipped font has an italic face",
+    ).toBe(false);
+  });
 });
