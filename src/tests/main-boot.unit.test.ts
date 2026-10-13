@@ -26,6 +26,8 @@ const OUTPUT_TAX_URL = `${PORTAL_ORIGIN}/e-invoice-portal/output-tax`;
 /** `SEARCH_CLICK_DELAY_MS` in main-actions.ts: the click is deferred, not immediate. */
 const SEARCH_CLICK_DELAY_MS = 100;
 const EXPORT_MODE_KEY = "cindiehExportMode";
+const EXPORT_FORMAT_KEY = "cindiehExportFormat";
+const ONE_CLICK_EXPORT_KEY = "cindiehOneClickExport";
 const DEBUG_KEY = "cindieh:debug";
 const MIRROR_MARKER_KEY = "cindieh:debug:ext";
 const ENABLED_KEY = "cindiehEnabled";
@@ -152,13 +154,20 @@ async function flush(): Promise<void> {
 
 // ── Boot ──────────────────────────────────────────────
 
-async function bootMain(options: { href?: string; pageStorage?: ReturnType<typeof makePageStorage> } = {}) {
+async function bootMain(
+  options: {
+    href?: string;
+    pageStorage?: ReturnType<typeof makePageStorage>;
+    /** Every storage read refuses, for the guarded paths' fallback behaviour. */
+    rejectReads?: boolean;
+  } = {},
+) {
   const { doc } = stubFakeDom();
   const page = options.pageStorage ?? makePageStorage();
   const location = { href: options.href ?? SPT_URL, origin: PORTAL_ORIGIN };
   const { win, messages, fire, listenerCount } = makeBootWindow(location);
 
-  const stored = deferred<Record<string, unknown>>();
+  const stored = options.rejectReads ? null : deferred<Record<string, unknown>>();
   const onChanged: Array<(changes: Record<string, { newValue?: unknown }>, area: string) => void> = [];
   // Every `storage.local.set` the content world makes. The completion hand-off
   // is a write, so this is the only place a test can observe it from boot.
@@ -171,9 +180,13 @@ async function bootMain(options: { href?: string; pageStorage?: ReturnType<typeo
   vi.stubGlobal("browser", {
     storage: {
       // loadExportModePreference() and the debug read share this promise: the
-      // test can hold both back until it decides the gate should open.
+      // test can hold both back until it decides the gate should open. Under
+      // rejectReads every read refuses instead, which is what the guarded
+      // fallbacks (readPreferences, loadExportModePreference) exist for.
       local: {
-        get: vi.fn(() => stored.promise),
+        get: vi.fn(() =>
+          stored ? stored.promise : Promise.reject(new Error("storage refused")),
+        ),
         set: vi.fn(async (payload: Record<string, unknown>) => {
           extensionWrites.push(payload);
         }),
@@ -211,7 +224,7 @@ async function bootMain(options: { href?: string; pageStorage?: ReturnType<typeo
     },
     /** Resolve the held-back storage read with the given stored keys. */
     async resolveStored(keys: Record<string, unknown> = {}): Promise<void> {
-      stored.resolve(keys);
+      stored?.resolve(keys);
       await flush();
     },
     /** The injected script element, if injection already happened. */
@@ -874,5 +887,317 @@ describe("main boot — a chunked scrape result", () => {
     });
 
     expect(run.result()).toBeNull();
+  });
+});
+
+// ── The in-page event seam ────────────────────────────
+
+// Everything the toolbar, the panel and the keyboard ask for arrives here as a
+// document event, and main.ts is the only listener. The guards around each of
+// them are wiring a seam suite cannot see: whether a live Run is stopped rather
+// than restarted, whether an export event carries the intent its format
+// implies, and whether a declined confirmation leaves a Run behind. The
+// reference search has its own describe above; this one covers the rest.
+
+describe("main boot — the in-page event seam", () => {
+  type Env = Awaited<ReturnType<typeof bootMain>>;
+
+  /** main.ts's debounce for a DOM mutation that does not change the URL. */
+  const DEBOUNCE_DELAY_MS = 300;
+
+  /**
+   * Seed the portal's own Upload button. On an e-faktur page the toolbar
+   * anchors to that button (ui.ts's findEfakturAnchor), so a bare fake page has
+   * nowhere to put it and the toolbar tests would assert against nothing.
+   */
+  function addPortalUploadAnchor(env: Env): void {
+    const wrap = env.doc.createElement("div");
+    const button = env.doc.createElement("button");
+    button.className = "p-button";
+    const icon = env.doc.createElement("i");
+    icon.className = "pi pi-upload";
+    button.appendChild(icon);
+    wrap.appendChild(button);
+    env.doc.body.appendChild(wrap);
+  }
+
+  /** Boot on a supported page with the extension switched on. */
+  async function bootEnabled(href = OUTPUT_TAX_URL): Promise<Env> {
+    const env = await bootMain({ href });
+    addPortalUploadAnchor(env);
+    env.fire("load");
+    await env.resolveStored({ [ENABLED_KEY]: true });
+    return env;
+  }
+
+  /** A live Run: every page message is gated on the current run id. */
+  async function bootRunning(): Promise<{ env: Env; runId: number }> {
+    const env = await bootEnabled();
+    env.emitStorageChange({ [RESET_REQUEST_KEY]: { newValue: 1 } });
+    const run = (await import("../content/run-lifecycle")).runLifecycle;
+    run.begin("scrape");
+    const { getActiveRunId } = await import("../content/bridge");
+    return { env, runId: getActiveRunId() };
+  }
+
+  const countPosted = (env: Env, type: string): number =>
+    env.messages.filter((m) => m.data.type === type).length;
+
+  const lastPosted = (env: Env, type: string): Record<string, unknown> | undefined =>
+    [...env.messages].reverse().find((m) => m.data.type === type)?.data;
+
+  const status = (env: Env): string =>
+    env.doc.getElementById("ch-f-status")?.textContent ?? "";
+
+  /** Frame a FROM_PAGE message the guard accepts. */
+  function fromPage(env: Env, data: Record<string, unknown>): void {
+    env.fire("message", {
+      source: env.win,
+      origin: PORTAL_ORIGIN,
+      data: { ...data, direction: "FROM_PAGE", token: env.token() },
+    });
+  }
+
+  it("starts a scrape from the toolbar toggle, and stops it from the same button", async () => {
+    const env = await bootEnabled();
+    const run = (await import("../content/run-lifecycle")).runLifecycle;
+
+    env.fireDoc("ch:scrape-toggle");
+
+    expect(lastPosted(env, "START_SCRAPE")).toMatchObject({
+      direction: "FROM_CONTENT",
+      token: env.token(),
+    });
+    expect(run.isRunning()).toBe(true);
+
+    env.fireDoc("ch:scrape-toggle");
+
+    expect(lastPosted(env, "STOP_SCRAPE")).toBeDefined();
+    expect(run.isRunning()).toBe(false);
+    // Stopping is not silent: the aborted run's data must not look reusable.
+    expect(status(env)).toContain("Proses dihentikan");
+  });
+
+  it("gives each export event the intent its format implies", async () => {
+    const env = await bootEnabled();
+    const run = (await import("../content/run-lifecycle")).runLifecycle;
+
+    env.fireDoc("ch:export-xlsx");
+    expect(lastPosted(env, "START_SCRAPE")).toMatchObject({ skipPdf: true });
+
+    run.abort();
+    env.fireDoc("ch:export-csv");
+    expect(lastPosted(env, "START_SCRAPE")).toMatchObject({ skipPdf: true });
+
+    run.abort();
+    env.fireDoc("ch:export-pdf");
+    // The PDF request is the one that must NOT be told to skip its own PDFs.
+    expect(lastPosted(env, "START_SCRAPE")).not.toHaveProperty("skipPdf");
+  });
+
+  it("starts no Run when the year-wide export's confirmation is declined", async () => {
+    const env = await bootEnabled();
+    vi.stubGlobal("confirm", vi.fn(() => false));
+
+    env.fireDoc("ch:export-batch");
+
+    // A declined confirmation must leave nothing for a completion to settle.
+    expect(countPosted(env, "START_SCRAPE")).toBe(0);
+    const run = (await import("../content/run-lifecycle")).runLifecycle;
+    expect(run.isRunning()).toBe(false);
+  });
+
+  it("starts a scrape from the auto-start event, and never restarts a live run", async () => {
+    const env = await bootEnabled();
+
+    env.fireDoc("ch:scrape-start");
+    expect(countPosted(env, "START_SCRAPE")).toBe(1);
+
+    env.fireDoc("ch:scrape-start");
+    expect(countPosted(env, "START_SCRAPE")).toBe(1);
+  });
+
+  it("opens the comparer panel from the toolbar event, taking focus with it", async () => {
+    const env = await bootEnabled();
+    const overlay = env.doc.getElementById("ch-comparer-overlay");
+    expect(overlay?.style.display).not.toBe("flex");
+
+    env.fireDoc("ch:compare-open");
+
+    expect(overlay?.style.display).toBe("flex");
+    expect(overlay?.classList.contains("ch-hidden")).toBe(false);
+    // Focus follows into the panel — onto whatever it offers to type into — or
+    // Escape would reach the portal instead of the dialog.
+    expect(overlay?.contains(env.doc.activeElement as FakeEl)).toBe(true);
+  });
+
+  it("ignores a search event that carries no reference", async () => {
+    const env = await bootEnabled();
+
+    env.fireDoc("ch:search-reference", { detail: {} });
+    env.fireDoc("ch:search-reference", {});
+
+    expect(countPosted(env, "SET_SERVER_FILTER")).toBe(0);
+  });
+
+  it("counts the multi-invoice paste locally, without touching the server filter", async () => {
+    const env = await bootEnabled();
+    const textarea = env.doc.createElement("textarea");
+    textarea.id = "ch-multi-invoice-textarea";
+    textarea.value = "INV-1, INV-2";
+    const hint = env.doc.createElement("div");
+    hint.id = "ch-multi-invoice-count";
+    env.doc.body.appendChild(textarea);
+    env.doc.body.appendChild(hint);
+    const preventDefault = vi.fn();
+
+    env.fireDoc("keyup", { key: "Enter", shiftKey: false, target: textarea, preventDefault });
+
+    expect(preventDefault).toHaveBeenCalled();
+    expect(hint.textContent).toContain("2 nomor siap");
+    // The count is local: no filter is sent, and Download PDF is the trigger.
+    expect(countPosted(env, "SET_SERVER_FILTER")).toBe(0);
+
+    // Shift+Enter is a newline, not a submit...
+    const shifted = vi.fn();
+    env.fireDoc("keyup", { key: "Enter", shiftKey: true, target: textarea, preventDefault: shifted });
+    expect(shifted).not.toHaveBeenCalled();
+
+    // ...and an event with no target at all must not throw.
+    expect(() => env.fireDoc("keyup", { key: "Enter" })).not.toThrow();
+  });
+
+  it("paints a progress message into the panel", async () => {
+    const { env, runId } = await bootRunning();
+
+    fromPage(env, {
+      type: "SCRAPE_PROGRESS",
+      total: 1200,
+      page: 2,
+      elapsed: "3s",
+      status: "Mengambil halaman 2",
+      runId,
+    });
+
+    expect(status(env)).toBe("Mengambil halaman 2");
+  });
+
+  it("resends a requested scrape once, repeating the intent it was asked with", async () => {
+    const env = await bootEnabled();
+    env.fireDoc("ch:export-xlsx");
+    const { getActiveRunId } = await import("../content/bridge");
+    const runId = getActiveRunId();
+    const before = env.messages.length;
+
+    // The scraper booted AFTER the request, so its readiness is the only reason
+    // the first START_SCRAPE could have been lost.
+    fromPage(env, { type: "INJECTED_READY", runId });
+    const resent = env.messages.slice(before).filter((m) => m.data.type === "START_SCRAPE");
+    expect(resent).toHaveLength(1);
+    expect(resent[0].data).toMatchObject({ skipPdf: true });
+
+    // At most once per injection, or a repeated ready would restart the scrape.
+    fromPage(env, { type: "INJECTED_READY", runId });
+    expect(env.messages.slice(before).filter((m) => m.data.type === "START_SCRAPE")).toHaveLength(1);
+  });
+
+  it("keeps a broken PDF payload from ending the message loop", async () => {
+    const { env, runId } = await bootRunning();
+
+    // base64ToBlob throws on an empty payload; the handler must swallow it,
+    // because an exception here would end the dispatch of the messages behind it.
+    expect(() =>
+      fromPage(env, {
+        type: "DOWNLOAD_PDF_ITEM",
+        base64: "",
+        item: {},
+        source: "OUTPUT_TAX",
+        runId,
+      }),
+    ).not.toThrow();
+
+    fromPage(env, { type: "REFERENCE_SEARCH_NOT_FOUND", value: "EE-0300", runId });
+    expect(status(env)).toContain("EE-0300");
+  });
+
+  it("re-injects a removed toolbar on a mutation, and leaves a live one alone", async () => {
+    const env = await bootEnabled();
+    const live = env.doc.getElementById("ch-export-dropdown-btn");
+    expect(live).not.toBeNull();
+
+    // A mutation with no URL change goes through the debounced injection path...
+    env.navigate(OUTPUT_TAX_URL);
+    vi.advanceTimersByTime(DEBOUNCE_DELAY_MS);
+
+    // ...and a toolbar that is already there is not rebuilt.
+    expect(env.doc.getElementById("ch-export-dropdown-btn")).toBe(live);
+
+    const ui = await import("../content/ui");
+    ui.removeExportButton();
+    env.navigate(OUTPUT_TAX_URL);
+    vi.advanceTimersByTime(DEBOUNCE_DELAY_MS);
+
+    // A removed one is rebuilt, which is what keeps the toolbar from
+    // disappearing for good after the portal re-renders its header.
+    const rebuilt = env.doc.getElementById("ch-export-dropdown-btn");
+    expect(rebuilt).not.toBeNull();
+    expect(rebuilt).not.toBe(live);
+  });
+
+  it("applies a format and one-click change to the toolbar in place", async () => {
+    const env = await bootEnabled();
+    const caretBtn = env.doc.getElementById("ch-export-dropdown-caret");
+    const exportBtn = env.doc.getElementById("ch-export-dropdown-btn");
+    expect(caretBtn?.classList.contains("ch-hidden")).toBe(true);
+
+    env.emitStorageChange({
+      [EXPORT_FORMAT_KEY]: { newValue: "csv" },
+      [ONE_CLICK_EXPORT_KEY]: { newValue: true },
+    });
+
+    // The check mark moves, and the caret splits off — without rebuilding the
+    // dropdown, which would fight Angular for the same node.
+    expect(env.doc.getElementById("ch-export-csv-item")?.getAttribute("aria-current")).toBe("true");
+    expect(env.doc.getElementById("ch-export-xlsx-item")?.getAttribute("aria-current")).toBeNull();
+    expect(caretBtn?.classList.contains("ch-hidden")).toBe(false);
+    expect(caretBtn?.children.some((c) => c.className.includes("pi-chevron-down"))).toBe(true);
+    expect(exportBtn?.querySelector(".pi-chevron-down")).toBeNull();
+    expect(exportBtn?.title).toContain("CSV");
+  });
+
+  it("starts the scrape from the keyboard shortcut, through the wiring main owns", async () => {
+    const env = await bootEnabled();
+    const preventDefault = vi.fn();
+
+    env.fireDoc("keydown", {
+      key: "E",
+      ctrlKey: true,
+      shiftKey: true,
+      metaKey: false,
+      preventDefault,
+    });
+
+    // Ctrl+Shift+E belongs to shortcuts.ts; what this pins is main.ts's own half
+    // — the live `isRunning`/`isEnabled` reads and the listener it keeps.
+    expect(preventDefault).toHaveBeenCalled();
+    expect(countPosted(env, "START_SCRAPE")).toBe(1);
+    const run = (await import("../content/run-lifecycle")).runLifecycle;
+    expect(run.isRunning()).toBe(true);
+  });
+
+  it("falls back to the documented defaults when storage refuses the read", async () => {
+    const env = await bootMain({ rejectReads: true });
+
+    env.fire("load");
+    await flush();
+
+    // Both guarded reads catch: the default is ON, so the page still gets its
+    // toolbar instead of being stranded half-painted.
+    expect(env.doc.getElementById("ch-floating-info-container")).not.toBeNull();
+    expect(env.script()).not.toBeNull();
+
+    // And the failed export-mode read does not break the click path afterwards.
+    env.fireDoc("ch:export-xlsx");
+    expect(countPosted(env, "START_SCRAPE")).toBe(1);
   });
 });

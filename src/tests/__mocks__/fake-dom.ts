@@ -368,6 +368,18 @@ export class FakeDoc {
   listenerCount(type: string): number {
     return this.listeners.get(type)?.size ?? 0;
   }
+
+  /**
+   * Fire the listeners registered for the event's type, the way the real
+   * document would. `CustomEvent` exists in Node, but this fake's listener map
+   * is the only registry, so a document-level dispatch (shortcuts.ts raises
+   * `ch:scrape-toggle` this way) has to go through it — without this the
+   * keyboard-seam wiring could only be read, never run.
+   */
+  dispatchEvent(event: Event): boolean {
+    for (const fn of [...(this.listeners.get(event.type) ?? [])]) fn(event);
+    return true;
+  }
 }
 
 export interface FakeWindow {
