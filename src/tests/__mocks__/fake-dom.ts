@@ -23,6 +23,15 @@ export class FakeEl {
   type = "";
   /** Reflected property for <script> markers (scraper boot harness). */
   src = "";
+  /** Reflected anchor properties: the download path builds one to save a blob. */
+  href = "";
+  download = "";
+  /**
+   * Activation, recorded the way focus() is. The fake owns no dispatch queue,
+   * so it cannot really click — but "did the download anchor get activated" is
+   * exactly what the blob-save paths assert.
+   */
+  clicks = 0;
   htmlFor = "";
   rows = 0;
   /**
@@ -249,6 +258,10 @@ export class FakeEl {
   focus(options?: { preventScroll?: boolean }): void {
     void options;
     this.doc.focusCalls.push(this);
+  }
+
+  click(): void {
+    this.clicks += 1;
   }
 
   matches(sel: string): boolean {

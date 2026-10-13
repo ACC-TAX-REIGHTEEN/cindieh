@@ -2,14 +2,17 @@
  * Unit tests for downloader.ts
  * Validates: Requirements 2.1, 2.2, 2.4, 2.5
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   base64ToBlob,
+  downloadBlob,
+  handlePdfDownload,
   generateWithholdingFilename,
   generateOutputTaxFilename,
   generateGenericPdfFilename,
   type WithholdingSlip,
 } from "../content/downloader";
+import { stubFakeDom, type FakeDoc, type FakeEl } from "./__mocks__/fake-dom";
 
 // ---------------------------------------------------------------------------
 // base64ToBlob
@@ -296,5 +299,109 @@ describe("generateGenericPdfFilename", () => {
   it("sanitizes forbidden characters in source and reference", () => {
     const item = { DocumentNumber: "DOC/123\\456" };
     expect(generateGenericPdfFilename(item, "UNKNOWN/SOURCE")).toBe("UNKNOWN-SOURCE-DOC-123-456.pdf");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// downloadBlob / handlePdfDownload (DOM)
+// ---------------------------------------------------------------------------
+// The browser end of a bulk PDF run: build the blob, pick the filename for the
+// page's source, and save it through a temporary anchor. It was the module's
+// biggest uncovered block because it needs an anchor, a URL API and a DOM to
+// click through — the fake DOM now provides all three, so what each source
+// NAMES its file is asserted here rather than read.
+
+describe("downloadBlob / handlePdfDownload (DOM)", () => {
+  let doc: FakeDoc;
+  /** Every element the module created, in order — the download anchor is one. */
+  let created: FakeEl[];
+  let createObjectURL: ReturnType<typeof vi.spyOn>;
+  let revokeObjectURL: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    doc = stubFakeDom().doc;
+    created = [];
+    const create = doc.createElement.bind(doc);
+    vi.spyOn(doc, "createElement").mockImplementation((tag) => {
+      const el = create(tag);
+      created.push(el);
+      return el;
+    });
+    createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cindieh");
+    revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  /** The download anchor the last call built. */
+  function lastAnchor(): FakeEl {
+    const anchor = created[created.length - 1];
+    expect(anchor.tagName).toBe("a");
+    return anchor;
+  }
+
+  it("saves the blob through a temporary anchor and releases the object URL", () => {
+    downloadBlob(new Blob(["pdf"], { type: "application/pdf" }), "hasil.pdf");
+
+    const anchor = lastAnchor();
+    expect(anchor.href).toBe("blob:cindieh");
+    expect(anchor.download).toBe("hasil.pdf");
+    expect(anchor.clicks).toBe(1);
+    // The anchor must not stay in the page: it is a click target, not UI.
+    expect(doc.body.children).not.toContain(anchor);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:cindieh");
+  });
+
+  it("names a PPN Keluaran file after its reference and letter number", () => {
+    handlePdfDownload(btoa("%PDF-1.4"), {
+      Reference: "SZ-0447-07-26",
+      LetterNumber: "010.000-26.00000001",
+    }, "OUTPUT_TAX");
+
+    expect(lastAnchor().download).toBe("SZ-0447-07-26 - 010.000-26.00000001.pdf");
+  });
+
+  it("names a PPN Masukan file from the tax invoice number", () => {
+    handlePdfDownload(btoa("%PDF-1.4"), { TaxInvoiceNumber: "010.000-26.00000002" }, "INPUT_TAX");
+
+    expect(lastAnchor().download).toBe("TANPA_REFERENSI - 010.000-26.00000002.pdf");
+  });
+
+  it("names a retur file from its return number, for either retur page", () => {
+    const item = { ReturnNumber: "RET-001", ReturnInvoiceNumber: "000123" };
+
+    handlePdfDownload(btoa("%PDF-1.4"), item, "OUTPUT_RETURN");
+    expect(lastAnchor().download).toBe("RET-001 - 000123.pdf");
+
+    created.length = 0;
+    handlePdfDownload(btoa("%PDF-1.4"), item, "INPUT_RETURN");
+    expect(lastAnchor().download).toBe("RET-001 - 000123.pdf");
+  });
+
+  it("names a withholding file MM-YYYY-Nomor-Nama", () => {
+    handlePdfDownload(btoa("%PDF-1.4"), {
+      WithholdingSlipsNumber: "01-2026-BP-001",
+      WithholdingSlipsDate: "2026-01-31T00:00:00+07:00",
+      EmployerName: "PT Contoh",
+    }, "WITHHOLDING_SLIPS");
+
+    expect(lastAnchor().download).toBe("01-2026-01-2026-BP-001-PT Contoh.pdf");
+  });
+
+  it("falls back to the generic name for a source it has no rule for", () => {
+    handlePdfDownload(btoa("%PDF-1.4"), { Reference: "A2-001" }, "SPT_A2");
+
+    // The name still carries the source, so an unexpected page produces files
+    // that can be told apart rather than a pile called TANPA_NOMOR.pdf.
+    expect(lastAnchor().download).toBe("SPT_A2-A2-001.pdf");
+  });
+
+  it("fails before touching the DOM when the payload is not base64", () => {
+    expect(() => handlePdfDownload("", { Reference: "X" }, "OUTPUT_TAX")).toThrow();
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(created).toHaveLength(0);
   });
 });
