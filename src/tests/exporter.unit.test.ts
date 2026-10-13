@@ -1,11 +1,13 @@
 // Unit tests for exporter.ts — generateDynamicFilename and escapeCSV
 // Validates: Requirements 6.5, 6.6, 12.2, 12.3
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as XLSX from "xlsx";
 import type { ExportSource } from "../content/page-context";
 import {
   escapeCSV,
   buildCSV,
+  exportCSV,
+  writeXlsxFile,
   generateDynamicFilename,
   downloadWorkbookFile,
   createXlsxChunkLoader,
@@ -14,6 +16,7 @@ import {
 } from "../content/exporter";
 import { getExportSourceSpec } from "../content/export-source";
 import type { ExportData } from "../content/exporter";
+import { stubFakeDom, type FakeDoc, type FakeEl } from "./__mocks__/fake-dom";
 
 // ============================================================
 // buildCSV
@@ -459,5 +462,100 @@ describe("createXlsxChunkLoader", () => {
 describe("XLSX_CHUNK_PATH", () => {
 	it("points at the web-accessible chunk the build emits", () => {
 		expect(XLSX_CHUNK_PATH).toBe("content/xlsx.js");
+	});
+});
+
+// ============================================================
+// The grid-export entry points: rows in, a named file out
+// ============================================================
+// exportCSV and writeXlsxFile are what the toolbar's Ekspor button calls, and
+// they were the module's uncovered functions: measure `processData`, the
+// filename ladder and the workbook builders, but never the two calls that put
+// the result on the user's disk.
+
+describe("exportCSV / writeXlsxFile (DOM)", () => {
+	/** One PPN Keluaran row, in the JSON shape the scraper hands the exporter. */
+	const exportData: ExportData = {
+		source: "OUTPUT_TAX",
+		fields: ["TaxInvoiceNumber", "SellingPrice", "VAT", "Reference"],
+		data: [
+			{
+				TaxInvoiceNumber: "0400000001",
+				SellingPrice: 568000,
+				VAT: 62480,
+				Reference: "REF-001",
+				TaxInvoicePeriod: "4",
+				TaxInvoiceYear: "2026",
+			},
+		],
+	};
+
+	let doc: FakeDoc;
+	/** Every element created during the call — the download anchor is one. */
+	let created: FakeEl[];
+	let createObjectURL: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		doc = stubFakeDom().doc;
+		created = [];
+		const create = doc.createElement.bind(doc);
+		vi.spyOn(doc, "createElement").mockImplementation((tag) => {
+			const el = create(tag);
+			created.push(el);
+			return el;
+		});
+		createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cindieh");
+		vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	it("writes the mapped CSV under the generated name", async () => {
+		exportCSV(exportData);
+
+		const anchor = created[created.length - 1];
+		expect(anchor.download).toBe(`${generateDynamicFilename(exportData)}.csv`);
+		// The source's prefix is part of that name, not decoration.
+		expect(anchor.download).toMatch(/^FPK-\d{6}\.csv$/);
+		expect(anchor.clicks).toBe(1);
+
+		// …and the bytes behind it are the declared sheet: first the UTF-8 BOM
+		// Excel needs, checked in the BYTES because Blob.text() decodes UTF-8
+		// and eats a leading BOM (the string view can never see it)…
+		const blob = createObjectURL.mock.calls[0][0] as Blob;
+		const bytes = new Uint8Array(await blob.arrayBuffer());
+		expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+
+		// …then the header row in the exporter's Indonesian labels.
+		const csv = await blob.text();
+		expect(csv.split("\n")[0]).toContain("NO FAKTUR");
+		expect(csv).toContain("0400000001");
+	});
+
+	it("writes a real workbook under the generated name", async () => {
+		writeXlsxFile(XLSX as unknown as XlsxModule, exportData);
+
+		const anchor = created[created.length - 1];
+		expect(anchor.download).toBe(`${generateDynamicFilename(exportData)}.xlsx`);
+		expect(anchor.download).toMatch(/^FPK-\d{6}\.xlsx$/);
+		expect(anchor.clicks).toBe(1);
+
+		// An xlsx is a zip: if the workbook never made it into the blob, these
+		// two bytes are where it shows.
+		const blob = createObjectURL.mock.calls[0][0] as Blob;
+		const head = new Uint8Array(await blob.arrayBuffer()).slice(0, 2);
+		expect([...head]).toEqual([0x50, 0x4b]);
+	});
+
+	it("does nothing at all when there is no document to download into", () => {
+		// The exporter is also imported by tests and by callers that run outside a
+		// page; the guard is what keeps that from throwing.
+		vi.stubGlobal("document", undefined);
+
+		expect(() => exportCSV(exportData)).not.toThrow();
+		expect(createObjectURL).not.toHaveBeenCalled();
 	});
 });
