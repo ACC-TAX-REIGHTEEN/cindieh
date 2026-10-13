@@ -325,16 +325,19 @@ export function injectMultiInvoiceFilter(retries = MAX_RETRIES): void {
     }
   };
 
-  // Reposition on scroll/resize so panel tracks the button
+  // Reposition on scroll/resize so panel tracks the button. "Open" is inline
+  // `display: block` and nothing else — the panel starts hidden in the
+  // stylesheet, so a closed one reads `""` and must be left alone (only the
+  // toggle-click handler below sets the inline styles that mean open).
   const handleWinScroll = (): void => {
-    if (!multiInvoicePanel || !multiInvoiceToggle || multiInvoicePanel.style.display === "none") return;
+    if (!multiInvoicePanel || !multiInvoiceToggle || multiInvoicePanel.style.display !== "block") return;
     const rect = multiInvoiceToggle.getBoundingClientRect();
     multiInvoicePanel.style.top = `${rect.bottom + window.scrollY + 4}px`;
     multiInvoicePanel.style.left = `${rect.left + window.scrollX}px`;
   };
 
   const handleWinResize = (): void => {
-    if (!multiInvoicePanel || !multiInvoiceToggle || multiInvoicePanel.style.display === "none") return;
+    if (!multiInvoicePanel || !multiInvoiceToggle || multiInvoicePanel.style.display !== "block") return;
     const rect = multiInvoiceToggle.getBoundingClientRect();
     multiInvoicePanel.style.top = `${rect.bottom + window.scrollY + 4}px`;
     multiInvoicePanel.style.left = `${rect.left + window.scrollX}px`;

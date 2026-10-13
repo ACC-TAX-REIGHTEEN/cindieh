@@ -142,6 +142,52 @@ export class FakeEl {
     return child;
   }
 
+  /** The DOM's first child, in the shape `while (firstChild) removeChild(...)` reads. */
+  get firstChild(): FakeEl | null {
+    return this.children[0] ?? null;
+  }
+
+  /**
+   * Detach one child. Like the real DOM, the detached subtree is no longer
+   * reachable from the document, so its ids leave the lookup map too.
+   */
+  removeChild(child: FakeEl): FakeEl {
+    const idx = this.children.indexOf(child);
+    if (idx > -1) this.children.splice(idx, 1);
+    child.parentElement = null;
+    child.unregisterSubtree();
+    return child;
+  }
+
+  /**
+   * The positions the extension actually uses. `afterend` is what the toolbar
+   * Referensi filter relies on to land beside the portal's reset button.
+   */
+  insertAdjacentElement(
+    position: "beforebegin" | "afterbegin" | "beforeend" | "afterend",
+    element: FakeEl,
+  ): FakeEl | null {
+    if (position === "beforeend") return this.appendChild(element);
+    if (!this.parentElement) return null;
+    if (position === "afterbegin") return this.insertBefore(element, this.firstChild);
+    if (position === "beforebegin") return this.parentElement.insertBefore(element, this);
+    return this.parentElement.insertBefore(element, this.nextSibling);
+  }
+
+  /**
+   * Every DESCENDANT match, in document order. The header lookups in
+   * ui-filters.ts read a row's `<th>`s and the `<tr>`s of a `<thead>` this way,
+   * so a fake without it could only test the branches that never run.
+   */
+  querySelectorAll(sel: string): FakeEl[] {
+    const found: FakeEl[] = [];
+    for (const child of this.children) {
+      if (child.matches(sel)) found.push(child);
+      found.push(...child.querySelectorAll(sel));
+    }
+    return found;
+  }
+
   remove(): void {
     if (this.parentElement) {
       const idx = this.parentElement.children.indexOf(this);
@@ -317,6 +363,12 @@ export interface FakeWindow {
   addEventListener(type: string, fn: FakeListener): void;
   removeEventListener(type: string, fn: FakeListener): void;
   listenerCount(type: string): number;
+  /**
+   * Fire every listener registered for a type, the way the real window would.
+   * The scroll/resize repositioning in ui-filters.ts is only reachable through
+   * an event, so without this the handler could only be read, never run.
+   */
+  fire(type: string, event?: unknown): void;
 }
 
 export function makeWindowStub(): FakeWindow {
@@ -333,6 +385,9 @@ export function makeWindowStub(): FakeWindow {
     },
     listenerCount(type) {
       return listeners.get(type)?.size ?? 0;
+    },
+    fire(type, event) {
+      for (const fn of listeners.get(type) ?? []) fn(event);
     },
   };
 }

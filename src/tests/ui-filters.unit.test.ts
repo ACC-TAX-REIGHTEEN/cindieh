@@ -18,13 +18,15 @@ vi.mock("../content/page-context", () => ({
 import {
   splitInvoiceNumbers,
   parseMultiInvoiceText,
+  injectGridFilters,
+  injectToolbarFilter,
   injectMultiInvoiceFilter,
   removeMultiInvoiceFilter,
   getMultiInvoiceNumbers,
   clearFilterTimers,
 } from "../content/ui-filters";
-import { isEfakturPage } from "../content/page-context";
-import { stubFakeDom, type FakeDoc, type FakeWindow } from "./__mocks__/fake-dom";
+import { isEfakturPage, isOutputTaxPage } from "../content/page-context";
+import { stubFakeDom, type FakeDoc, type FakeEl, type FakeWindow } from "./__mocks__/fake-dom";
 
 describe("splitInvoiceNumbers", () => {
   it("splits on newlines", () => {
@@ -122,6 +124,7 @@ describe("injectMultiInvoiceFilter / removeMultiInvoiceFilter (DOM)", () => {
 
   afterEach(() => {
     clearFilterTimers();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -266,5 +269,312 @@ describe("injectMultiInvoiceFilter / removeMultiInvoiceFilter (DOM)", () => {
     textarea.value = "";
     textarea.listeners["input"][0]({});
     expect(hint.textContent).toBe("");
+  });
+
+  it("keeps an open panel under its toggle when the page scrolls", () => {
+    setupAnchor();
+    injectMultiInvoiceFilter();
+    const toggle = doc.getElementById("ch-multi-invoice-toggle")!;
+    const panel = doc.getElementById("ch-multi-invoice-filter")!;
+    toggle.listeners["click"][0]({ stopPropagation: vi.fn() });
+    expect(panel.style.display).toBe("block");
+
+    win.scrollY = 120;
+    win.scrollX = 30;
+    win.fire("scroll");
+    expect(panel.style.top).toBe("124px");
+    expect(panel.style.left).toBe("30px");
+
+    win.scrollY = 0;
+    win.scrollX = 0;
+    win.fire("resize");
+    expect(panel.style.top).toBe("4px");
+    expect(panel.style.left).toBe("0px");
+  });
+
+  it("leaves a closed panel alone on scroll and resize", () => {
+    setupAnchor();
+    injectMultiInvoiceFilter();
+    const panel = doc.getElementById("ch-multi-invoice-filter")!;
+
+    win.scrollY = 120;
+    win.fire("scroll");
+    win.fire("resize");
+
+    // Nothing was ever positioned: the panel is hidden by the stylesheet until
+    // the toggle opens it, and only the open path writes these.
+    expect(panel.style.top).toBeUndefined();
+    expect(panel.style.left).toBeUndefined();
+  });
+
+  it("retries while the toolbar is still rendering, and injects when it lands", () => {
+    vi.useFakeTimers();
+    injectMultiInvoiceFilter(1);
+    expect(doc.getElementById("ch-multi-invoice-toggle")).toBeNull();
+
+    setupAnchor();
+    vi.advanceTimersByTime(1000);
+
+    expect(doc.getElementById("ch-multi-invoice-toggle")).not.toBeNull();
+    expect(doc.getElementById("ch-multi-invoice-filter")).not.toBeNull();
+  });
+
+  it("ignores a click on a toggle whose panel has been torn down", () => {
+    setupAnchor();
+    injectMultiInvoiceFilter();
+    const click = doc.getElementById("ch-multi-invoice-toggle")!.listeners["click"][0];
+
+    removeMultiInvoiceFilter();
+
+    expect(() => click({ stopPropagation: vi.fn() })).not.toThrow();
+  });
+
+  it("ignores an outside click once the panel has been torn down", () => {
+    setupAnchor();
+    injectMultiInvoiceFilter();
+    const docClick = [...doc.listeners.get("click")!][0];
+
+    removeMultiInvoiceFilter();
+
+    expect(() => docClick({ target: doc.createElement("div") })).not.toThrow();
+  });
+
+  it("injects nothing when the anchor has no parent to sit beside", () => {
+    // A detached anchor: the lookup succeeds, but there is nowhere to put the
+    // toggle, and the guard has to bail out instead of throwing.
+    const orphan = doc.createElement("button");
+    orphan.setAttribute("ptooltip", "Setel Ulang Filter");
+    doc.buttons = [orphan];
+
+    injectMultiInvoiceFilter(0);
+
+    expect(doc.getElementById("ch-multi-invoice-toggle")).toBeNull();
+    expect(doc.getElementById("ch-multi-invoice-filter")).toBeNull();
+  });
+});
+
+// ── injectGridFilters / injectToolbarFilter (DOM) ──────────────────────
+// The two Referensi filters belong to PPN Keluaran, but they are injected into
+// markup the PORTAL owns. Every test below is a way that grid can fail to look
+// like a grid — no thead, one header row, no Referensi column, a toolbar that
+// has not rendered yet — and the wrong answer is an exception on every Angular
+// re-render, not a missing input.
+
+describe("injectGridFilters (DOM)", () => {
+  let doc: FakeDoc;
+
+  /** A Coretax-shaped header: the label row, then the row of per-column filters. */
+  function buildGrid(labels: readonly string[], options: { rows?: number } = {}): void {
+    const thead = doc.createElement("thead");
+    const labelRow = doc.createElement("tr");
+    for (const label of labels) {
+      const th = doc.createElement("th");
+      th.textContent = label;
+      labelRow.appendChild(th);
+    }
+    thead.appendChild(labelRow);
+
+    if ((options.rows ?? 2) > 1) {
+      const filterRow = doc.createElement("tr");
+      for (const label of labels) {
+        const th = doc.createElement("th");
+        th.appendChild(doc.createTextNode(`filter-${label}`));
+        filterRow.appendChild(th);
+      }
+      thead.appendChild(filterRow);
+    }
+    doc.body.appendChild(thead);
+  }
+
+  beforeEach(() => {
+    doc = stubFakeDom().doc;
+    vi.mocked(isOutputTaxPage).mockReturnValue(true);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("puts a Referensi search box in that column's filter cell, replacing the portal's own", () => {
+    buildGrid(["Kode", "Referensi", "Nama Pembeli"]);
+
+    injectGridFilters();
+
+    const input = doc.getElementById("ch-grid-filter-reference");
+    expect(input).not.toBeNull();
+    expect(input!.placeholder).toBe("Cari Referensi...");
+
+    // The cell was emptied first: the portal's filter and ours must not stack.
+    const filterRow = doc.querySelector("thead")!.children[1];
+    const refCell = filterRow.children[1];
+    expect(refCell.children).toHaveLength(1);
+    expect(refCell.querySelector("#ch-grid-filter-reference")).toBe(input);
+  });
+
+  it("does nothing on a page that is not PPN Keluaran", () => {
+    vi.mocked(isOutputTaxPage).mockReturnValue(false);
+    buildGrid(["Referensi"]);
+
+    injectGridFilters();
+
+    expect(doc.getElementById("ch-grid-filter-reference")).toBeNull();
+  });
+
+  it("does nothing when the table has no header at all", () => {
+    injectGridFilters();
+
+    expect(doc.getElementById("ch-grid-filter-reference")).toBeNull();
+  });
+
+  it("does nothing when the header has a single row (no filter row to fill)", () => {
+    buildGrid(["Referensi"], { rows: 1 });
+
+    injectGridFilters();
+
+    expect(doc.getElementById("ch-grid-filter-reference")).toBeNull();
+  });
+
+  it("does nothing when no column is named Referensi", () => {
+    buildGrid(["Kode", "Nama Pembeli"]);
+
+    injectGridFilters();
+
+    expect(doc.getElementById("ch-grid-filter-reference")).toBeNull();
+    // …and the portal's own filter cells are untouched (the fake keeps a cell's
+    // text as its child node, so that is where the label is read from).
+    const firstCell = doc.querySelector("thead")!.children[1].children[0];
+    expect(firstCell.children).toHaveLength(1);
+    expect(firstCell.children[0].textContent).toBe("filter-Kode");
+  });
+
+  it("is idempotent — a re-render does not stack a second search box", () => {
+    buildGrid(["Referensi"]);
+    injectGridFilters();
+    const first = doc.getElementById("ch-grid-filter-reference");
+
+    injectGridFilters();
+
+    expect(doc.getElementById("ch-grid-filter-reference")).toBe(first);
+    expect(doc.querySelector("thead")!.children[1].children[0].children).toHaveLength(1);
+  });
+});
+
+describe("injectToolbarFilter (DOM)", () => {
+  let doc: FakeDoc;
+
+  /** The portal's reset-filter button, the anchor the search box is placed after. */
+  function portalResetButton(): FakeEl {
+    const btn = doc.createElement("button");
+    btn.setAttribute("ptooltip", "Setel Ulang Filter");
+    doc.body.appendChild(btn);
+    doc.buttons = [btn];
+    return btn;
+  }
+
+  beforeEach(() => {
+    doc = stubFakeDom().doc;
+    vi.mocked(isOutputTaxPage).mockReturnValue(true);
+  });
+  afterEach(() => {
+    clearFilterTimers();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("lands the search box immediately after the portal's reset button", () => {
+    const anchor = portalResetButton();
+
+    injectToolbarFilter(0);
+
+    const container = doc.getElementById("ch-toolbar-filter-container");
+    expect(container).not.toBeNull();
+    const siblings = anchor.parentElement!.children;
+    expect(siblings.indexOf(container!)).toBe(siblings.indexOf(anchor) + 1);
+
+    const input = doc.getElementById("ch-toolbar-filter-reference");
+    expect(input!.placeholder).toBe("Cari Referensi...");
+    expect(input!.style.width).toBe("180px");
+  });
+
+  it("finds the reset button by its icon when the tooltip is missing", () => {
+    const btn = doc.createElement("button");
+    const icon = doc.createElement("span");
+    icon.className = "pi pi-filter-slash";
+    btn.appendChild(icon);
+    doc.body.appendChild(btn);
+    doc.buttons = [btn];
+
+    injectToolbarFilter(0);
+
+    expect(doc.getElementById("ch-toolbar-filter-reference")).not.toBeNull();
+  });
+
+  it("finds the reset button by its ct-ovw class as a last resort", () => {
+    const btn = doc.createElement("button");
+    btn.className = "ct-ovw-btn-mini";
+    const icon = doc.createElement("span");
+    icon.className = "pi pi-refresh";
+    btn.appendChild(icon);
+    doc.body.appendChild(btn);
+    doc.buttons = [btn];
+
+    injectToolbarFilter(0);
+
+    expect(doc.getElementById("ch-toolbar-filter-reference")).not.toBeNull();
+  });
+
+  it("does nothing on a page that is not PPN Keluaran", () => {
+    vi.mocked(isOutputTaxPage).mockReturnValue(false);
+    portalResetButton();
+
+    injectToolbarFilter(0);
+
+    expect(doc.getElementById("ch-toolbar-filter-reference")).toBeNull();
+  });
+
+  it("is idempotent — a re-render does not stack a second search box", () => {
+    portalResetButton();
+    injectToolbarFilter(0);
+    const first = doc.getElementById("ch-toolbar-filter-reference");
+
+    injectToolbarFilter(0);
+
+    expect(doc.getElementById("ch-toolbar-filter-reference")).toBe(first);
+    expect(doc.getElementById("ch-toolbar-filter-container")!.children).toHaveLength(1);
+  });
+
+  it("retries while the toolbar is still rendering, and lands when it appears", () => {
+    vi.useFakeTimers();
+
+    injectToolbarFilter(1);
+    expect(doc.getElementById("ch-toolbar-filter-reference")).toBeNull();
+    expect(vi.getTimerCount()).toBe(1);
+
+    portalResetButton();
+    vi.advanceTimersByTime(1000);
+
+    expect(doc.getElementById("ch-toolbar-filter-reference")).not.toBeNull();
+  });
+
+  it("gives up after the last retry instead of polling forever", () => {
+    vi.useFakeTimers();
+
+    injectToolbarFilter(1);
+    vi.advanceTimersByTime(10_000);
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(doc.getElementById("ch-toolbar-filter-reference")).toBeNull();
+  });
+
+  it("clearFilterTimers cancels a pending retry (navigation teardown)", () => {
+    vi.useFakeTimers();
+    injectToolbarFilter(1);
+    expect(vi.getTimerCount()).toBe(1);
+
+    clearFilterTimers();
+    expect(vi.getTimerCount()).toBe(0);
+
+    portalResetButton();
+    vi.advanceTimersByTime(10_000);
+    expect(doc.getElementById("ch-toolbar-filter-reference")).toBeNull();
   });
 });
