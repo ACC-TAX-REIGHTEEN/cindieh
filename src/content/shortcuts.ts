@@ -1,12 +1,12 @@
 // ============================================================
 // SHORTCUTS.TS — Keyboard shortcuts for the portal page
 //
-// The manifest declares no `commands` block, so these two are the whole
+// The manifest declares no `commands` block, so these three are the whole
 // shortcut surface: Ctrl+Shift+E to start an export, Ctrl+Shift+S to stop
-// the running one. They live in the content script rather than the manifest
-// because they have to consult live page state — whether the current URL is
-// an export page, and whether a run is in flight — and a manifest command
-// can do neither.
+// the running one, and Ctrl+Shift+B to open the Bandingkan/Pengecekan panel.
+// They live in the content script rather than the manifest because they have
+// to consult live page state — whether the current URL is an export page, and
+// whether a run is in flight — and a manifest command can do neither.
 //
 // The keybindings are DECLARED as data below rather than written into the
 // handler as literals. The handler reads this table, and README.md and the
@@ -14,7 +14,7 @@
 // without the documentation changing with it.
 // ============================================================
 
-import { isSupportedExportPage } from "./page-context";
+import { isSupportedExportPage, isVatInvoicePage } from "./page-context";
 import { postToScraper } from "./bridge";
 
 /**
@@ -24,7 +24,7 @@ import { postToScraper } from "./bridge";
  */
 export interface Shortcut {
   /** Stable id, used in log lines and as the table's own key. */
-  readonly id: "export" | "stop";
+  readonly id: "export" | "stop" | "panel";
   /** The combination as it should be written in documentation. */
   readonly combo: string;
   /** `KeyboardEvent.key` values that trigger it, upper and lower case. */
@@ -46,6 +46,16 @@ export const SHORTCUTS: readonly Shortcut[] = [
     combo: "Ctrl+Shift+S",
     keys: ["S", "s"],
     description: "Batalkan proses yang sedang berjalan.",
+  },
+  {
+    // The panel already closes with Escape and by clicking outside, so this
+    // key only OPENS it — mirroring the toolbar button's one-way behaviour
+    // rather than building a second toggle beside the Escape close.
+    id: "panel",
+    combo: "Ctrl+Shift+B",
+    keys: ["B", "b"],
+    description:
+      "Buka panel Bandingkan / Pengecekan Keakuratan Nilai. Hanya bekerja di halaman e-Faktur PPN Keluaran dan PPN Masukan.",
   },
 ];
 
@@ -86,6 +96,16 @@ export function registerShortcuts(
       if (!isRunning()) return;
       e.preventDefault();
       postToScraper({ type: "STOP_SCRAPE" });
+    }
+
+    if (SHORTCUT_BY_ID.get("panel")!.keys.includes(e.key)) {
+      // The panel's two tabs live on the VAT invoice grids alone, exactly
+      // where ui-panel.ts makes them available — the same predicate, one
+      // source, so the key and the toolbar button can never disagree about
+      // the page it works on.
+      if (!isVatInvoicePage()) return;
+      e.preventDefault();
+      document.dispatchEvent(new CustomEvent("ch:compare-open"));
     }
   };
 

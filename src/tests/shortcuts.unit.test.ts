@@ -1,4 +1,4 @@
-// Unit tests for shortcuts.ts — the page's only two keybindings.
+// Unit tests for shortcuts.ts — the page's only three keybindings.
 //
 // These existed as untested code for the life of the feature (the module sat at
 // 5% coverage and AGENTS.md named it as a known gap). What the tests pin is not
@@ -13,7 +13,14 @@ import { registerShortcuts, SHORTCUTS } from "../content/shortcuts";
 
 const postToScraper = vi.hoisted(() => vi.fn());
 vi.mock("../content/bridge", () => ({ postToScraper }));
-vi.mock("../content/page-context", () => ({ isSupportedExportPage: () => true }));
+
+// Mutable at test time because the panel key's page gate is its own predicate:
+// the panel is not on every supported export page, so one test flips it.
+let vatInvoicePage = true;
+vi.mock("../content/page-context", () => ({
+  isSupportedExportPage: () => true,
+  isVatInvoicePage: () => vatInvoicePage,
+}));
 
 /** One keydown, shaped the way the handler reads it. */
 function key(key: string, extra: Partial<KeyboardEvent> = {}): KeyboardEvent {
@@ -38,11 +45,14 @@ function press(k: string, extra: Partial<KeyboardEvent> = {}): boolean {
 // already-installed listener the way a real DOM would.
 let documentListeners: EventListener[] = [];
 let scrapToggle: EventListener[] = [];
+let compareOpen: EventListener[] = [];
 
 beforeEach(() => {
   postToScraper.mockClear();
   documentListeners = [];
   scrapToggle = [];
+  compareOpen = [];
+  vatInvoicePage = true;
   vi.stubGlobal("CustomEvent", class {
     type: string;
     constructor(type: string) { this.type = type; }
@@ -51,6 +61,7 @@ beforeEach(() => {
     addEventListener: (type: string, fn: EventListener) => {
       if (type === "keydown") documentListeners.push(fn);
       if (type === "ch:scrape-toggle") scrapToggle.push(fn);
+      if (type === "ch:compare-open") compareOpen.push(fn);
     },
     removeEventListener: (type: string, fn: EventListener) => {
       if (type !== "keydown") return;
@@ -58,6 +69,7 @@ beforeEach(() => {
     },
     dispatchEvent: (event: Event) => {
       for (const fn of scrapToggle) fn(event);
+      for (const fn of compareOpen) fn(event);
       return true;
     },
   });
@@ -65,10 +77,14 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe("the declared shortcuts", () => {
-  it("describes both bindings, with the keys the handler actually tests", () => {
+  it("describes the three bindings, with the keys the handler actually tests", () => {
     // The table is documentation the handler reads. If the two ever drift the
     // README and the microsite describe a combination that does nothing.
-    expect(SHORTCUTS.map((s) => s.combo)).toEqual(["Ctrl+Shift+E", "Ctrl+Shift+S"]);
+    expect(SHORTCUTS.map((s) => s.combo)).toEqual([
+      "Ctrl+Shift+E",
+      "Ctrl+Shift+S",
+      "Ctrl+Shift+B",
+    ]);
     for (const shortcut of SHORTCUTS) {
       expect(shortcut.keys.length).toBeGreaterThan(0);
       expect(shortcut.description.length).toBeGreaterThan(10);
@@ -117,6 +133,33 @@ describe("registerShortcuts", () => {
     expect(postToScraper).not.toHaveBeenCalled();
   });
 
+  // The panel key shares the toggle's dispatch path: it re-emits the same
+  // ch:compare-open event the toolbar button sends, so the panel's own open
+  // semantics (open once, close with Escape) stay single-sourced.
+  it("opens the panel on Ctrl+Shift+B, in either case", () => {
+    registerShortcuts(() => false);
+    const opened = vi.fn();
+    document.addEventListener("ch:compare-open", opened);
+
+    for (const k of ["B", "b"]) {
+      expect(press(k)).toBe(true);
+      expect(opened).toHaveBeenCalled();
+    }
+    expect(postToScraper).not.toHaveBeenCalled();
+  });
+
+  it("answers nothing for the panel key outside the VAT invoice pages", () => {
+    // The panel's tabs exist on PPN Keluaran and PPN Masukan alone; elsewhere
+    // the key must leave the event to the portal.
+    vatInvoicePage = false;
+    registerShortcuts(() => false);
+    const opened = vi.fn();
+    document.addEventListener("ch:compare-open", opened);
+
+    expect(press("B")).toBe(false);
+    expect(opened).not.toHaveBeenCalled();
+  });
+
   it("requires the modifier, and leaves the event to the portal without it", () => {
     registerShortcuts(() => false);
     const toggled = vi.fn();
@@ -144,6 +187,7 @@ describe("registerShortcuts", () => {
 
     expect(press("E")).toBe(false);
     expect(press("S")).toBe(false);
+    expect(press("B")).toBe(false);
     expect(postToScraper).not.toHaveBeenCalled();
   });
 

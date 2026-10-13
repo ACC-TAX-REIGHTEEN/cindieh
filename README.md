@@ -167,12 +167,13 @@ Setelah selesai, panel menyebut jumlah masa dan jumlah baris. Bila ada masa yang
 
 ### Pintasan papan ketik
 
-Keduanya memakai `Ctrl` (atau `Cmd` di macOS) + `Shift`, dan hanya aktif di halaman portal yang didukung Cindieh. Saat saklar utama dimatikan, keduanya diam.
+Ketiganya memakai `Ctrl` (atau `Cmd` di macOS) + `Shift`, dan hanya aktif di halaman portal yang didukung Cindieh. Saat saklar utama dimatikan, ketiganya diam.
 
 | Pintasan | Fungsi |
 |---|---|
 | `Ctrl+Shift+E` | Buka/tutup menu ekspor. Diabaikan ketika sedang berjalan, supaya dua proses tidak berlomba untuk grid yang sama. |
 | `Ctrl+Shift+S` | Batalkan proses yang sedang berjalan. |
+| `Ctrl+Shift+B` | Buka panel Bandingkan / Pengecekan Keakuratan Nilai. Hanya di halaman e-Faktur PPN Keluaran dan PPN Masukan; ditutup dengan `Esc` seperti biasa. |
 
 Daftar ini bukan tabel terpisah: `SHORTCUTS` di [`src/content/shortcuts.ts`](src/content/shortcuts.ts) adalah satu-satunya sumber, dan handler, README, serta halaman situs membacanya dari sana.
 
