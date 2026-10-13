@@ -1,5 +1,44 @@
 # Changelog
 
+## [2.2.0](https://github.com/allababbot/cindieh/compare/v2.1.0...v2.2.0) (2026-10-13)
+
+### Features
+
+* **background:** return a clicked toast to the page the run happened on ([062dd02](https://github.com/allababbot/cindieh/commit/062dd02bd8973c60dd58efca748206622ab8d230))
+* **background:** take the user back to the portal when a toast is clicked ([ac62fa7](https://github.com/allababbot/cindieh/commit/ac62fa7f30bae5fb0eb361982a2754e1b9cb2b11))
+* **checker:** remember the accuracy check's three settings ([9d23db6](https://github.com/allababbot/cindieh/commit/9d23db69a0d20d5c550e0ac64865510b8b5f0bd3))
+* **checker:** run Pengecekan on PPN Masukan as well as PPN Keluaran ([407de7d](https://github.com/allababbot/cindieh/commit/407de7d33ba54a713e110abd4816e5c0d8b8f83b))
+* **content:** count the No. Faktur shortfall in the completion notification ([a91d914](https://github.com/allababbot/cindieh/commit/a91d914a362f852bf34e0692db2e5a8ee8efcd32))
+* **content:** export Bukti Potong rows to XLSX/CSV without the bulk PDF download ([7f41cb6](https://github.com/allababbot/cindieh/commit/7f41cb6f4888a29d2b4d244a1e588bcb4bdd8d9c))
+* **content:** name the invoices a bulk PDF download will skip ([c0ef836](https://github.com/allababbot/cindieh/commit/c0ef836aaab53907b177c4dc440cfee348a0f61e))
+* **content:** notify when a run fails or comes back partial ([aa574eb](https://github.com/allababbot/cindieh/commit/aa574eb5780c621fde911b67a91bd392329f6aa6))
+* **content:** report No. Faktur numbers Coretax has no row for ([9da279d](https://github.com/allababbot/cindieh/commit/9da279dec5e7f09f5ecf1e5b73b27b9eb43b2841))
+* **download:** name the individual files a bulk PDF run could not fetch ([6315f4f](https://github.com/allababbot/cindieh/commit/6315f4fd85d8cee32d03c953e7e9ce319ad89754))
+* **export:** fetch a whole tax year from PPN Keluaran in one run ([77dde73](https://github.com/allababbot/cindieh/commit/77dde73a76b70b833af5628af0191ba1493ce882))
+* **microsite:** add the public site and a guard against its drift ([7321de5](https://github.com/allababbot/cindieh/commit/7321de527802b163eb50baa65523dcfe67694d25))
+* **microsite:** publish the FAQ as structured data, and guard it ([1dca8dc](https://github.com/allababbot/cindieh/commit/1dca8dc14655460a0886bc8699d3b4755a274c3a))
+* **microsite:** publish the privacy policy as a real page for store submission ([0aef1b8](https://github.com/allababbot/cindieh/commit/0aef1b8778433af20ff9ffd3e1483493a8cf5a46))
+* **panel:** make the panel a real dialog, and close it with Escape ([1c15384](https://github.com/allababbot/cindieh/commit/1c1538492c80a5e44a0160bcfee3916eae9e3ae2))
+* **panel:** offer CSV alongside Excel for both result grids ([3932c41](https://github.com/allababbot/cindieh/commit/3932c41303864de3a67154a573e844ab8c655c3f))
+* **scrape:** chunk a large result across the bridge, and key a row by its real id ([c34f6af](https://github.com/allababbot/cindieh/commit/c34f6af47d24596d2850b3923fa59aae564e276e))
+* **shortcuts:** declare the keyboard shortcuts once and unbind them on teardown ([0d43f51](https://github.com/allababbot/cindieh/commit/0d43f51cd9b686de81af928777169032d2575b87))
+
+### Bug Fixes
+
+* **microsite:** answer the legality FAQ instead of deferring a finished review ([6ab29fa](https://github.com/allababbot/cindieh/commit/6ab29fa0095ff4e868db586b8f371abd615eb64d))
+* **microsite:** clear WCAG AA contrast failures without breaking the palette mirror ([436a58c](https://github.com/allababbot/cindieh/commit/436a58cc839a3419d49c52db2a65a79da834e8b7))
+* **microsite:** describe what Coretax actually does, not a weaker portal ([68e3419](https://github.com/allababbot/cindieh/commit/68e341937b13eeb8678fd28139fa7fc44f79d9c0))
+* **microsite:** give the page a main landmark and a skip link ([c241e15](https://github.com/allababbot/cindieh/commit/c241e1559296a29ef32110eb0f87d7ae99ce2b9a)), references [#konten](https://github.com/allababbot/cindieh/issues/konten)
+* **microsite:** label the toolbar mockup, and stop revalidating the CSS ([f74991a](https://github.com/allababbot/cindieh/commit/f74991afc3b4bdea8c7d11ab6a243aa3ceb87e4c))
+* **microsite:** stop the heading outline skipping a level ([7b16f68](https://github.com/allababbot/cindieh/commit/7b16f68827d19b587d5dce794628538bfdacda92))
+* **scrape:** stop believing a row count that just echoes the page size ([3b2f1fb](https://github.com/allababbot/cindieh/commit/3b2f1fb2ad368dcb91bd7bca6fb40e0f150c6483))
+* **scrape:** tell a short export that it may be short ([62eb2e6](https://github.com/allababbot/cindieh/commit/62eb2e68d8217d18900f9ea5dcb0f891662891d4))
+* **ui:** stop the SPT export menu closing itself under the click ([50ed9c1](https://github.com/allababbot/cindieh/commit/50ed9c1789b35ee08d9cbf965f4b0d07aa6eef0a))
+
+### Performance Improvements
+
+* **content:** load SheetJS as a lazy chunk instead of bundling it ([ea12d33](https://github.com/allababbot/cindieh/commit/ea12d33f25f6830209748ce56222220b9a8c684f))
+
 ## [2.1.0](https://github.com/allababbot/cindieh/compare/v2.0.0...v2.1.0) (2026-09-25)
 
 ### Features
