@@ -19,6 +19,7 @@ import { isOutputTaxPage, isVatInvoicePage } from "./page-context";
 import { startScrape } from "./main-actions";
 import { showPanel, updatePanelProgress } from "./ui-badge";
 import { postToScraper } from "./bridge";
+import { debugLog } from "./debug";
 
 /** The panel's two tabs. */
 export type PanelTab = "compare" | "check";
@@ -58,6 +59,36 @@ let panelOpen = false;
  * already marked inert is left exactly as it was.
  */
 let inertedSiblings: HTMLElement[] = [];
+
+/**
+ * Pre-fill the paste area from the clipboard, when the browser lets us read it.
+ *
+ * The read is permission-dependent — Chrome prompts for clipboard-read and
+ * Firefox refuses without a declared permission — and this is a convenience,
+ * not a feature, so the outcome is reported at debug level rather than shown.
+ * Reported, though: the old `catch(() => {})` made "nothing on the clipboard"
+ * and "never allowed to read it" indistinguishable in the field, and a browser
+ * with no `navigator.clipboard` at all threw synchronously and took the whole
+ * openPanel call with it.
+ */
+function autoFillFromClipboard(textarea: HTMLTextAreaElement): void {
+  const clipboard = navigator.clipboard as Clipboard | undefined;
+  if (!clipboard || typeof clipboard.readText !== "function") {
+    debugLog("Clipboard tidak tersedia; area tempel dibiarkan apa adanya.");
+    return;
+  }
+
+  clipboard
+    .readText()
+    .then((text) => {
+      if (text && !textarea.value) {
+        textarea.value = text;
+      }
+    })
+    .catch((err: unknown) => {
+      debugLog("Clipboard read ditolak:", err);
+    });
+}
 
 /**
  * Park everything but the overlay while the panel is open.
@@ -161,11 +192,7 @@ export function openPanel(targetTab: PanelTab = "compare"): void {
       const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
       if (textarea) {
         textarea.focus();
-        navigator.clipboard.readText().then((text) => {
-          if (text && !textarea.value) {
-            textarea.value = text;
-          }
-        }).catch(() => {});
+        autoFillFromClipboard(textarea);
       }
     }
   }

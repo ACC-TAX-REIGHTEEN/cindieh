@@ -567,6 +567,31 @@ describe("the panel as a modal dialog", () => {
     expect(overlay().listeners.keydown).toHaveLength(1);
   });
 
+  it("still opens the panel on a browser with no clipboard API", () => {
+    // A convenience read must never take the panel down with it. Without this
+    // guard the missing API threw synchronously inside openPanel.
+    vi.stubGlobal("navigator", {});
+
+    expect(() => panel.openPanel("compare")).not.toThrow();
+    expect(isClosed()).toBe(false);
+    expect(doc.getElementById("ch-comparer-textarea")!.value).toBe("");
+  });
+
+  it("survives a refused clipboard read and leaves the textarea alone", async () => {
+    // Firefox refuses readText without a declared clipboard permission; Chrome
+    // prompts. Either way the refusal is not the user's problem, but it must
+    // not surface as an unhandled rejection.
+    vi.stubGlobal("navigator", {
+      clipboard: { readText: () => Promise.reject(new Error("NotAllowedError")) },
+    });
+
+    panel.openPanel("compare");
+    await Promise.resolve();
+
+    expect(isClosed()).toBe(false);
+    expect(doc.getElementById("ch-comparer-textarea")!.value).toBe("");
+  });
+
   it("replaces, never stacks, the menus' click-outside handler", () => {
     // One handler on `document`, however many times the panel is rebuilt.
     expect(doc.listenerCount("click")).toBe(1);
