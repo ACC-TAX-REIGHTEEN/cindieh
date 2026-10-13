@@ -567,6 +567,34 @@ describe("the panel as a modal dialog", () => {
     expect(overlay().listeners.keydown).toHaveLength(1);
   });
 
+  it("parks the portal behind the panel and restores it on close", () => {
+    // aria-modal claims the content behind the dialog is inert; the DOM has to
+    // keep that claim, or Tab walks out of the dialog into the portal.
+    const portalRoot = doc.createElement("div");
+    doc.body.appendChild(portalRoot);
+
+    panel.openPanel("compare");
+    expect(portalRoot.inert).toBe(true);
+    // The overlay is the dialog, so it is never parked.
+    expect(overlay().inert).toBe(false);
+
+    panel.closePanel();
+    expect(portalRoot.inert).toBe(false);
+  });
+
+  it("hands focus back to what had it when the panel closes", () => {
+    const opener = doc.createElement("button");
+    doc.body.appendChild(opener);
+    doc.focusCalls.length = 0;
+    opener.focus();
+
+    panel.openPanel("compare");
+    expect(doc.activeElement).not.toBe(opener);
+
+    panel.closePanel();
+    expect(doc.activeElement).toBe(opener);
+  });
+
   // ── Which tab a page is allowed to see ───────────────────────────
   // The Komparator matches internal records by Referensi, so it belongs to
   // PPN Keluaran only (README.md, "Kenapa Komparator tidak ikut ke PPN

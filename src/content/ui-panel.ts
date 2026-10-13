@@ -36,6 +36,52 @@ export function scrapeForPanel(): void {
   startScrape(SCRAPE_DEPS);
 }
 
+// ── Focus and the background ──────────────────────────
+
+/**
+ * What held focus before the panel opened, so closing can hand it back. Nested
+ * in a module rather than read off the DOM at close time, because by then the
+ * active element is somewhere inside the panel that is about to be hidden.
+ */
+let previouslyFocused: HTMLElement | null = null;
+
+/**
+ * Whether the panel is showing. The overlay is built visible and only ever
+ * hidden by closePanel, so its own class list cannot tell "never opened" from
+ * "open" — this flag is what distinguishes the two.
+ */
+let panelOpen = false;
+
+/**
+ * The body children parked behind the open panel, in the order we parked them.
+ * Only the ones THIS call changed are listed, so a container the portal had
+ * already marked inert is left exactly as it was.
+ */
+let inertedSiblings: HTMLElement[] = [];
+
+/**
+ * Park everything but the overlay while the panel is open.
+ *
+ * `aria-modal` tells assistive tech that the content behind the dialog is
+ * inert, and that is a claim the DOM has to keep: without this, Tab walks out
+ * of the dialog and into the portal underneath it. Restoring is by the list we
+ * recorded, so a node Angular replaced in the meantime cannot be left inert.
+ */
+function setBackgroundInert(inert: boolean): void {
+  if (!inert) {
+    for (const el of inertedSiblings) el.inert = false;
+    inertedSiblings = [];
+    return;
+  }
+
+  const overlay = document.getElementById("ch-comparer-overlay");
+  for (const child of Array.from(document.body.children) as HTMLElement[]) {
+    if (child === overlay || child.inert) continue;
+    child.inert = true;
+    inertedSiblings.push(child);
+  }
+}
+
 // ── Switch Tabs ───────────────────────────────────────
 
 export function switchTab(tab: PanelTab): void {
@@ -64,6 +110,14 @@ export function switchTab(tab: PanelTab): void {
 export function openPanel(targetTab: PanelTab = "compare"): void {
   const overlay = document.getElementById("ch-comparer-overlay");
   if (overlay) {
+    // Capture the way back only when the panel is really opening: reopening an
+    // already-open panel would otherwise remember the panel itself as the
+    // place to return to.
+    if (!panelOpen) {
+      previouslyFocused = (document.activeElement as HTMLElement | null) ?? null;
+      panelOpen = true;
+    }
+
     overlay.classList.remove("ch-hidden");
     overlay.style.display = "flex";
     // Move focus into the panel first. Escape is handled on the overlay, so a
@@ -72,6 +126,7 @@ export function openPanel(targetTab: PanelTab = "compare"): void {
     // to the textarea when there is one to type into.
     const modalEl = document.getElementById("ch-comparer-modal");
     if (modalEl) modalEl.focus({ preventScroll: true });
+    setBackgroundInert(true);
 
     // Both tabs are gated per page, and the tab that does not apply is HIDDEN
     // rather than offered and then refused. Pengecekan is a PPN-grid check: on
@@ -122,6 +177,16 @@ export function closePanel(): void {
     overlay.style.display = "none";
     overlay.classList.add("ch-hidden");
   }
+  setBackgroundInert(false);
+  panelOpen = false;
+
+  // Hand focus back to whatever had it before, so a keyboard user who opened
+  // the panel from the toolbar is not dropped at the top of the portal. A node
+  // Angular has since replaced simply takes no focus — focusing a detached
+  // element is a no-op — which is why this needs no existence check.
+  const returnTo = previouslyFocused;
+  previouslyFocused = null;
+  if (returnTo) returnTo.focus();
 }
 
 // ── Hand a reference back to the portal grid ──────────

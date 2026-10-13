@@ -32,6 +32,12 @@ export class FakeEl {
    * missing tabIndex pass unnoticed.
    */
   tabIndex = -1;
+  /**
+   * The reflected `inert` property. The panel parks the portal behind itself
+   * while it is open, so a fake without the field would make "is the background
+   * really inert" untestable.
+   */
+  inert = false;
   placeholder = "";
   textContent = "";
   children: FakeEl[] = [];
@@ -243,6 +249,16 @@ export class FakeDoc {
    * the element that would currently hold it.
    */
   focusCalls: FakeEl[] = [];
+
+  /**
+   * The element that would hold focus, as the real document reports it. The
+   * fake has no focus tree, so the last focus() call IS the current owner —
+   * which is what code that hands focus back after closing a dialog needs to
+   * read.
+   */
+  get activeElement(): FakeEl | null {
+    return this.focusCalls[this.focusCalls.length - 1] ?? null;
+  }
 
   constructor() {
     this.body = new FakeEl("body", this);
