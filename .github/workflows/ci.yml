@@ -77,3 +77,13 @@ jobs:
       # every push, not on release day.
       - name: Build extension (both browsers)
         run: pnpm run build:chrome && pnpm run build:firefox
+
+      # The archive step was the last thing still only exercised on release day.
+      # The builds ran here, but package.cjs (delete-old, archive, write
+      # zip/xpi) and package-source.cjs did not, so a moved dist path, a
+      # manifest rewrite they disagree with, or a broken archiver call surfaced
+      # while cutting a release instead of on the pull request that caused it.
+      # Both package scripts read the dist/cindieh-{chrome,firefox} directories
+      # the step above produces, which is why this runs after them.
+      - name: Package extension (both browsers)
+        run: pnpm run package
