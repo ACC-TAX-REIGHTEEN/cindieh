@@ -73,14 +73,33 @@ export function openPanel(targetTab: PanelTab = "compare"): void {
     const modalEl = document.getElementById("ch-comparer-modal");
     if (modalEl) modalEl.focus({ preventScroll: true });
 
-    // Pengecekan is a PPN-grid check: on any other page there is nothing for it
-    // to read, so its tab is hidden rather than offered and then refused.
+    // Both tabs are gated per page, and the tab that does not apply is HIDDEN
+    // rather than offered and then refused. Pengecekan is a PPN-grid check: on
+    // any other page there is nothing for it to read. The Komparator matches
+    // internal records to Coretax by Referensi, and a PPN Masukan Referensi is
+    // the seller's — the reason README.md gives for the Komparator staying off
+    // PPN Masukan (and Retur carries no such grid for it either).
+    const canCheck = isVatInvoicePage();
+    const canCompare = isOutputTaxPage();
+    const tabCompareBtn = document.getElementById("ch-tab-compare");
     const tabCheckerBtn = document.getElementById("ch-tab-checker");
+    if (tabCompareBtn) {
+      tabCompareBtn.classList.toggle("ch-hidden", !canCompare);
+    }
     if (tabCheckerBtn) {
-      tabCheckerBtn.classList.toggle("ch-hidden", !isVatInvoicePage());
+      tabCheckerBtn.classList.toggle("ch-hidden", !canCheck);
     }
 
-    if (targetTab === "check" && isVatInvoicePage()) {
+    // A requested tab the page cannot serve falls back to the one it can, so a
+    // Ctrl+Shift+B press on PPN Masukan lands in Pengecekan instead of in a
+    // Komparator with no grid to match. When NEITHER predicate holds (a URL
+    // neither predicate knows), the requested tab is honoured as written: every
+    // production caller is already gated before it gets here, and an openPanel
+    // that silently did nothing would leave a dead shortcut with no way to say
+    // why.
+    const openCheck = canCheck && (targetTab === "check" || !canCompare);
+
+    if (openCheck) {
       switchTab("check");
     } else {
       switchTab("compare");

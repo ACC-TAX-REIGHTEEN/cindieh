@@ -30,11 +30,16 @@ vi.mock("../content/run-lifecycle", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../content/run-lifecycle")>();
   return { ...actual, runLifecycle: actual.createRunLifecycle() };
 });
-// Both page predicates true: the panel gates the checker tab on the VAT-invoice
-// pages, and every case here needs the two tabs present.
+// The page predicates default to TRUE: the panel gates its two tabs on which
+// page it is (the Komparator is PPN Keluaran's alone, Pengecekan runs on either
+// VAT grid), and nearly every case here needs both tabs present. The gating
+// cases move these two instead of stubbing a URL, because this file replaces
+// page-context wholesale — a location stub could never reach the mock.
+// `vi.hoisted` because the factory below runs above the module body.
+const pageGates = vi.hoisted(() => ({ output: true, vat: true }));
 vi.mock("../content/page-context", () => ({
-  isOutputTaxPage: () => true,
-  isVatInvoicePage: () => true,
+  isOutputTaxPage: () => pageGates.output,
+  isVatInvoicePage: () => pageGates.vat,
 }));
 
 const comparison: ComparisonResult = {
@@ -464,6 +469,8 @@ describe("the panel as a modal dialog", () => {
 
   beforeEach(async () => {
     vi.resetModules();
+    pageGates.output = true;
+    pageGates.vat = true;
     doc = stubFakeDom().doc;
     const create = doc.createElement.bind(doc);
     vi.spyOn(doc, "createElement").mockImplementation((tag) =>
@@ -541,5 +548,39 @@ describe("the panel as a modal dialog", () => {
     // key the portal may want.
     expect(doc.listenerCount("keydown")).toBe(0);
     expect(overlay().listeners.keydown).toHaveLength(1);
+  });
+
+  // ── Which tab a page is allowed to see ───────────────────────────
+  // The Komparator matches internal records by Referensi, so it belongs to
+  // PPN Keluaran only (README.md, "Kenapa Komparator tidak ikut ke PPN
+  // Masukan?"); Pengecekan is arithmetic on one invoice and runs on either VAT
+  // grid. Hiding the tab that does not apply is the rule the checker tab
+  // already followed — it now just applies to both tabs.
+  const tab = (id: string): FakeEl => doc.getElementById(id)!;
+  const view = (id: string): FakeEl => doc.getElementById(id)!;
+
+  it("offers both tabs on PPN Keluaran and opens the Komparator", () => {
+    panel.openPanel("compare");
+
+    expect(tab("ch-tab-compare").classList.contains("ch-hidden")).toBe(false);
+    expect(tab("ch-tab-checker").classList.contains("ch-hidden")).toBe(false);
+    expect(view("ch-comparer-view-compare").classList.contains("ch-hidden")).toBe(false);
+  });
+
+  it("hides the Komparator tab on PPN Masukan and lands in Pengecekan", () => {
+    // A VAT grid that is not PPN Keluaran: Pengecekan applies, the Komparator
+    // does not.
+    pageGates.output = false;
+
+    // The request is for the Komparator, which this page cannot serve: it
+    // falls back to the tab the page can, rather than opening a comparison
+    // that could only answer "Tidak ditemukan".
+    panel.openPanel("compare");
+
+    expect(tab("ch-tab-compare").classList.contains("ch-hidden")).toBe(true);
+    expect(tab("ch-tab-checker").classList.contains("ch-hidden")).toBe(false);
+    expect(tab("ch-tab-checker").classList.contains("ch-comparer-tab-active")).toBe(true);
+    expect(view("ch-comparer-view-compare").classList.contains("ch-hidden")).toBe(true);
+    expect(view("ch-comparer-view-checker").classList.contains("ch-hidden")).toBe(false);
   });
 });

@@ -29,6 +29,7 @@ import {
 import { stubFakeDom, type FakeDoc, type FakeEl } from "./__mocks__/fake-dom";
 
 const OUTPUT_TAX_URL = "https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax";
+const INPUT_TAX_URL = "https://coretaxdjp.pajak.go.id/e-invoice-portal/input-tax";
 const CHECK_CLASS = ".ch-export-item-check";
 const CHEVRON_CLASS = ".pi-chevron-down";
 
@@ -436,5 +437,37 @@ describe("SPT page toolbar", () => {
     expect(el("ch-export-dropdown-btn")).not.toBe(button);
     expect(sptHeader.children).toContain(el("ch-export-dropdown"));
     expect(el("ch-export-dropdown-menu").classList.contains("ch-hidden")).toBe(false);
+  });
+});
+
+// ── The Komparator's entry point ────────────────────────────────────────
+// The Bandingkan button is PPN Keluaran's alone: the Komparator matches
+// internal records to Coretax by Referensi, and a PPN Masukan Referensi is the
+// seller's (README.md, "Kenapa Komparator tidak ikut ke PPN Masukan?").
+// Hiding the entry point beats a button whose every row answers "Tidak
+// ditemukan". The modal itself is still injected on both grids — it hosts
+// Pengecekan, which does run on PPN Masukan.
+describe("the Komparator entry point", () => {
+  it("is injected on PPN Keluaran", async () => {
+    injectExportButton();
+
+    expect(doc.getElementById("ch-compare-btn")).not.toBeNull();
+    // The modal that hosts Pengecekan comes with it.
+    expect(vi.mocked(await import("../content/ui-comparer")).injectComparerModal).toHaveBeenCalled();
+  });
+
+  it("is withheld on PPN Masukan, while the rest of the toolbar arrives", () => {
+    vi.stubGlobal("location", { href: INPUT_TAX_URL });
+    // PPN Masukan anchors on its own button (findEfakturAnchor picks by page).
+    const inputAnchor = doc.createElement("button");
+    inputAnchor.id = "CreditInvoiceButtonButton";
+    doc.body.appendChild(inputAnchor);
+
+    injectExportButton();
+
+    expect(doc.getElementById("ch-compare-btn")).toBeNull();
+    // Not a general toolbar failure: every shared control is still there.
+    expect(doc.getElementById("ch-export-dropdown")).not.toBeNull();
+    expect(doc.getElementById("ch-scrape-btn")).not.toBeNull();
   });
 });

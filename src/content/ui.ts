@@ -514,31 +514,40 @@ export function injectExportButton(retries = MAX_RETRIES): void {
       });
 
       // ── Add Bandingkan icon button ───────────────────
-      setCompareBtnEl(document.createElement("button"));
-      const compareBtn = getCompareBtnEl()!;
-      compareBtn.id = "ch-compare-btn";
-      compareBtn.type = "button";
-      compareBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight ch-icon-btn";
-      compareBtn.title = "Bandingkan data penjualan";
+      // PPN Keluaran only: the Komparator matches internal records to Coretax
+      // by Referensi, and a PPN Masukan / Retur Referensi is somebody else's
+      // (or absent), which is exactly the rule README.md states under
+      // "Kenapa Komparator tidak ikut ke PPN Masukan?". Hiding the entry
+      // point beats offering a button whose every row would answer "Tidak
+      // ditemukan".
+      if (isOutputTax) {
+        setCompareBtnEl(document.createElement("button"));
+        const compareBtn = getCompareBtnEl()!;
+        compareBtn.id = "ch-compare-btn";
+        compareBtn.type = "button";
+        compareBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight ch-icon-btn";
+        compareBtn.title = "Bandingkan data penjualan";
 
-      const compareIcon = document.createElement("span");
-      compareIcon.className = "p-button-icon p-button-icon-left pi pi-list";
-      compareIcon.setAttribute("aria-hidden", "true");
+        const compareIcon = document.createElement("span");
+        compareIcon.className = "p-button-icon p-button-icon-left pi pi-list";
+        compareIcon.setAttribute("aria-hidden", "true");
 
-      compareBtn.appendChild(compareIcon);
+        compareBtn.appendChild(compareIcon);
 
-      if (insertMode === "before") {
-        containerNode.insertBefore(compareBtn, anchorEl);
-      } else {
-        containerNode.appendChild(compareBtn);
+        if (insertMode === "before") {
+          containerNode.insertBefore(compareBtn, anchorEl);
+        } else {
+          containerNode.appendChild(compareBtn);
+        }
+
+        compareBtn.addEventListener("click", (e: MouseEvent) => {
+          e.stopPropagation();
+          document.dispatchEvent(new CustomEvent("ch:compare-open"));
+        });
       }
 
-      compareBtn.addEventListener("click", (e: MouseEvent) => {
-        e.stopPropagation();
-        document.dispatchEvent(new CustomEvent("ch:compare-open"));
-      });
-
-      // Inject the comparer modal
+      // Inject the comparer modal — for every e-Faktur page, because the modal
+      // also hosts Pengecekan, which does run on PPN Masukan.
       injectComparerModal();
     }
   }
