@@ -30,6 +30,10 @@ export function buildHeaderRow<T>(columns: readonly ResultColumn<T>[]): HTMLElem
   for (const column of columns) {
     const th = document.createElement("th");
     th.textContent = column.label;
+    // Scope, or a screen reader announces the cells without saying which
+    // column they belong to. The table itself carries the name (see the two
+    // call sites), since neither grid can be told apart from its cells alone.
+    th.setAttribute("scope", "col");
     th.className = column.className;
     headerRow.appendChild(th);
   }

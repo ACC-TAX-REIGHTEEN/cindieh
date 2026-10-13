@@ -193,6 +193,9 @@ function setScrapeButtonState(isRunning: boolean): void {
   }
   btn.classList.toggle("ch-btn-danger", isRunning);
   btn.title = isRunning ? "Menghentikan scrape..." : "Scrape data dari sistem";
+  // The button is icon-only, so its accessible name is the aria-label; it moves
+  // with the title because "stop" and "start" are different actions.
+  btn.setAttribute("aria-label", btn.title);
 }
 
 /**

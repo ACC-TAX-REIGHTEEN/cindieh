@@ -361,6 +361,8 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
 
     const table = document.createElement("table");
     table.className = "ch-comparer-table";
+    // The grid has no visible caption, so the table is named for assistive tech.
+    table.setAttribute("aria-label", "Hasil pengecekan keakuratan nilai");
     table.appendChild(buildHeaderRow(columns));
 
     const tbody = document.createElement("tbody");

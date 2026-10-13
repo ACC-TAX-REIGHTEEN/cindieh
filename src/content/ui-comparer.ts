@@ -160,6 +160,9 @@ export function injectComparerModal(): void {
   toggleBtn.type = "button";
   toggleBtn.className = "ch-comparer-toggle-btn";
   toggleBtn.title = "Tampilkan / sembunyikan area paste";
+  // Icon-only (a chevron), so the title alone leaves it unnamed for a screen
+  // reader.
+  toggleBtn.setAttribute("aria-label", "Tampilkan / sembunyikan area paste");
   const toggleIcon = document.createElement("span");
   toggleIcon.id = "ch-comparer-toggle-icon";
   toggleIcon.className = "pi pi-chevron-up";
@@ -556,6 +559,8 @@ function renderResults(): void {
 
   const table = document.createElement("table");
   table.className = "ch-comparer-table";
+  // The grid has no visible caption, so the table is named for assistive tech.
+  table.setAttribute("aria-label", "Hasil perbandingan data penjualan");
   table.appendChild(buildHeaderRow(columns));
 
   const tbody = document.createElement("tbody");

@@ -495,6 +495,10 @@ export function injectExportButton(retries = MAX_RETRIES): void {
       scrapeBtn.type = "button";
       scrapeBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight ch-icon-btn";
       scrapeBtn.title = "Scrape data dari sistem";
+      // Icon-only control: `title` is not reliably announced, so the button
+      // needs a real accessible name (ui-badge.ts keeps the two in step while a
+      // run is in flight).
+      scrapeBtn.setAttribute("aria-label", "Scrape data dari sistem");
 
       const scrapeIcon = document.createElement("span");
       scrapeIcon.className = "p-button-icon p-button-icon-left pi pi-refresh";
@@ -527,6 +531,7 @@ export function injectExportButton(retries = MAX_RETRIES): void {
         compareBtn.type = "button";
         compareBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight ch-icon-btn";
         compareBtn.title = "Bandingkan data penjualan";
+        compareBtn.setAttribute("aria-label", "Bandingkan data penjualan");
 
         const compareIcon = document.createElement("span");
         compareIcon.className = "p-button-icon p-button-icon-left pi pi-list";

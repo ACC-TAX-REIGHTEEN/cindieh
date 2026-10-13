@@ -325,6 +325,23 @@ describe("comparison UI validation and exports", () => {
     expect(exporter.downloadXLSXFile).not.toHaveBeenCalled();
   }
 
+  it("names its result table and scopes every header cell", () => {
+    // The grid is built from a column schema and has no visible caption, so the
+    // table carries its own name and each header cell declares its column —
+    // without scope, a screen reader reads the cells with no column to hang
+    // them on.
+    runValid();
+
+    const table = el("ch-comparer-results").children[0];
+    expect(table.attributes["aria-label"]).toBeTruthy();
+
+    const headerRow = table.children[0].children[0];
+    expect(headerRow.children.length).toBeGreaterThan(0);
+    for (const th of headerRow.children) {
+      expect(th.attributes["scope"]).toBe("col");
+    }
+  });
+
   beforeEach(async () => {
     vi.resetModules();
     doc = stubFakeDom().doc;
