@@ -272,3 +272,20 @@ small {
   border-top: 1px solid rgba(27, 36, 54, 0.12);
   font-size: 11px;
 }
+
+/* ── Portal link ─────────────────────────────────── */
+
+.portal-link {
+  margin: 6px 0 0;
+  font-size: 11px;
+}
+
+.portal-link a {
+  color: #C23B22;
+  text-decoration: none;
+}
+
+.portal-link a:hover,
+.portal-link a:focus-visible {
+  text-decoration: underline;
+}
