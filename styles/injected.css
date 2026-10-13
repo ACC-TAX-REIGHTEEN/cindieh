@@ -30,6 +30,21 @@
     --ch-info-border: rgba(62, 93, 138, 0.28);
     --ch-viewed-tint: rgba(62, 93, 138, 0.10);
     --ch-viewed-tint-hover: rgba(62, 93, 138, 0.18);
+    /* ── Text-safe (-ink) twins of the tint pills' hues ──
+       The status hues above are FILLS: as text on their own 8-10% tints
+       they measure 2.4:1 to 4.2:1, a fail under WCAG AA. Each -ink twin is
+       the same hue and saturation, lightness only, solved for 5:1 against
+       the tint it sits on — the exact values the microsite's palette
+       (assets/css/microsite.css) already solved and renders with, since
+       that sheet is a byte-for-byte mirror of these tokens. Rule: a
+       `color:` that sits on a tint uses the -ink twin; backgrounds,
+       borders and swatches keep the base token.
+       No twin ships for --ch-info/--ch-blue: that base hue, being the
+       darkest of the set, already clears 4.5:1 on its own tint — the
+       microsite likewise renders --only-ct-ink at the same value. */
+    --ch-match-ink: #296152;
+    --ch-diff-ink: #72521D;
+    --ch-bad-ink: #9A3228;
 }
 
 /* ── Cindieh Floating Info ─────────────────── */
@@ -647,7 +662,7 @@ button.p-button.ch-icon-btn .p-button-icon {
 
 .ch-comparer-status-error {
     background: var(--ch-bad-tint);
-    color: var(--ch-bad);
+    color: var(--ch-bad-ink);
     border: 1px solid var(--ch-bad-border);
 }
 
@@ -656,7 +671,6 @@ button.p-button.ch-icon-btn .p-button-icon {
     color: var(--ch-info);
     border: 1px solid var(--ch-info-border);
 }
-
 .ch-comparer-results {
     margin-top: 16px;
     overflow-x: auto;
@@ -947,13 +961,13 @@ button.p-button.ch-icon-btn .p-button-icon {
 
 .ch-comparer-summary-ok {
     background: var(--ch-match-tint);
-    color: var(--ch-match);
+    color: var(--ch-match-ink);
     border: 1px solid var(--ch-match-border);
 }
 
 .ch-comparer-summary-warn {
     background: var(--ch-diff-tint);
-    color: var(--ch-diff);
+    color: var(--ch-diff-ink);
     border: 1px solid var(--ch-diff-border);
 }
 
