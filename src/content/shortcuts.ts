@@ -2,8 +2,9 @@
 // SHORTCUTS.TS — Keyboard shortcuts for the portal page
 //
 // The manifest declares no `commands` block, so these three are the whole
-// shortcut surface: Ctrl+Shift+E to start an export, Ctrl+Shift+S to stop
-// the running one, and Ctrl+Shift+B to open the Bandingkan/Pengecekan panel.
+// shortcut surface: Ctrl+Shift+E to fetch the grid (the same scrape the toolbar
+// button runs), Ctrl+Shift+S to stop the running one, and Ctrl+Shift+B to open
+// the Bandingkan/Pengecekan panel.
 // They live in the content script rather than the manifest because they have
 // to consult live page state — whether the current URL is an export page, and
 // whether a run is in flight — and a manifest command can do neither.
@@ -49,8 +50,14 @@ export const SHORTCUTS: readonly Shortcut[] = [
     id: "export",
     combo: "Ctrl+Shift+E",
     keys: ["E", "e"],
+    // The key fetches grid data; it does not open the export menu and it never
+    // stops anything. The menu is a toolbar surface with four destinations
+    // (XLSX, CSV, PDF, the year sweep) and a keystroke cannot pick one, so the
+    // key keeps the one action every supported page has — the same scrape the
+    // toolbar's scrape button runs, which on a withholding page is the bulk PDF
+    // download.
     description:
-      "Mulai atau hentikan menu ekspor. Hanya bekerja di halaman portal yang didukung, dan diabaikan ketika sedang berjalan.",
+      "Mulai ambil data dari grid (scrape), sama seperti tombol scrape di toolbar. Hanya bekerja di halaman portal yang didukung, dan diabaikan ketika sedang berjalan.",
   },
   {
     id: "stop",

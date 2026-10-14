@@ -172,7 +172,7 @@ Ketiganya memakai `Ctrl` (atau `Cmd` di macOS) + `Shift`, dan hanya aktif di hal
 
 | Pintasan | Fungsi |
 |---|---|
-| `Ctrl+Shift+E` | Buka/tutup menu ekspor. Diabaikan ketika sedang berjalan, supaya dua proses tidak berlomba untuk grid yang sama. |
+| `Ctrl+Shift+E` | Mulai ambil data dari grid (*scrape*), sama seperti tombol scrape di toolbar; di halaman Bukti Potong, proses yang sama sekaligus mengunduh PDF massalnya. Diabaikan ketika sedang berjalan, supaya dua proses tidak berlomba untuk grid yang sama. |
 | `Ctrl+Shift+S` | Batalkan proses yang sedang berjalan. |
 | `Ctrl+Shift+B` | Buka panel Bandingkan / Pengecekan Keakuratan Nilai. Hanya di halaman e-Faktur PPN Keluaran dan PPN Masukan; ditutup dengan `Esc` seperti biasa. |
 

@@ -100,10 +100,20 @@ describe("the declared shortcuts", () => {
     // Each id is unique, which is what SHORTCUT_BY_ID's Map lookup assumes.
     expect(new Set(SHORTCUTS.map((s) => s.id)).size).toBe(SHORTCUTS.length);
   });
+
+  it("describes the export key as the scrape it is, not as the menu it never opens", () => {
+    // README, the microsite table and this description had all drifted into
+    // promising the export MENU, which the key has never touched: it runs the
+    // scrape (and is refused while a run is in flight, so it can never toggle
+    // anything off either). One description, one guarantee.
+    const exportKey = SHORTCUTS.find((s) => s.id === "export")!;
+    expect(exportKey.description).toContain("scrape");
+    expect(exportKey.description).not.toMatch(/menu|toggle/i);
+  });
 });
 
 describe("registerShortcuts", () => {
-  it("starts an export on Ctrl+Shift+E, in either case", () => {
+  it("starts the scrape on Ctrl+Shift+E, in either case", () => {
     registerShortcuts(() => false);
     const toggled = vi.fn();
     document.addEventListener("ch:scrape-toggle", toggled);
