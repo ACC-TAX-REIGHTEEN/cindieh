@@ -44,14 +44,19 @@ function press(k: string, extra: Partial<KeyboardEvent> = {}): boolean {
 // Captured at registration time, so replacing the array still drives the
 // already-installed listener the way a real DOM would.
 let documentListeners: EventListener[] = [];
-let scrapToggle: EventListener[] = [];
-let compareOpen: EventListener[] = [];
+
+/**
+ * The custom events the handler dispatches, by type. Kept separate per type so
+ * a test can tell "the module raised ch:scrape-stop" from "it raised
+ * ch:scrape-toggle" — a fake that fires every registered handler regardless of
+ * type would pass whichever one the module happened to send.
+ */
+let customEventListeners = new Map<string, EventListener[]>();
 
 beforeEach(() => {
   postToScraper.mockClear();
   documentListeners = [];
-  scrapToggle = [];
-  compareOpen = [];
+  customEventListeners = new Map();
   vatInvoicePage = true;
   vi.stubGlobal("CustomEvent", class {
     type: string;
@@ -59,17 +64,20 @@ beforeEach(() => {
   });
   vi.stubGlobal("document", {
     addEventListener: (type: string, fn: EventListener) => {
-      if (type === "keydown") documentListeners.push(fn);
-      if (type === "ch:scrape-toggle") scrapToggle.push(fn);
-      if (type === "ch:compare-open") compareOpen.push(fn);
+      if (type === "keydown") {
+        documentListeners.push(fn);
+        return;
+      }
+      const list = customEventListeners.get(type) ?? [];
+      list.push(fn);
+      customEventListeners.set(type, list);
     },
     removeEventListener: (type: string, fn: EventListener) => {
       if (type !== "keydown") return;
       documentListeners = documentListeners.filter((l) => l !== fn);
     },
     dispatchEvent: (event: Event) => {
-      for (const fn of scrapToggle) fn(event);
-      for (const fn of compareOpen) fn(event);
+      for (const fn of [...(customEventListeners.get(event.type) ?? [])]) fn(event);
       return true;
     },
   });
@@ -109,11 +117,29 @@ describe("registerShortcuts", () => {
 
   it("stops a running export on Ctrl+Shift+S, in either case", () => {
     registerShortcuts(() => true);
+    const stopped = vi.fn();
+    document.addEventListener("ch:scrape-stop", stopped);
 
     for (const k of ["S", "s"]) {
       expect(press(k)).toBe(true);
-      expect(postToScraper).toHaveBeenCalledWith({ type: "STOP_SCRAPE" });
+      expect(stopped).toHaveBeenCalled();
     }
+
+    // The event, not a direct STOP_SCRAPE: the isolated world has to settle its
+    // own Run as well, and that half lives with the toolbar's stop path. Posting
+    // from here left `isRunning()` true forever, because a cancelled run emits no
+    // completion to clear it.
+    expect(postToScraper).not.toHaveBeenCalled();
+  });
+
+  it("leaves the toggle alone when it stops, so a stop can never start a run", () => {
+    registerShortcuts(() => true);
+    const toggled = vi.fn();
+    document.addEventListener("ch:scrape-toggle", toggled);
+
+    press("S");
+
+    expect(toggled).not.toHaveBeenCalled();
   });
 
   it("never starts a second export while one is running", () => {

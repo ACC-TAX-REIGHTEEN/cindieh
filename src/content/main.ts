@@ -543,15 +543,34 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
 
 // ── In-page button events ───────────────────────────
 
+/**
+ * End the run in flight: tell the page world to abort it, then settle this
+ * world's own Run and say so in the panel.
+ *
+ * All three steps belong together. A cancelled run emits no completion, so
+ * posting STOP_SCRAPE alone would leave `isRunning()` true forever — the panel
+ * stuck on "Berhenti" and the next Ctrl+Shift+E refused — which is what the
+ * keyboard stop used to do. One function, called by every stop control.
+ */
+function stopRunningRun(): void {
+  postToScraper({ type: "STOP_SCRAPE" });
+  runLifecycle.abort();
+  updatePanelError(SCRAPE_CANCELLED_MESSAGE);
+}
+
 document.addEventListener("ch:scrape-toggle", () => {
   if (runLifecycle.isRunning()) {
-    postToScraper({ type: "STOP_SCRAPE" });
-    const message = SCRAPE_CANCELLED_MESSAGE;
-    runLifecycle.abort();
-    updatePanelError(message);
+    stopRunningRun();
   } else {
     startScrape(actionDeps);
   }
+});
+
+// Stop, from the keyboard. A separate event from the toggle on purpose: a stop
+// must never be able to turn into a start if the two ever disagree about what is
+// running (shortcuts.ts refuses the key while nothing is running).
+document.addEventListener("ch:scrape-stop", () => {
+  if (runLifecycle.isRunning()) stopRunningRun();
 });
 
 // Export format chosen from the toolbar dropdown (XLSX or CSV).

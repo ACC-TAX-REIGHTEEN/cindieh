@@ -1185,6 +1185,30 @@ describe("main boot — the in-page event seam", () => {
     expect(run.isRunning()).toBe(true);
   });
 
+  it("settles the run when the stop shortcut is pressed", async () => {
+    const env = await bootEnabled();
+    const run = (await import("../content/run-lifecycle")).runLifecycle;
+
+    env.fireDoc("ch:export-xlsx");
+    expect(run.isRunning()).toBe(true);
+
+    env.fireDoc("keydown", {
+      key: "S",
+      ctrlKey: true,
+      shiftKey: true,
+      metaKey: false,
+      preventDefault: vi.fn(),
+    });
+
+    // Both halves of a stop: the page world is told to abort, and this world's
+    // own Run is settled. The second half is the one that has nowhere else to
+    // come from — a cancelled run emits no completion — so without it the panel
+    // stayed on "Berhenti" and the next Ctrl+Shift+E was refused.
+    expect(countPosted(env, "STOP_SCRAPE")).toBe(1);
+    expect(run.isRunning()).toBe(false);
+    expect(status(env)).toContain("Proses dihentikan");
+  });
+
   it("falls back to the documented defaults when storage refuses the read", async () => {
     const env = await bootMain({ rejectReads: true });
 

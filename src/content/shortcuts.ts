@@ -12,10 +12,21 @@
 // handler as literals. The handler reads this table, and README.md and the
 // microsite both describe what it says, so a combination cannot change here
 // without the documentation changing with it.
+//
+// Every binding dispatches a document event instead of calling a module: the
+// toolbar and the panel already own the behaviour behind those events, so the
+// key and the button cannot drift apart. That matters most for Stop — a
+// cancelled run emits no completion, so if the key posted STOP_SCRAPE on its own
+// the isolated world would be left believing a Run was still in flight.
 // ============================================================
 
 import { isSupportedExportPage, isVatInvoicePage } from "./page-context";
-import { postToScraper } from "./bridge";
+
+/**
+ * The event main.ts's stop path answers, shared with the toolbar's own stop.
+ * `ch:scrape-start` is its counterpart, so the family reads together.
+ */
+const STOP_EVENT = "ch:scrape-stop";
 
 /**
  * One keybinding. `combo` is written the way a user would write it down;
@@ -45,7 +56,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
     id: "stop",
     combo: "Ctrl+Shift+S",
     keys: ["S", "s"],
-    description: "Batalkan proses yang sedang berjalan.",
+    description:
+      "Batalkan proses yang sedang berjalan, sama seperti tombol Berhenti di toolbar.",
   },
   {
     // The panel already closes with Escape and by clicking outside, so this
@@ -95,7 +107,7 @@ export function registerShortcuts(
       if (!isSupportedExportPage()) return;
       if (!isRunning()) return;
       e.preventDefault();
-      postToScraper({ type: "STOP_SCRAPE" });
+      document.dispatchEvent(new CustomEvent(STOP_EVENT));
     }
 
     if (SHORTCUT_BY_ID.get("panel")!.keys.includes(e.key)) {
