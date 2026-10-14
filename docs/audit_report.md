@@ -1,25 +1,25 @@
 # Audit Menyeluruh — Cindieh Extension v2.2.0 (2026-10-13)
 
 **Tanggal audit:** 2026-10-13
-**Audit sebelumnya:** 2026-09-24 (mencakup state v2.0.0). Audit ini mencakup rilis **v2.1.0 (2026-09-25)**, **v2.2.0 (2026-10-13)**, dan empat commit setelah rilis 2.2.0.
-**Batas audit:** commit `0c2fc06` (fix(ui): paint the tint pill text from text-safe -ink twins).
-**Hasil validasi otomatis:** ✅ TypeScript 0 error · ✅ 1.544/1.544 test pass (53 file) · ✅ ESLint 0 error · ✅ Build Chrome & Firefox sukses · ✅ Coverage ratchet hijau (88.04 / 82.05 / 84.16 / 89.63 terhadap lantai 87.7 / 81.3 / 83.7 / 89.3).
+**Audit sebelumnya:** 2026-09-24 (mencakup state v2.0.0). Audit ini mencakup rilis **v2.1.0 (2026-09-25)**, **v2.2.0 (2026-10-13)**, dan lima commit setelah rilis 2.2.0 (sampai `0c2fc06`).
+**Batas audit:** commit `0c2fc06` (fix(ui): paint the tint pill text from text-safe -ink twins). Temuan di bawah dibatasi commit itu; **angka test, coverage, dan build diukur ulang pada commit `2f6baa1`** (14 commit sesudah batas — menutup gap `downloader`/`ui-filters`/`exporter`/`main-boot` dan menaikkan lantai ratchet).
+**Hasil validasi otomatis:** ✅ TypeScript 0 error · ✅ 1.598/1.598 test pass (53 file) · ✅ ESLint 0 error · ✅ Build Chrome & Firefox sukses · ✅ Coverage ratchet hijau (92.79 / 85.84 / 89.34 / 94.18 terhadap lantai 92.4 / 85.4 / 88.9 / 93.8).
 
 **Ruang lingkup:** seluruh `src/`, `popup/`, `styles/`, `microsite/`, `manifest.json`, `tools/`, dan toolchain. Sejak audit sebelumnya: **ADR-0013** (SheetJS lazy chunk), **ADR-0014** (`run-lifecycle.ts` menggantikan `ContentState`), **ADR-0015** (satu deklarasi per source di `export-source.ts`), **ADR-0016** (identitas baris dari `RecordId`), **ADR-0017** (hasil besar melintasi bridge dalam chunk), **ADR-0018** (ekspor satu tahun sebagai satu Run), plus situs publik `microsite/` dengan guard anti-drift, panel popup preferensi lengkap, notifikasi penyelesaian yang membawa pengguna kembali ke halaman asal saat toast diklik, dan Pengecekan Keakuratan Nilai yang kini jalan di PPN Masukan juga.
 
-> Catatan angka: jumlah test (53 file / 1.544 kasus), angka coverage, dan hasil build diambil langsung dari `vitest`, `tsc`, `eslint`, dan `build.cjs` pada 2026-10-13 di commit `0c2fc06` — bukan dari dokumentasi rilis.
+> Catatan angka: jumlah test (53 file / 1.598 kasus), angka coverage per file, dan hasil build diambil langsung dari `vitest`, `tsc`, `eslint`, dan `build.cjs` pada 2026-10-13 di commit `2f6baa1` — bukan dari dokumentasi rilis. Batas temuan tetap `0c2fc06`.
 
 ---
 
 ## Ringkasan Eksekutif
 
-Proyek dalam kondisi **sehat**. Tidak ada temuan berseverity **High** atau **Medium**. Seluruh tujuh rekomendasi audit 2026-09-24 **selesai** — dua di antaranya (persistensi setelan Pengecekan dan pemisahan tab Pengecekan) bergabung menjadi satu refactor struktural yang merapikan panel itu sendiri (`ui-checker.ts` kini punya suite render sendiri), dan satu temuan INFO (`OtherTaxBase = 0`) kini ditutup dengan bukti portal nyata, bukan dibiarkan terbuka. Tidak ada blocker rilis.
+Proyek dalam kondisi **sehat**. Tidak ada temuan ber-severity **High** atau **Medium**. Seluruh tujuh rekomendasi audit 2026-09-24 **selesai** — dua di antaranya (persistensi setelan Pengecekan dan pemisahan tab Pengecekan) bergabung menjadi satu refactor struktural yang merapikan panel itu sendiri (`ui-checker.ts` kini punya suite render sendiri), dan satu temuan INFO (`OtherTaxBase = 0`) kini ditutup dengan bukti portal nyata, bukan dibiarkan terbuka. Tidak ada blocker rilis.
 
 Tiga tema sisa yang layak dicatat:
 
 - **Asimetri fitur batch**: ekspor satu tahun hanya aktif di PPN Keluaran, padahal `scrape-batch.ts` sengaja ditulis agnostik terhadap source (kode masa berasal dari request yang ditangkap portal, bukan yang disintesis). Perluasannya ke PPN Masukan kebanyakan soal gate, teks konfirmasi, dan verifikasi satu sampel body request di portal nyata.
-- **Gap coverage yang sudah terdokumentasi** (`scraper.ts`, `downloader.ts`, `ui-filters.ts`, jalur cabang `main.ts`/`ui-comparer.ts`) praktis tidak bergerak — logika murninya sudah terpisah dan penuh test; yang tersisa adalah wiring, dan AGENTS.md sendiri mencatatnya sebagai gap yang diketahui.
-- **Dua perbaikan hari ini**: CI kini membangun kedua browser (sebelumnya build hanya jalan bila ada yang mengingatnya secara lokal), dan defect kontras pill pada `injected.css` (yang AGENTS.md catat "out of scope untuk mikro-situs") sudah diperbaiki dengan cara yang sama seperti mikro-situs memperbaiki mirror-nya — kalimat defect itu di AGENTS.md kini usang dan boleh dihapus.
+- **Gap coverage yang sudah terdokumentasi** tinggal `scraper.ts` dan jalur cabang `main.ts`/`ui-comparer.ts`/`ui-panel.ts` — `downloader.ts` (96%), `ui-filters.ts` (99,5%), `exporter.ts` (92%) dan harness `main-boot` naik sendiri sesudah batas audit (`15d5924`…`2f6baa1`). Logika murninya sudah terpisah dan penuh test; yang tersisa adalah wiring, dan AGENTS.md sendiri mencatatnya sebagai gap yang diketahui.
+- **Dua perbaikan hari ini**: CI kini membangun kedua browser (sebelumnya build hanya jalan bila ada yang mengingatnya secara lokal), dan defect kontras pill pada `injected.css` (yang AGENTS.md catat "out of scope untuk mikro-situs") sudah diperbaiki dengan cara yang sama seperti mikro-situs memperbaiki mirror-nya — kalimat defect itu di AGENTS.md sudah diganti oleh `c934fdd`.
 
 ---
 
@@ -45,15 +45,15 @@ Tiga kemampuan baru sejak itu yang tidak ada di daftar lama (karena belum dibang
 
 ### [INFO] Postur yang tidak berubah ✅
 
-Tiga permission inti plus `notifications` opsional yang diminta saat saklar dinyalakan; `host_permissions` dan `web_accessible_resources` tetap hanya `coretaxdjp.pajak.go.id`; ADR-0007 (exposure token bridge) dan ADR-0008 (injeksi satu kali) tak berubah. Guard `shouldProcessPageMessage` tidak melemah: property test origin/direction masih 19 kasus di `postmessage.origin.property.test.ts`, dan audit ini tidak melihat adanya jalan pintas baru.
+Tiga izin browser (`activeTab` dan `storage` wajib, `notifications` opsional yang diminta saat saklar dinyalakan) plus satu `host_permissions`; `host_permissions` dan `web_accessible_resources` tetap hanya `coretaxdjp.pajak.go.id`; ADR-0007 (exposure token bridge) dan ADR-0008 (injeksi satu kali) tak berubah. Guard `shouldProcessPageMessage` tidak melemah: property test origin/direction masih 19 kasus di `postmessage.origin.property.test.ts`, dan audit ini tidak melihat adanya jalan pintas baru.
 
 ### [INFO] Permukaan baru dari chunk transfer (ADR-0017) ✅
 
-`SCRAPE_DATA_CHUNK` menambah satu tipe pesan MAIN → isolated. Pemindahannya dijaga oleh modul transfer dengan kontrak eksplisit: completion menyebut`dataChunks`, dan transfer yang tidak lengkap **dilaporkan** bukan di-settle sebagai hasil lengkap. Tidak ada kanal lintas world lain yang terbuka.
+`SCRAPE_DATA_CHUNK` menambah satu tipe pesan MAIN → isolated. Pemindahannya dijaga oleh modul transfer dengan kontrak eksplisit: completion menyebut `dataChunks`, dan transfer yang tidak lengkap **dilaporkan** bukan di-settle sebagai hasil lengkap. Tidak ada kanal lintas world lain yang terbuka.
 
 ### [INFO] Notifikasi penyelesaian ✅
 
-`completion-notice.ts` membangun dan memvalidasi record sebelum dipublikasikan; toast yang diklik kembali ke halaman asal via `notificationTabPattern` (pola SPA-stabil: origin plus dua segmen path pertama), perintah "buka panel" dikirim lewat seam storage yang sama dengan perintah popup lain, dan id toast yang bukan `cindieh-completion-` diabaikan. Toast yang mengalah worker-nya kehilangan mapnya dan only falls back ke tab portal mana pun — perilaku yang didokumentasikan, bukan cacat.
+`completion-notice.ts` membangun dan memvalidasi record sebelum dipublikasikan; toast yang diklik kembali ke halaman asal via `notificationTabPattern` (pola SPA-stabil: origin plus dua segmen path pertama), perintah "buka panel" dikirim lewat seam storage yang sama dengan perintah popup lain, dan id toast yang bukan `cindieh-completion-` diabaikan. Toast yang hidup lebih lama dari worker-nya kehilangan map itu dan jatuh kembali ke tab portal mana pun — perilaku yang didokumentasikan, bukan cacat.
 
 ### [INFO] Permintaan tetap minimal ✅
 
@@ -69,15 +69,15 @@ Sebelumnya build hanya dijalankan seseorang secara lokal sebelum rilis; kini `bu
 
 ### [LOW] Gap coverage yang terdokumentasi, praktis diam di tempat
 
-**File:** [scraper.ts](src/content/scraper.ts), [downloader.ts](src/content/downloader.ts), [ui-filters.ts](src/content/ui-filters.ts), [main.ts](src/content/main.ts), [ui-comparer.ts](src/content/ui-comparer.ts), [ui-panel.ts](src/content/ui-panel.ts)
+**File:** [scraper.ts](../src/content/scraper.ts), [downloader.ts](../src/content/downloader.ts), [ui-filters.ts](../src/content/ui-filters.ts), [main.ts](../src/content/main.ts), [ui-comparer.ts](../src/content/ui-comparer.ts), [ui-panel.ts](../src/content/ui-panel.ts)
 
-Ada yang naik: `ui-checker.ts` 97.31% stmts / 83.33% branch dan `checker-logic.ts` 98% statement menutup sebagian besar gap panel lama. Yang tersisa adalah angka yang AGENTS.md sudah catat sebagai gap yang diketahui, diukur ulang hari ini: `scraper.ts` 39.39% stmts / **28.73% branch** (wiring IIFE MAIN-world), `downloader.ts` 44.44% (dispatch nama PDF), `ui-filters.ts` 55%, `main.ts` branch 49.25%, `ui-comparer.ts` branch 56.32%, `ui-panel.ts` 73.91%, dan `exporter.ts` funcs 56% (entry point unduh yang belum teruji). Komposisinya sama dengan catatan AGENTS.md — angka menyusul, bukan lompatan baru.
+Ada yang naik: `ui-checker.ts` 97.32% stmts / 83.33% branch dan `checker-logic.ts` 98% statement menutup sebagian besar gap panel lama. Sesudah batas audit tiga penulis di ujung rantai naik sendiri lewat suite baru — `downloader.ts` 44,44% → 96,29%, `ui-filters.ts` 55% → 99,54%, `exporter.ts` 81,56% → 92,19% — dan `main.ts` ikut naik lewat harness `main-boot` (71,71% → 90,47% stmts). Yang tersisa adalah angka yang AGENTS.md sudah catat sebagai gap yang diketahui, diukur ulang pada `2f6baa1`: `scraper.ts` 39,39% stmts / **28,73% branch** (wiring IIFE MAIN-world), `main.ts` branch 72,38%, `ui-comparer.ts` branch 57,30%, `ui-panel.ts` branch 73,07%, `ui.ts` 89,01% stmts / 76,66% branch, dan `exporter.ts` funcs 76% (entry point `exportXLSX` yang sengaja belum teruji). Komposisinya sama dengan catatan AGENTS.md — angka menyusul, bukan lompatan baru.
 
 **Rekomendasi:** perluas harness two-worlds yang ada (`scraper-boot.unit.test.ts`, `main-boot.unit.test.ts`) sampai jalur yang belum teruji tercakup, lalu naikkan lantai ratchet — sesuai AGENTS.md, jangan pernah dilonggarkan sekadar memperhijaukan build.
 
 ### [LOW] Batch export terkunci satu halaman, padahal mesinnya agnostik
 
-**File:** [main-actions.ts](src/content/main-actions.ts) (`isBatchPage: () => isOutputTaxPage()`), [scrape-batch.ts](src/content/scrape-batch.ts)
+**File:** [main-actions.ts](../src/content/main-actions.ts) (`isBatchPage: () => isOutputTaxPage()`), [scrape-batch.ts](../src/content/scrape-batch.ts)
 
 `scrape-batch.ts` sengaja tidak tahu halamannya: kode masa berasal dari request yang ditangkap, dan `overridesForPeriod()` mengganti satu nilai `Value` sambil membawa sisa filter apa adanya. Yang mengunci fitur ini ke PPN Keluaran hanya gate di `main-actions`, teks konfirmasi, nama file, dan README/microsite (yang mesti ikut diubah dalam commit yang sama — dijaga `microsite-sync`). Untuk **PPN Masukan**, satu hal perlu diukur di portal nyata: nilai `PropertyName` filter masa pada body request daftar PPN Masukan. `TaxInvoicePeriod` diharapkan dipakai pola yang sama, tapi aturan proyeknya sendiri adalah mengukur, bukan mengasumsikan.
 
@@ -89,7 +89,7 @@ Audit lama menandai panel sebagai mouse-only; kini `Ctrl+Shift+B` membukanya. Pi
 
 ### [INFO] Defect kontras `injected.css` ditutup di pihak extension juga (commit `0c2fc06`)
 
-AGENTS.md mencatat defect pill `--ch-diff`-pada-`--ch-diff-tint` di `injected.css` sebagai bug yang sama dengan yang dikoreksi mikro-situs, tapi "out of scope" — mirror-nya sudah memakai token `-ink`, sheet aslinya belum. Kini sheet aslinya juga: `--ch-match-ink`, `--ch-diff-ink`, dan `--ch-bad-ink` masuk `:root` `injected.css` dengan nilai yang sama dengan yang token mirror mikro-situs tulis (hue/saturation sama, lightness di-solve ke 5:1), dan tiga situs teks yang sebelumnya gagal AA (`summary-ok`, `summary-warn`, `status-error`) melepas token dasar. Latar, border, dan pill `--ch-info` tetap token dasar karena sudah 4.5:1. Perbaikan ini tidak menggerakkan `microsite-sync`: token dasar tak berubah, jadi pemeriksaan kesetaraan sepuluh pasang tetap hijau. **Catatan AGENTS.md "injected.css still ships the same defect" kini usang** — lihat Prioritas #4.
+AGENTS.md mencatat defect pill `--ch-diff`-pada-`--ch-diff-tint` di `injected.css` sebagai bug yang sama dengan yang dikoreksi mikro-situs, tapi "out of scope" — mirror-nya sudah memakai token `-ink`, sheet aslinya belum. Kini sheet aslinya juga: `--ch-match-ink`, `--ch-diff-ink`, dan `--ch-bad-ink` masuk `:root` `injected.css` dengan nilai yang sama dengan yang token mirror mikro-situs tulis (hue/saturation sama, lightness di-solve ke 5:1), dan tiga situs teks yang sebelumnya gagal AA (`summary-ok`, `summary-warn`, `status-error`) melepas token dasar. Latar, border, dan pill `--ch-info` tetap token dasar karena sudah 4.5:1. Perbaikan ini tidak menggerakkan `microsite-sync`: token dasar tak berubah, jadi pemeriksaan kesetaraan sepuluh pasang tetap hijau. **Catatan AGENTS.md "injected.css still ships the same defect" sudah diganti pada `c934fdd`** — lihat Prioritas #4.
 
 ### [INFO] Tool pengukuran portal kini ada di repo
 
@@ -133,16 +133,16 @@ Audit lama mencatat CHANGELOG berhenti di 2.0.0. Kini sampai 2.2.0 karena alur r
 
 ## 5. Test Coverage
 
-**Total:** 53 file, 1.544 kasus, semuanya hijau (diukur 2026-10-13, commit `0c2fc06`).
+**Total:** 53 file, 1.598 kasus, semuanya hijau (diukur ulang 2026-10-13 pada commit `2f6baa1`).
 
 | Area | File test khas | Catatan |
 |------|----------------|---------|
 | Batch & lifecycle | `scrape-batch.unit` 13, `scrape-batch-helpers.unit` 26, `run-lifecycle.unit` 29 | ADR-0014/0018; masa kosong di tengah masa berisi dilaporkan terpisah dari masa yang gagal diambil |
 | Checker & panel Pengecekan | `checker-logic.unit` 94, `ui-checker.unit` 29 | Termasuk 5 kasus `OtherTaxBase = 0` yang baru; `ui-checker` drivable tanpa overlay |
-| Export & source | `export-source.unit` 18, `export-source.matrix.unit` 32, `exporter.*` 86 | Satu deklarasi per source; matrix menutup kolom dan dua ejaan nomor bukti potong |
-| Persistensi & notifikasi | `extension-preferences.unit` 36, `preferences.unit` 13, `completion-notice.unit` 24 | Normalizer per nilai + guard baca/gagal + ringkasan yang tidak mengumumkan run sebagian sebagai sukses |
+| Export & source | `export-source.unit` 18, `export-source.matrix.unit` 32, `exporter.*` 100 | Satu deklarasi per source; matrix menutup kolom dan dua ejaan nomor bukti potong |
+| Persistensi & notifikasi | `extension-preferences.unit` 42, `preferences.unit` 13, `completion-notice.unit` 24 | Normalizer per nilai + guard baca/gagal + ringkasan yang tidak mengumumkan run sebagian sebagai sukses |
 | Pintasan & shell panel | `shortcuts.unit` (3 binding), `ui-panel`/`ui-comparer` | Ctrl+Shift+B digate `isVatInvoicePage` |
-| Wiring dunia | `scraper-boot.unit` 20, `main-boot.unit` 33 | Pembuktian patch/teardown kedua dunia di entry script |
+| Wiring dunia | `scraper-boot.unit` 20, `main-boot.unit` 47 | Pembuktian patch/teardown kedua dunia di entry script |
 | Microsite | `microsite-sync.unit` 79 | Kontra-drift fakta, struktur halaman, dan 86 pasang kontras AA — termasuk `404.html` |
 
 Known gap yang menahan rata-rata, sengaja begitu (angka hari ini):
@@ -150,15 +150,15 @@ Known gap yang menahan rata-rata, sengaja begitu (angka hari ini):
 | Area | % Stmts | % Branch | Penjelasan |
 |------|---------|----------|------------|
 | `scraper.ts` | 39.39 | 28.73 | IIFE wiring MAIN-world; dijaga `scraper-boot` |
-| `downloader.ts` | 44.44 | 55.31 | Dispatch nama PDF |
-| `main.ts` | 71.71 | 49.25 | SPA nav + event wiring |
-| `ui-filters.ts` | 55.00 | 55.68 | Toolbar filter DOM |
-| `ui-comparer.ts` | 89.71 | 56.32 | Jalur open/close overlay |
-| `ui-panel.ts` | 73.91 | 54.54 | Konstruksi DOM shell |
-| `exporter.ts` | 81.56 | 84.46 | funcs 56% — entry point unduh |
+| `main.ts` | 90.47 | 72.38 | SPA nav + event wiring (tersisa import-time glue dan listener `init()`) |
+| `ui-comparer.ts` | 89.97 | 57.30 | Jalur open/close overlay |
+| `ui-panel.ts` | 91.46 | 73.07 | Konstruksi DOM shell |
+| `ui.ts` | 89.01 | 76.66 | DOM toolbar & dropdown in-page |
+| `popup.ts` | 93.64 | 61.66 | Cabang render kontrol popup |
+| `exporter.ts` | 92.19 | 85.43 | funcs 76% — `exportXLSX` sengaja belum teruji (ADR-0013) |
 | `scraper-types.ts`, `xlsx-runtime.ts` | — | — | Di-exclude dengan sengaja (modul type-only; chunk hasil build ADR-0013) |
 
-Rata-rata global: 88.04 stmts / 82.05 branch / 84.16 funcs / 89.63 lines — semuanya berada di atas lantai masing-masing.
+Rata-rata global: 92.79 stmts / 85.84 branch / 89.34 funcs / 94.18 lines — semuanya berada di atas lantai masing-masing (92.4 / 85.4 / 88.9 / 93.8).
 
 ---
 
@@ -173,7 +173,7 @@ Satu runtime dependency (`xlsx` 0.20.3 dari CDN SheetJS, pinned) tidak berubah s
 | Langkah | Perintah | Hasil |
 |---------|----------|-------|
 | Typecheck | `pnpm typecheck` | ✅ 0 error |
-| Test | `pnpm test` | ✅ 1.544/1.544 (53 file) |
+| Test | `pnpm test` | ✅ 1.598/1.598 (53 file) |
 | Lint | `pnpm lint` | ✅ 0 error |
 | Build Chrome | `pnpm build:chrome` | ✅ manifest dioptimalkan + aset tersalin |
 | Build Firefox | `pnpm build:firefox` | ✅ — dan kini juga di CI, bukan lokal-saja |
@@ -200,7 +200,7 @@ Satu loop manual tersisa sebelum rilis berikutnya — unit test menjangkau seam 
 | 1 | Jalankan loop manual §8 (perilaku checker baru, warna pill, pintas panel) sebelum rilis berikutnya | Info | Low |
 | 2 | Extend batch export ke PPN Masukan: gate `main-actions`, copy konfirmasi, nama file `FPM-<tahun>`, satu sampel Network untuk `PropertyName` masa, README + microsite di commit yang sama | Low (fitur) | Medium |
 | 3 | Dalami test pada gap coverage §5, lalu naikkan lantai ratchet — sesuai AGENTS.md, tidak boleh dilonggarkan demi build hijau | Low | Medium |
-| 4 | Saat berikutnya menyentuh AGENTS.md: hapus kalimat "injected.css still ships the same defect" — usang sejak `0c2fc06` | Info | Trivial |
+| 4 | ~~Saat berikutnya menyentuh AGENTS.md: hapus kalimat "injected.css still ships the same defect"~~ — ✅ selesai pada `c934fdd` | Info | Trivial |
 | 5 | Refresh audit ini setelah rilis berikut — cadence yang sudah dipegang sejak audit pertama 2026 | Info | Trivial |
 
 **Kesimpulan:** tidak ada blocker. Utang struktural dari audit 2026-09-24 sudah lunas semuanya; sisa pekerjaan berbentuk asimetri fitur (batch Masukan) dan disiplin yang sudah punya rumah di toolchain (coverage boot-wiring, banding ratchet, loop manual portal).

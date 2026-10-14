@@ -15,6 +15,7 @@ Berikut adalah konstanta dan jeda waktu yang diterapkan dalam kode ([`scraper-ac
 | **Preset Kecepatan (popup)** | `×1` / `×2` / `×4` | [`scaleDelay()`](src/shared/extension-preferences.ts) | Preset *Normal* / *Hati-hati* / *Sabar* mengalikan **semua** jeda di bawah. Pengali selalu ≥ 1: pengaturan ini hanya bisa **memperlambat**, tidak pernah mempercepat. |
 | **Batch Pagination e-Invoice** | `step = 500`, `delayMs = 100` | [`getPaginateConfig()`](src/content/scraper-actions.ts) | 500 data/req (menyesuaikan batas maks UI e-Invoice portal `500`). |
 | **Batch Pagination SPT atau Returnsheets Portal** | `step = 1000`, `delayMs = 150` | [`getPaginateConfig()`](src/content/scraper-actions.ts) | 1.000 data/req (menyesuaikan batas maks UI Returnsheets PPN portal `1000`). |
+| **Batch Pagination Bukti Potong (Withholding Slips)** | `step = 1000`, `delayMs = 100` | [`getPaginateConfig()`](src/content/scraper-actions.ts) | Sumber di luar e-Invoice dan SPT: `step` memakai batas atas `1000`, jeda kembali ke `100` ms (hanya SPT yang diperlambat ke `150` ms). |
 | **Bulk PDF Download** | `delay(800)` (800 ms) | [`downloadBulkWithholdingPdf()`](src/content/scraper-actions.ts) & [`startPdfDownload()`](src/content/scraper-actions.ts) | Jeda 800 ms antar unduhan berkas PDF (e-Faktur & Bukti Potong). |
 | **Scrape per Faktur Spesifik** | `delay(50)` (50 ms) | [`scrapeByInvoices()`](src/content/scraper-actions.ts) | Jeda 50 ms antar nomor faktur pada fitur pencarian dari daftar. |
 | **Retry & Backoff Faktur** | `MAX_INVOICE_RETRIES = 2`, `BACKOFF_BASE_MS = 1000` | [`scrapeByInvoices()`](src/content/scraper-actions.ts) | Maks 2x retry dengan *linear backoff* (`1000ms`, `2000ms` = `BACKOFF_BASE_MS` × percobaan) jika request gagal. |
@@ -56,7 +57,7 @@ Berikut adalah konstanta dan jeda waktu yang diterapkan dalam kode ([`scraper-ac
 
 ## 3. Faktor Real-World: Network Round-Trip Time (RTT) & Performa di Lapangan
 
-Di kondisi riil/lapangan, jeda waktu nyata antar request sering kali terlihat mencapai **> 1 detik per halaman**, meskipun di dalam kode hanya diatur `delayMs = 100ms`. 
+Di kondisi riil/lapangan, jeda waktu nyata antar request sering kali terlihat mencapai **> 1 detik per halaman**, meskipun di dalam kode hanya diatur `delayMs = 100ms`.
 
 Hal ini disebabkan oleh gabungan tiga komponen waktu utama:
 

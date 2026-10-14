@@ -325,9 +325,10 @@ Hosted on **Cloudflare Pages**, which needs no build step at all:
 | Build output directory | `microsite` |
 | Root directory | *(repository root)* |
 
-The repo root `README.md` links back to this folder, and the [`CI`](.github/workflows/ci.yml)
+The repo root `README.md` links back to this folder, and the [`CI`](../.github/workflows/ci.yml)
 workflow runs `src/tests/microsite-sync.unit.test.ts` — it is one of the test
-files in `pnpm test` — on every push and every pull request. Editing this page
+files in `pnpm test` — on every push to `main` and every pull request (the same
+workflow also runs `test:coverage`, both browser builds, and `package`). Editing this page
 or the code it documents therefore fails the build rather than quietly drifting.
 
 Everything in this folder is served exactly as committed. Three files only do

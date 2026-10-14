@@ -37,7 +37,7 @@ Alih-alih mengklik tombol unduh satu per satu seperti di Coretax bawaan, Cindieh
 
 - **e-Faktur (PPN Keluaran, Masukan, Retur):**
   Format nama: `Referensi - NomorFakturPajak.pdf`
-  Contoh: `SZ-0447/07/26 - 010.000-26.00000001.pdf`
+  Contoh: `SZ-0447-07-26 - 010.000-26.00000001.pdf` (tanda `/` pada referensi diganti `-` agar nama berkas sah)
 
 - **Bukti Potong:**
   Format nama: `MM-YYYY-NomorBuktiPotong-NamaPemotong.pdf`
@@ -49,7 +49,7 @@ Alih-alih mengklik tombol unduh satu per satu seperti di Coretax bawaan, Cindieh
 
 Sebelum unduhan PDF dimulai, Cindieh juga memeriksa daftar nomor Anda terhadap data yang sudah diambil: nomor yang tidak punya baris di data tersebut akan **disebutkan namanya** di dialog konfirmasi (atau di peringatan tersendiri bila konfirmasi dimatikan), karena berkas itu memang tidak akan ikut terunduh.
 
-Setelah ekspor bertarget selesai, Cindieh membandingkan daftar nomor yang Anda minta dengan baris yang benar-benar ditemukan, lalu melaporkan nomor yang tidak ada di Coretax di panel — mis. *"3 dari 20 nomor faktur tidak ditemukan di Coretax: 040-002, 040-007, 040-011."* Tanpa laporan ini, nomor yang tidak ketemu akan membuat berkas datang lebih pendek tanpa penjelasan.
+Setelah ekspor bertarget selesai, Cindieh membandingkan daftar nomor yang Anda minta dengan baris yang benar-benar ditemukan, lalu melaporkan nomor yang tidak ada di Coretax di panel — mis. *"3 dari 20 nomor faktur tidak ditemukan di Coretax: 040-002, 040-007, 040-011."* Tanpa laporan ini, nomor yang tidak ketemu akan membuat berkas hasilnya lebih pendek tanpa penjelasan.
 
 ---
 
@@ -89,7 +89,7 @@ Cara kerja: cukup **copy dari Excel, lalu paste** ke panel Komparator. Tidak per
 - **Export Excel / CSV** — ekspor seluruh hasil perbandingan, ke `perbandingan-faktur.xlsx` atau `perbandingan-faktur.csv`. CSV siap dibuka di editor teks atau dipakai untuk membandingkan dua hasil
 - **Klik baris hasil** — langsung menutup panel dan menjalankan pencarian referensi tersebut di tabel PPN Keluaran Coretax, untuk validasi cepat tanpa perlu copy-paste manual
 
-### 5. Pengecekan Keakuratan Nilai (PPN Keluaran)
+### 5. Pengecekan Keakuratan Nilai (PPN Keluaran & PPN Masukan)
 
 Tab kedua di panel yang sama dengan Komparator. Fitur ini memeriksa apakah nilai **DPP**, **DPP Nilai Lain**, dan **PPN** pada faktur yang sudah tercatat di Coretax konsisten secara aritmetika — berguna untuk menemukan faktur yang nilai dasarnya terlanjur salah sebelum dilaporkan.
 
@@ -131,7 +131,7 @@ Baris yang DPP Nilai Lain-nya **0** berarti faktur tidak menerapkan DPP Nilai La
 
 ## Pengaturan (Popup)
 
-Klik ikon Cindieh di toolbar browser untuk membuka pengaturan. Semua preferensi tersimpan di `storage.local` dan berlaku di tab portal yang sedang terbuka tanpa perlu reload.
+Klik ikon Cindieh di toolbar browser untuk membuka pengaturan. Semua preferensi tersimpan di `storage.local` dan berlaku di tab portal yang sedang terbuka tanpa perlu reload. Pengecualian kecil: **Log debug** di dunia halaman (scraper) baru terbaca pada injeksi berikutnya, karena scraper membaca saklar itu saat modulnya dimuat.
 
 | Kontrol | Fungsi |
 |---|---|
@@ -176,7 +176,7 @@ Ketiganya memakai `Ctrl` (atau `Cmd` di macOS) + `Shift`, dan hanya aktif di hal
 | `Ctrl+Shift+S` | Batalkan proses yang sedang berjalan. |
 | `Ctrl+Shift+B` | Buka panel Bandingkan / Pengecekan Keakuratan Nilai. Hanya di halaman e-Faktur PPN Keluaran dan PPN Masukan; ditutup dengan `Esc` seperti biasa. |
 
-Daftar ini bukan tabel terpisah: `SHORTCUTS` di [`src/content/shortcuts.ts`](src/content/shortcuts.ts) adalah satu-satunya sumber, dan handler, README, serta halaman situs membacanya dari sana.
+Daftar ini bukan tabel terpisah: `SHORTCUTS` di [`src/content/shortcuts.ts`](src/content/shortcuts.ts) adalah satu-satunya sumber. Handler membacanya langsung, halaman situs membacanya lewat import yang sama di `microsite-sync.unit.test.ts`, sedangkan tabel README ini disalin tangan — jadi ubah keduanya dalam satu commit.
 
 ## Instalasi & Build
 
@@ -226,13 +226,13 @@ Buat ekstensi siap pakai untuk browser yang diinginkan:
 
 ## Situs Web (Microsite)
 
-Halamanumah yang publik untuk Cindieh ada di folder [`microsite/`](microsite/) dan sudah tayang di **https://cindieh.pages.dev** (Cloudflare Pages, tanpa build step).
+Halaman utama yang publik untuk Cindieh ada di folder [`microsite/`](microsite/) dan sudah tayang di **https://cindieh.pages.dev** (Cloudflare Pages, tanpa build step).
 
 Isinya one-pager statis — HTML, CSS, dan JS polos tanpa dependensi — yang menjelaskan tujuh fitur Cindieh dalam bahasa Indonesia, ditambah [`privacy.html`](microsite/privacy.html), **halaman kebijakan privasi yang tayang di https://cindieh.pages.dev/privacy.html**. Halaman kedua itu ada karena Chrome Web Store dan Firefox Add-ons meminta kebijakan privasi berupa URL saat review — berkas di dalam repositori tidak bisa dijadikan tautan. Isinya diturunkan dari kode: tidak ada server, telemetri, maupun analitik, dan hanya `coretaxdjp.pajak.go.id` yang dihubungi. Dokumentasi untuk folder tersebut ada di [`microsite/README.md`](microsite/README.md): struktur, konvensi, dan setelan deploy.
 
-Yang membuatnya tidak melenceng dari kode adalah [`src/tests/microsite-sync.unit.test.ts`](src/tests/microsite-sync.unit.test.ts). Halaman itu menyalin fakta dari TypeScript (prefix berkas, permission, shortcut, halaman portal yang didukung, label status kedua grid, nama berkas ekspor, setiap kontrol popup, dan hostname situs), lalu tes tersebut membandingkannya balik dengan sumber aslinya. Menambah sumber ekspor, permission, shortcut, halaman portal, status, nama berkas, atau preferensi wajib disertai perubahan halaman di commit yang sama — kalau tidak, tesnya merah. Suite yang sama juga menjaga struktur kedua halaman itu sendiri, mulai dari satu label dan satu panel per tab fitur sampai `<base href="/">` di halaman 404 dan kecocokan `sitemap.xml` dengan setiap halaman. Tabel izin di halaman privasi diperiksa dua arah terhadap `manifest.json`: setiap permission yang diminta harus disebut di sana, dan setiap permission yang diklaim harus benar-benar ada di manifest — jadi izin kelima tidak bisa tayang tanpa dicatat.
+Yang membuatnya tidak melenceng dari kode adalah [`src/tests/microsite-sync.unit.test.ts`](src/tests/microsite-sync.unit.test.ts). Halaman itu menyalin fakta dari TypeScript (prefix berkas, permission, shortcut, halaman portal yang didukung, label status kedua grid, nama berkas ekspor, setiap kontrol popup, dan hostname situs), lalu tes tersebut membandingkannya balik dengan sumber aslinya. Menambah sumber ekspor, permission, shortcut, halaman portal, status, nama berkas, atau preferensi wajib disertai perubahan halaman di commit yang sama — kalau tidak, tesnya merah. Suite yang sama juga menjaga struktur ketiga halaman situs (beranda, privasi, dan 404), mulai dari satu label dan satu panel per tab fitur sampai `<base href="/">` di halaman 404 dan kecocokan `sitemap.xml` dengan setiap halaman. Tabel izin di halaman privasi diperiksa dua arah terhadap `manifest.json`: setiap permission yang diminta harus disebut di sana, dan setiap permission yang diklaim harus benar-benar ada di manifest — jadi penambahan izin baru tidak bisa tayang tanpa dicatat di sana.
 
-Workflow [`CI`](.github/workflows/ci.yml) menjalankan `pnpm typecheck`, `pnpm lint`, dan `pnpm test` di GitHub Actions pada setiap push dan setiap pull request — dan `microsite-sync.unit.test.ts` termasuk salah satu file di dalamnya. Jadi guard-nya bekerja di CI, bukan hanya saat ada yang ingat menjalankannya secara lokal.
+Workflow [`CI`](.github/workflows/ci.yml) menjalankan `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:coverage`, `build:chrome` + `build:firefox`, dan `pnpm run package` di GitHub Actions pada setiap push ke `main` dan setiap pull request — dan `microsite-sync.unit.test.ts` termasuk salah satu file di dalam `pnpm test`. Jadi guard-nya bekerja di CI, bukan hanya saat ada yang ingat menjalankannya secara lokal.
 
 ## Tech Stack
 - **Bahasa:** TypeScript
