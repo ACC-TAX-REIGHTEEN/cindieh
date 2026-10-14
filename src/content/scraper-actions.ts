@@ -366,6 +366,17 @@ export async function downloadBulkWithholdingPdf(
 // ── Main scraping orchestrator ────────────────────────
 
 /**
+ * Attempts per period in a year-wide sweep: the first, plus at most one retry.
+ * One transient failure would otherwise cost the rest of the year — a re-run the
+ * user pays for with twelve requests, where a retry costs one. Sequential, so the
+ * request rate during the retry is unchanged.
+ */
+export const PERIOD_ATTEMPTS = 2;
+
+/** Pause before a period's one retry — paced like every other delay. */
+export const PERIOD_RETRY_DELAY_MS = 2000;
+
+/**
  * Full scrape: intercept → paginate → (bulk PDF if withholding) → complete.
  * Caller is responsible for setting `isRunning` state before and after.
  *
@@ -420,24 +431,46 @@ export async function startScraping(
     for (const [index, period] of periods.entries()) {
       if (ctx.isStopRequested()) break;
       const before = accumulator.allData.length;
-      let result: ScrapePaginatedResult;
-      try {
-        // Throws when the captured request has no period filter, which is the
-        // case where a "batch" would silently re-scrape one period N times.
-        result = await scrapePaginated(
-          captured,
-          step,
-          ctx,
-          overridesForPeriod(captured.rawBody, period, 0, step),
-          accumulator,
-        );
-      } catch (err) {
-        // A period that cannot even be requested is recorded and the sweep
-        // continues: eleven months of a year is worth more than none, and the
+      let result: ScrapePaginatedResult | null = null;
+      let failure: string | null = null;
+
+      // A period gets ONE retry, and it is abandoned the moment the run is
+      // stopped. The sweep below is the only place a whole year is fetched, so
+      // a single transient failure here would otherwise cost every month still
+      // to come.
+      for (let attempt = 1; attempt <= PERIOD_ATTEMPTS && !ctx.isStopRequested(); attempt++) {
+        try {
+          // Throws when the captured request has no period filter, which is the
+          // case where a "batch" would silently re-scrape one period N times.
+          result = await scrapePaginated(
+            captured,
+            step,
+            ctx,
+            overridesForPeriod(captured.rawBody, period, 0, step),
+            accumulator,
+          );
+          failure = null;
+          break;
+        } catch (err) {
+          failure = err instanceof Error ? err.message : String(err);
+          if (attempt < PERIOD_ATTEMPTS && !ctx.isStopRequested()) {
+            debugWarn(`Masa ${period} gagal (percobaan ${attempt}), dicoba sekali lagi:`, failure);
+            await ctx.delay(scaleDelay(PERIOD_RETRY_DELAY_MS, pacingOf(ctx)));
+          }
+        }
+      }
+
+      if (!result) {
+        // Nothing after the retry either: the period is recorded and the sweep
+        // continues — eleven months of a year is worth more than none, and the
         // summary lists it as failed rather than quietly short.
-        const message = err instanceof Error ? err.message : String(err);
-        periodCounts.push({ period, rows: accumulator.allData.length - before, error: message });
-        debugError(`❌ Masa ${period} gagal:`, message);
+        if (ctx.isStopRequested()) break;
+        periodCounts.push({
+          period,
+          rows: accumulator.allData.length - before,
+          error: failure ?? "Masa tidak diambil.",
+        });
+        debugError(`❌ Masa ${period} gagal:`, failure);
         continue;
       }
       page += result.page;

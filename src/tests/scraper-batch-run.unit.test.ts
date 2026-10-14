@@ -329,6 +329,81 @@ describe("year-wide batch sweep", () => {
     expect(sent(ctx).find((m) => m.type === "SCRAPE_COMPLETE")).toBeUndefined();
   });
 
+  it("retries a failed period ONCE, so one transient failure does not cost the rest of the year", async () => {
+    // maxErrors 1 isolates THIS retry: with the default breaker, a page failure
+    // is already retried inside scrapePaginated, and the test would be measuring
+    // that loop instead.
+    let call = 0;
+    mockedXhrRequest.mockImplementation(async () => {
+      call += 1;
+      if (call === 1) throw new Error("504 Gateway Timeout");
+      return page([{ RecordId: call }]);
+    });
+    const ctx = makeCtx({ maxErrors: 1 });
+    await startScraping(async () => capturedWithFilters("TD.00708"), ctx, { batchMonths: 2 });
+
+    // The retry asks for the SAME period again; asking for the next one would
+    // skip a month and call it a success, and a third attempt would be a loop.
+    expect(filtersPerRequest().map((f) => f.period)).toEqual([
+      "TD.00701",
+      "TD.00701",
+      "TD.00702",
+    ]);
+    const periods = completionOf(ctx).periods;
+    expect(periods?.counts.map((c) => [c.period, c.rows])).toEqual([
+      ["TD.00701", 1],
+      ["TD.00702", 1],
+    ]);
+    expect(periods?.failedPeriods).toEqual([]);
+    // The retry pauses first: a second try sent straight after the first is the
+    // burst the pacing rules exist to prevent.
+    expect(vi.mocked(ctx.delay).mock.calls.map(([ms]) => ms)).toEqual([2000, 100]);
+  });
+
+  it("reports a period as failed only after the retry failed too, and keeps sweeping", async () => {
+    let call = 0;
+    mockedXhrRequest.mockImplementation(async () => {
+      call += 1;
+      if (call <= 2) throw new Error("504 Gateway Timeout");
+      return page([{ RecordId: 3 }]);
+    });
+    const ctx = makeCtx({ maxErrors: 1 });
+    await startScraping(async () => capturedWithFilters("TD.00708"), ctx, { batchMonths: 2 });
+
+    const complete = completionOf(ctx);
+    // Exactly one retry -- not a retry loop -- and the OTHER period still ran.
+    expect(mockedXhrRequest).toHaveBeenCalledTimes(3);
+    expect(complete.periods?.counts.map((c) => [c.period, c.rows])).toEqual([
+      ["TD.00701", 0],
+      ["TD.00702", 1],
+    ]);
+    expect(complete.periods?.failedPeriods).toEqual(["TD.00701"]);
+    expect(complete.total).toBe(1);
+  });
+
+  it("does not retry a failed period once the run is stopped", async () => {
+    // The stop lands during the pause before the retry -- the one moment where a
+    // second attempt is decided but not yet sent.
+    let stop = false;
+    mockedXhrRequest.mockImplementation(async () => {
+      throw new Error("504 Gateway Timeout");
+    });
+    const delay = vi.fn(() => {
+      stop = true;
+      return Promise.resolve();
+    });
+    const ctx = makeCtx({ maxErrors: 1, isStopRequested: () => stop, delay });
+    await startScraping(async () => capturedWithFilters("TD.00708"), ctx, { batchMonths: 12 });
+
+    expect(mockedXhrRequest).toHaveBeenCalledTimes(1);
+    // One pause, the retry pause: no page delay (the breaker threw at once) and
+    // no between-period pause (the sweep ended).
+    expect(delay.mock.calls).toEqual([[2000]]);
+    // And no completion: a stopped sweep must not produce a file that looks like
+    // a year.
+    expect(sent(ctx).find((m) => m.type === "SCRAPE_COMPLETE")).toBeUndefined();
+  });
+
   it("paces the BETWEEN-period pause, never skipping it", async () => {
     mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
     const ctx = makeCtx();
