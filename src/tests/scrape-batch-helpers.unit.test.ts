@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   YEAR_PROPERTY,
   batchMonthCount,
+  batchScopeError,
   capturedYear,
   capturedPeriod,
 } from "../content/scrape-batch";
@@ -83,5 +84,49 @@ describe("capturedYear", () => {
     ]);
     expect(capturedYear(raw)).toBe("2026");
     expect(capturedPeriod(raw)).toBe("TD.00708");
+  });
+});
+
+describe("batchScopeError", () => {
+  const BOTH = body([
+    { PropertyName: "TaxInvoicePeriod", Value: "TD.00708" },
+    { PropertyName: YEAR_PROPERTY, Value: "2026" },
+  ]);
+
+  it("lets a sweep run when the request carries the period and the year", () => {
+    expect(batchScopeError(BOTH)).toBeNull();
+  });
+
+  it("names the missing PERIOD, which would sweep one month twelve times", () => {
+    const raw = body([{ PropertyName: YEAR_PROPERTY, Value: "2026" }]);
+    expect(batchScopeError(raw)).toContain("masa pajak");
+  });
+
+  it("names the missing YEAR, which the period code does not carry itself", () => {
+    // The message has to say which filter is missing: "the request cannot be
+    // swept" without saying why leaves the user re-trying the same filter.
+    const raw = body([{ PropertyName: "TaxInvoicePeriod", Value: "TD.00708" }]);
+    expect(batchScopeError(raw)).toContain("tahun pajak");
+  });
+
+  it.each([
+    ["unparseable JSON", "{not json"],
+    ["an empty string", ""],
+    ["a body with no filters", "{\"First\":0}"],
+    ["an empty filter list", body([])],
+    ["a period value that is not a code", body([
+      { PropertyName: "TaxInvoicePeriod", Value: "Agustus" },
+      { PropertyName: YEAR_PROPERTY, Value: "2026" },
+    ])],
+  ])("refuses %s rather than sweeping something unnamed", (_label, raw) => {
+    expect(batchScopeError(raw)).not.toBeNull();
+  });
+
+  it("accepts a numeric year, the way capturedYear does", () => {
+    const raw = body([
+      { PropertyName: "TaxInvoicePeriod", Value: "TD.00708" },
+      { PropertyName: YEAR_PROPERTY, Value: 2026 },
+    ]);
+    expect(batchScopeError(raw)).toBeNull();
   });
 });

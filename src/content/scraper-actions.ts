@@ -22,6 +22,7 @@ import {
 } from "./scraper-xhr";
 import type { CapturedRequest, ScrapeMessage } from "./scraper-types";
 import {
+  batchScopeError,
   capturedPeriod,
   capturedYear,
   overridesForPeriod,
@@ -395,18 +396,17 @@ export async function startScraping(
 
     const { step } = getPaginateConfig(captured.source);
 
-    // The codes come from the request the portal just made, not from anything
-    // invented here. A captured request with no period filter cannot be swept:
-    // doing it anyway would re-scrape ONE period N times and report a year's
-    // worth of a month's rows, so it fails loudly instead.
+    // Both filters are required before a sweep may touch the grid, and both
+    // fail loudly rather than sweeping something that is not a year: the period
+    // codes come from the request the portal just made (never from anything
+    // invented here), and the year is a SEPARATE filter that decides which year
+    // those codes read. See batchScopeError for what each missing one costs.
+    const batchError = options.batchMonths ? batchScopeError(captured.rawBody) : null;
+    if (batchError) throw new Error(batchError);
+
     const periods = options.batchMonths
       ? planPeriods(capturedPeriod(captured.rawBody) ?? "", options.batchMonths)
       : [];
-    if (options.batchMonths && periods.length === 0) {
-      throw new Error(
-        "Permintaan grid ini tidak punya filter masa pajak, jadi ekspor satu tahun tidak bisa dijalankan.",
-      );
-    }
     const accumulator: ScrapeAccumulator = { allData: [], seen: new Set<string>() };
     const periodCounts: PeriodCount[] = [];
 

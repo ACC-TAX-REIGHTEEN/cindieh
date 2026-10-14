@@ -188,6 +188,32 @@ export function capturedYear(capturedRawBody: string): string | null {
 }
 
 /**
+ * Why a batch may not run against this captured request, or null when it may.
+ *
+ * A sweep needs BOTH filters, and each one is the same kind of guard: without
+ * them the twelve requests return something that is not a year.
+ *
+ *  * No period filter: every request re-asks for the period the grid is already
+ *    showing, so the file holds one month's rows twelve times.
+ *  * No year filter: the period code carries no year of its own (`TD.00708` is
+ *    August of whatever year the SEPARATE year filter says), so the sweep reads
+ *    that month code across every year the account has — and then writes a file
+ *    named for a year it never filtered to.
+ *
+ * Returns the message instead of throwing, so the rule stays pure and testable;
+ * scraper-actions turns it into the SCRAPE_ERROR the panel shows.
+ */
+export function batchScopeError(capturedRawBody: string): string | null {
+  if (periodPrefix(capturedPeriod(capturedRawBody) ?? "") === null) {
+    return "Permintaan grid ini tidak punya filter masa pajak, jadi ekspor satu tahun tidak bisa dijalankan.";
+  }
+  if (capturedYear(capturedRawBody) === null) {
+    return "Permintaan grid ini tidak punya filter tahun pajak, jadi ekspor satu tahun tidak bisa dijalankan.";
+  }
+  return null;
+}
+
+/**
  * Roll per-period counts into what the panel reports.
  *
  * A period is called empty only when it produced nothing AND at least one other

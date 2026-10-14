@@ -261,6 +261,51 @@ describe("year-wide batch sweep", () => {
     expect(sent(ctx).find((m) => m.type === "SCRAPE_ERROR")).toBeDefined();
   });
 
+  it("FAILS rather than sweeping a month code across every year when the request has no year filter", async () => {
+    mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
+    const ctx = makeCtx();
+    // The period code carries no year of its own: TaxInvoiceYear is a SEPARATE
+    // filter. Without it the twelve requests read one month code across every
+    // year the account has, and the file would be named for a year that was
+    // never filtered to.
+    const noYear: CapturedRequest = {
+      ...capturedWithFilters("TD.00708"),
+      rawBody: JSON.stringify({
+        First: 0,
+        Rows: 50,
+        Filters: [
+          { PropertyName: "TaxInvoicePeriod", Value: "TD.00708", MatchMode: "equals" },
+        ],
+      }),
+    };
+    await startScraping(async () => noYear, ctx, { batchMonths: 12 });
+
+    expect(mockedXhrRequest).not.toHaveBeenCalled();
+    expect(sent(ctx).find((m) => m.type === "SCRAPE_COMPLETE")).toBeUndefined();
+    const error = sent(ctx).find((m) => m.type === "SCRAPE_ERROR");
+    expect((error as { message?: string } | undefined)?.message).toContain("tahun pajak");
+  });
+
+  it("does not require a year filter for an ordinary single-period scrape", async () => {
+    // The guard belongs to the sweep: one period is fetched with the filters the
+    // grid itself sent, so an ordinary export still works on a request that
+    // carries no year.
+    mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
+    const ctx = makeCtx();
+    const noYear: CapturedRequest = {
+      ...capturedWithFilters("TD.00708"),
+      rawBody: JSON.stringify({
+        First: 0,
+        Rows: 50,
+        Filters: [{ PropertyName: "TaxInvoicePeriod", Value: "TD.00708" }],
+      }),
+    };
+    await startScraping(async () => noYear, ctx);
+
+    expect(mockedXhrRequest).toHaveBeenCalled();
+    expect(completionOf(ctx).total).toBe(1);
+  });
+
   it("paginates each period from the start", async () => {
     // First/Rows must come back to 0 for period two, or it would continue from
     // where period one stopped and collect nothing.
