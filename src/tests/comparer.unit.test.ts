@@ -239,6 +239,70 @@ describe("compareData", () => {
     expect(results[0].status).toBe("COCOK");
   });
 
+  // ── The lookup the comparison now uses ────────────────────────────────────
+  // compareData used to scan the scraped grid once per pasted row. It now builds
+  // a keyed lookup first, so these three cases pin the rules that make the keyed
+  // version answer exactly like the scan did.
+
+  it("keeps the FIRST row when the grid carries one reference twice", () => {
+    // The scan returned the earliest match; a Map that overwrote would silently
+    // report the later duplicate instead.
+    const duplicated = [
+      { Reference: "SZ-0447/07/26", SellingPrice: 568000, VAT: 62480, TaxInvoiceNumber: "FIRST" },
+      { Reference: "sz-0447/07/26", SellingPrice: 999, VAT: 99, TaxInvoiceNumber: "SECOND" },
+    ];
+
+    const results = compareData(parsePastedData("SZ-0447/07/26\t568.000\t62.480"), duplicated);
+
+    expect(results[0].taxInvoiceNumber).toBe("FIRST");
+    expect(results[0].status).toBe("COCOK");
+  });
+
+  it("matches a scraped reference that carries surrounding whitespace", () => {
+    const padded = [{ Reference: "  SZ-0447/07/26 ", SellingPrice: 568000, VAT: 62480 }];
+
+    const results = compareData(parsePastedData("SZ-0447/07/26\t568.000\t62.480"), padded);
+
+    expect(results[0].status).toBe("COCOK");
+  });
+
+  it("answers the same as a row-by-row scan over a mixed grid", () => {
+    // The equivalence check, over a fixture with duplicates, padding and case
+    // differences — the three ways a keyed lookup can diverge from a scan.
+    const mixed = [
+      { Reference: "AA-1/07/26", SellingPrice: 100, VAT: 11, TaxInvoiceNumber: "AA-first" },
+      { Reference: " AA-1/07/26 ", SellingPrice: 200, VAT: 22, TaxInvoiceNumber: "AA-dupe" },
+      { Reference: "bb-2/07/26", SellingPrice: 300, VAT: 33, TaxInvoiceNumber: "BB" },
+      { Reference: "", SellingPrice: 400, VAT: 44, TaxInvoiceNumber: "no-reference" },
+      { Reference: "CC-3/07/26", SellingPrice: 500, VAT: 55, TaxInvoiceNumber: "CC" },
+    ];
+    // Each pasted line carries the numbers of the row it should match, so the
+    // matched ones are COCOK and only the last one is absent from the grid.
+    const pastedRefs = ["AA-1/07/26", "BB-2/07/26", "cc-3/07/26", "ZZ-9/07/26"];
+    const pasted = parsePastedData(
+      ["AA-1/07/26\t100\t11", "BB-2/07/26\t300\t33", "cc-3/07/26\t500\t55", "ZZ-9/07/26\t100\t11"].join(
+        "\n",
+      ),
+    );
+
+    const results = compareData(pasted, mixed);
+
+    const scanned = pastedRefs.map((reference) =>
+      mixed.find(
+        (row) => String(row.Reference || "").trim().toLowerCase() === reference.toLowerCase(),
+      ),
+    );
+    expect(results.map((r) => r.taxInvoiceNumber)).toEqual(
+      scanned.map((row) => String(row?.TaxInvoiceNumber || "")),
+    );
+    expect(results.map((r) => r.status)).toEqual([
+      "COCOK",
+      "COCOK",
+      "COCOK",
+      "TIDAK_DITEMUKAN",
+    ]);
+  });
+
   it("allows difference within tolerance", () => {
     const pasted = parsePastedData("SZ-0447/07/26\t568.000,5\t62.480");
     const results = compareData(pasted, scrapedData, 1);
