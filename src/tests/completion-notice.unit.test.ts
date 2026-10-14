@@ -153,6 +153,39 @@ describe("describeCompletion", () => {
       "120 data diproses, tanpa kegagalan.",
     );
   });
+
+  it("names the periods a sweep could not fetch, using the panel's words", () => {
+    // The panel says "Masa gagal diambil: ..."; the toast has to send the user
+    // to that line, not invent a second vocabulary for the same finding.
+    expect(describeCompletion({ total: 900, failedPeriods: 2 })).toBe(
+      "900 data diproses, 2 masa gagal diambil.",
+    );
+    expect(describeCompletion({ total: 900, failedPeriods: 1, missing: 3 })).toBe(
+      "900 data diproses, 3 nomor faktur tidak ditemukan, 1 masa gagal diambil.",
+    );
+  });
+
+  it("never calls a sweep with a failed period a run without failures", () => {
+    // "tanpa kegagalan" is the sentence a user reads as "nothing to check", so
+    // it must not survive the one case where there is something to check.
+    expect(describeCompletion({ total: 900, failedPeriods: 1 })).not.toContain("tanpa kegagalan");
+  });
+
+  it("reports a month that came back empty while its neighbours had rows", () => {
+    // Not a failure -- the month may genuinely have no data -- so the clean-run
+    // affirmation survives, which is exactly the distinction the panel draws.
+    expect(describeCompletion({ total: 5, emptyPeriods: 1 })).toBe(
+      "5 data diproses, 1 masa tanpa baris, tanpa kegagalan.",
+    );
+  });
+
+  it("flags a truncated result instead of announcing a clean success", () => {
+    // The portal capped its own page size: the toast is the only place the user
+    // finds out without opening the panel, so it may not end in a clean bill.
+    expect(describeCompletion({ total: 300, truncated: true })).toBe(
+      "300 data diproses, hasil mungkin belum lengkap.",
+    );
+  });
 });
 
 describe("notificationTabPattern", () => {

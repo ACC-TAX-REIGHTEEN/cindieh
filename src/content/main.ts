@@ -445,6 +445,11 @@ const pageMessageDispatcher = createMessageDispatcher({
             total: complete.total || 0,
             failureCount: complete.failureCount,
             missing: outcome.shortfall?.count ?? 0,
+            // A batch run's own completeness evidence: the toast must not call a
+            // sweep with a failed or vanished month a clean success.
+            failedPeriods: complete.periods?.failedPeriods.length,
+            emptyPeriods: complete.periods?.emptyPeriods.length,
+            truncated: complete.truncated,
           }),
           Date.now(),
           location.href,

@@ -106,22 +106,41 @@ export function formatCompletionNotification(record: CompletionRecord): {
 /**
  * A detail string from the completion's own counts, for the toast body.
  *
- * `missing` is the No. Faktur shortfall: numbers the run was asked for that no
- * row carried. Without it a run that quietly dropped invoices would be announced
- * as a clean success, which is exactly the case a notification is most useful
- * for — the user is not looking at the panel when they need to know. Zero keeps
- * the wording identical to a run with no filter at all.
+ * Every count here exists because the toast is read AWAY from the panel: the
+ * user is not looking at Cindieh when they need to know the run came back
+ * shorter than it looked.
+ *
+ * - `missing` is the No. Faktur shortfall: numbers the run was asked for that no
+ *   row carried. Zero keeps the wording identical to a run with no filter at all.
+ * - `failedPeriods`/`emptyPeriods` are the per-period findings of a year-wide
+ *   sweep, named the way the panel names them ("masa gagal diambil", "masa tanpa
+ *   baris") so the toast sends the user to the words they will read there.
+ * - `truncated` is the portal capping its own page size: a partial result the
+ *   panel already flags and the toast must not call a clean success.
+ *
+ * The trailing affirmation is an affirmation, so it is printed only where it is
+ * true: a failed period or a truncated result drops it, while a missing number
+ * or an empty month (neither of which is a failure) keeps it.
  */
 export function describeCompletion(counts: {
   total: number;
   failureCount?: number;
   missing?: number;
+  failedPeriods?: number;
+  emptyPeriods?: number;
+  truncated?: boolean;
 }): string {
   const failed = counts.failureCount ?? 0;
   const missing = counts.missing ?? 0;
+  const failedPeriods = counts.failedPeriods ?? 0;
+  const emptyPeriods = counts.emptyPeriods ?? 0;
   const parts = [`${counts.total} data diproses`];
   if (missing > 0) parts.push(`${missing} nomor faktur tidak ditemukan`);
-  parts.push(failed > 0 ? `${failed} gagal` : "tanpa kegagalan");
+  if (failedPeriods > 0) parts.push(`${failedPeriods} masa gagal diambil`);
+  if (emptyPeriods > 0) parts.push(`${emptyPeriods} masa tanpa baris`);
+  if (counts.truncated) parts.push("hasil mungkin belum lengkap");
+  if (failed > 0) parts.push(`${failed} gagal`);
+  else if (failedPeriods === 0 && !counts.truncated) parts.push("tanpa kegagalan");
   return `${parts.join(", ")}.`;
 }
 

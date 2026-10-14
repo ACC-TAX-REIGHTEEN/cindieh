@@ -684,6 +684,40 @@ describe("main boot — completion notifications", () => {
     expect(record?.detail).toContain("2 proses gagal");
   });
 
+  it("names a batch sweep's lost masa in the notification, not just its row count", async () => {
+    const { env, runId } = await bootWithRun();
+    const run = (await import("../content/run-lifecycle")).runLifecycle;
+    run.begin("scrape");
+
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: [{ RecordId: 1 }, { RecordId: 2 }],
+      fields: ["RecordId"],
+      total: 2,
+      pages: 2,
+      elapsed: "9s",
+      source: "OUTPUT_TAX",
+      truncated: true,
+      periods: {
+        counts: [
+          { period: "TD.00701", rows: 2 },
+          { period: "TD.00702", rows: 0, error: "504 Gateway Timeout" },
+        ],
+        totalRows: 2,
+        emptyPeriods: [],
+        failedPeriods: ["TD.00702"],
+      },
+      runId,
+    });
+    await flush();
+
+    // The panel carries this and the user is not looking at it: "2 data diproses,
+    // tanpa kegagalan" would be a lie about a sweep that lost a month.
+    const record = publishedRecord(env);
+    expect(record?.detail).toContain("1 masa gagal diambil");
+    expect(record?.detail).toContain("belum lengkap");
+  });
+
   it("stays silent when the user never opted in", async () => {
     const env = await bootMain();
     env.fire("load");
