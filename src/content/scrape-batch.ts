@@ -23,12 +23,21 @@
 //
 // Pure on purpose: no DOM, no browser API, so every rule here is unit
 // tested rather than discovered on a portal.
+//
+// The sweep covers every e-Faktur PPN grid (Keluaran, Masukan, both Retur),
+// but only Keluaran's filter NAMES were measured. On the other grids the
+// period and year are therefore discovered by a name hint PLUS a value in the
+// measured format — two independent signals, because a value alone cannot be
+// trusted (an invoice number such as `010.000-26.00000012` also ends in two
+// digits that look like a month). A period filter whose value is in no known
+// format stops the sweep with a message that says so, which is also the
+// feedback that measures the next grid. See ADR-0018/ADR-0019.
 // ============================================================
 
 /** The body key the portal's grid requests carry their filters under. */
 const FILTERS_KEY = "Filters";
 
-/** The filter property that selects the tax period. */
+/** The filter property that selects the tax period, as measured on PPN Keluaran. */
 export const PERIOD_PROPERTY = "TaxInvoicePeriod";
 
 /** How many rows one period contributed, and whether it fetched cleanly. */
@@ -75,8 +84,42 @@ export function batchMonthCount(requested: unknown): number | undefined {
   return months >= 1 && months <= 12 ? months : undefined;
 }
 
-/** The filter property that selects the tax year. */
+/** The filter property that selects the tax year, as measured on PPN Keluaran. */
 export const YEAR_PROPERTY = "TaxInvoiceYear";
+
+/**
+ * Filter-name hints for the grids whose filter names were never measured.
+ *
+ * The portal spells the same concepts several ways across its grids — the
+ * export columns already carry `TaxInvoicePeriod`/`TaxPeriodMonth`/`TaxPeriod`
+ * as candidate PERIOD fields, and page-context reads the INPUT_TAX filename
+ * hint from any filter named like period/masa or year/tahun — so the discovery
+ * here reuses that convention rather than inventing a second one.
+ */
+const PERIOD_NAME_HINTS = ["period", "masa"];
+const YEAR_NAME_HINTS = ["year", "tahun"];
+
+/**
+ * Name hints that point at a DIFFERENT period than the one being swept.
+ *
+ * PPN Masukan's request may carry the credit period as a second period filter
+ * (`PeriodCredit`/`YearCredit` — the spellings export-source.ts already
+ * declares for that grid). Sweeping by it would produce twelve coherent months
+ * of the WRONG period, so a credit-named filter is never taken for either the
+ * period or the year.
+ */
+const CREDIT_NAME_HINTS = ["credit", "kredit"];
+
+/**
+ * Body keys a grid may carry its year under instead of a filter. The retur
+ * grids' filename hint (page-context.ts) already reads exactly these three
+ * spellings from the same kind of request, so the convention is reused, not
+ * invented.
+ */
+const YEAR_BODY_KEYS = ["TaxYear", "Year", "Tahun"];
+
+/** A four-digit tax year — the only year shape this module accepts. */
+const YEAR_SHAPE = /^(20|19)\d{2}$/;
 
 /** One entry of the portal's `body.Filters` array. */
 interface GridFilter {
@@ -98,6 +141,35 @@ function parseBody(rawBody: string): Record<string, unknown> {
 function filtersOf(body: Record<string, unknown>): GridFilter[] {
   const filters = body[FILTERS_KEY];
   return Array.isArray(filters) ? (filters as GridFilter[]) : [];
+}
+
+function filterNameMatches(filter: GridFilter, hints: readonly string[]): boolean {
+  const name = String(filter?.PropertyName ?? "").toLowerCase();
+  return hints.some((hint) => name.includes(hint));
+}
+
+/** Index of the filter that selects the tax period, or -1. */
+function periodFilterIndex(filters: GridFilter[]): number {
+  const measured = filters.findIndex((f) => f?.PropertyName === PERIOD_PROPERTY);
+  if (measured >= 0) return measured;
+  return filters.findIndex(
+    (f) =>
+      filterNameMatches(f, PERIOD_NAME_HINTS) &&
+      !filterNameMatches(f, CREDIT_NAME_HINTS) &&
+      periodPrefix(String(f?.Value ?? "")) !== null,
+  );
+}
+
+/** Index of the filter that selects the tax year, or -1. */
+function yearFilterIndex(filters: GridFilter[]): number {
+  const measured = filters.findIndex((f) => f?.PropertyName === YEAR_PROPERTY);
+  if (measured >= 0) return measured;
+  return filters.findIndex(
+    (f) =>
+      filterNameMatches(f, YEAR_NAME_HINTS) &&
+      !filterNameMatches(f, CREDIT_NAME_HINTS) &&
+      YEAR_SHAPE.test(String(f?.Value ?? "").trim()),
+  );
 }
 
 /**
@@ -154,7 +226,7 @@ export function overridesForPeriod(
 ): Record<string, unknown> {
   const body = parseBody(capturedRawBody);
   const filters = filtersOf(body);
-  const index = filters.findIndex((f) => f?.PropertyName === PERIOD_PROPERTY);
+  const index = periodFilterIndex(filters);
   if (index < 0) {
     throw new Error(`Request tidak punya filter ${PERIOD_PROPERTY} — batch masa tidak bisa dijalankan.`);
   }
@@ -164,10 +236,10 @@ export function overridesForPeriod(
 
 /** The period the captured request is currently filtered to, or null. */
 export function capturedPeriod(capturedRawBody: string): string | null {
-  const found = filtersOf(parseBody(capturedRawBody)).find(
-    (f) => f?.PropertyName === PERIOD_PROPERTY,
-  );
-  return typeof found?.Value === "string" ? found.Value : null;
+  const filters = filtersOf(parseBody(capturedRawBody));
+  const index = periodFilterIndex(filters);
+  const value = index >= 0 ? filters[index]?.Value : undefined;
+  return typeof value === "string" ? value : null;
 }
 
 /**
@@ -179,13 +251,30 @@ export function capturedPeriod(capturedRawBody: string): string | null {
  * filing would never be checked against.
  */
 export function capturedYear(capturedRawBody: string): string | null {
-  const found = filtersOf(parseBody(capturedRawBody)).find(
-    (f) => f?.PropertyName === YEAR_PROPERTY,
-  );
-  const value = found?.Value;
-  const text = value === undefined || value === null ? "" : String(value).trim();
-  return /^(20|19)\d{2}$/.test(text) ? text : null;
+  const body = parseBody(capturedRawBody);
+  const filters = filtersOf(body);
+  const index = yearFilterIndex(filters);
+  if (index >= 0) {
+    const text = String(filters[index]?.Value ?? "").trim();
+    return YEAR_SHAPE.test(text) ? text : null;
+  }
+  // The retur grids may state their year as a body field rather than a filter;
+  // the same keys its filename hint reads. The field is carried through every
+  // sweep request untouched, so the year stays pinned either way.
+  for (const key of YEAR_BODY_KEYS) {
+    const text = String(body[key] ?? "").trim();
+    if (YEAR_SHAPE.test(text)) return text;
+  }
+  return null;
 }
+
+/**
+ * A period filter that is present but unreadable — the shape an unmeasured
+ * grid has until its format is measured. Distinct from "no period filter",
+ * which would send the user hunting for a filter that is already there.
+ */
+const UNRECOGNISED_PERIOD_MESSAGE =
+  "Filter masa pajak di permintaan grid ini belum dikenali Cindieh, jadi ekspor satu tahun belum bisa dijalankan.";
 
 /**
  * Why a batch may not run against this captured request, or null when it may.
@@ -195,6 +284,8 @@ export function capturedYear(capturedRawBody: string): string | null {
  *
  *  * No period filter: every request re-asks for the period the grid is already
  *    showing, so the file holds one month's rows twelve times.
+ *  * A period filter in no known format: the same outcome, one month twelve
+ *    times, but the fix is in this module, not in the user's filters.
  *  * No year filter: the period code carries no year of its own (`TD.00708` is
  *    August of whatever year the SEPARATE year filter says), so the sweep reads
  *    that month code across every year the account has — and then writes a file
@@ -204,8 +295,18 @@ export function capturedYear(capturedRawBody: string): string | null {
  * scraper-actions turns it into the SCRAPE_ERROR the panel shows.
  */
 export function batchScopeError(capturedRawBody: string): string | null {
-  if (periodPrefix(capturedPeriod(capturedRawBody) ?? "") === null) {
-    return "Permintaan grid ini tidak punya filter masa pajak, jadi ekspor satu tahun tidak bisa dijalankan.";
+  const filters = filtersOf(parseBody(capturedRawBody));
+  const periodAt = periodFilterIndex(filters);
+  if (periodAt < 0) {
+    // A period filter we cannot READ is a different problem from no period
+    // filter at all, and it is what an unmeasured grid produces: saying "no
+    // filter" would send the user hunting for a filter that is already there.
+    return filters.some((f) => filterNameMatches(f, PERIOD_NAME_HINTS))
+      ? UNRECOGNISED_PERIOD_MESSAGE
+      : "Permintaan grid ini tidak punya filter masa pajak, jadi ekspor satu tahun tidak bisa dijalankan.";
+  }
+  if (periodPrefix(String(filters[periodAt]?.Value ?? "")) === null) {
+    return UNRECOGNISED_PERIOD_MESSAGE;
   }
   if (capturedYear(capturedRawBody) === null) {
     return "Permintaan grid ini tidak punya filter tahun pajak, jadi ekspor satu tahun tidak bisa dijalankan.";

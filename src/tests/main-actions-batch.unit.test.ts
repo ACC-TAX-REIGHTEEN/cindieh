@@ -88,7 +88,7 @@ describe("startBatchExport", () => {
     expect(runLifecycle.pendingExport()).toBeNull();
   });
 
-  it("refuses on a page whose period filter was never measured", () => {
+  it("refuses on a page that is not an e-Faktur PPN grid", () => {
     const alertSpy = vi.fn();
     vi.stubGlobal("alert", alertSpy);
     const confirmSpy = vi.fn(() => true);
@@ -99,7 +99,9 @@ describe("startBatchExport", () => {
     expect(deps.postToScraper).not.toHaveBeenCalled();
     // The confirmation is not even asked: the run could not start regardless.
     expect(confirmSpy).not.toHaveBeenCalled();
-    expect(alertSpy).toHaveBeenCalled();
+    // The alert names the pages that DO have it, because "not here" without
+    // "where" leaves the user clicking the same menu on the wrong grid.
+    expect(String(alertSpy.mock.calls[0]?.[0])).toMatch(/PPN Masukan/);
   });
 
   it("refuses while another run is in flight rather than orphaning it", () => {

@@ -105,6 +105,27 @@ describe("re-requesting the grid for one period", () => {
     expect(before.Filters[0].Value).toBe("TD.00708");
   });
 
+  it("varies the period filter on a grid whose filter is named differently", () => {
+    // PPN Masukan and the retur grids were not measured, so the sweep has to
+    // find their period filter by name hint + value format and leave the rest
+    // of the array, year included, alone.
+    const body = JSON.stringify({
+      First: 0,
+      Rows: 50,
+      Filters: [
+        { PropertyName: "TaxPeriod", Value: "TD.00703", MatchMode: "equals" },
+        { PropertyName: "Year", Value: "2026", MatchMode: "equals" },
+      ],
+    });
+
+    const overrides = overridesForPeriod(body, "TD.00701", 0, 500) as {
+      Filters: Record<string, unknown>[];
+    };
+
+    expect(overrides.Filters[0]).toMatchObject({ PropertyName: "TaxPeriod", Value: "TD.00701" });
+    expect(overrides.Filters[1]).toMatchObject({ PropertyName: "Year", Value: "2026" });
+  });
+
   it("refuses when the request has no period filter at all", () => {
     // Silently scraping the same period twelve times and calling it a year is
     // the worst outcome available, so this is a hard stop.

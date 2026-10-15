@@ -21,4 +21,5 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0015 | [Each export source is one declaration](0015-one-declaration-per-export-source.md) | Accepted |
 | 0016 | [A scraped row's identity is the portal's own id field](0016-stable-row-identity-for-deduplication.md) | Accepted |
 | 0017 | [A large scrape result crosses the bridge in chunks](0017-chunked-scrape-result-transfer.md) | Accepted |
-| 0018 | [A year-wide export is ONE Run over every tax period](0018-year-wide-batch-export-is-one-run.md) | Accepted |
+| 0018 | [A year-wide export is ONE Run over every tax period](0018-year-wide-batch-export-is-one-run.md) | Accepted — scope extended by 0019 |
+| 0019 | [The year-wide export covers every e-Faktur VAT grid](0019-year-wide-export-covers-the-vat-grids.md) | Accepted |

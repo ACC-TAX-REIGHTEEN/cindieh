@@ -4,7 +4,8 @@ Date: 2026-10-06
 
 ## Status
 
-Accepted
+Accepted — scope extended to the four e-Faktur PPN grids by
+[ADR-0019](0019-year-wide-export-covers-the-vat-grids.md)
 
 ## Context
 
@@ -63,7 +64,9 @@ accumulator.
 
 Scope is PPN Keluaran only: it is the one grid whose period filter was measured,
 and whose twelve months form a single meaningful export. The other ten export
-sources have different endpoints and were not measured at all.
+sources have different endpoints and were not measured at all. (The four
+remaining e-Faktur VAT grids were brought in later, behind a scope guard — see
+ADR-0019.)
 
 ## Consequences
 

@@ -588,9 +588,10 @@ document.addEventListener("ch:export-csv", () => {
   handleExportAction("csv", actionDeps);
 });
 
-// Year-wide batch export, chosen from the export dropdown on PPN Keluaran.
-// The panel stays the progress surface for the whole multi-minute run, and any
-// export control doubles as its stop through the shared running path above.
+// Year-wide batch export, chosen from the export dropdown on the e-Faktur PPN
+// grids. The panel stays the progress surface for the whole multi-minute run,
+// and any export control doubles as its stop through the shared running path
+// above.
 document.addEventListener("ch:export-batch", () => {
   startBatchExport(actionDeps);
 });

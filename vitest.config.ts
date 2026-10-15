@@ -9,7 +9,7 @@
 // regression — new logic shipping without tests — does. Raise them as coverage
 // improves; never lower them to make a red build green.
 //
-// Measured 2026-10-14 on the whole suite (1623 tests). The modules that hold
+// Measured 2026-10-15 on the whole suite (1638 tests). The modules that hold
 // the baseline down are recorded in AGENTS.md so a low number reads as a known
 // gap rather than a mystery.
 
@@ -53,7 +53,9 @@ export default defineConfig({
       // 90.47 statements, 49.25 -> 72.38 branch) — and now to 92.7/85.9/89.1/94.1
       // with the keyboard stop settling its Run through the toolbar's stop path,
       // the failed-masa retry in the year sweep, and the notification naming a
-      // sweep's losses. The measured numbers are 93.11/86.3/89.51/94.5.
+      // sweep's losses, and now to 92.9/86.2/89.3/94.3 with the year-wide export
+      // gated onto the four e-Faktur PPN grids behind its scope guard (ADR-0019).
+      // The measured numbers are 93.32/86.6/89.74/94.72.
       //
       // The cushion is deliberately ~0.4 points, the same gap the floors have
       // always kept: enough that ordinary churn cannot redden the build, small
@@ -67,10 +69,10 @@ export default defineConfig({
       // is covered directly. Do not paper the gap over by lowering a floor; move
       // it by testing the seam underneath.
       thresholds: {
-        statements: 92.7,
-        branches: 85.9,
-        functions: 89.1,
-        lines: 94.1,
+        statements: 92.9,
+        branches: 86.2,
+        functions: 89.3,
+        lines: 94.3,
       },
     },
   },

@@ -11,7 +11,7 @@
 // ============================================================
 
 import { type ExportData, type ExportMode, exportXLSX, exportCSV } from "./exporter";
-import { isEfakturPage, isOutputTaxPage } from "./page-context";
+import { isEfakturPage } from "./page-context";
 import { showPanel, updatePanelProgress, updatePanelError, updatePanelIdle } from "./ui-badge";
 import { getMultiInvoiceNumbers } from "./ui-filters";
 import { postToScraper } from "./bridge";
@@ -100,9 +100,13 @@ export function createActionDeps(getExportMode: () => ExportMode): ActionDeps {
     updatePanelIdle,
     getMultiInvoiceNumbers,
     isEfakturPage: () => isEfakturPage(),
-    // PPN Keluaran only: the one grid whose period filter was measured to be
-    // scriptable, and whose twelve months form a single meaningful export.
-    isBatchPage: () => isOutputTaxPage(),
+    // The four e-Faktur VAT grids (Keluaran, Masukan, both Retur): every one of
+    // them is filed per masa, so a year is the natural export unit on all four.
+    // Only Keluaran's filter names were measured; on the others the sweep reads
+    // the captured request's own filter by name+format, and refuses with a
+    // message when that request carries no period filter it recognises — never
+    // a silent wrong year (see scrape-batch.ts).
+    isBatchPage: () => isEfakturPage(),
     shouldConfirmBulkDownload: (count) =>
       shouldConfirmBulkDownload(count, getPreferences().bulkConfirmThreshold),
     getExportMode,
@@ -275,7 +279,9 @@ export function batchConfirmMessage(): string {
  */
 export function startBatchExport(deps: ActionDeps): boolean {
   if (!deps.isBatchPage()) {
-    globalThis.alert?.("Ekspor satu tahun hanya tersedia di halaman PPN Keluaran.");
+    globalThis.alert?.(
+      "Ekspor satu tahun hanya tersedia di halaman e-Faktur: PPN Keluaran, PPN Masukan, atau Retur.",
+    );
     return false;
   }
   if (runLifecycle.isRunning()) {

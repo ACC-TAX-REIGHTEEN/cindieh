@@ -5,7 +5,7 @@ Skrip console yang ditempel di DevTools untuk menjawab pertanyaan tentang **port
 | Skrip | Pertanyaan yang dijawab | Status |
 |---|---|---|
 | [`reference-search-diagnostic.js`](reference-search-diagnostic.js) | Kenapa pencarian referensi ≤ 6 karakter instan tapi > 6 karakter sangat lambat — lambatnya di server DJP atau di ekstensi/portal? | Sudah dijalankan 24 Sep 2026, hasilnya jadi dasar ADR-0012 |
-| [`masa-batch-diagnostic.js`](masa-batch-diagnostic.js) | Apakah fitur **ekspor satu tahun sekaligus** (batch lintas masa pajak) mungkin di portal, atau terhalang batas portal? Apakah batas halaman server bisa memotong data secara senyap? | Dijalankan Okt 2026 — hasilnya menentukan ADR-0018 dan fitur ekspor satu tahun (77dde73) |
+| [`masa-batch-diagnostic.js`](masa-batch-diagnostic.js) | Apakah fitur **ekspor satu tahun sekaligus** (batch lintas masa pajak) mungkin di portal, atau terhalang batas portal? Apakah batas halaman server bisa memotong data secara senyap? | Dijalankan Okt 2026 di PPN Keluaran — hasilnya menentukan ADR-0018 dan fitur ekspor satu tahun (77dde73). Jalankan di PPN Masukan/Retur untuk mengukur nama & format filter masa grid tersebut, yang menentukan ADR-0019 |
 
 ---
 

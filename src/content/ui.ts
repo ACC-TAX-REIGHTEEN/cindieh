@@ -6,6 +6,7 @@
 // ============================================================
 
 import {
+  isEfakturPage,
   isInputReturnPage,
   isInputTaxPage,
   isOutputReturnPage,
@@ -639,11 +640,14 @@ function buildExportDropdown(
   menu.appendChild(xlsxItem);
   menu.appendChild(csvItem);
 
-  // The year-wide sweep, PPN Keluaran only — it is the one grid whose period
-  // filter was measured to be scriptable and whose twelve months are a single
-  // meaningful export. Offered here rather than as its own toolbar button so it
-  // costs no space on the ten pages that cannot use it.
-  if (isOutputTaxPage()) {
+  // The year-wide sweep, on every e-Faktur PPN grid (Keluaran, Masukan, and
+  // both Retur) — each is filed per masa, so a year is the natural unit. The
+  // sweep reads its period codes from the captured request and stops with a
+  // message when that request carries no period filter it recognises, so no
+  // grid silently exports the wrong year (scrape-batch.ts). Offered here rather
+  // than as its own toolbar button so it costs no space on the seven pages that
+  // cannot use it.
+  if (isEfakturPage()) {
     const batchItem = document.createElement("button");
     batchItem.type = "button";
     batchItem.className = "ch-export-dropdown-item";

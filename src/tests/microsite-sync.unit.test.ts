@@ -355,16 +355,23 @@ describe("microsite — export menu entries", () => {
     }
   });
 
-  it("scopes the year-wide entry to the page it actually works on", () => {
-    // The batch entry is built only on PPN Keluaran, so claiming it "works
-    // everywhere" would be the same drift in the other direction.
+  it("scopes the year-wide entry to the grids it actually works on", () => {
+    // The batch entry is built on the four e-Faktur PPN grids and nowhere else,
+    // so claiming it "works everywhere" would be the same drift in the other
+    // direction — and the page has to name those grids, or a PPN Masukan user
+    // never learns the entry is theirs.
     expect(page).toContain(EXPORT_YEAR_LABEL);
-    const batchBuild = dropdownSource.slice(
-      dropdownSource.indexOf("if (isOutputTaxPage()) {"),
-      dropdownSource.indexOf("if (isOutputTaxPage()) {") + 1200,
-    );
-    expect(batchBuild).toContain("isOutputTaxPage");
+    const at = dropdownSource.indexOf("if (isEfakturPage()) {");
+    expect(at, "the batch entry is no longer gated by isEfakturPage").toBeGreaterThan(-1);
+    const batchBuild = dropdownSource.slice(at, at + 1200);
+    expect(batchBuild).toContain("isEfakturPage");
     expect(batchBuild).toContain(EXPORT_YEAR_LABEL);
+
+    // The grids are named in the same sentence as the label, just before it.
+    const labelAt = page.indexOf(EXPORT_YEAR_LABEL);
+    const bullet = page.slice(Math.max(0, labelAt - 250), labelAt + 100);
+    expect(bullet).toMatch(/\bMasukan\b/);
+    expect(bullet).toMatch(/\bRetur\b/);
   });
 });
 

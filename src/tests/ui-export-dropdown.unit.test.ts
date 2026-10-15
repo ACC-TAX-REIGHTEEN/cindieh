@@ -440,6 +440,66 @@ describe("SPT page toolbar", () => {
   });
 });
 
+// ── The year-wide entry ────────────────────────────────────────────────
+// The sweep is offered on the e-Faktur PPN grids — each is filed per masa — and
+// withheld on the SPT page, whose export dropdown is otherwise identical. The
+// grid decides through isEfakturPage, so the entry cannot appear on a page the
+// sweep has no scope for.
+describe("the year-wide export entry", () => {
+  const EFAKTUR_BASE = "https://coretaxdjp.pajak.go.id/e-invoice-portal";
+
+  it.each([
+    ["PPN Keluaran", OUTPUT_TAX_URL, "SubmitSelectedInvoicesButton"],
+    ["PPN Masukan", INPUT_TAX_URL, "CreditInvoiceButtonButton"],
+    ["Retur Keluaran", `${EFAKTUR_BASE}/output-return`, "CancelSelectedInvoicesButton"],
+    ["Retur Masukan", `${EFAKTUR_BASE}/input-return`, "SubmitReturnButton"],
+  ])("is offered on %s", (_page, url, anchorId) => {
+    vi.stubGlobal("location", { href: url });
+    // Each grid anchors on its own action button (findEfakturAnchor picks by).
+    const anchor = doc.createElement("button");
+    anchor.id = anchorId;
+    doc.body.appendChild(anchor);
+
+    injectExportButton();
+
+    expect(doc.getElementById("ch-export-batch-item")).not.toBeNull();
+  });
+
+  it("dispatches its own event, so main.ts owns the run", () => {
+    injectExportButton();
+
+    click(el("ch-export-batch-item"));
+
+    expect(events).toEqual(["ch:export-batch"]);
+  });
+
+  it("is withheld on an SPT page", () => {
+    vi.stubGlobal("location", {
+      href: "https://coretaxdjp.pajak.go.id/returnsheets-portal/value-added-tax-return",
+    });
+    const floatLeft = doc.createElement("div");
+    floatLeft.className = "float-left";
+    const header = doc.createElement("div");
+    header.className = "p-datatable-header";
+    header.appendChild(floatLeft);
+    const grid = doc.createElement("div");
+    grid.className = "rshshr-nvat-la2-grid";
+    grid.appendChild(header);
+    doc.body.appendChild(grid);
+    // The fake DOM cannot resolve the descendant selector list, so hand the SPT
+    // branch its named grid's header the way the SPT suite above does.
+    Object.assign(doc, {
+      querySelectorAll: (sel: string) => (sel.includes("rshshr-nvat-la2-grid") ? [floatLeft] : []),
+      querySelector: () => null,
+    });
+
+    injectExportButton();
+
+    expect(doc.getElementById("ch-export-dropdown")).not.toBeNull();
+    expect(doc.getElementById("ch-export-batch-item")).toBeNull();
+  });
+});
+
 // ── The Komparator's entry point ────────────────────────────────────────
 // The Bandingkan button is PPN Keluaran's alone: the Komparator matches
 // internal records to Coretax by Referensi, and a PPN Masukan Referensi is the

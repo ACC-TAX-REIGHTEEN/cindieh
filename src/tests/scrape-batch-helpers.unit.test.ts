@@ -130,3 +130,83 @@ describe("batchScopeError", () => {
     expect(batchScopeError(raw)).toBeNull();
   });
 });
+
+describe("the other VAT grids", () => {
+  // Only PPN Keluaran's filter names were measured. On the other three grids a
+  // filter is accepted on TWO signals together — a name that says period/year
+  // and a value in the measured format — because the value alone cannot be
+  // trusted (an invoice number also ends in two digits that look like a month).
+
+  it("reads a period filter the portal spelled differently, plus a year filter", () => {
+    const raw = body([
+      { PropertyName: "TaxPeriod", Value: "TD.00703" },
+      { PropertyName: "Year", Value: "2026" },
+    ]);
+    expect(capturedPeriod(raw)).toBe("TD.00703");
+    expect(capturedYear(raw)).toBe("2026");
+    expect(batchScopeError(raw)).toBeNull();
+  });
+
+  it("reads the year from a body field, the way the retur filename hint does", () => {
+    const raw = JSON.stringify({
+      Filters: [{ PropertyName: "TaxInvoicePeriod", Value: "TD.00705" }],
+      TaxYear: "2025",
+    });
+    expect(capturedYear(raw)).toBe("2025");
+    expect(batchScopeError(raw)).toBeNull();
+  });
+
+  it("never mistakes an invoice-number filter for the period, however its value ends", () => {
+    // `010.000-26.00000012` ends in a month-looking pair too. A value-only
+    // match here would sweep twelve invoice numbers instead of twelve months.
+    const raw = body([
+      { PropertyName: "TaxInvoiceNumber", Value: "010.000-26.00000012" },
+      { PropertyName: YEAR_PROPERTY, Value: "2026" },
+    ]);
+    expect(capturedPeriod(raw)).toBeNull();
+    expect(batchScopeError(raw)).toContain("tidak punya filter masa pajak");
+  });
+
+  it("refuses a period-named filter whose value is in no known format", () => {
+    // This refusal is also the measurement: it is what a grid reports when its
+    // filter is real but spelled outside the family the code knows.
+    const raw = body([
+      { PropertyName: "TaxPeriod", Value: "2026-07" },
+      { PropertyName: YEAR_PROPERTY, Value: "2026" },
+    ]);
+    // Unreadable is not the same as absent: nothing here can be swept, but the
+    // filter IS there, so the message must not send the user hunting for it.
+    expect(capturedPeriod(raw)).toBeNull();
+    expect(batchScopeError(raw)).toMatch(/belum dikenali/);
+    expect(batchScopeError(raw)).not.toContain("tidak punya filter masa pajak");
+  });
+
+  it.each([
+    ["PeriodCredit", "YearCredit"],
+    ["PeriodCredit", "TaxInvoiceYear"],
+    ["TaxInvoicePeriod", "YearCredit"],
+  ])("never sweeps by the credit period (%s / %s)", (periodName, yearName) => {
+    // A credit period is a second period filter PPN Masukan may carry; sweeping
+    // by it would return twelve coherent months of the WRONG period.
+    const raw = body([
+      { PropertyName: periodName, Value: "TD.00703" },
+      { PropertyName: yearName, Value: "2026" },
+    ]);
+    const creditPeriod = periodName.includes("Credit");
+    const creditYear = yearName.includes("Credit");
+    expect(capturedPeriod(raw)).toBe(creditPeriod ? null : "TD.00703");
+    expect(capturedYear(raw)).toBe(creditYear ? null : "2026");
+    expect(batchScopeError(raw)).not.toBeNull();
+  });
+
+  it("prefers the measured names when a request carries both spellings", () => {
+    const raw = body([
+      { PropertyName: "TaxPeriod", Value: "TD.00703" },
+      { PropertyName: "TaxInvoicePeriod", Value: "TD.00708" },
+      { PropertyName: "Year", Value: "2025" },
+      { PropertyName: YEAR_PROPERTY, Value: "2026" },
+    ]);
+    expect(capturedPeriod(raw)).toBe("TD.00708");
+    expect(capturedYear(raw)).toBe("2026");
+  });
+});

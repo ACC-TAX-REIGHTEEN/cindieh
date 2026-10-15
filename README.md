@@ -150,17 +150,19 @@ Klik ikon Cindieh di toolbar browser untuk membuka pengaturan. Semua preferensi 
 | **Reset preferensi** | Mengembalikan seluruh pengaturan di atas ke nilai bawaan. Format export dan Log debug tidak ikut direset. |
 | **Buka portal Coretax** | Tautan di bagian bawah popup yang membuka [coretaxdjp.pajak.go.id](https://coretaxdjp.pajak.go.id/) di tab baru — berguna saat popup dibuka dari halaman lain. |
 
-### Ekspor satu tahun (PPN Keluaran)
+### Ekspor satu tahun (e-Faktur PPN)
 
-Menu **Ekspor** di halaman PPN Keluaran punya satu entri tambahan: **Ekspor 1 Tahun (12 Masa)**. Satu klik mengambil seluruh dua belas masa pajak dan menulisnya ke satu berkas: satu proses, satu panel progress, satu file.
+Menu **Ekspor** di halaman e-Faktur PPN punya satu entri tambahan: **Ekspor 1 Tahun (12 Masa)**. Satu klik mengambil seluruh dua belas masa pajak dan menulisnya ke satu berkas: satu proses, satu panel progress, satu file.
 
 | | |
 |---|---|
-| Halaman | PPN Keluaran saja. Di halaman lain entri ini tidak muncul. |
+| Halaman | Keempat grid e-Faktur PPN: PPN Keluaran, PPN Masukan, Retur PPN Keluaran, dan Retur PPN Masukan. Di halaman lain entri ini tidak muncul. |
 | Isi file | Seluruh masa pajak dalam satu tahun pajak. |
-| Nama file | Dinamai untuk **tahunnya** (`FPK-2026.xlsx`), bukan untuk satu bulan, karena isinya dua belas bulan. |
+| Nama file | Dinamai untuk **tahunnya** (`FPK-2026.xlsx`, `FPM-2026.xlsx`, `RET-FPK-2026.xlsx`), bukan untuk satu bulan, karena isinya dua belas bulan. |
 | Perkiraan waktu | Sekitar 4 menit bagi Wajib Pajak besar pada kecepatan pacing normal, memakai jeda antar-halaman yang sama seperti ekspor biasa. Kecepatan yang lebih lambat memperpanjang waktu ini, tidak pernah memendekkannya. |
 | Menghentikan | Tombol ekspor mana pun membatalkan proses, seperti ekspor biasa. |
+
+Filter masa dan tahun tidak pernah dikarang: keduanya dibaca dari permintaan grid yang sedang berjalan, dan kode masanya berasal dari nilai yang portal sendiri kirim. Bila permintaan itu tidak memuat filter masa/tahun yang dikenali, proses berhenti dengan pesan di panel, bukan mengekspor bulan yang salah.
 
 Setelah selesai, panel menyebut jumlah masa dan jumlah baris. Bila ada masa yang **balik kosong di tengah masa lain yang berisi data**, panel menyebutkannya: itu tanda ada bulan yang hilang, dan tidak ada jumlah total dari portal yang bisa dipakai sebagai pembanding (lihat catatan di bawah). Masa yang gagal diambil disebut terpisah dari masa yang memang kosong, karena dua masalah itu punya dua perbaikan berbeda.
 
