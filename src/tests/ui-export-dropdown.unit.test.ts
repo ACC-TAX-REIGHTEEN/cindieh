@@ -30,6 +30,8 @@ import { stubFakeDom, type FakeDoc, type FakeEl } from "./__mocks__/fake-dom";
 
 const OUTPUT_TAX_URL = "https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax";
 const INPUT_TAX_URL = "https://coretaxdjp.pajak.go.id/e-invoice-portal/input-tax";
+const OUTPUT_RETURN_URL = "https://coretaxdjp.pajak.go.id/e-invoice-portal/output-return";
+const INPUT_RETURN_URL = "https://coretaxdjp.pajak.go.id/e-invoice-portal/input-return";
 const CHECK_CLASS = ".ch-export-item-check";
 const CHEVRON_CLASS = ".pi-chevron-down";
 
@@ -497,37 +499,79 @@ describe("the year-wide export entry", () => {
 
     expect(doc.getElementById("ch-export-dropdown")).not.toBeNull();
     expect(doc.getElementById("ch-export-batch-item")).toBeNull();
+    // No tab to offer on an SPT page, so no entry point into the panel either.
+    expect(doc.getElementById("ch-compare-btn")).toBeNull();
   });
 });
 
-// ── The Komparator's entry point ──────────────────────────────────────
-// The Bandingkan button is PPN Keluaran's alone: the Komparator matches
-// internal records to Coretax by Referensi, and a PPN Masukan Referensi is the
-// seller's (README.md, "Kenapa Komparator tidak ikut ke PPN Masukan?").
-// Hiding the entry point beats a button whose every row answers "Tidak
-// ditemukan". The modal itself is still injected on both grids — it hosts
-// Pengecekan, which does run on PPN Masukan.
-describe("the Komparator entry point", () => {
-  it("is injected on PPN Keluaran", async () => {
-    injectExportButton();
+// ── The panel's entry point ─────────────────────────────────────────────
+// ONE toolbar button into the Bandingkan / Pengecekan panel, on every grid the
+// panel has a tab to offer (`isPanelPage`: the four e-Faktur PPN grids), and
+// named for the TAB that grid can serve. On PPN Keluaran it opens the
+// Komparator, which matches internal records to Coretax by Referensi. On PPN
+// Masukan a Referensi is the seller's, and the Retur grids have no Referensi at
+// all (README.md, "Kenapa Komparator hanya ada di PPN Keluaran?"): there the
+// same button opens Pengecekan, so its label must not promise a comparer the
+// page cannot serve. Which tab it lands on is ui-panel's own decision, made
+// from the same two facts; this suite pins the button and its name.
+describe("the panel's entry point", () => {
+  const PANEL_GRIDS: readonly {
+    grid: string;
+    href: string;
+    anchorId: string;
+    label: string;
+  }[] = [
+    {
+      grid: "PPN Keluaran",
+      href: OUTPUT_TAX_URL,
+      anchorId: "SubmitSelectedInvoicesButton",
+      label: "Bandingkan data penjualan",
+    },
+    {
+      grid: "PPN Masukan",
+      href: INPUT_TAX_URL,
+      anchorId: "CreditInvoiceButtonButton",
+      label: "Pengecekan keakuratan nilai",
+    },
+    {
+      grid: "Retur PPN Keluaran",
+      href: OUTPUT_RETURN_URL,
+      anchorId: "CancelSelectedInvoicesButton",
+      label: "Pengecekan keakuratan nilai",
+    },
+    {
+      grid: "Retur PPN Masukan",
+      href: INPUT_RETURN_URL,
+      anchorId: "SubmitReturnButton",
+      label: "Pengecekan keakuratan nilai",
+    },
+  ];
 
-    expect(doc.getElementById("ch-compare-btn")).not.toBeNull();
-    // The modal that hosts Pengecekan comes with it.
-    expect(vi.mocked(await import("../content/ui-comparer")).injectComparerModal).toHaveBeenCalled();
-  });
+  it.each(PANEL_GRIDS)(
+    "is injected on $grid, named for the tab that page can open",
+    async ({ href, anchorId, label }) => {
+      vi.stubGlobal("location", { href });
+      // Each e-faktur grid anchors on a button of its own (findEfakturAnchor
+      // picks by page); the shared beforeEach anchor only covers Keluaran.
+      const anchor = doc.createElement("button");
+      anchor.id = anchorId;
+      doc.body.appendChild(anchor);
 
-  it("is withheld on PPN Masukan, while the rest of the toolbar arrives", () => {
-    vi.stubGlobal("location", { href: INPUT_TAX_URL });
-    // PPN Masukan anchors on its own button (findEfakturAnchor picks by page).
-    const inputAnchor = doc.createElement("button");
-    inputAnchor.id = "CreditInvoiceButtonButton";
-    doc.body.appendChild(inputAnchor);
+      injectExportButton();
 
-    injectExportButton();
+      const btn = el("ch-compare-btn");
+      // Icon-only control: the name has to be on the element, not only in the
+      // tooltip a screen reader does not reliably announce.
+      expect(btn.getAttribute("aria-label")).toBe(label);
+      expect(btn.title).toBe(label);
 
-    expect(doc.getElementById("ch-compare-btn")).toBeNull();
-    // Not a general toolbar failure: every shared control is still there.
-    expect(doc.getElementById("ch-export-dropdown")).not.toBeNull();
-    expect(doc.getElementById("ch-scrape-btn")).not.toBeNull();
-  });
+      click(btn);
+      // The same event the Ctrl+Shift+B shortcut raises: the panel decides its
+      // own tab from the page facts, so the open-once/Escape semantics stay in
+      // one place.
+      expect(events).toEqual(["ch:compare-open"]);
+      // The modal that hosts Pengecekan comes with every one of them.
+      expect(vi.mocked(await import("../content/ui-comparer")).injectComparerModal).toHaveBeenCalled();
+    },
+  );
 });

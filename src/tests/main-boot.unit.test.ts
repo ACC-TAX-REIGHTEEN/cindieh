@@ -1327,6 +1327,34 @@ describe("main boot — the in-page event seam", () => {
     expect(overlay?.contains(env.doc.activeElement as FakeEl)).toBe(true);
   });
 
+  it("lands PPN Masukan's toolbar entry in Pengecekan, not in a Komparator", async () => {
+    const env = await bootMain({ href: INPUT_TAX_URL });
+    // PPN Masukan's toolbar anchors on the portal's own credit-invoice button
+    // (ui.ts's findEfakturAnchor picks by page), so a bare fake page has nowhere
+    // to put it.
+    const anchor = env.doc.createElement("button");
+    anchor.id = "CreditInvoiceButtonButton";
+    env.doc.body.appendChild(anchor);
+    env.fire("load");
+    await env.resolveStored({ [ENABLED_KEY]: true });
+
+    // The toolbar itself arrived — this is not a general injection failure...
+    expect(env.doc.getElementById("ch-scrape-btn")).not.toBeNull();
+    // ...and its entry point is named for the check, not for a comparer this
+    // grid cannot serve (a PPN Masukan Referensi is the seller's).
+    const btn = env.doc.getElementById("ch-compare-btn");
+    expect(btn?.getAttribute("aria-label")).toBe("Pengecekan keakuratan nilai");
+
+    for (const fn of btn?.listeners.click ?? []) fn({ stopPropagation: () => {} });
+
+    expect(env.doc.getElementById("ch-comparer-overlay")?.style.display).toBe("flex");
+    // The tab this grid cannot serve is HIDDEN rather than offered and refused.
+    expect(env.doc.getElementById("ch-tab-compare")?.classList.contains("ch-hidden")).toBe(true);
+    expect(env.doc.getElementById("ch-tab-checker")?.classList.contains("ch-hidden")).toBe(false);
+    expect(env.doc.getElementById("ch-comparer-view-checker")?.classList.contains("ch-hidden")).toBe(false);
+    expect(env.doc.getElementById("ch-comparer-view-compare")?.classList.contains("ch-hidden")).toBe(true);
+  });
+
   it("ignores a search event that carries no reference", async () => {
     const env = await bootEnabled();
 

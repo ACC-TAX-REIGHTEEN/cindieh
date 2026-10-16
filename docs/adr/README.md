@@ -28,4 +28,4 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0022 | [A Run owns the requests it records; a stop retires all of them, and the rows survive](0022-a-run-owns-the-requests-it-records.md) | Accepted |
 | 0023 | [A stopped sweep is resumable: only the masa that never finished are re-run, into the rows it kept](0023-a-stopped-sweep-can-be-resumed.md) | Accepted |
 | 0024 | [Pengecekan covers the four e-Faktur PPN grids, and a row's identity is a page fact of its own](0024-checker-covers-the-retur-grids.md) | Accepted |
-
+| 0025 | [The panel's toolbar entry point asks the panel's fact, and is named for the tab its page can serve](0025-the-panel-entry-point-is-the-panels-own-fact.md) | Accepted |

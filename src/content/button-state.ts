@@ -13,7 +13,10 @@ let _exportBtnEl: HTMLButtonElement | null = null;        // withholding page: s
 let _exportDropdownBtnEl: HTMLButtonElement | null = null; // non-withholding: export dropdown main button
 let _pdfBtnEl: HTMLButtonElement | null = null;            // efaktur: "Download PDF" button
 let _scrapeBtnEl: HTMLButtonElement | null = null;         // efaktur: "Scrape Data" icon button
-let _compareBtnEl: HTMLButtonElement | null = null;        // efaktur: "Bandingkan" icon button
+// efaktur: the Bandingkan / Pengecekan panel's toolbar entry. One button named
+// for the tab its page can serve (ui.ts, ADR-0025), keeping the Komparator's
+// old name rather than inventing a third one for the same element.
+let _compareBtnEl: HTMLButtonElement | null = null;
 
 // ── Getters ───────────────────────────────────────────
 

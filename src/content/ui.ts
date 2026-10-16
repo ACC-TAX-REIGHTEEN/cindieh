@@ -11,9 +11,11 @@ import {
   isInputTaxPage,
   isOutputReturnPage,
   isOutputTaxPage,
+  isPanelPage,
   isSptPage,
   isSupportedExportPage,
   isWithholdingPage,
+  referenceIsIdentity,
 } from "./page-context";
 
 import { getExportButtonLabel } from "./ui-badge";
@@ -518,24 +520,37 @@ export function injectExportButton(retries = MAX_RETRIES): void {
         document.dispatchEvent(new CustomEvent("ch:scrape-start"));
       });
 
-      // ── Add Bandingkan icon button ───────────────────
-      // PPN Keluaran only: the Komparator matches internal records to Coretax
-      // by Referensi, and a PPN Masukan / Retur Referensi is somebody else's
-      // (or absent), which is exactly the rule README.md states under
-      // "Kenapa Komparator tidak ikut ke PPN Masukan?". Hiding the entry
-      // point beats offering a button whose every row would answer "Tidak
-      // ditemukan".
-      if (isOutputTax) {
+      // ── Add the panel's entry point ──────────────────
+      // ONE button into the Bandingkan / Pengecekan panel, on every page the
+      // panel has a tab to offer (`isPanelPage`: the four e-Faktur PPN grids).
+      // It is named for the TAB it will open, not for the panel's
+      // Keluaran-only feature: on PPN Keluaran it opens the Komparator, while
+      // on PPN Masukan and both Retur grids — where a Referensi is somebody
+      // else's (README.md, "Kenapa Komparator hanya ada di PPN Keluaran?") or
+      // absent — it opens Pengecekan, so a label promising a comparer those
+      // grids cannot serve would misdescribe the click.
+      //
+      // Gating this on the comparer's own fact is what left PPN Masukan with no
+      // entry point while the keyboard already reached the check there: the
+      // entry point opens the OVERLAY, so it asks the overlay's question
+      // (ADR-0021, ADR-0025). The click sends the same `ch:compare-open` event
+      // as the shortcut, so the panel's own gate picks the tab and the
+      // open-once / Escape semantics stay single-sourced.
+      if (isPanelPage()) {
+        const canCompare = referenceIsIdentity();
+        const panelEntryLabel = canCompare
+          ? "Bandingkan data penjualan"
+          : "Pengecekan keakuratan nilai";
         setCompareBtnEl(document.createElement("button"));
         const compareBtn = getCompareBtnEl()!;
         compareBtn.id = "ch-compare-btn";
         compareBtn.type = "button";
         compareBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight ch-icon-btn";
-        compareBtn.title = "Bandingkan data penjualan";
-        compareBtn.setAttribute("aria-label", "Bandingkan data penjualan");
+        compareBtn.title = panelEntryLabel;
+        compareBtn.setAttribute("aria-label", panelEntryLabel);
 
         const compareIcon = document.createElement("span");
-        compareIcon.className = "p-button-icon p-button-icon-left pi pi-list";
+        compareIcon.className = `p-button-icon p-button-icon-left pi ${canCompare ? "pi-list" : "pi-check-circle"}`;
         compareIcon.setAttribute("aria-hidden", "true");
 
         compareBtn.appendChild(compareIcon);
