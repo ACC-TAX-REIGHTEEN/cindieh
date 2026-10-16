@@ -264,12 +264,14 @@ describe("a resumed sweep", () => {
   it("keeps the union when the resume itself dies", () => {
     // Both ways a resume can end badly. It can only ever ADD to what a stop
     // salvaged, so a failed resume must not be worse than no resume at all.
-    for (const end of ["abort", "rejected"] as const) {
+    for (const end of ["stop", "rejected"] as const) {
       const run = keptSweep();
       run.begin("sweep-resume");
 
-      if (end === "abort") {
-        run.abort();
+      if (end === "stop") {
+        // A stop that DROPS rows still keeps this union: the flag decides the
+        // half this Run was fetching, never the masa an earlier Run salvaged.
+        run.stop({ keepRows: false });
       } else {
         // A completion the Run refuses (a truncated or partial one): the
         // rejection path ends the Run exactly as abort does.
@@ -288,11 +290,24 @@ describe("a resumed sweep", () => {
     run.begin("sweep-resume");
     run.request({ kind: "export", format: "xlsx" });
 
-    run.stopKeepingRows();
+    run.stop({ keepRows: true });
 
     expect(run.result()?.data).toEqual([{ TaxInvoiceNumber: "001" }]);
     expect(run.result()?.sweep?.planned).toBe(12);
     expect(run.pendingExport()).toBeNull();
+  });
+
+  it("forgets the union when the page forgets it, unlike a stop", () => {
+    // The one thing a reset does that no stop may do. "Bersihkan cache" and SPA
+    // navigation are how the rows go away for good, and a union left behind
+    // would let the next year-export offer to resume a year this world no longer
+    // holds (ADR-0023).
+    const run = keptSweep();
+    run.begin("sweep-resume");
+
+    run.reset();
+
+    expect(run.result()).toBeNull();
   });
 
   it("a fresh sweep still replaces the kept half", () => {
@@ -417,8 +432,15 @@ describe("cancelPending", () => {
   });
 });
 
-describe("abort", () => {
-  it("forgets the debts and the rows a rejected run must not leave behind", () => {
+describe("stop", () => {
+  // ONE door with ONE required flag. What a stop does to the REQUESTS the Run
+  // carried is not a choice — a request is spent exactly once, by the Run that
+  // recorded it (ADR-0022) — and whether the rows survive is the only thing the
+  // stop controls ever disagreed about. Both flags are pinned here because that
+  // is the whole point of the shape: a fourth stop control has to answer
+  // `keepRows` out loud instead of copying whichever path it was cloned from
+  // (ADR-0027).
+  it("forgets the debts and the rows a stop that keeps nothing must not leave behind", () => {
     const run = withResult();
     run.begin("scrape");
     run.request({ kind: "export", format: "pdf" });
@@ -426,7 +448,7 @@ describe("abort", () => {
     run.request({ kind: "check" });
     run.noteRequestedInvoices(["001"]);
 
-    run.abort();
+    run.stop({ keepRows: false });
 
     expect(run.isRunning()).toBe(false);
     expect(run.result()).toBeNull();
@@ -434,15 +456,7 @@ describe("abort", () => {
     expect(next.kind === "accepted" && next.followUp).toEqual([]);
     expect(next.kind === "accepted" && next.shortfall).toBeNull();
   });
-});
 
-describe("stopKeepingRows", () => {
-  // The export click that doubles as a stop. It is `abort()` minus the row
-  // drop and nothing else: a request is spent exactly once, by the Run that
-  // recorded it, so a stop retires every request that Run carried (ADR-0022).
-  // Pinned deliberately — collapsing it into abort() would drop reusable rows,
-  // and keeping a pending comparison would hand it to whatever completion came
-  // next.
   it("drops every request and the invoice list, keeping the rows", () => {
     const run = withResult();
     run.begin("bulk-pdf");
@@ -451,7 +465,7 @@ describe("stopKeepingRows", () => {
     run.request({ kind: "check" });
     run.noteRequestedInvoices(["001"]);
 
-    run.stopKeepingRows();
+    run.stop({ keepRows: true });
 
     expect(run.isRunning()).toBe(false);
     // The rows describe the grid, not the request, so they are still the newest
@@ -462,6 +476,28 @@ describe("stopKeepingRows", () => {
     expect(next.kind === "accepted" && next.followUp).toEqual([]);
     expect(next.kind === "accepted" && next.shortfall).toBeNull();
   });
+
+  it.each([true, false])(
+    "retires the same requests whichever row decision it takes (keepRows: %s)",
+    (keepRows) => {
+      const run = withResult();
+      run.begin("bulk-pdf");
+      run.request({ kind: "export", format: "pdf" });
+      run.request({ kind: "compare" });
+      run.request({ kind: "check" });
+      run.noteRequestedInvoices(["001"]);
+
+      run.stop({ keepRows });
+
+      expect(run.isRunning()).toBe(false);
+      expect(run.pendingExport()).toBeNull();
+      // Nothing the Run owed survives into the next Run, whichever half of its
+      // state this stop was allowed to keep.
+      const next = run.complete(complete());
+      expect(next.kind === "accepted" && next.followUp).toEqual([]);
+      expect(next.kind === "accepted" && next.shortfall).toBeNull();
+    },
+  );
 
   it("leaves nothing for a later, narrower completion to spend", () => {
     // The hazard the rule closes: the next completion after a stop can be a
@@ -474,7 +510,7 @@ describe("stopKeepingRows", () => {
     run.request({ kind: "compare" });
     run.request({ kind: "check" });
 
-    run.stopKeepingRows();
+    run.stop({ keepRows: true });
 
     run.begin("targeted");
     const next = run.complete(complete({ data: [{ TaxInvoiceNumber: "001" }] }));
@@ -522,7 +558,7 @@ describe("onRetired", () => {
     run.request({ kind: "check" });
     run.request({ kind: "export", format: "xlsx" });
 
-    run.stopKeepingRows();
+    run.stop({ keepRows: true });
 
     expect(retired).toEqual([["compare", "check", "export"]]);
   });
@@ -558,7 +594,7 @@ describe("onRetired", () => {
     const retired = collect(run);
     run.begin("scrape");
 
-    run.abort();
+    run.stop({ keepRows: false });
 
     expect(retired).toEqual([]);
   });

@@ -4,9 +4,11 @@ Three paths end a Run early, and they must not disagree about what the Run was c
 
 | stop path | rows | pending export | pending compare / check | requested No. Faktur |
 |---|---|---|---|---|
-| toolbar stop / `Ctrl+Shift+S` (`stopRunningRun` → `abort()`) | dropped | dropped | dropped | dropped |
+| toolbar stop / `Ctrl+Shift+S` (`stopRun` → `runLifecycle.stop({ keepRows: false })`) | dropped | dropped | dropped | dropped |
 | a stopped year-wide sweep (`complete(cancelled)` → `salvage()`, ADR-0020) | **kept** | dropped | dropped | dropped |
-| the export click that doubles as a stop (`main-actions` → `stopKeepingRows()`) | **kept** | dropped | dropped | dropped |
+| the export click that doubles as a stop (`handleExportAction` → `stopRun(deps, { keepRows: true })`) | **kept** | dropped | dropped | dropped |
+
+The middle column is the ONLY thing that differs, and since ADR-0027 it is an argument every stop control passes rather than the name of the function it happened to call.
 
 The rule: **a request is spent exactly once, by the Run that recorded it.** A stop ends that Run, so every request it carried dies with it — the comparison and the check included, not only the export the click happened to name. Rows are not requests: they describe the grid, so the two paths that keep them do so because a later export can still use them, never because a request was waiting on them.
 
@@ -17,6 +19,8 @@ What changed: `run-lifecycle.cancelExport()` used to keep a pending comparison o
 3. **The project already says so.** `run-lifecycle.ts` states the invariant in its own header ("a pending request is spent exactly once and abandoned with its Run"), and `CONTEXT.md` under **Pending export** already promised that "a stop, a navigation, or a result rejected as incomplete leaves nothing behind for a later Run to fulfil against". The export-click path was the one place the code contradicted the two documents; the code moved.
 
 Rename: `cancelExport()` → `stopKeepingRows()`. It is `abort()` minus the row drop, and nothing else, so it is named for its one distinguishing behaviour rather than for the button that reaches it.
+
+**Amended by ADR-0027.** Both names are gone: `abort()` and `stopKeepingRows()` were one behaviour with a row decision carried in the function name, so they collapsed into `stop({ keepRows })`, and the sequence around them (post `STOP_SCRAPE`, settle, report) became `main-actions.stopRun`. The rule above is unchanged — this ADR is what it is for — and it is now enforced by there being exactly one door out of a Run.
 
 ## Consequences
 

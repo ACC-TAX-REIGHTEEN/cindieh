@@ -19,7 +19,7 @@ import { debugError, debugLog, debugWarn } from "./debug";
 import { getPreferences } from "./preferences";
 import { findMissingInvoices, skippedInvoicesMessage } from "./scrape-result";
 import { pendingPeriods } from "./scrape-batch";
-import { runLifecycle } from "./run-lifecycle";
+import { runLifecycle, type StopOptions } from "./run-lifecycle";
 import { shouldConfirmBulkDownload } from "../shared/extension-preferences";
 
 // ── Constants ────────────────────────────────────────
@@ -246,6 +246,33 @@ export function startPdfDownload(data: Record<string, unknown>[], deps: ActionDe
 }
 
 /**
+ * End the Run in flight, the way every stop control does it: abort it in the
+ * page world, settle this world's Run, and report the cancellation in the panel.
+ *
+ * All three steps belong together. A cancelled run emits no completion, so
+ * posting STOP_SCRAPE alone would leave `isRunning()` true forever — the panel
+ * stuck on "Berhenti" and the next Ctrl+Shift+E refused — which is what the
+ * keyboard stop used to do before the three steps were gathered here.
+ *
+ * `keepRows` is REQUIRED, because it is the one thing the stop controls disagree
+ * about and the one thing they used to be cloned to get right: the toolbar
+ * button's stop and the stop key drop the rows (nothing is being salvaged),
+ * while an export click that doubles as a stop keeps them, so the export the
+ * user actually asked for can still be produced (ADR-0022). A fourth stop
+ * control therefore has one function to call and one question to answer, and it
+ * cannot skip the retirement the life-cycle performs on the way through — that
+ * is not a parameter, because no stop is allowed to keep a request.
+ */
+export function stopRun(
+  deps: Pick<ActionDeps, "postToScraper" | "updatePanelError">,
+  options: StopOptions,
+): void {
+  deps.postToScraper({ type: "STOP_SCRAPE" });
+  runLifecycle.stop(options);
+  deps.updatePanelError(SCRAPE_CANCELLED_MESSAGE);
+}
+
+/**
  * How many months one batch export sweeps: a whole tax year, which is the unit
  * a filing is actually prepared in.
  */
@@ -364,14 +391,13 @@ export function startBatchExport(deps: ActionDeps): boolean {
  */
 export function handleExportAction(format: "xlsx" | "csv" | "pdf", deps: ActionDeps): boolean {
   if (runLifecycle.isRunning()) {
-    deps.postToScraper({ type: "STOP_SCRAPE" });
-    // The stopped run emits no completion, so everything it owed dies here (a
-    // later scrape must not be diffed against it, and a queued comparison must
-    // not be spent on a later lookup's filtered subset — ADR-0022). Only the
-    // rows stay, and the cancellation is surfaced like the panel toggle does,
-    // instead of implying idle reusable data.
-    runLifecycle.stopKeepingRows();
-    deps.updatePanelError(SCRAPE_CANCELLED_MESSAGE);
+    // The same stop the toolbar button and the stop key run, with the row drop
+    // left out: the stopped run emits no completion, so everything it owed dies
+    // here (a later scrape must not be diffed against it, and a queued
+    // comparison must not be spent on a later lookup's filtered subset —
+    // ADR-0022), while the rows stay so the export just asked for can still be
+    // produced (ADR-0027).
+    stopRun(deps, { keepRows: true });
     return true;
   }
 

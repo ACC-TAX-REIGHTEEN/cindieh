@@ -106,9 +106,32 @@ export type RunOutcome =
  * `targeted`, `bulk-pdf` and `sweep-resume` behave alike — all three READ the
  * rows already collected, so all three keep them — but they are named apart
  * because they are distinct Runs, and because `sweep-resume` carries one rule
- * of its own: ending it early keeps the union it was adding to (see `abort`).
+ * of its own: ending it early keeps the union it was adding to (see `stop`).
  */
 export type RunStart = "scrape" | "targeted" | "bulk-pdf" | "sweep-resume";
+
+/**
+ * How a Run ends when it does not end by completing.
+ *
+ * The ROW decision is the only thing the stop paths disagree about, so it is a
+ * required argument rather than a default: a path that keeps rows says so, and a
+ * path that discards them says so, at the call site that knows why it is doing
+ * it. What a stop does to the requests the Run carried is NOT a choice — a stop
+ * ends the Run those requests belong to, so every stop retires them all
+ * (ADR-0022).
+ */
+export interface StopOptions {
+  /**
+   * Whether the rows this Run collected outlive it.
+   *
+   * True when they are still the best thing on hand and a later export can use
+   * them: the export click that doubles as a stop, and a stopped sweep's own
+   * report, whose rows the salvage adopts. False when the result is being
+   * discarded because it cannot be used — the toolbar stop, a failed scrape, a
+   * completion refused as incomplete.
+   */
+  keepRows: boolean;
+}
 
 // ── Interface ──────────────────────────────────────────
 
@@ -120,33 +143,36 @@ export interface RunLifecycle {
   begin(start: RunStart): void;
 
   /**
-   * End a Run because its result cannot be used: a stop, a SCRAPE_ERROR, or a
-   * completion rejected as incomplete. Forgets what it owed AND what it
-   * produced, so nothing survives that a later Run could be measured against.
+   * End the Run in flight without a usable completion, keeping its rows or not.
    *
-   * A `sweep-resume` is the exception: the kept union it was adding to survives,
-   * because that union belongs to an earlier Run that never failed — losing it
-   * would make a failed resume worse than no resume at all.
+   * The ONE door out of a Run that a stop control may take, whatever stopped it:
+   * the toolbar button, `Ctrl+Shift+S`, the export click that doubles as a stop,
+   * a stopped sweep's own report, a failed scrape, a completion refused as
+   * incomplete. Two properties follow, and they are why this is one call rather
+   * than three near-copies of it:
+   *
+   * - **Every request the Run carried dies with it, in one place (ADR-0022).** A
+   *   request is spent exactly once, by the Run that recorded it (CONTEXT.md
+   *   under "Pending export"). One left pending would be spent by whatever
+   *   completion arrived next, and the next one can be a No. Faktur lookup whose
+   *   rows are the filtered SUBSET — a comparison spent on those answers
+   *   "Tidak ditemukan" for every row the filter left out. No caller can skip
+   *   that, because there is no other way to end a Run.
+   * - **The row decision is stated by the caller.** Rows are not requests — they
+   *   describe the grid — so whether they survive is a real choice, and it is the
+   *   only thing the stop paths ever disagreed about. A fourth stop control has
+   *   to answer `keepRows` out loud, which makes it a decision rather than a copy
+   *   of whichever path it was cloned from.
+   *
+   * A `sweep-resume` is the exception to the row decision: the kept union it was
+   * adding to survives even `keepRows: false`, because that union belongs to an
+   * earlier Run that never failed — losing it would make a failed resume worse
+   * than no resume at all.
    *
    * Takes no message: every caller already holds the one it is about to show,
    * and storing it would only invite reading it back out of state again.
    */
-  abort(): void;
-
-  /**
-   * Stop the Run an export click interrupted: retire every request it carried
-   * and keep the rows it had collected, so a following export can still use
-   * them. That is the ONE difference from `abort()`, and the reason both exist.
-   *
-   * Every request, not only the export the click named: a request is spent
-   * exactly once, by the Run that recorded it (ADR-0022, CONTEXT.md under
-   * "Pending export"). One left pending here would be spent by whatever
-   * completion arrived next, and the next one can be a No. Faktur lookup whose
-   * rows are the filtered SUBSET — every pasted row outside it would answer
-   * "Tidak ditemukan". Rows are not requests: they describe the grid, so they
-   * survive the stop.
-   */
-  stopKeepingRows(): void;
+  stop(options: StopOptions): void;
 
   /** Forget everything, silently. Navigation and "Bersihkan cache". */
   reset(): void;
@@ -212,7 +238,7 @@ interface RunState {
    * It exists for ONE rule: a resume can only ever ADD to the union a stop
    * salvaged, so ending it early (a stop, a failure, a rejection) must not take
    * the kept masa with it. Every other start still drops its result when it
-   * ends badly (see `abort`).
+   * ends badly (see `stop`).
    */
   resumingSweep: boolean;
   pendingExportFormat: "xlsx" | "csv" | "pdf" | null;
@@ -282,6 +308,10 @@ export function createRunLifecycle(): RunLifecycle {
    * a result that looks complete, which is the one thing a partial year must
    * never do.
    *
+   * Adopting the rows is the whole of what is special here; ending the Run is
+   * `stop({ keepRows: true })`, the same door the other two stop paths take, so
+   * the retirement (and its announcement) cannot differ between them.
+   *
    * Reached only from `complete`, which opens this door for a completion that
    * HAS rows — so what arrives here is kept as it stands rather than
    * re-litigated with guards that could never fire.
@@ -289,8 +319,6 @@ export function createRunLifecycle(): RunLifecycle {
   function salvage(
     completion: Pick<ScrapeComplete, "data" | "fields" | "filenameHint" | "source" | "periods">,
   ): void {
-    state.isRunning = false;
-    state.resumingSweep = false;
     state.data = completion.data;
     state.fields = completion.fields;
     state.filenameHint = completion.filenameHint;
@@ -301,10 +329,7 @@ export function createRunLifecycle(): RunLifecycle {
     // otherwise. Either way this is what a later resume reads to know what is
     // still missing.
     state.sweep = completion.periods ?? state.sweep;
-    // Nothing to announce in practice — the stop that cut this sweep short
-    // already retired what the Run owed — but the rule is one rule: whatever
-    // this drops is taken back out loud (see retirePending).
-    retirePending();
+    stop({ keepRows: true });
   }
 
   /** Everything this Run produced. */
@@ -320,18 +345,26 @@ export function createRunLifecycle(): RunLifecycle {
     state.sweep = null;
   }
 
-  function abort(): void {
+  /**
+   * The one end-of-Run path a stop control takes, whatever stopped it.
+   *
+   * Order matters twice. The resume exception is read BEFORE the flag it lives
+   * in is cleared, and the retirement runs before the rows are dropped, so a tab
+   * hanging off `onRetired` sees the same kinds whichever row decision ended the
+   * Run.
+   */
+  function stop({ keepRows }: StopOptions): void {
     state.isRunning = false;
-    retirePending();
     // A resume can only ever ADD to the union a stop salvaged, so ending it
     // early — a stop, a failure, a rejected result — costs the masa it was
     // fetching and never the masa already kept. Dropping the rows here would
     // make a failed resume worse than no resume at all.
-    if (state.resumingSweep) {
-      state.resumingSweep = false;
-      return;
-    }
-    dropResult();
+    const keep = keepRows || state.resumingSweep;
+    state.resumingSweep = false;
+    // Everything this Run owed, dropped in one step — the comparison and the
+    // check included, not only the export a click happened to name (ADR-0022).
+    retirePending();
+    if (!keep) dropResult();
   }
 
   return {
@@ -343,27 +376,25 @@ export function createRunLifecycle(): RunLifecycle {
       // being reusable. A targeted lookup, a bulk PDF download and a resumed
       // sweep all read the kept rows, so they keep them.
       if (start === "scrape") dropResult();
-      // The resume rule in `abort` lasts only as long as the Run that declared
+      // The resume rule in `stop` lasts only as long as the Run that declared
       // it, so it is set here for every start.
       state.resumingSweep = start === "sweep-resume";
     },
 
-    abort,
-
-    stopKeepingRows() {
-      state.isRunning = false;
-      state.resumingSweep = false;
-      // Everything this Run owed, dropped in one step — the comparison and the
-      // check included, which is what makes all three stop paths agree.
-      retirePending();
-    },
+    stop,
 
     reset() {
-      // A tab may still be showing the line it wrote when it queued its
-      // request, and a reset retires that request too (navigation, "Bersihkan
-      // cache"): forgetting silently is this path's documented job, but a
-      // promise left standing is not part of forgetting.
-      retirePending();
+      // "Bersihkan cache" and SPA navigation forget everything, and forgetting IS
+      // a stop that keeps nothing: the same door, so a reset cannot leave behind
+      // a debt, a row or a request the other paths take. A tab may still be
+      // showing the line it wrote when it queued its request, and a reset
+      // retires that request too — forgetting silently is this path's documented
+      // job, but a promise left standing is not part of forgetting (ADR-0026).
+      stop({ keepRows: false });
+      // `freshState()` is the one definition of a fresh Run, so a field added to
+      // RunState later is cleared here without anyone remembering to. It is also
+      // what makes this forget a resumed sweep's union, which `stop` itself
+      // keeps: navigation must not leave rows to resume against.
       Object.assign(state, freshState());
     },
 
@@ -421,7 +452,10 @@ export function createRunLifecycle(): RunLifecycle {
 
       const rejection = incompleteResultMessage(completion);
       if (rejection) {
-        abort();
+        // A refused result is not usable, so it goes the way of a stop that
+        // keeps nothing — including a resumed sweep, whose union survives while
+        // the half this Run was fetching does not (ADR-0023).
+        stop({ keepRows: false });
         return { kind: "rejected", message: rejection };
       }
 

@@ -72,7 +72,7 @@ masa that never finished are fetched.**
   `totalRows` is therefore set from the union's actual rows: the number the user
   reads is the number of rows in the file.
 - **A resume can only ADD to what a stop salvaged.** `begin("sweep-resume")` sets
-  a flag, and `abort()` checks it: a resume that ends badly (a stop, an error, a
+  a flag, and `stop()` checks it: a resume that ends badly (a stop, an error, a
   rejected result) keeps the union it was adding to instead of dropping it. A
   failed resume must never be worse than no resume at all. Every other start
   still drops its result when it ends badly.

@@ -119,9 +119,9 @@ import {
   handleExportAction,
   startBatchExport,
   startScrape,
+  stopRun,
   triggerSearch,
   scrapeIntentForFormat,
-  SCRAPE_CANCELLED_MESSAGE,
 } from "./main-actions";
 
 const DEBOUNCE_DELAY_MS = 300;
@@ -546,7 +546,10 @@ const pageMessageDispatcher = createMessageDispatcher({
 
     SCRAPE_ERROR: (msg) => {
       const message = scrapeErrorMessage(typeof msg.message === "string" ? msg.message : undefined);
-      runLifecycle.abort();
+      // A failed scrape keeps nothing: there is no usable result, and the
+      // requests it owed go with it (ADR-0022). No STOP_SCRAPE is posted — the
+      // page world is the one reporting the failure.
+      runLifecycle.stop({ keepRows: false });
       updatePanelError(message);
       publishIncomplete(message);
     },
@@ -617,24 +620,17 @@ document.addEventListener("keyup", (e: KeyboardEvent) => {
 
 // ── In-page button events ───────────────────────────
 
-/**
- * End the run in flight: tell the page world to abort it, then settle this
- * world's own Run and say so in the panel.
- *
- * All three steps belong together. A cancelled run emits no completion, so
- * posting STOP_SCRAPE alone would leave `isRunning()` true forever — the panel
- * stuck on "Berhenti" and the next Ctrl+Shift+E refused — which is what the
- * keyboard stop used to do. One function, called by every stop control.
- */
-function stopRunningRun(): void {
-  postToScraper({ type: "STOP_SCRAPE" });
-  runLifecycle.abort();
-  updatePanelError(SCRAPE_CANCELLED_MESSAGE);
-}
+// Both stop controls below call `stopRun` in main-actions.ts — the SAME function
+// the export click that doubles as a stop calls. The three steps (post
+// STOP_SCRAPE, settle this world's Run, report the cancellation in the panel)
+// and the rule about the requests it carried live there, so the only thing a
+// control decides is whether the rows it collected survive: this button and the
+// stop key drop them, an export click keeps them so the export can still be
+// produced (ADR-0027).
 
 document.addEventListener("ch:scrape-toggle", () => {
   if (runLifecycle.isRunning()) {
-    stopRunningRun();
+    stopRun(actionDeps, { keepRows: false });
   } else {
     startScrape(actionDeps);
   }
@@ -644,7 +640,7 @@ document.addEventListener("ch:scrape-toggle", () => {
 // must never be able to turn into a start if the two ever disagree about what is
 // running (shortcuts.ts refuses the key while nothing is running).
 document.addEventListener("ch:scrape-stop", () => {
-  if (runLifecycle.isRunning()) stopRunningRun();
+  if (runLifecycle.isRunning()) stopRun(actionDeps, { keepRows: false });
 });
 
 // Export format chosen from the toolbar dropdown (XLSX or CSV).

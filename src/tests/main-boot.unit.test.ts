@@ -1037,7 +1037,7 @@ describe("main boot — a chunked scrape result", () => {
     // A transfer that never completed leaves chunks behind; the next run's
     // first chunk must not be able to answer for the one that just ended.
     fromPage(env, { type: "SCRAPE_DATA_CHUNK", index: 0, chunks: 2, rows: rows(9), runId });
-    run.abort();
+    run.stop({ keepRows: false });
     run.begin("scrape");
 
     fromPage(env, {
@@ -1274,6 +1274,41 @@ describe("main boot — the in-page event seam", () => {
     expect(status(env)).toContain("Proses dihentikan");
   });
 
+  it("drops the rows on a toolbar stop and keeps them on an export click", async () => {
+    // The ONE thing the two controls disagree about, asserted where their flags
+    // are chosen (ADR-0027): a stop from the toolbar salvages nothing, while the
+    // export click's stop must leave the rows a following export can still use —
+    // otherwise the click that was meant to export would have destroyed its own
+    // input.
+    const env = await bootEnabled();
+    const run = (await import("../content/run-lifecycle")).runLifecycle;
+    const settle = (): import("../content/scraper-types").ScrapeComplete => ({
+      type: "SCRAPE_COMPLETE",
+      data: [{ RecordId: "1" }],
+      fields: ["RecordId"],
+      total: 1,
+      pages: 1,
+      elapsed: "1s",
+      source: "OUTPUT_TAX",
+    });
+
+    run.begin("scrape");
+    run.complete(settle());
+    run.begin("bulk-pdf");
+
+    env.fireDoc("ch:scrape-toggle");
+
+    expect(run.result()).toBeNull();
+
+    run.begin("bulk-pdf");
+    run.complete(settle());
+    run.begin("bulk-pdf");
+
+    env.fireDoc("ch:export-xlsx");
+
+    expect(run.result()?.data).toEqual([{ RecordId: "1" }]);
+  });
+
   it("gives each export event the intent its format implies", async () => {
     const env = await bootEnabled();
     const run = (await import("../content/run-lifecycle")).runLifecycle;
@@ -1281,11 +1316,11 @@ describe("main boot — the in-page event seam", () => {
     env.fireDoc("ch:export-xlsx");
     expect(lastPosted(env, "START_SCRAPE")).toMatchObject({ skipPdf: true });
 
-    run.abort();
+    run.stop({ keepRows: false });
     env.fireDoc("ch:export-csv");
     expect(lastPosted(env, "START_SCRAPE")).toMatchObject({ skipPdf: true });
 
-    run.abort();
+    run.stop({ keepRows: false });
     env.fireDoc("ch:export-pdf");
     // The PDF request is the one that must NOT be told to skip its own PDFs.
     expect(lastPosted(env, "START_SCRAPE")).not.toHaveProperty("skipPdf");

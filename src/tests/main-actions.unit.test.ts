@@ -29,6 +29,7 @@ import {
   handleExportAction,
   startPdfDownload,
   startScrape,
+  stopRun,
   applyMultiInvoiceFilter,
   triggerSearch,
   scrapeIntentForFormat,
@@ -201,6 +202,55 @@ describe("handleExportAction — already running", () => {
     for (const fmt of ["xlsx", "csv", "pdf"] as const) {
       runLifecycle.begin("scrape");
       expect(handleExportAction(fmt, makeDeps())).toBe(true);
+    }
+  });
+});
+
+// ── stopRun — the one sequence every stop control runs ────────────────────────
+
+// The three steps are one call so a fourth stop control cannot get them in a
+// different order or skip one (ADR-0027), and `keepRows` is required so it has
+// to state the only thing the controls disagree about. The toolbar button and
+// the stop key pass false from main.ts; the export click passes true below.
+
+describe("stopRun", () => {
+  it("posts STOP_SCRAPE, settles the Run and reports the cancellation", () => {
+    const deps = makeDeps();
+    runLifecycle.begin("scrape");
+
+    stopRun(deps, { keepRows: false });
+
+    expect(deps.postToScraper).toHaveBeenCalledWith({ type: "STOP_SCRAPE" });
+    expect(deps.updatePanelError).toHaveBeenCalledWith(SCRAPE_CANCELLED_MESSAGE);
+    expect(runLifecycle.isRunning()).toBe(false);
+  });
+
+  it.each([true, false])(
+    "decides the rows by the flag and nothing else (keepRows: %s)",
+    (keepRows) => {
+      seedResult([{ Reference: "REF-1" }], ["Reference"]);
+      runLifecycle.begin("bulk-pdf");
+
+      stopRun(makeDeps(), { keepRows });
+
+      expect(runLifecycle.result()?.data).toEqual(
+        keepRows ? [{ Reference: "REF-1" }] : undefined,
+      );
+    },
+  );
+
+  it("retires the requests the Run carried either way, so a later lookup inherits none", () => {
+    for (const keepRows of [true, false]) {
+      runLifecycle.reset();
+      runLifecycle.begin("scrape");
+      runLifecycle.request({ kind: "compare" });
+      runLifecycle.request({ kind: "check" });
+
+      stopRun(makeDeps(), { keepRows });
+
+      runLifecycle.begin("targeted");
+      const outcome = runLifecycle.complete(complete({ data: [{ Reference: "REF-1" }] }));
+      expect(outcome.kind === "accepted" && outcome.followUp).toEqual([]);
     }
   });
 });

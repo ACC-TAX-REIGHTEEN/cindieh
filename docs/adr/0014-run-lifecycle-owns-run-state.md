@@ -9,7 +9,7 @@
 | `noteRequestedInvoices(numbers)` | the No. Faktur numbers to diff at completion, recorded only once a run is really starting |
 | `result()` | the last accepted rows, fields and filename hint |
 | `complete(result)` | settle the run and report what happens next |
-| `abort()` / `stopKeepingRows()` / `reset()` | end it three ways: unusable result, the export click that doubles as a stop (rows kept), and silent forget — what a stop does to the requests the Run carried is ADR-0022 |
+| `stop({ keepRows })` / `reset()` | end it early: one door with the row decision stated by the caller (ADR-0027), and one silent forget. What a stop does to the requests the Run carried is not a parameter — it always retires them (ADR-0022) |
 
 `ContentState` is removed. It was ten mutable fields and no behaviour, so the one rule that mattered — a pending request is spent exactly once and abandoned with its Run — was remembered in six places across four modules and enforced nowhere. Its own comments are the record: *"recorded only once the run is really starting, so a declined confirmation leaves nothing behind"*, *"a later run must not be diffed against a stale list"*, *"the aborted run emits no completion, so its request is dropped here"*.
 
@@ -24,15 +24,15 @@ Shortfall = { count: number; notice: string | null }
 
 `followUp` carries the pending comparison, check or export in the order they fire; the caller executes them. `shortfall` is null when every requested number came back. When it is not, `count` always survives — it is what the completion notification reports — but `notice` is null for a `kind: "pdf"` run, whose pre-download dialog already named those numbers and whose per-file progress has taken the panel. That suppression rule used to sit in `main.ts`'s SCRAPE_COMPLETE handler and now belongs behind the seam.
 
-## Why the interface is eleven calls, not eight
+## Why the interface is longer than the state it replaced
 
-The design predicted eight. Three were added because the existing behaviour is not uniform, and flattening it would have been a silent regression:
+The design predicted eight calls. Three were added because the existing behaviour is not uniform, and flattening it would have been a silent regression:
 
-- `stopKeepingRows()` — the export click that doubles as a stop keeps the last good rows, so a following export can still use them. That is deliberately unlike `abort()`, and merging them would have dropped reusable data. **Amended by ADR-0022**: this call was named `cancelExport()`, and the second half of its original justification — that it also keeps a pending comparison, "which outlives the run carrying it" — was wrong. A request dies with the Run that recorded it, so this path now drops every request it carried, like the other two stop paths; only the rows survive.
+- `stopKeepingRows()` — the export click that doubles as a stop keeps the last good rows, so a following export can still use them. That is deliberately unlike `abort()`, and merging them would have dropped reusable data. **Amended by ADR-0022**: this call was named `cancelExport()`, and the second half of its original justification — that it also keeps a pending comparison, "which outlives the run carrying it" — was wrong. A request dies with the Run that recorded it, so this path now drops every request it carried, like the other two stop paths; only the rows survive. **Amended by ADR-0027**: with the request half settled, the two calls differed only in whether the rows survive, so they are one call — `stop({ keepRows })` — and `salvage()` and `reset()` go through it too. The interface is ten calls.
 - `cancelPending(kind)` — the panel's "Hapus" must drop a pending comparison without disturbing a pending export of the same grid.
 - `pendingExport()` — the readiness resend in `main.ts` must repeat the original request's intent when the first message reached the page before the Scraper did.
 
-`abort()` takes no message: every caller already holds the one it is about to show, and storing it only invites reading it back out of state.
+`stop()` takes no message: every caller already holds the one it is about to show, and storing it only invites reading it back out of state.
 
 ## Why the bridge keeps run identity
 
