@@ -85,6 +85,16 @@ const FILTER_OPTIONS = [
 let menusOutsideClickHandler: ((e: MouseEvent) => void) | null = null;
 
 /**
+ * The "waiting for the grid" line this tab last wrote, or null when it is not
+ * showing one.
+ *
+ * Its TEXT rather than a flag, on purpose: every other writer of that line (a
+ * summary, an error, "Hapus") replaces the text, so the promise lapses with it
+ * and no writer has to remember to unset anything.
+ */
+let waitingNotice: string | null = null;
+
+/**
  * Drop the panel's document-level click handler. Called by the master-switch
  * teardown, which removes the overlay but cannot unregister anything. Safe to
  * call when no handler is registered, and safe to call twice.
@@ -492,8 +502,11 @@ function handleCheck(): void {
 
   if (decision.action === "needScrape") {
     renderResults();
-    statusMsg.textContent =
+    // Remembered as the promise this tab is making, so a retirement can take it
+    // back (dropPendingCompare).
+    waitingNotice =
       `Belum ada data. Mohon tunggu, sedang melakukan scraping data ${currentGridLabel()} terlebih dahulu...`;
+    statusMsg.textContent = waitingNotice;
     statusMsg.className = "ch-comparer-status ch-comparer-status-info";
     runLifecycle.request({ kind: "compare" });
     scrapeForPanel();
@@ -522,6 +535,23 @@ export function runPendingCompare(): void {
   } else {
     renderAfterComparison();
   }
+}
+
+/**
+ * The comparison this tab queued was retired — a stop, a failure, a lost chunk
+ * or a reset — so the line promising it is taken back.
+ *
+ * Nothing else moves: the pasted rows stay, so running it again is one click,
+ * and the badge already names the stop, which is why this clears the promise
+ * instead of explaining it a second time (ADR-0022). The text comparison is what
+ * keeps a real summary or error — the tab's own output — out of its reach.
+ */
+export function dropPendingCompare(): void {
+  const statusMsg = document.getElementById(STATUS_ID);
+  if (!statusMsg || waitingNotice === null || statusMsg.textContent !== waitingNotice) return;
+  waitingNotice = null;
+  statusMsg.textContent = "";
+  statusMsg.className = "ch-comparer-status";
 }
 
 function renderComparisonError(message: string): void {

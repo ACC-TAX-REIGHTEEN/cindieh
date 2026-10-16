@@ -44,11 +44,12 @@ import {
   updatePanelStatus,
 } from "./ui-badge";
 import {
+  dropPendingCompare,
   injectComparerModal,
   removeMenusOutsideClickHandler,
   runPendingCompare,
 } from "./ui-comparer";
-import { runPendingCheck } from "./ui-checker";
+import { dropPendingCheck, runPendingCheck } from "./ui-checker";
 import { openPanel } from "./ui-panel";
 import {
   clearFilterTimers,
@@ -678,6 +679,20 @@ document.addEventListener("ch:scrape-start", () => {
 // Open compare modal
 document.addEventListener("ch:compare-open", () => {
   openPanel();
+});
+
+// Take back a tab's "waiting for the grid" line when the request behind it is
+// retired. This is the ONE place that knows both a Run's retirement and the
+// tabs: a tab writes that line on the way in, the completion that would have
+// replaced it is what a stop retires, and the badge already names the stop — so
+// the tab only drops the promise (ADR-0022). Every retirement funnels through
+// the life-cycle (a stop, a failed scrape, a rejected transfer, a reset), which
+// is why no stop path can forget to say so.
+runLifecycle.onRetired((kinds) => {
+  for (const kind of kinds) {
+    if (kind === "compare") dropPendingCompare();
+    else if (kind === "check") dropPendingCheck();
+  }
 });
 
 // Search a reference in Coretax (from the comparer table)

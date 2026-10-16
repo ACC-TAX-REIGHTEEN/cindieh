@@ -129,6 +129,11 @@ export interface CheckerView {
   rerun(): void;
   /** Run a check the Run owes — the panel reopens on this tab. */
   runPending(): void;
+  /**
+   * Take back the "waiting for the grid" promise: the check this tab queued was
+   * retired, so no completion will arrive to answer it.
+   */
+  dropPending(): void;
   exportResults(format: ResultExportFormat): void;
 }
 
@@ -143,6 +148,16 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
   let benchmarkSelect: HTMLSelectElement | null = null;
   let toleranceInput: HTMLInputElement | null = null;
   let injected = false;
+
+  /**
+   * The "waiting for the grid" line this tab last wrote, or null when it is not
+   * showing one.
+   *
+   * Its TEXT rather than a flag, on purpose: every other writer of that line (a
+   * summary) replaces the text, so the promise lapses with it and no writer has
+   * to remember to unset anything.
+   */
+  let waitingNotice: string | null = null;
 
   // ── Stored defaults ────────────────────────────────
 
@@ -310,8 +325,11 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
 
     const scrapedData = deps.run.result()?.data ?? null;
     if (!scrapedData || scrapedData.length === 0) {
-      statusMsg.textContent =
+      // Remembered as the promise this tab is making, so a retirement can take
+      // it back (dropPending).
+      waitingNotice =
         `Belum ada data. Mohon tunggu, sedang melakukan scraping data ${deps.gridLabel()} terlebih dahulu...`;
+      statusMsg.textContent = waitingNotice;
       statusMsg.className = "ch-comparer-status ch-comparer-status-info";
       deps.run.request({ kind: "check" });
       deps.scrape();
@@ -446,6 +464,21 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
     }).catch((err: unknown) => reportResultExportFailure(err, "ch-checker-status"));
   }
 
+  /**
+   * The check this tab queued was retired — a stop, a failure, a lost chunk or a
+   * reset — so the line promising it is taken back. The badge already names the
+   * stop, which is why this clears the promise instead of explaining it a second
+   * time (ADR-0022); the text comparison is what keeps a real summary, the
+   * tab's own output, out of its reach.
+   */
+  function dropPending(): void {
+    const statusMsg = document.getElementById("ch-checker-status");
+    if (!statusMsg || waitingNotice === null || statusMsg.textContent !== waitingNotice) return;
+    waitingNotice = null;
+    statusMsg.textContent = "";
+    statusMsg.className = "ch-comparer-status";
+  }
+
   const view: CheckerView = {
     root,
     filterMenu: null,
@@ -457,6 +490,7 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
     runCheck,
     rerun,
     runPending,
+    dropPending,
     exportResults,
   };
   return view;
@@ -494,3 +528,11 @@ export function runPendingCheck(): void {
   checkerView.runPending();
 }
 
+/**
+ * Take back the check this tab queued: the Run it was waiting on is gone, so no
+ * completion will arrive. The panel's badge already carries the stop; the tab
+ * only stops promising (ADR-0022).
+ */
+export function dropPendingCheck(): void {
+  checkerView.dropPending();
+}

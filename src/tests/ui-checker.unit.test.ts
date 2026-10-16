@@ -269,6 +269,42 @@ describe("the tab Pengecekan, on its own", () => {
     expect(el("ch-checker-status").textContent).toContain("scraping data PPN Masukan");
   });
 
+  it("takes the waiting line back when the check it queued is retired", () => {
+    // A stop (or a failure, a lost chunk, a reset) retires the check behind that
+    // line, so no completion will ever arrive to replace it — and a line that
+    // keeps promising one is the same lie as an export that never lands.
+    fire("ch-checker-check-btn");
+    expect(el("ch-checker-status").textContent).toContain("scraping data");
+
+    h.view.dropPending();
+
+    expect(el("ch-checker-status").textContent).toBe("");
+    expect(el("ch-checker-status").className).toBe("ch-comparer-status");
+  });
+
+  it("leaves a real result summary alone when a retirement lands afterwards", () => {
+    // The line is the tab's own output once the check has run: a stop arriving
+    // later must not wipe findings the user is reading.
+    finishRun([row({ VAT: 110_001 })]);
+    fire("ch-checker-check-btn");
+    const summary = el("ch-checker-status").textContent;
+    expect(summary).not.toBe("");
+
+    h.view.dropPending();
+
+    expect(el("ch-checker-status").textContent).toBe(summary);
+  });
+
+  it("takes the line back through the production singleton main.ts calls", async () => {
+    await mount({}, true);
+    fire("ch-checker-check-btn");
+    expect(el("ch-checker-status").textContent).toContain("scraping data");
+
+    (await import("../content/ui-checker")).dropPendingCheck();
+
+    expect(el("ch-checker-status").textContent).toBe("");
+  });
+
   it("renders the mismatched rows and leaves out the ones that add up", () => {
     finishRun([row(), row({ Reference: "REF-002", VAT: 110_001 })]);
 

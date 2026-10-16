@@ -385,6 +385,36 @@ describe("comparison UI validation and exports", () => {
     expect(exporter.downloadXLSXFile).not.toHaveBeenCalled();
   }
 
+  it("takes the waiting line back when the comparison it queued is retired", () => {
+    // A stop, a failure, a lost chunk or a reset retires the comparison behind
+    // that line, so no completion will arrive to answer it. The badge already
+    // names the stop; the tab only stops promising (ADR-0022).
+    seedRows(null);
+    el("ch-comparer-textarea").value = "000123\t000456\t1.234,56789\t0";
+    // Daily mode is on by default, so the day list is part of a valid check.
+    el("ch-comparer-daily-dates").value = "1";
+    fire("ch-comparer-check-btn");
+    expect(el("ch-comparer-status").textContent).toContain("Mohon tunggu");
+
+    ui.dropPendingCompare();
+
+    expect(el("ch-comparer-status").textContent).toBe("");
+    expect(el("ch-comparer-status").className).toBe("ch-comparer-status");
+    // The rows the user pasted are what re-running needs, and nothing here
+    // touches them: the same click works again.
+    expect(el("ch-comparer-textarea").value).not.toBe("");
+  });
+
+  it("leaves a real comparison summary alone when a retirement lands afterwards", () => {
+    runValid();
+    const summary = el("ch-comparer-status").textContent;
+    expect(summary).not.toBe("");
+
+    ui.dropPendingCompare();
+
+    expect(el("ch-comparer-status").textContent).toBe(summary);
+  });
+
   it("names its result table and scopes every header cell", () => {
     // The grid is built from a column schema and has no visible caption, so the
     // table carries its own name and each header cell declares its column —

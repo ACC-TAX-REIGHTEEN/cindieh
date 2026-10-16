@@ -498,3 +498,81 @@ describe("reset", () => {
     expect(next.kind === "accepted" && next.shortfall).toBeNull();
   });
 });
+
+describe("onRetired", () => {
+  // A retirement takes requests a TAB is still waiting on, and the tab cannot
+  // see that for itself: the line it wrote on the way in promises a comparison
+  // or a check, and the completion that would have replaced that line is exactly
+  // what the retirement dropped. This is the announcement main.ts turns into
+  // "stop promising" on the two tabs (ADR-0022), so it is asserted once, at the
+  // source every stop path funnels through.
+
+  /** Collect every announcement made to `run`. */
+  function collect(run: ReturnType<typeof createRunLifecycle>): string[][] {
+    const retired: string[][] = [];
+    run.onRetired((kinds) => retired.push([...kinds]));
+    return retired;
+  }
+
+  it("names the requests a stop took, in the order the panel runs them", () => {
+    const run = createRunLifecycle();
+    const retired = collect(run);
+    run.begin("scrape");
+    run.request({ kind: "compare" });
+    run.request({ kind: "check" });
+    run.request({ kind: "export", format: "xlsx" });
+
+    run.stopKeepingRows();
+
+    expect(retired).toEqual([["compare", "check", "export"]]);
+  });
+
+  it("announces a reset too, which retires the same requests", () => {
+    // "Bersihkan cache" and SPA navigation forget silently — but a promise the
+    // tab is still showing is not part of forgetting.
+    const run = createRunLifecycle();
+    const retired = collect(run);
+    run.begin("scrape");
+    run.request({ kind: "check" });
+
+    run.reset();
+
+    expect(retired).toEqual([["check"]]);
+  });
+
+  it("announces a completion that was refused, so a lost transfer is not silent", () => {
+    const run = createRunLifecycle();
+    const retired = collect(run);
+    run.begin("scrape");
+    run.request({ kind: "compare" });
+
+    // Cancelled with nothing collected: the one cancellation that is a rejection.
+    const outcome = run.complete(complete({ cancelled: true, data: [] }));
+
+    expect(outcome.kind).toBe("rejected");
+    expect(retired).toEqual([["compare"]]);
+  });
+
+  it("stays silent when the Run owed nothing", () => {
+    const run = createRunLifecycle();
+    const retired = collect(run);
+    run.begin("scrape");
+
+    run.abort();
+
+    expect(retired).toEqual([]);
+  });
+
+  it("is not raised by the panel's own cancel, which is not a retirement", () => {
+    // "Hapus" drops the comparison it queued itself and then decides again —
+    // nothing was taken from a tab that is still waiting on something else.
+    const run = createRunLifecycle();
+    const retired = collect(run);
+    run.begin("scrape");
+    run.request({ kind: "compare" });
+
+    run.cancelPending("compare");
+
+    expect(retired).toEqual([]);
+  });
+});

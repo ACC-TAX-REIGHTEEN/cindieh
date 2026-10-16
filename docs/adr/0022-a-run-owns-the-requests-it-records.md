@@ -22,8 +22,8 @@ Rename: `cancelExport()` → `stopKeepingRows()`. It is `abort()` minus the row 
 
 - **The rename is deliberate churn.** `cancelExport()` now lies: it drops a comparison and a check as well. Its one caller (`main-actions.handleExportAction`) and the two test suites are the whole blast radius.
 - **What a user loses and how they are told.** Someone who pastes rows, clicks Periksa, then stops the run with an export click gets no comparison and no queued revival of it. They are told the process stopped (`SCRAPE_CANCELLED_MESSAGE`, on the in-page badge, from both the toolbar stop and the export click), and re-running is one click because the pasted rows stay in the textarea. A tab-level line naming the dropped request is deliberately NOT added here: it would put a new dep on `ActionDeps` and a new export on each tab to restate what the stop line already says.
-- **The two tabs' "Mohon tunggu, sedang melakukan scraping…" line is not cleared by a stop.** This is pre-existing and now identical on all three paths: the tabs write that line when they queue their request and only `runPending*` rewrites it. Clearing it belongs to a change that gives a tab a way to observe the drop, not to this decision.
+- **The two tabs' "Mohon tunggu, sedang melakukan scraping…" line was not cleared by a stop.** This was pre-existing and identical on all three paths: the tabs write that line when they queue their request and only `runPending*` rewrites it. It is fixed — and this ADR is what said where: the retirement now announces itself, and the tab that queued the request takes the line back (ADR-0026).
 - Rows keep surviving a stop, so the "a stopped sweep's file is `…-sebagian`" rule (ADR-0020) is untouched: `partialSweep` still travels with the rows.
-- `reset()` (navigation, "Bersihkan cache") is unchanged, and still the only path that forgets silently.
+- `reset()` (navigation, "Bersihkan cache") is unchanged, and still the only path that forgets silently — a request a tab was waiting on is still retired by it, so it announces that too (ADR-0026).
 
 Status: accepted.

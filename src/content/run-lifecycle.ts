@@ -175,6 +175,23 @@ export interface RunLifecycle {
    */
   noteRequestedInvoices(numbers: readonly string[]): void;
 
+  /**
+   * Hear about the requests a retirement took, in the order the panel runs
+   * them.
+   *
+   * This is the ONE thing a tab cannot see for itself. A tab writes its "waiting
+   * for the grid" line on the way in, and the completion that would have
+   * replaced it is exactly what a stop, a failure, a rejected transfer or a
+   * reset retires — so the line outlived the request and kept promising work
+   * that could no longer arrive. Every retirement funnels through here, which is
+   * why a new stop path cannot forget to say so.
+   *
+   * One listener: main.ts is the isolated world's wiring layer and routes each
+   * kind to the tab that queued it. The life-cycle itself knows nothing about
+   * tabs (or the DOM).
+   */
+  onRetired(listener: (kinds: readonly RunIntent["kind"][]) => void): void;
+
   /** The last accepted result, or null when there is no reusable data. */
   result(): RunResult | null;
 
@@ -230,12 +247,29 @@ function freshState(): RunState {
 export function createRunLifecycle(): RunLifecycle {
   const state = freshState();
 
-  /** Everything this Run owes, spent in one step. */
-  function dropPending(): void {
+  let retireListener: ((kinds: readonly RunIntent["kind"][]) => void) | null = null;
+
+  /**
+   * Everything this Run owes, spent in one step. Returns the kinds it took, so
+   * a retirement can be announced with what it cost — and an empty list stays
+   * silent, because a Run that owed nothing has nothing to take back.
+   */
+  function dropPending(): RunIntent["kind"][] {
+    const dropped: RunIntent["kind"][] = [];
+    if (state.pendingCompare) dropped.push("compare");
+    if (state.pendingCheck) dropped.push("check");
+    if (state.pendingExportFormat) dropped.push("export");
     state.pendingExportFormat = null;
     state.pendingCompare = false;
     state.pendingCheck = false;
     state.requestedInvoices = [];
+    return dropped;
+  }
+
+  /** Drop what this Run owed, and say which requests went with it. */
+  function retirePending(): void {
+    const dropped = dropPending();
+    if (dropped.length > 0) retireListener?.(dropped);
   }
 
   /**
@@ -267,7 +301,10 @@ export function createRunLifecycle(): RunLifecycle {
     // otherwise. Either way this is what a later resume reads to know what is
     // still missing.
     state.sweep = completion.periods ?? state.sweep;
-    dropPending();
+    // Nothing to announce in practice — the stop that cut this sweep short
+    // already retired what the Run owed — but the rule is one rule: whatever
+    // this drops is taken back out loud (see retirePending).
+    retirePending();
   }
 
   /** Everything this Run produced. */
@@ -285,7 +322,7 @@ export function createRunLifecycle(): RunLifecycle {
 
   function abort(): void {
     state.isRunning = false;
-    dropPending();
+    retirePending();
     // A resume can only ever ADD to the union a stop salvaged, so ending it
     // early — a stop, a failure, a rejected result — costs the masa it was
     // fetching and never the masa already kept. Dropping the rows here would
@@ -318,11 +355,20 @@ export function createRunLifecycle(): RunLifecycle {
       state.resumingSweep = false;
       // Everything this Run owed, dropped in one step — the comparison and the
       // check included, which is what makes all three stop paths agree.
-      dropPending();
+      retirePending();
     },
 
     reset() {
+      // A tab may still be showing the line it wrote when it queued its
+      // request, and a reset retires that request too (navigation, "Bersihkan
+      // cache"): forgetting silently is this path's documented job, but a
+      // promise left standing is not part of forgetting.
+      retirePending();
       Object.assign(state, freshState());
+    },
+
+    onRetired(listener) {
+      retireListener = listener;
     },
 
     request(intent) {

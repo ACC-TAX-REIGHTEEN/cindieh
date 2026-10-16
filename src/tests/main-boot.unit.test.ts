@@ -1355,6 +1355,45 @@ describe("main boot — the in-page event seam", () => {
     expect(env.doc.getElementById("ch-comparer-view-compare")?.classList.contains("ch-hidden")).toBe(true);
   });
 
+  it("takes a tab's waiting line back when a stop retires the request behind it", async () => {
+    const env = await bootEnabled();
+    env.fireDoc("ch:compare-open");
+    const textarea = env.doc.getElementById("ch-comparer-textarea") as FakeEl;
+    textarea.value = "000123\t000456\t1.234,56789\t0";
+    // Daily mode is on by default, so the day list is part of a valid check.
+    (env.doc.getElementById("ch-comparer-daily-dates") as FakeEl).value = "1";
+    const click = (id: string): void => {
+      for (const fn of env.doc.getElementById(id)?.listeners.click ?? []) fn();
+    };
+
+    click("ch-comparer-check-btn");
+    const status = env.doc.getElementById("ch-comparer-status");
+    expect(status?.textContent).toContain("Mohon tunggu");
+
+    env.fireDoc("ch:scrape-stop");
+
+    // The request the line was waiting on is gone, so the promise goes with it.
+    // The badge carries the stop itself — this only stops promising (ADR-0022).
+    expect(status?.textContent).toBe("");
+    // And the paste survives, because running it again is one click.
+    expect(textarea.value).not.toBe("");
+  });
+
+  it("takes the Pengecekan tab's waiting line back on the same stop", async () => {
+    const env = await bootEnabled();
+    const click = (id: string): void => {
+      for (const fn of env.doc.getElementById(id)?.listeners.click ?? []) fn();
+    };
+
+    click("ch-checker-check-btn");
+    const status = env.doc.getElementById("ch-checker-status");
+    expect(status?.textContent).toContain("Mohon tunggu");
+
+    env.fireDoc("ch:scrape-stop");
+
+    expect(status?.textContent).toBe("");
+  });
+
   it("ignores a search event that carries no reference", async () => {
     const env = await bootEnabled();
 
