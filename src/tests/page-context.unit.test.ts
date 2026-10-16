@@ -8,6 +8,12 @@ import {
   isInputReturnPage,
   isEfakturPage,
   isVatInvoicePage,
+  hasReferenceFilter,
+  referenceIsIdentity,
+  isCheckerPage,
+  checkerRowIdentity,
+  counterpartyIsBuyer,
+  isPanelPage,
   isSptPage,
   isWithholdingPage,
   isSupportedExportPage,
@@ -84,9 +90,11 @@ describe("isInputReturnPage", () => {
 });
 
 describe("isVatInvoicePage", () => {
-  // The Checker runs on both PPN grids; the Comparer deliberately does not,
-  // because a PPN Masukan Referensi is the SELLER's own and is neither unique
-  // across a taxpayer's purchases nor reliably present.
+  // The two grids whose rows are the taxpayer's own INVOICES. The Checker is
+  // wider than this (it runs on the two Retur grids as well, `isCheckerPage`)
+  // and the Comparer narrower (`referenceIsIdentity`: a PPN Masukan Referensi
+  // is the SELLER's own, neither unique across a taxpayer's purchases nor
+  // reliably present).
   it.each([
     ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax", true],
     ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-tax", true],
@@ -98,13 +106,156 @@ describe("isVatInvoicePage", () => {
     expect(isVatInvoicePage(url)).toBe(expected);
   });
 
-  it("matches isEfakturPage exactly on the two PPN grids", () => {
-    for (const url of [
-      "https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax",
-      "https://coretaxdjp.pajak.go.id/e-invoice-portal/input-tax",
-    ]) {
-      expect(isVatInvoicePage(url)).toBe(true);
-      expect(isEfakturPage(url)).toBe(true);
+  it("is narrower than the two gates around it, on the Retur grids", () => {
+    // Both neighbours cover the retur grids, this fact does not: they are not
+    // invoice grids. Named apart from them rather than derived from either, so
+    // widening the export or the check cannot silently move this.
+    expect(isVatInvoicePage("https://coretaxdjp.pajak.go.id/e-invoice-portal/output-return")).toBe(false);
+    expect(isEfakturPage("https://coretaxdjp.pajak.go.id/e-invoice-portal/output-return")).toBe(true);
+    expect(isCheckerPage("https://coretaxdjp.pajak.go.id/e-invoice-portal/output-return")).toBe(true);
+  });
+});
+
+describe("hasReferenceFilter — can this grid be looked up by Referensi?", () => {
+  // Both PPN grids carry a Referensi column, so both get the injected filter:
+  // a seller's reference still answers a LOOKUP even when several purchases
+  // share it. Retur is keyed by NO RETUR and the other portals have no such
+  // column at all.
+  it.each([
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax", true],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-tax", true],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-return", false],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-return", false],
+    ["https://coretaxdjp.pajak.go.id/returnsheets-portal/value-added-tax-return", false],
+    ["https://coretaxdjp.pajak.go.id/withholding-slips-portal/my-withholding-slips", false],
+  ])("%s -> %s", (url, expected) => {
+    expect(hasReferenceFilter(url)).toBe(expected);
+  });
+
+  it("answers for every URL isVatInvoicePage does — the filter is the VAT grids' own", () => {
+    for (const url of [...Object.values(URLS), "https://example.com/anything"]) {
+      expect(hasReferenceFilter(url)).toBe(isVatInvoicePage(url));
+    }
+  });
+});
+
+describe("referenceIsIdentity — does a Referensi identify ONE row here?", () => {
+  it.each([
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax", true],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-tax", false],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-return", false],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-return", false],
+    ["https://coretaxdjp.pajak.go.id/returnsheets-portal/value-added-tax-return", false],
+    ["https://coretaxdjp.pajak.go.id/withholding-slips-portal/my-withholding-slips", false],
+  ])("%s -> %s", (url, expected) => {
+    expect(referenceIsIdentity(url)).toBe(expected);
+  });
+
+  it("splits from hasReferenceFilter on PPN Masukan: filter yes, identity no", () => {
+    // The whole reason the two facts are two facts. One predicate answering both
+    // questions means either the Comparer is admitted to a grid where it can
+    // only answer "Tidak ditemukan", or Pengecekan's hand-back is withheld from
+    // a grid that can serve it.
+    expect(hasReferenceFilter(URLS.inputTax)).toBe(true);
+    expect(referenceIsIdentity(URLS.inputTax)).toBe(false);
+
+    expect(hasReferenceFilter(URLS.outputTax)).toBe(true);
+    expect(referenceIsIdentity(URLS.outputTax)).toBe(true);
+  });
+});
+
+describe("isCheckerPage — where does the accuracy check run?", () => {
+  // A retur row carries the same DPP / DPP Nilai Lain / PPN as an invoice row,
+  // and the check tests one row's arithmetic at a time, so it runs on all four
+  // e-Faktur grids — and nowhere else.
+  it.each([
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax", true],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-tax", true],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-return", true],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-return", true],
+    ["https://coretaxdjp.pajak.go.id/returnsheets-portal/value-added-tax-return", false],
+    ["https://coretaxdjp.pajak.go.id/returnsheets-portal/article-21-26-tax-return", false],
+    ["https://coretaxdjp.pajak.go.id/withholding-slips-portal/my-withholding-slips", false],
+    ["https://coretaxdjp.pajak.go.id/dashboard", false],
+  ])("%s -> %s", (url, expected) => {
+    expect(isCheckerPage(url)).toBe(expected);
+  });
+
+  it("admits a Retur grid every other page fact of the panel refuses", () => {
+    // The reason the facts are named apart: one predicate asked to answer all
+    // four questions could only answer three of them.
+    expect(isCheckerPage(URLS.outputReturn)).toBe(true);
+    expect(isVatInvoicePage(URLS.outputReturn)).toBe(false);
+    expect(hasReferenceFilter(URLS.outputReturn)).toBe(false);
+    expect(referenceIsIdentity(URLS.outputReturn)).toBe(false);
+  });
+});
+
+describe("checkerRowIdentity — what names ONE row of a check result?", () => {
+  it.each([
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax", "referensi"],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-tax", "referensi"],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-return", "no-retur"],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-return", "no-retur"],
+  ])("%s -> %s", (url, expected) => {
+    expect(checkerRowIdentity(url)).toBe(expected);
+  });
+
+  it("reads the Referensi column, the same underlying fact as the filter's", () => {
+    // They agree on purpose and are asked separately: the filter's answer is
+    // about a LOOKUP, this one about which field a result row is named by.
+    for (const url of [...Object.values(URLS), "https://example.com/anything"]) {
+      expect(checkerRowIdentity(url)).toBe(hasReferenceFilter(url) ? "referensi" : "no-retur");
+    }
+  });
+
+  it("does not follow the identity fact, which is PPN Keluaran's alone", () => {
+    // The two words are near-synonyms and the questions are not: the checker's
+    // column on PPN Masukan is still the seller's reference (with the invoice
+    // number as its fallback), and a Retur row has neither.
+    expect(checkerRowIdentity(URLS.inputTax)).toBe("referensi");
+    expect(referenceIsIdentity(URLS.inputTax)).toBe(false);
+    expect(checkerRowIdentity(URLS.outputReturn)).toBe("no-retur");
+  });
+});
+
+describe("counterpartyIsBuyer — whose invoice do this page's rows carry?", () => {
+  it.each([
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax", true],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-return", true],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-tax", false],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-return", false],
+  ])("%s -> %s", (url, expected) => {
+    expect(counterpartyIsBuyer(url)).toBe(expected);
+  });
+
+  it("splits from isOutputTaxPage on Retur Keluaran, which does show the buyer", () => {
+    // A retur row carries BuyerTIN / BuyerTaxpayerNameClear exactly as the
+    // invoice it returns does, so a column reading "Nama Pembeli" is right
+    // there — and "Nama Penjual" (what the grid fact would give) is wrong.
+    expect(isOutputTaxPage(URLS.outputReturn)).toBe(false);
+    expect(counterpartyIsBuyer(URLS.outputReturn)).toBe(true);
+  });
+});
+
+describe("isPanelPage — is there a tab to offer here?", () => {
+  it.each([
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax", true],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-tax", true],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/output-return", true],
+    ["https://coretaxdjp.pajak.go.id/e-invoice-portal/input-return", true],
+    ["https://coretaxdjp.pajak.go.id/returnsheets-portal/value-added-tax-return", false],
+    ["https://coretaxdjp.pajak.go.id/withholding-slips-portal/my-withholding-slips", false],
+    ["https://coretaxdjp.pajak.go.id/dashboard", false],
+  ])("%s -> %s", (url, expected) => {
+    expect(isPanelPage(url)).toBe(expected);
+  });
+
+  it("is the union of the two tabs' own gates, not one of them", () => {
+    // Asked by the keyboard shortcut and the toolbar button, which open the
+    // OVERLAY: either tab having something to offer is enough.
+    for (const url of [...Object.values(URLS), "https://example.com/anything"]) {
+      expect(isPanelPage(url)).toBe(isCheckerPage(url) || referenceIsIdentity(url));
     }
   });
 });

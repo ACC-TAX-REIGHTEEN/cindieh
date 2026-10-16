@@ -18,6 +18,7 @@
 
 import type { ComparisonResult } from "./comparer";
 import type { BenchmarkType, CheckResult } from "./checker-logic";
+import type { CheckerRowIdentity } from "./page-context";
 import { getStatusLabel } from "./comparer-logic";
 import { formatResultNumber, formatResultDifference } from "./comparer-export";
 
@@ -154,22 +155,61 @@ const CHECKER_COUNTERPARTY_COLUMN: Record<Counterparty, ResultColumn<CheckResult
   penjual: textColumn("Nama Penjual", "ch-col-buyer", (r) => r.counterpartyName),
 };
 
-const CHECKER_COLUMNS: readonly ResultColumn<CheckResult>[] = [
-  numberColumn<CheckResult>(),
-  // A row with no Referensi falls back to its tax-invoice number, as the
-  // exported sheet does.
-  textColumn("Referensi", "ch-col-ref", (r) => r.reference || r.taxInvoiceNumber),
-  textColumn("Tanggal", "ch-col-date", (r) => r.invoiceDate),
+/**
+ * How one grid's checker rows are named: the identity column's label and the
+ * cell it reads, plus the date of the document that identity belongs to.
+ *
+ * ONE table for the panel's grid and the exported sheet, which both read it, so
+ * a retur row cannot be a "No Retur" on screen and a "Referensi" in the file.
+ * Which of the two applies where is a PAGE fact (page-context.checkerRowIdentity)
+ * — nothing here asks where the user is.
+ */
+export interface CheckerIdentitySpec {
+  /** The identity column's header, and what the row's identity is there. */
+  readonly label: string;
+  readonly value: (row: CheckResult) => string;
+  /**
+   * The date column's header and cell. A retur grid shows two dates (the
+   * invoice's and the retur's), so this one has to say which of them it is.
+   */
+  readonly dateLabel: string;
+  readonly date: (row: CheckResult) => string;
+}
+
+export const CHECKER_IDENTITIES: Record<CheckerRowIdentity, CheckerIdentitySpec> = {
+  // Both PPN grids: the row is an invoice. A row with no Referensi falls back to
+  // its tax-invoice number, as the exported sheet does.
+  referensi: {
+    label: "Referensi",
+    value: (r) => r.reference || r.taxInvoiceNumber,
+    dateLabel: "Tanggal",
+    date: (r) => r.invoiceDate,
+  },
+  // Both Retur grids: the row is a retur nota, so it is named by its NO RETUR
+  // and dated by the retur date rather than by the invoice it returns.
+  "no-retur": {
+    label: "No Retur",
+    value: (r) => r.returnNumber || r.taxInvoiceNumber,
+    dateLabel: "Tanggal Retur",
+    date: (r) => r.returnDate,
+  },
+};
+
+/** The three system amounts, in the order the checker reports them. */
+const CHECKER_AMOUNT_COLUMNS: readonly ResultColumn<CheckResult>[] = [
   amountColumn("DPP", "ch-col-num", (r) => r.dppSystem),
   amountColumn("DPP NL", "ch-col-num-wide", (r) => r.dppNilaiLainSystem),
   amountColumn("PPN", "ch-col-num", (r) => r.ppnSystem),
 ];
 
-/** Where the counterparty column sits: after No, Referensi and Tanggal. */
-const CHECKER_COUNTERPARTY_INDEX = 3;
-
-/** Where the two difference columns go: after the three system amounts. */
-const CHECKER_DIFF_INDEX = 7;
+/** The two leading columns the row identity produces, in its own order. */
+function checkerIdentityColumns(identity: CheckerRowIdentity): ResultColumn<CheckResult>[] {
+  const spec = CHECKER_IDENTITIES[identity];
+  return [
+    textColumn(spec.label, "ch-col-ref", spec.value),
+    textColumn(spec.dateLabel, "ch-col-date", spec.date),
+  ];
+}
 
 const CHECKER_STATUS_COLUMN: ResultColumn<CheckResult> = textColumn(
   "Status",
@@ -190,6 +230,7 @@ const CHECKER_STATUS_COLUMN: ResultColumn<CheckResult> = textColumn(
 export function checkerColumns(
   benchmark: BenchmarkType,
   counterparty: Counterparty = "pembeli",
+  identity: CheckerRowIdentity = "referensi",
 ): ResultColumn<CheckResult>[] {
   const labels = CHECKER_DIFFS[benchmark];
   const diffCells = labels.map(
@@ -201,12 +242,11 @@ export function checkerColumns(
     }),
   );
   return [
-    ...CHECKER_COLUMNS.slice(0, CHECKER_COUNTERPARTY_INDEX),
+    numberColumn<CheckResult>(),
+    ...checkerIdentityColumns(identity),
     CHECKER_COUNTERPARTY_COLUMN[counterparty],
-    ...CHECKER_COLUMNS.slice(CHECKER_COUNTERPARTY_INDEX, CHECKER_DIFF_INDEX),
+    ...CHECKER_AMOUNT_COLUMNS,
     ...diffCells,
-    // CHECKER_COLUMNS stops at the insertion point, so the status column that
-    // used to follow it has to be appended here.
     CHECKER_STATUS_COLUMN,
   ];
 }

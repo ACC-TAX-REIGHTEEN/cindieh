@@ -140,6 +140,29 @@ export function mergeRows(
   return added;
 }
 
+/**
+ * The union of two row sets the same grid produced, deduplicated by the portal's
+ * own row identity.
+ *
+ * This is what makes a resumed year-wide sweep one result: the isolated world
+ * keeps the rows a stop salvaged and a later sweep returns the remaining masa,
+ * and the two halves must land in ONE dedupe set exactly as the periods of a
+ * single run do (mergeRows). The previous rows come first and win, which keeps
+ * the export's row order stable across a resume.
+ *
+ * Pure and world-agnostic: the isolated world owns the kept rows and is the one
+ * that merges, so this cannot live in the MAIN-world accumulator.
+ */
+export function unionRows(
+  previous: readonly Record<string, unknown>[],
+  incoming: readonly Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const all: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  mergeRows(all, seen, [...previous, ...incoming]);
+  return all;
+}
+
 /** Shown for a row that carries none of the identifiers below. */
 export const UNIDENTIFIED_PDF_ITEM = "(tanpa identitas)";
 

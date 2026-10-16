@@ -43,6 +43,15 @@ export interface Bridge {
   postToScraper(msg: Record<string, unknown>): void;
   getActiveRunId(): number;
   isCurrentRunMessage(msg: Record<string, unknown>): boolean;
+  /**
+   * Whether this message belongs to the Run the last STOP_SCRAPE retired.
+   *
+   * The stopped sweep is the one report that legitimately arrives under an id
+   * that is no longer current: it is produced AFTER the stop, out of rows the
+   * run already had. Only that report may use this (see `main.ts`), and only a
+   * stop opens it — a teardown does not.
+   */
+  isStoppedRunMessage(msg: Record<string, unknown>): boolean;
 }
 
 /**
@@ -57,6 +66,11 @@ export function createBridge(windowRef?: Window): Bridge {
   let bridgeToken = "";
   let activeRunId = 0;
   let runPage: string | undefined;
+  // The id the last STOP_SCRAPE retired, or null when no stop has happened. A
+  // stop bumps the active id (so a cancelled run's late traffic cannot pose as
+  // the current one), which would also swallow the one message a stop is
+  // entitled to: the report of what the stopped run had already collected.
+  let stoppedRunId: number | null = null;
 
   function getActiveRunId(): number {
     return activeRunId;
@@ -73,6 +87,10 @@ export function createBridge(windowRef?: Window): Bridge {
       );
     }
     return activeRunId > 0 && msg.runId === activeRunId && runPage === w().location.href;
+  }
+
+  function isStoppedRunMessage(msg: Record<string, unknown>): boolean {
+    return stoppedRunId !== null && msg.runId === stoppedRunId;
   }
 
   function setBridgeToken(t: string): void {
@@ -93,6 +111,11 @@ export function createBridge(windowRef?: Window): Bridge {
     const startsRun = ["START_SCRAPE", "START_PDF_DOWNLOAD", "SCRAPE_BY_INVOICES"].includes(String(msg.type));
     const cancelsRun = msg.type === "STOP_SCRAPE" || msg.type === "RESET_SCRAPER";
     if (startsRun || cancelsRun) {
+      // Remember WHICH run this stop retires before the id moves on. Only an
+      // explicit stop opens the salvage window — a teardown (RESET_SCRAPER)
+      // exists to leave nothing behind, and a run stopped before one started
+      // (activeRunId 0) has nothing to report.
+      if (msg.type === "STOP_SCRAPE" && activeRunId > 0) stoppedRunId = activeRunId;
       // Only the readiness resend explicitly reuses the current operation ID.
       if (cancelsRun || activeRunId === 0 || msg.runId !== activeRunId) activeRunId++;
       runPage = win.location.href;
@@ -104,7 +127,15 @@ export function createBridge(windowRef?: Window): Bridge {
     );
   }
 
-  return { setBridgeToken, getBridgeToken, generateBridgeToken, postToScraper, getActiveRunId, isCurrentRunMessage };
+  return {
+    setBridgeToken,
+    getBridgeToken,
+    generateBridgeToken,
+    postToScraper,
+    getActiveRunId,
+    isCurrentRunMessage,
+    isStoppedRunMessage,
+  };
 }
 
 // ── Module singleton ──────────────────────────────────
@@ -121,3 +152,4 @@ export const generateBridgeToken = bridge.generateBridgeToken;
 export const postToScraper = bridge.postToScraper;
 export const getActiveRunId = bridge.getActiveRunId;
 export const isCurrentRunMessage = bridge.isCurrentRunMessage;
+export const isStoppedRunMessage = bridge.isStoppedRunMessage;

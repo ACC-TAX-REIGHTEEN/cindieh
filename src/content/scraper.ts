@@ -25,7 +25,7 @@ import {
 import { extractMasaPajak } from "./tax-date";
 import { debugLog, debugError } from "./debug";
 import type { CapturedRequest, ScrapeMessage } from "./scraper-types";
-import { batchMonthCount } from "./scrape-batch";
+import { batchMonthCount, resumePeriodCodes } from "./scrape-batch";
 import {
   startScraping,
   startPdfDownload,
@@ -158,6 +158,10 @@ import { REFERENCE_FIELD, REFERENCE_FAST_MATCH_MODE } from "./reference-search";
           startScraping(() => makeInterceptRequest(runCtx), runCtx, {
             skipPdf: msg.skipPdf === true,
             batchMonths: batchMonthCount(msg.batchMonths),
+            // The resume half of a sweep: codes shaped like period codes, then
+            // narrowed against the portal's own year plan in scraper-actions.
+            sweepPeriods: resumePeriodCodes(msg.sweepPeriods),
+            sweepYear: typeof msg.sweepYear === "string" ? msg.sweepYear : undefined,
           }),
         );
       },

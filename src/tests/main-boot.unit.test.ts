@@ -617,6 +617,47 @@ describe("main boot — reference search", () => {
   });
 });
 
+// ── The Referensi filter's page fact ──────────────────
+
+// The filter is a LOOKUP, so a grid only needs a Referensi column to get it —
+// which PPN Masukan has. The injection used to be gated on "is this the
+// Keluaran grid", which withheld the filter from a grid that can use it and
+// left Pengecekan's hand-back dead there. ui-filters' own cases stub the page
+// fact away, so only booting the real main.ts can see which one it asks.
+
+describe("main boot — the Referensi filter on both PPN grids", () => {
+  type Env = Awaited<ReturnType<typeof bootMain>>;
+
+  /** Boot on `href` with the switch on, plus a portal reset button to anchor to. */
+  async function bootWithAnchor(href: string): Promise<Env> {
+    const env = await bootMain({ href });
+    const btn = env.doc.createElement("button");
+    btn.setAttribute("ptooltip", "Setel Ulang Filter");
+    env.doc.body.appendChild(btn);
+    env.doc.buttons.push(btn as unknown as FakeEl);
+    env.fire("load");
+    await env.resolveStored({ [ENABLED_KEY]: true });
+    return env;
+  }
+
+  it.each([
+    ["PPN Keluaran", OUTPUT_TAX_URL],
+    ["PPN Masukan", INPUT_TAX_URL],
+  ])("injects the toolbar search box on %s", async (_grid, href) => {
+    const env = await bootWithAnchor(href);
+
+    const input = env.doc.getElementById("ch-toolbar-filter-reference");
+    expect(input).not.toBeNull();
+    expect(input?.placeholder).toBe("Cari Referensi...");
+  });
+
+  it("leaves a grid with no Referensi column to search (a Retur grid)", async () => {
+    const env = await bootWithAnchor(`${PORTAL_ORIGIN}/e-invoice-portal/output-return`);
+
+    expect(env.doc.getElementById("ch-toolbar-filter-reference")).toBeNull();
+  });
+});
+
 // ── Completion notifications ──────────────────────────
 
 // The toast is raised by the background from a storage record, and the record
@@ -785,6 +826,96 @@ describe("main boot — a chunked scrape result", () => {
   const rows = (count: number): Record<string, unknown>[] =>
     Array.from({ length: count }, (_, i) => ({ RecordId: i }));
 
+  it("keeps a stopped sweep's rows, and says how much of the year survived", async () => {
+    const { env, runId, run } = await bootRunning();
+
+    // The stop retires the run id, so the report that follows it arrives under
+    // the retired one — the single case main.ts must still accept, or ten of
+    // twelve months would be dropped on the floor.
+    env.fireDoc("ch:scrape-stop");
+    expect(run.isRunning()).toBe(false);
+    expect(env.doc.getElementById("ch-f-status")!.textContent).toContain("Proses dihentikan");
+
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: rows(2),
+      fields: ["RecordId"],
+      total: 2,
+      cancelled: true,
+      filenameHint: "2026",
+      source: "OUTPUT_TAX",
+      periods: {
+        counts: [{ period: "TD.00701", rows: 2 }],
+        totalRows: 2,
+        planned: 12,
+        emptyPeriods: [],
+        failedPeriods: [],
+      },
+      runId,
+    });
+
+    // The panel replaces its own cancellation line with what survived, and the
+    // rows stay exportable on purpose.
+    expect(env.doc.getElementById("ch-f-status")!.textContent).toContain("1 dari 12 masa pajak selesai");
+    expect(env.doc.getElementById("ch-f-status")!.textContent).toContain("sebagian");
+    const result = run.result();
+    expect(result?.data).toHaveLength(2);
+    expect(result?.partialSweep).toBe(true);
+  });
+
+  it("keeps a stopped sweep whose rows arrived as chunks", async () => {
+    // The case the salvage exists for: a large taxpayer's sweep, where ten
+    // months are tens of thousands of rows and therefore arrive as chunks
+    // (ADR-0017). The stop must survive the two mechanisms together.
+    const { env, runId, run } = await bootRunning();
+    env.fireDoc("ch:scrape-stop");
+
+    fromPage(env, { type: "SCRAPE_DATA_CHUNK", index: 0, chunks: 2, rows: rows(3), runId });
+    fromPage(env, { type: "SCRAPE_DATA_CHUNK", index: 1, chunks: 2, rows: rows(2), runId });
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: [],
+      dataChunks: 2,
+      fields: ["RecordId"],
+      total: 5,
+      cancelled: true,
+      filenameHint: "2026",
+      source: "OUTPUT_TAX",
+      periods: {
+        counts: [{ period: "TD.00701", rows: 5 }],
+        totalRows: 5,
+        planned: 12,
+        emptyPeriods: [],
+        failedPeriods: [],
+      },
+      runId,
+    });
+
+    expect(run.result()?.data).toHaveLength(5);
+    expect(run.result()?.partialSweep).toBe(true);
+    expect(env.doc.getElementById("ch-f-status")!.textContent).toContain("1 dari 12 masa pajak selesai");
+  });
+
+  it("ignores a cancelled completion that belongs to some other run", async () => {
+    const { env, runId, run } = await bootRunning();
+    env.fireDoc("ch:scrape-stop");
+
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: rows(2),
+      fields: ["RecordId"],
+      total: 2,
+      cancelled: true,
+      source: "OUTPUT_TAX",
+      // The id the stop retired is runId; this is a different one, even though
+      // it is the id the bridge has moved on to.
+      runId: runId + 1,
+    });
+
+    expect(run.result()).toBeNull();
+    expect(env.doc.getElementById("ch-f-status")!.textContent).toContain("Proses dihentikan");
+  });
+
   it("hands the Run every row the chunks carried", async () => {
     const { env, runId, run } = await bootRunning();
 
@@ -921,6 +1052,137 @@ describe("main boot — a chunked scrape result", () => {
     });
 
     expect(run.result()).toBeNull();
+  });
+});
+
+// ── Resuming a stopped sweep ──────────────────────────
+
+// The merge lives in the content script: the kept half is here, the fetched half
+// arrives as a completion, and the union is what settles, what the panel reports
+// and what the next export names (ADR-0023). Nothing but this harness drives the
+// two halves through the real handler.
+
+describe("main boot — resuming a stopped sweep", () => {
+  type Env = Awaited<ReturnType<typeof bootMain>>;
+  type RunLifecycle = import("../content/run-lifecycle").RunLifecycle;
+
+  /** Boot on the Keluaran grid, switched on, with a live Run. */
+  async function bootRunningOnGrid(): Promise<{ env: Env; runId: number; run: RunLifecycle }> {
+    const env = await bootMain({ href: OUTPUT_TAX_URL });
+    env.fire("load");
+    await env.resolveStored({ [ENABLED_KEY]: true });
+    // The popup's cache clear is what assigns a run id and pins the run's page.
+    env.emitStorageChange({ [RESET_REQUEST_KEY]: { newValue: 1 } });
+    const { getActiveRunId } = await import("../content/bridge");
+    const run = (await import("../content/run-lifecycle")).runLifecycle;
+    run.begin("scrape");
+    return { env, runId: getActiveRunId(), run };
+  }
+
+  function fromPage(env: Env, data: Record<string, unknown>): void {
+    env.fire("message", {
+      source: env.win,
+      origin: PORTAL_ORIGIN,
+      data: { ...data, direction: "FROM_PAGE", token: env.token() },
+    });
+  }
+
+  /**
+   * The ten masa a first pass finished. The counts deliberately add up to more
+   * rows than the kept data carries — a failed masa whose partial rows were
+   * counted can hand the resumed retry the same rows again — because that is the
+   * one case where the union's two halves disagree: they were counted by two
+   * independent accumulators, and the union dedupes them (ADR-0016). The panel
+   * must therefore name the FILE's rows, not the sum of the counts.
+   */
+  const tenMasa = {
+    counts: Array.from({ length: 10 }, (_, i) => ({
+      period: `TD.007${String(i + 1).padStart(2, "0")}`,
+      rows: 1,
+    })),
+    totalRows: 10,
+    planned: 12,
+    emptyPeriods: [],
+    failedPeriods: [],
+  };
+
+  const status = (env: Env): string => env.doc.getElementById("ch-f-status")?.textContent ?? "";
+
+  it("merges the resumed masa into the kept half, and the year stops being partial", async () => {
+    const { env, run, runId } = await bootRunningOnGrid();
+
+    // 1. The stop: ten masa kept, and the panel says which.
+    env.fireDoc("ch:scrape-stop");
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: [{ RecordId: 1 }, { RecordId: 2 }],
+      fields: ["RecordId"],
+      total: 2,
+      cancelled: true,
+      filenameHint: "2026",
+      source: "OUTPUT_TAX",
+      periods: tenMasa,
+      runId,
+    });
+    expect(run.result()?.partialSweep).toBe(true);
+    expect(status(env)).toContain("10 dari 12 masa pajak selesai");
+    expect(status(env)).toContain("2 masa yang belum selesai");
+
+    // 2. The resume, driven the way its menu entry drives it: the same kept
+    //    rows, and only the two masa still missing on the wire.
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    env.fireDoc("ch:export-batch");
+
+    const posted = env.messages.filter((m) => m.data.type === "START_SCRAPE").at(-1)!.data;
+    expect(posted.sweepPeriods).toEqual(["TD.00711", "TD.00712"]);
+    expect(posted.sweepYear).toBe("2026");
+
+    const { getActiveRunId } = await import("../content/bridge");
+    const resumedRunId = getActiveRunId();
+    expect(resumedRunId).not.toBe(runId);
+
+    // 3. The two masa come back, under the id the resume's own message opened.
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: [{ RecordId: 3 }, { RecordId: 4 }, { RecordId: 5 }],
+      fields: ["RecordId"],
+      total: 3,
+      filenameHint: "2026",
+      source: "OUTPUT_TAX",
+      periods: {
+        counts: [
+          { period: "TD.00711", rows: 2 },
+          { period: "TD.00712", rows: 1 },
+        ],
+        totalRows: 3,
+        planned: 2,
+        emptyPeriods: [],
+        failedPeriods: [],
+      },
+      runId: resumedRunId,
+    });
+
+    // ONE year's worth of rows and one whole-year report: the kept months were
+    // not fetched again, and nothing about the result still says `sebagian`.
+    expect(run.result()?.data).toHaveLength(5);
+    expect(run.result()?.sweep?.planned).toBe(12);
+    expect(run.result()?.partialSweep).toBeUndefined();
+    expect(status(env)).toContain("12 masa pajak");
+    // 5 rows: the union of the kept two and the fetched three — the counts above
+    // add up to 13, which is exactly what must NOT be reported.
+    expect(status(env)).toContain("5 baris");
+    expect(status(env)).not.toContain("13 baris");
+
+    // 4. The resumed Run still owed the export the menu entry requested up
+    //    front, so the union is written out without a second click, through the
+    //    same decision tree the buttons use. The SheetJS chunk cannot load in
+    //    this harness (ADR-0013), so the attempt necessarily settles as the
+    //    export-failure notice — that notice IS the proof the follow-up ran, and
+    //    waiting for it keeps the refusal inside the test instead of leaving a
+    //    stray rejection to fire after the page globals are torn down.
+    await vi.waitFor(() =>
+      expect(status(env)).toContain("Gagal membuat berkas Excel"),
+    );
   });
 });
 

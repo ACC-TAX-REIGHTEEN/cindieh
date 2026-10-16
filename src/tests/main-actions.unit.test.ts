@@ -181,6 +181,22 @@ describe("handleExportAction — already running", () => {
     expect(deps.updatePanelIdle).not.toHaveBeenCalled();
   });
 
+  it("takes a queued comparison down with the run, which no later completion revives", () => {
+    // The same stop the toolbar and the stop key run: a request dies with the
+    // Run that recorded it (ADR-0022). The next completion is a No. Faktur
+    // lookup whose rows are the filtered subset, so spending the queued
+    // comparison on it would answer "Tidak ditemukan" for every pasted row the
+    // filter left out.
+    runLifecycle.request({ kind: "compare" });
+    runLifecycle.request({ kind: "check" });
+
+    handleExportAction("xlsx", deps);
+
+    runLifecycle.begin("targeted");
+    const outcome = runLifecycle.complete(complete({ data: [{ Reference: "REF-1" }] }));
+    expect(outcome.kind === "accepted" && outcome.followUp).toEqual([]);
+  });
+
   it("returns true for all formats when running", () => {
     for (const fmt of ["xlsx", "csv", "pdf"] as const) {
       runLifecycle.begin("scrape");

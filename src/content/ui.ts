@@ -553,7 +553,9 @@ export function injectExportButton(retries = MAX_RETRIES): void {
       }
 
       // Inject the comparer modal — for every e-Faktur page, because the modal
-      // also hosts Pengecekan, which does run on PPN Masukan.
+      // also hosts Pengecekan, which runs on all four of them: PPN Masukan and
+      // both Retur grids have no Komparator tab but do have the check
+      // (isCheckerPage, ADR-0024).
       injectComparerModal();
     }
   }

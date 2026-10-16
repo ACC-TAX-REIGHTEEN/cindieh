@@ -26,10 +26,15 @@ import {
   resultExportFilename,
   type ResultExportFormat,
 } from "./comparer-export";
-import { checkerColumns, type Counterparty } from "./result-columns";
+import { CHECKER_IDENTITIES, checkerColumns, type Counterparty } from "./result-columns";
 import { runLifecycle, type RunLifecycle } from "./run-lifecycle";
 import { getPreferences } from "./preferences";
-import { isOutputTaxPage } from "./page-context";
+import {
+  checkerRowIdentity,
+  counterpartyIsBuyer,
+  hasReferenceFilter,
+  type CheckerRowIdentity,
+} from "./page-context";
 import {
   appendPagination,
   buildHeaderRow,
@@ -95,6 +100,15 @@ export interface CheckerViewDeps {
   gridLabel: () => string;
   /** Which side of the transaction this page shows — decides the column words. */
   counterparty: () => Counterparty;
+  /**
+   * What names a row on this grid: the Referensi on the two PPN grids, the NO
+   * RETUR on the two Retur grids. A page fact of its own, and not a synonym for
+   * either neighbour — `canSearchInGrid` (the filter's fact) is about a lookup,
+   * and the page gate is about whether the check runs here at all. The identity
+   * decides the column AND the double-click's key, which is why the retur grids
+   * get a "No Retur" column while their rows offer no search.
+   */
+  identity: () => CheckerRowIdentity;
   /** Whether a double-clicked row can actually be searched in the portal grid. */
   canSearchInGrid: () => boolean;
 }
@@ -357,7 +371,9 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
     );
     session.currentPage = currentPage;
 
-    const columns = checkerColumns(session.benchmark, deps.counterparty());
+    const identity = deps.identity();
+    const columns = checkerColumns(session.benchmark, deps.counterparty(), identity);
+    const rowIdentity = CHECKER_IDENTITIES[identity].value;
 
     const table = document.createElement("table");
     table.className = "ch-comparer-table";
@@ -368,7 +384,11 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
     const tbody = document.createElement("tbody");
     pageRows.forEach((r, idx) => {
       const tr = buildResultRow(columns, r, startIndex, idx);
-      const searchKey = r.reference || r.taxInvoiceNumber;
+      // The row's identity is what a double-click hands back to the grid. On the
+      // invoice grids that is the Referensi, or the invoice number where the row
+      // has none; on the retur grids it is the NO RETUR and `canSearchInGrid`
+      // refuses the offer, because no Referensi filter is injected there.
+      const searchKey = rowIdentity(r);
       makeRowInteractive(
         tr,
         searchKey
@@ -410,6 +430,7 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
       session.results,
       session.benchmark,
       deps.counterparty(),
+      deps.identity(),
     );
     const filename = resultExportFilename(CHECKER_EXPORT_BASENAME, format);
     // CSV is hand-rolled and synchronous: no chunk load, so no failure to report.
@@ -454,14 +475,22 @@ export const checkerView: CheckerView = createCheckerView({
   openCheckTab: () => openPanel("check"),
   searchReference,
   gridLabel: currentGridLabel,
-  counterparty: () => (isOutputTaxPage() ? "pembeli" : "penjual"),
-  // Only PPN Keluaran gets the Referensi filter injected — main.ts injects the
-  // toolbar and grid filters on isOutputTaxPage() alone — so on PPN Masukan the
-  // double-click would silently do nothing.
-  canSearchInGrid: isOutputTaxPage,
+  // Buyer on PPN Keluaran AND on Retur PPN Keluaran, whose rows carry the
+  // buyer exactly as the invoice they return does — a fact of its own, not
+  // `isOutputTaxPage` (Retur Keluaran is not the output-tax grid).
+  counterparty: () => (counterpartyIsBuyer() ? "pembeli" : "penjual"),
+  // The identity column: a Referensi on the two PPN grids, a NO RETUR on the two
+  // Retur grids, which have no Referensi column at all.
+  identity: checkerRowIdentity,
+  // The hand-back needs the grid to HAVE the Referensi filter — the page fact
+  // for a lookup, not the identity one the Comparer lives by: on PPN Masukan a
+  // search works, it may just land on several rows that share a seller's
+  // reference, so the double-click is offered there too.
+  canSearchInGrid: hasReferenceFilter,
 });
 
 /** Run the check a Run owes, from main.ts's `currentRunHandlers` dispatcher. */
 export function runPendingCheck(): void {
   checkerView.runPending();
 }
+

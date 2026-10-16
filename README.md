@@ -53,9 +53,11 @@ Setelah ekspor bertarget selesai, Cindieh membandingkan daftar nomor yang Anda m
 
 ---
 
-### 3. Pencarian Berdasarkan Referensi di e-Faktur PPN Keluaran
+### 3. Pencarian Berdasarkan Referensi di e-Faktur PPN (Keluaran & Masukan)
 
-Coretax dulu menyediakan fitur pencarian berdasarkan nomor referensi internal di kolom Referensi, namun fitur tersebut dihilangkan. Cindieh mengembalikannya dengan menambahkan kolom filter Referensi langsung di toolbar dan header grid halaman PPN Keluaran, sehingga pengguna bisa langsung menemukan faktur berdasarkan nomor referensi internal tanpa harus scroll manual.
+Coretax dulu menyediakan fitur pencarian berdasarkan nomor referensi internal di kolom Referensi, namun fitur tersebut dihilangkan. Cindieh mengembalikannya dengan menambahkan kolom filter Referensi langsung di toolbar dan header grid kedua halaman e-Faktur PPN, **PPN Keluaran** dan **PPN Masukan**, sehingga pengguna bisa langsung menemukan faktur berdasarkan nomor referensi tanpa harus scroll manual.
+
+Di PPN Masukan kolom Referensi berisi referensi milik **penjual**, jadi satu pencarian bisa menampilkan beberapa faktur dari penjual berbeda dan sebagian baris bisa kosong. Filter ini adalah cara **menemukan** faktur, bukan cara mencocokkan satu baris ke catatan internal tertentu — itulah sebabnya tab Komparator tetap tidak tersedia di PPN Masukan (lihat catatan di bagian Pengecekan).
 
 Pencarian dikirim ke server dengan pencocokan **awalan** (`startswith`), karena mode tersebut terbukti jauh lebih cepat daripada pencocokan **mengandung** (`contains`) yang dipakai sebelumnya — selisihnya bisa dari 0,15 detik menjadi lebih dari 1 menit untuk nilai yang sama (pengukuran lengkap di [`tools/README.md`](tools/README.md)). Bila awalan tersebut tidak menemukan apa pun, panel melaporkan **tidak ditemukan** dan pencarian berhenti — Cindieh tidak pernah mengulang dengan pencocokan mengandung yang lambat (lihat [ADR-0012](docs/adr/0012-reference-search-stops-on-empty-prefix.md)); coba ketik awalan yang lebih pendek. Nilai yang dicari juga otomatis diubah ke huruf besar, karena filter Referensi di server Coretax bersifat case-sensitive.
 
@@ -89,15 +91,15 @@ Cara kerja: cukup **copy dari Excel, lalu paste** ke panel Komparator. Tidak per
 - **Export Excel / CSV** — ekspor seluruh hasil perbandingan, ke `perbandingan-faktur.xlsx` atau `perbandingan-faktur.csv`. CSV siap dibuka di editor teks atau dipakai untuk membandingkan dua hasil
 - **Klik baris hasil** — langsung menutup panel dan menjalankan pencarian referensi tersebut di tabel PPN Keluaran Coretax, untuk validasi cepat tanpa perlu copy-paste manual
 
-### 5. Pengecekan Keakuratan Nilai (PPN Keluaran & PPN Masukan)
+### 5. Pengecekan Keakuratan Nilai (keempat grid e-Faktur PPN)
 
 Tab kedua di panel yang sama dengan Komparator. Fitur ini memeriksa apakah nilai **DPP**, **DPP Nilai Lain**, dan **PPN** pada faktur yang sudah tercatat di Coretax konsisten secara aritmetika — berguna untuk menemukan faktur yang nilai dasarnya terlanjur salah sebelum dilaporkan.
 
-Cara pakai: buka panel **Bandingkan** (ikon daftar di toolbar), pilih tab **Pengecekan Keakuratan Nilai**, pilih **Acuan**, isi **Toleransi** bila perlu, lalu klik **Periksa**. Bila data belum ada, Cindieh menarik data grid tersebut terlebih dahulu secara otomatis (sama seperti Komparator). Tab ini muncul di halaman e-Faktur **PPN Keluaran** dan **PPN Masukan**.
+Cara pakai: buka panel **Bandingkan** — ikon daftar di toolbar PPN Keluaran, atau pintasan `Ctrl+Shift+B` (berlaku juga di PPN Masukan dan di kedua halaman Retur) — lalu pilih tab **Pengecekan Keakuratan Nilai**, pilih **Acuan**, isi **Toleransi** bila perlu, dan klik **Periksa**. Bila data belum ada, Cindieh menarik data grid tersebut terlebih dahulu secara otomatis (sama seperti Komparator). Tab ini muncul di keempat grid e-Faktur PPN: **PPN Keluaran**, **PPN Masukan**, **Retur PPN Keluaran**, dan **Retur PPN Masukan**.
 
-Kolom nama pihak lain menyesuaikan gridnya: di PPN Keluaran kolomnya **Nama Pembeli**, di PPN Masukan **Nama Penjual** — karena faktur masuk menunjuk penjualan orang lain, bukan milik Wajib Pajak sendiri. Perhitungan DPP / DPP NL / PPN-nya identik di kedua halaman: yang diperiksa adalah konsistensi aritmetika satu faktur, bukan pencocokan antar faktur.
+Kolom nama pihak lain menyesuaikan gridnya: di PPN Keluaran **dan Retur PPN Keluaran** kolomnya **Nama Pembeli**, di PPN Masukan **dan Retur PPN Masukan** **Nama Penjual** — karena faktur masuk menunjuk penjualan orang lain, bukan milik Wajib Pajak sendiri. Kolom identitasnya juga menyesuaikan: di dua grid PPN kolomnya **Referensi** (atau No. Faktur bila Referensi-nya kosong), di dua grid Retur **No Retur** beserta **Tanggal Retur**, karena nota retur tidak punya kolom Referensi sama sekali. Perhitungan DPP / DPP NL / PPN-nya identik di keempat halaman: yang diperiksa adalah konsistensi aritmetika satu baris, bukan pencocokan antar baris.
 
-> **Kenapa Komparator tidak ikut ke PPN Masukan?** Komparator mencocokkan catatan internal dengan Coretax berdasarkan kolom **Referensi**. Referensi di PPN Masukan adalah referensi milik **penjual**, jadi bisa sama antar faktur dari penjual berbeda dan sering kosong — tidak ada kunci yang bisa diandalkan untuk pencocokan.
+> **Kenapa Komparator hanya ada di PPN Keluaran?** Komparator mencocokkan catatan internal dengan Coretax berdasarkan kolom **Referensi**. Referensi di PPN Masukan adalah referensi milik **penjual**, jadi bisa sama antar faktur dari penjual berbeda dan sering kosong — tidak ada kunci yang bisa diandalkan untuk pencocokan; di kedua grid Retur kolom itu tidak ada. **Filter** Referensi sendiri tetap ada di kedua grid PPN dan tetap berguna: yang tidak dilakukan Cindieh di sana adalah mencocokkan, bukan mencari.
 
 **Acuan** menentukan nilai mana yang dianggap benar, nilai mana yang dihitung darinya, dan nilai mana yang diperiksa:
 
@@ -123,7 +125,7 @@ Baris yang DPP Nilai Lain-nya **0** berarti faktur tidak menerapkan DPP Nilai La
 - **Toleransi** — selisih yang masih dianggap cocok (untuk pembulatan); selisih di dalam toleransi ditampilkan sebagai `-`
 - **Filter Status** — saring hasil (Semua Status, DPP Berbeda, DPP NL Berbeda, PPN Berbeda, Dua Nilai Berbeda, Data tidak lengkap)
 - **Export Excel / CSV** — ekspor hasil pengecekan ke `pengecekan-nilai-faktur.xlsx` atau `.csv`. Keduanya menyimpan seluruh temuan, bukan hanya yang sedang tampil
-- **Klik baris hasil** — klik 1× untuk melihat teks lengkap, klik 2× untuk mencari referensi tersebut di grid PPN Keluaran (sama seperti Komparator)
+- **Klik baris hasil** — klik 1× untuk melihat teks lengkap, klik 2× untuk mencari referensi tersebut di grid PPN yang sedang dibuka (PPN Keluaran maupun PPN Masukan), sama seperti Komparator. Di dua halaman Retur klik 2× tidak melakukan apa-apa, karena tidak ada filter Referensi yang bisa diisi di sana
 - **Ringkasan** — "Semua faktur sesuai." bila tidak ada temuan, atau jumlah faktur yang berbeda dan yang datanya tidak lengkap
 - Hasil dipaginasi per halaman, dan angka besar tetap tersimpan sebagai angka di Excel (bukan teks)
 
@@ -158,11 +160,14 @@ Menu **Ekspor** di halaman e-Faktur PPN punya satu entri tambahan: **Ekspor 1 Ta
 |---|---|
 | Halaman | Keempat grid e-Faktur PPN: PPN Keluaran, PPN Masukan, Retur PPN Keluaran, dan Retur PPN Masukan. Di halaman lain entri ini tidak muncul. |
 | Isi file | Seluruh masa pajak dalam satu tahun pajak. |
-| Nama file | Dinamai untuk **tahunnya** (`FPK-2026.xlsx`, `FPM-2026.xlsx`, `RET-FPK-2026.xlsx`), bukan untuk satu bulan, karena isinya dua belas bulan. |
+| Nama file | Dinamai untuk **tahunnya** (`FPK-2026.xlsx`, `FPM-2026.xlsx`, `RET-FPK-2026.xlsx`, `RET-FPM-2026.xlsx`), bukan untuk satu bulan, karena isinya dua belas bulan. |
 | Perkiraan waktu | Sekitar 4 menit bagi Wajib Pajak besar pada kecepatan pacing normal, memakai jeda antar-halaman yang sama seperti ekspor biasa. Kecepatan yang lebih lambat memperpanjang waktu ini, tidak pernah memendekkannya. |
-| Menghentikan | Tombol ekspor mana pun membatalkan proses, seperti ekspor biasa. |
+| Menghentikan | Tombol ekspor mana pun membatalkan proses, seperti ekspor biasa. Masa yang sudah selesai **tidak dibuang**: panel melaporkan berapa masa dan berapa baris yang tersimpan, dan data itu bisa Anda ekspor sendiri setelahnya — nama berkasnya ditandai `sebagian` (mis. `FPM-2026-sebagian.xlsx`) supaya tidak tertukar dengan satu tahun penuh. Setelah berhenti, Cindieh tidak mengekspor apa pun sendiri. |
+| Melanjutkan | Klik entri yang sama, **Ekspor 1 Tahun (12 Masa)**, untuk meneruskan. Konfirmasinya menyebut berapa masa yang sudah tersimpan dan berapa masa yang akan diambil sekarang, dan Cindieh **hanya mengambil masa yang belum selesai** — masa yang sudah tersimpan tidak diambil ulang. Hasilnya satu berkas satu tahun penuh (tanpa tanda `sebagian`), karena sisa masanya digabung ke data yang sudah ada. |
 
-Filter masa dan tahun tidak pernah dikarang: keduanya dibaca dari permintaan grid yang sedang berjalan, dan kode masanya berasal dari nilai yang portal sendiri kirim. Bila permintaan itu tidak memuat filter masa/tahun yang dikenali, proses berhenti dengan pesan di panel, bukan mengekspor bulan yang salah.
+Filter masa dan tahun tidak pernah dikarang: keduanya dibaca dari permintaan grid yang sedang berjalan, dan kode masanya berasal dari nilai yang portal sendiri kirim. Bila permintaan itu tidak memuat filter masa/tahun yang dikenali, proses berhenti dengan pesan di panel, bukan mengekspor bulan yang salah. Saat itu terjadi, **Log debug** (`?chdebug=1` atau saklar di popup) menyebutkan nama filter yang Cindieh lihat di permintaan grid tersebut — itulah keterangan yang dibutuhkan supaya grid itu dikenali.
+
+Hal yang sama berlaku saat melanjutkan: sisa masa hanya diminta bila filter tahun grid **masih sama** dengan tahun datanya yang tersimpan. Bila filter tahun berubah (atau datanya sudah hilang karena halaman dimuat ulang, navigasi, atau "Bersihkan cache"), Cindieh berhenti dengan pesan, bukan menggabungkan dua tahun ke satu berkas. Berhenti lagi di tengah proses melanjutkan juga tidak menghilangkan data: yang sudah selesai tetap tersimpan, dan sisa masanya tetap bisa diteruskan lagi.
 
 Setelah selesai, panel menyebut jumlah masa dan jumlah baris. Bila ada masa yang **balik kosong di tengah masa lain yang berisi data**, panel menyebutkannya: itu tanda ada bulan yang hilang, dan tidak ada jumlah total dari portal yang bisa dipakai sebagai pembanding (lihat catatan di bawah). Masa yang gagal diambil disebut terpisah dari masa yang memang kosong, karena dua masalah itu punya dua perbaikan berbeda.
 
@@ -176,7 +181,7 @@ Ketiganya memakai `Ctrl` (atau `Cmd` di macOS) + `Shift`, dan hanya aktif di hal
 |---|---|
 | `Ctrl+Shift+E` | Mulai ambil data dari grid (*scrape*), sama seperti tombol scrape di toolbar; di halaman Bukti Potong, proses yang sama sekaligus mengunduh PDF massalnya. Diabaikan ketika sedang berjalan, supaya dua proses tidak berlomba untuk grid yang sama. |
 | `Ctrl+Shift+S` | Batalkan proses yang sedang berjalan. |
-| `Ctrl+Shift+B` | Buka panel Bandingkan / Pengecekan Keakuratan Nilai. Hanya di halaman e-Faktur PPN Keluaran dan PPN Masukan; ditutup dengan `Esc` seperti biasa. |
+| `Ctrl+Shift+B` | Buka panel Bandingkan / Pengecekan Keakuratan Nilai. Hanya di halaman e-Faktur PPN: Keluaran, Masukan, dan kedua Retur; ditutup dengan `Esc` seperti biasa. |
 
 Daftar ini bukan tabel terpisah: `SHORTCUTS` di [`src/content/shortcuts.ts`](src/content/shortcuts.ts) adalah satu-satunya sumber. Handler membacanya langsung, halaman situs membacanya lewat import yang sama di `microsite-sync.unit.test.ts`, sedangkan tabel README ini disalin tangan — jadi ubah keduanya dalam satu commit.
 
@@ -232,7 +237,7 @@ Halaman utama yang publik untuk Cindieh ada di folder [`microsite/`](microsite/)
 
 Isinya one-pager statis — HTML, CSS, dan JS polos tanpa dependensi — yang menjelaskan tujuh fitur Cindieh dalam bahasa Indonesia, ditambah [`privacy.html`](microsite/privacy.html), **halaman kebijakan privasi yang tayang di https://cindieh.pages.dev/privacy.html**. Halaman kedua itu ada karena Chrome Web Store dan Firefox Add-ons meminta kebijakan privasi berupa URL saat review — berkas di dalam repositori tidak bisa dijadikan tautan. Isinya diturunkan dari kode: tidak ada server, telemetri, maupun analitik, dan hanya `coretaxdjp.pajak.go.id` yang dihubungi. Dokumentasi untuk folder tersebut ada di [`microsite/README.md`](microsite/README.md): struktur, konvensi, dan setelan deploy.
 
-Yang membuatnya tidak melenceng dari kode adalah [`src/tests/microsite-sync.unit.test.ts`](src/tests/microsite-sync.unit.test.ts). Halaman itu menyalin fakta dari TypeScript (prefix berkas, permission, shortcut, halaman portal yang didukung, label status kedua grid, nama berkas ekspor, setiap kontrol popup, dan hostname situs), lalu tes tersebut membandingkannya balik dengan sumber aslinya. Menambah sumber ekspor, permission, shortcut, halaman portal, status, nama berkas, atau preferensi wajib disertai perubahan halaman di commit yang sama — kalau tidak, tesnya merah. Suite yang sama juga menjaga struktur ketiga halaman situs (beranda, privasi, dan 404), mulai dari satu label dan satu panel per tab fitur sampai `<base href="/">` di halaman 404 dan kecocokan `sitemap.xml` dengan setiap halaman. Tabel izin di halaman privasi diperiksa dua arah terhadap `manifest.json`: setiap permission yang diminta harus disebut di sana, dan setiap permission yang diklaim harus benar-benar ada di manifest — jadi penambahan izin baru tidak bisa tayang tanpa dicatat di sana.
+Yang membuatnya tidak melenceng dari kode adalah [`src/tests/microsite-sync.unit.test.ts`](src/tests/microsite-sync.unit.test.ts). Halaman itu menyalin fakta dari TypeScript (prefix berkas, permission, shortcut, halaman portal yang didukung, grid mana yang dicakup Pengecekan, label status kedua grid, nama berkas ekspor, setiap kontrol popup, dan hostname situs), lalu tes tersebut membandingkannya balik dengan sumber aslinya. Menambah sumber ekspor, permission, shortcut, halaman portal, status, nama berkas, atau preferensi wajib disertai perubahan halaman di commit yang sama — kalau tidak, tesnya merah. Suite yang sama juga menjaga struktur ketiga halaman situs (beranda, privasi, dan 404), mulai dari satu label dan satu panel per tab fitur sampai `<base href="/">` di halaman 404 dan kecocokan `sitemap.xml` dengan setiap halaman. Tabel izin di halaman privasi diperiksa dua arah terhadap `manifest.json`: setiap permission yang diminta harus disebut di sana, dan setiap permission yang diklaim harus benar-benar ada di manifest — jadi penambahan izin baru tidak bisa tayang tanpa dicatat di sana.
 
 Workflow [`CI`](.github/workflows/ci.yml) menjalankan `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:coverage`, `build:chrome` + `build:firefox`, dan `pnpm run package` di GitHub Actions pada setiap push ke `main` dan setiap pull request — dan `microsite-sync.unit.test.ts` termasuk salah satu file di dalam `pnpm test`. Jadi guard-nya bekerja di CI, bukan hanya saat ada yang ingat menjalankannya secara lokal.
 

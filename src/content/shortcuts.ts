@@ -21,7 +21,7 @@
 // the isolated world would be left believing a Run was still in flight.
 // ============================================================
 
-import { isSupportedExportPage, isVatInvoicePage } from "./page-context";
+import { isPanelPage, isSupportedExportPage } from "./page-context";
 
 /**
  * The event main.ts's stop path answers, shared with the toolbar's own stop.
@@ -74,7 +74,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
     combo: "Ctrl+Shift+B",
     keys: ["B", "b"],
     description:
-      "Buka panel Bandingkan / Pengecekan Keakuratan Nilai. Hanya bekerja di halaman e-Faktur PPN Keluaran dan PPN Masukan.",
+      "Buka panel Bandingkan / Pengecekan Keakuratan Nilai. Hanya bekerja di halaman e-Faktur PPN: Keluaran, Masukan, dan kedua Retur.",
   },
 ];
 
@@ -118,11 +118,12 @@ export function registerShortcuts(
     }
 
     if (SHORTCUT_BY_ID.get("panel")!.keys.includes(e.key)) {
-      // The panel's two tabs live on the VAT invoice grids alone, exactly
-      // where ui-panel.ts makes them available — the same predicate, one
-      // source, so the key and the toolbar button can never disagree about
-      // the page it works on.
-      if (!isVatInvoicePage()) return;
+      // The panel's two tabs live on the four e-Faktur PPN grids — the check on
+      // all four, the Komparator where a Referensi identifies a row — exactly
+      // where ui-panel.ts makes them available. `isPanelPage` asks that same
+      // question (either tab's gate), from one source, so the key and the
+      // toolbar button can never disagree about the page it works on.
+      if (!isPanelPage()) return;
       e.preventDefault();
       document.dispatchEvent(new CustomEvent("ch:compare-open"));
     }

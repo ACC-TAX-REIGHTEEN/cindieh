@@ -9,7 +9,7 @@
 | `noteRequestedInvoices(numbers)` | the No. Faktur numbers to diff at completion, recorded only once a run is really starting |
 | `result()` | the last accepted rows, fields and filename hint |
 | `complete(result)` | settle the run and report what happens next |
-| `abort()` / `cancelExport()` / `reset()` | end it three ways: unusable result, the export click that doubles as a stop, and silent forget |
+| `abort()` / `stopKeepingRows()` / `reset()` | end it three ways: unusable result, the export click that doubles as a stop (rows kept), and silent forget — what a stop does to the requests the Run carried is ADR-0022 |
 
 `ContentState` is removed. It was ten mutable fields and no behaviour, so the one rule that mattered — a pending request is spent exactly once and abandoned with its Run — was remembered in six places across four modules and enforced nowhere. Its own comments are the record: *"recorded only once the run is really starting, so a declined confirmation leaves nothing behind"*, *"a later run must not be diffed against a stale list"*, *"the aborted run emits no completion, so its request is dropped here"*.
 
@@ -28,7 +28,7 @@ Shortfall = { count: number; notice: string | null }
 
 The design predicted eight. Three were added because the existing behaviour is not uniform, and flattening it would have been a silent regression:
 
-- `cancelExport()` — the export click that doubles as a stop keeps the last good rows (so a following export can still use them) and keeps a pending comparison, which outlives the run carrying it. That is deliberately unlike `abort()`, and merging them would have dropped reusable data. Both are pinned by tests.
+- `stopKeepingRows()` — the export click that doubles as a stop keeps the last good rows, so a following export can still use them. That is deliberately unlike `abort()`, and merging them would have dropped reusable data. **Amended by ADR-0022**: this call was named `cancelExport()`, and the second half of its original justification — that it also keeps a pending comparison, "which outlives the run carrying it" — was wrong. A request dies with the Run that recorded it, so this path now drops every request it carried, like the other two stop paths; only the rows survive.
 - `cancelPending(kind)` — the panel's "Hapus" must drop a pending comparison without disturbing a pending export of the same grid.
 - `pendingExport()` — the readiness resend in `main.ts` must repeat the original request's intent when the first message reached the page before the Scraper did.
 

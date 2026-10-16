@@ -361,7 +361,7 @@
                 <li>Buka salah satu halaman yang didukung di Coretax.</li>
                 <li>Klik tombol <strong>Ekspor</strong> di toolbar halaman.</li>
                 <li>Pilih <strong>Ekspor XLSX</strong> atau <strong>Ekspor CSV</strong>.</li>
-                <li>Di halaman e-Faktur PPN (Keluaran, Masukan, dan Retur) tersedia pula <strong>Ekspor 1 Tahun (12 Masa)</strong>: seluruh masa pajak setahun dalam satu file, dengan progres per masa di panel.</li>
+                <li>Di halaman e-Faktur PPN (Keluaran, Masukan, dan Retur) tersedia pula <strong>Ekspor 1 Tahun (12 Masa)</strong>: seluruh masa pajak setahun dalam satu file, dengan progres per masa di panel. Berhenti di tengah jalan tidak membuang hasilnya: masa yang sudah selesai disimpan, dan entri yang sama bisa diklik lagi untuk meneruskan hanya masa yang belum selesai.</li>
                 <li>Panel progres muncul otomatis di pojok kanan bawah, menampilkan pengambilan data per halaman.</li>
                 <li>File langsung terunduh ke komputer setelah selesai, satu file, sudah tergabung.</li>
               </ol>
@@ -441,7 +441,7 @@
             <div>
               <p class="feat-problem">Coretax dulu punya pencarian berdasarkan kolom Referensi, yaitu nomor referensi internal perusahaan Anda. Fitur ini kemudian dihapus dari portal. Cindieh mengembalikannya.</p>
               <ol class="feat-steps">
-                <li>Buka halaman e‑Faktur PPN Keluaran.</li>
+                <li>Buka halaman e‑Faktur PPN, Keluaran atau Masukan.</li>
                 <li>Ketik nomor referensi di kotak <strong>Cari Referensi…</strong>, tersedia di toolbar maupun header kolom Referensi.</li>
                 <li>Tekan Enter. Grid menampilkan hanya faktur yang cocok.</li>
                 <li>Kosongkan input untuk menghapus filter dan memuat ulang semua data.</li>
@@ -451,6 +451,7 @@
               <h3>Detail pencocokan</h3>
               <p style="font-size:13px;color:var(--ink-soft);">Pencocokan bersifat <strong>awalan</strong> (<em>startswith</em>): ketik sebagian awal nomor referensi. Mode ini dipilih karena jauh lebih cepat daripada pencocokan <em>contains</em>, selisihnya bisa dari 0,15 detik jadi lebih dari 1 menit untuk nilai yang sama.</p>
               <p style="font-size:13px;color:var(--ink-soft);margin-top:10px;">Nilai otomatis diubah ke huruf besar, karena filter Referensi di server Coretax bersifat <em>case-sensitive</em>. Bila awalan tidak menemukan apa pun, panel melaporkan <strong>tidak ditemukan</strong> dan pencarian berhenti, Cindieh tidak mengulang dengan mode <em>contains</em> yang lambat. Coba ketik awalan yang lebih pendek.</p>
+              <p style="font-size:13px;color:var(--ink-soft);margin-top:10px;">Di PPN Masukan kolom Referensi berisi referensi milik penjual, jadi satu pencarian bisa menampilkan beberapa faktur dari penjual berbeda. Ini tetap berguna untuk menemukan faktur; yang tidak dilakukan Cindieh di sana adalah mencocokkan baris ke catatan internal, dan karena itu tab Komparator hanya ada di PPN Keluaran.</p>
             </div>
           </div>
         </div>
@@ -488,11 +489,13 @@
             <div>
               <p class="feat-problem">Faktur yang sudah tercatat di Coretax kadang menyimpan nilai DPP, DPP Nilai Lain, atau PPN yang tidak konsisten. Menemukannya berarti menghitung ulang satu per satu di Excel, dan kalau tidak hati-hati, kesalahan baru ikut dilaporkan.</p>
               <ol class="feat-steps">
-                <li>Buka panel <strong>Bandingkan</strong>, lalu pilih tab <strong>Pengecekan Keakuratan Nilai</strong>, tersedia di halaman PPN Keluaran <strong>dan</strong> PPN Masukan.</li>
+                <li>Buka panel <strong>Bandingkan</strong>, ikon daftar di toolbar PPN Keluaran atau pintasan <strong>Ctrl+Shift+B</strong> di keempat halaman e-Faktur PPN, lalu pilih tab <strong>Pengecekan Keakuratan Nilai</strong>, tersedia di PPN Keluaran, PPN Masukan, Retur PPN Keluaran, dan Retur PPN Masukan.</li>
                 <li>Pilih <strong>Acuan</strong>, nilai mana yang dianggap benar.</li>
                 <li>Isi <strong>Toleransi</strong> bila perlu (selisih di dalam toleransi ditampilkan sebagai <code>-</code>).</li>
                 <li>Klik <strong>Periksa</strong>. Bila data belum ada, Cindieh menarik data grid tersebut dulu secara otomatis.</li>
-                <li>Kolom nama pihak lain menyesuaikan gridnya: <strong>Nama Pembeli</strong> di PPN Keluaran, <strong>Nama Penjual</strong> di PPN Masukan. Perhitungannya sama di keduanya.</li>
+                <li>Kolom nama pihak lain menyesuaikan gridnya: <strong>Nama Pembeli</strong> di PPN Keluaran dan Retur PPN Keluaran, <strong>Nama Penjual</strong> di PPN Masukan dan Retur PPN Masukan. Perhitungannya sama di keempatnya.</li>
+                <li>Klik 2× pada baris hasil untuk mencari referensinya langsung di grid PPN yang sedang dibuka, Keluaran maupun Masukan.</li>
+                <li>Di kedua halaman Retur kolom identitasnya adalah <strong>No Retur</strong> beserta <strong>Tanggal Retur</strong>: nota retur tidak punya kolom Referensi, jadi tidak ada yang bisa dicari di grid dan klik 2× tidak melakukan apa-apa.</li>
                 <li>Hanya faktur yang bermasalah yang tampil, lengkap dengan ringkasan.</li>
                 <li><strong>Export Excel</strong> ke <span class="filechip">pengecekan-nilai-faktur.xlsx</span>; <strong>CSV</strong> ke <span class="filechip">pengecekan-nilai-faktur.csv</span>. Keduanya menyimpan seluruh temuan, bukan hanya yang sedang tampil.</li>
               </ol>
@@ -500,7 +503,7 @@
             <div class="feat-side">
               <h3>Acuan menentukan apa yang dihitung</h3>
               <table class="mini-table">
-<caption class="sr-only">Perhitungan tiap nilai acuan pada tab Pengebianan Nilai.</caption>
+<caption class="sr-only">Perhitungan tiap nilai acuan pada tab Pengecekan Keakuratan Nilai.</caption>
                 <tr><th>Acuan</th><th>Dihitung dari acuan</th></tr>
                 <tr><td>DPP</td><td style="font-size:12.5px;">DPP NL = 11/12 × DPP · PPN = 11% × DPP</td></tr>
                 <tr><td>DPP NL</td><td style="font-size:12.5px;">DPP = 12/11 × DPP NL · PPN = 12% × DPP NL</td></tr>

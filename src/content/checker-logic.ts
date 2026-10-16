@@ -1,6 +1,7 @@
 // ============================================================
-// CHECKER-LOGIC.TS — Pure calculation & decision logic for
-// DPP, DPP Nilai Lain, and PPN accuracy check in PPN Keluaran
+// CHECKER-LOGIC.TS — Pure calculation & decision logic for the
+// DPP, DPP Nilai Lain and PPN accuracy check, on any grid whose rows
+// carry those three amounts (the four e-Faktur PPN grids, ADR-0024)
 // ============================================================
 
 import { parseNumericField } from "./comparer";
@@ -55,7 +56,22 @@ export const PPN_RATE_ON_NILAI_LAIN =
 
 export interface CheckResult {
   taxInvoiceNumber: string;
+  /**
+   * The NO RETUR of the retur nota this row is, or "" on a grid whose rows are
+   * invoices. It is what names the row on the two Retur PPN grids, where there
+   * is no Referensi to read (page-context.checkerRowIdentity) — carried here
+   * rather than looked up again at render time so the table and the export can
+   * never disagree about which field identifies a row.
+   */
+  returnNumber: string;
   invoiceDate: string;
+  /**
+   * The retur nota's own date, or "" on an invoice grid. The date that belongs
+   * with `returnNumber`: on a retur grid the invoice date is still present (the
+   * row names the invoice it returns), so the two are separate facts rather
+   * than one chain.
+   */
+  returnDate: string;
   /**
    * The other party on the invoice, whatever side of the transaction they sit
    * on: on PPN Keluaran that is the buyer, on PPN Masukan the seller. The
@@ -237,8 +253,13 @@ export function checkRowAccuracy(
     }
   }
 
+  // The row's own document: an invoice carries its invoice date, a retur nota
+  // its retur date, and each is read for the grid that shows it. Two fields
+  // rather than one chain, because a retur row has BOTH (it names the invoice
+  // it returns), so a chain could only ever pick one of the two.
   const rawDate = row.TaxInvoiceDate || row.DocumentDate || row.Date || "";
   const invoiceDate = formatDate(rawDate);
+  const returnDate = formatDate(row.ReturnDate || "");
 
   // Counterparty resolution is source-agnostic: a PPN Keluaran row never
   // carries SellerTaxpayerName and a PPN Masukan row never carries BuyerName, so
@@ -268,7 +289,9 @@ export function checkRowAccuracy(
 
   return {
     taxInvoiceNumber,
+    returnNumber: String(row.ReturnNumber || ""),
     invoiceDate,
+    returnDate,
     counterpartyName,
     counterpartyTIN,
     reference: String(row.Reference || ""),

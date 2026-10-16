@@ -10,9 +10,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // page-context predicates need mocking: their `location.href` default is
 // undefined in the node test environment and would throw a ReferenceError.
+// `hasReferenceFilter` is the guard both injection paths read. The fact itself
+// — true on BOTH PPN grids, Masukan included — is pinned in
+// page-context.unit.test.ts, so a stub here keeps this file about the DOM work.
 vi.mock("../content/page-context", () => ({
   isEfakturPage: vi.fn(() => true),
-  isOutputTaxPage: vi.fn(() => false),
+  hasReferenceFilter: vi.fn(() => false),
 }));
 
 import {
@@ -25,7 +28,7 @@ import {
   getMultiInvoiceNumbers,
   clearFilterTimers,
 } from "../content/ui-filters";
-import { isEfakturPage, isOutputTaxPage } from "../content/page-context";
+import { hasReferenceFilter, isEfakturPage } from "../content/page-context";
 import { stubFakeDom, type FakeDoc, type FakeEl, type FakeWindow } from "./__mocks__/fake-dom";
 
 describe("splitInvoiceNumbers", () => {
@@ -388,7 +391,7 @@ describe("injectGridFilters (DOM)", () => {
 
   beforeEach(() => {
     doc = stubFakeDom().doc;
-    vi.mocked(isOutputTaxPage).mockReturnValue(true);
+    vi.mocked(hasReferenceFilter).mockReturnValue(true);
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -410,8 +413,8 @@ describe("injectGridFilters (DOM)", () => {
     expect(refCell.querySelector("#ch-grid-filter-reference")).toBe(input);
   });
 
-  it("does nothing on a page that is not PPN Keluaran", () => {
-    vi.mocked(isOutputTaxPage).mockReturnValue(false);
+  it("does nothing on a page with no Referensi column (a Retur grid)", () => {
+    vi.mocked(hasReferenceFilter).mockReturnValue(false);
     buildGrid(["Referensi"]);
 
     injectGridFilters();
@@ -472,7 +475,7 @@ describe("injectToolbarFilter (DOM)", () => {
 
   beforeEach(() => {
     doc = stubFakeDom().doc;
-    vi.mocked(isOutputTaxPage).mockReturnValue(true);
+    vi.mocked(hasReferenceFilter).mockReturnValue(true);
   });
   afterEach(() => {
     clearFilterTimers();
@@ -522,8 +525,8 @@ describe("injectToolbarFilter (DOM)", () => {
     expect(doc.getElementById("ch-toolbar-filter-reference")).not.toBeNull();
   });
 
-  it("does nothing on a page that is not PPN Keluaran", () => {
-    vi.mocked(isOutputTaxPage).mockReturnValue(false);
+  it("does nothing on a page with no Referensi column (a Retur grid)", () => {
+    vi.mocked(hasReferenceFilter).mockReturnValue(false);
     portalResetButton();
 
     injectToolbarFilter(0);

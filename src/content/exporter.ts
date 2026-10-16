@@ -33,7 +33,25 @@ export interface ExportData {
    * boundary, because tests and other callers construct ExportData directly.
    */
   filenamePrefix?: string;
+  /**
+   * These rows came from a sweep the user stopped (run-lifecycle.salvage).
+   *
+   * It only changes the name, and it has to: a stopped year-wide sweep still
+   * holds real rows, but ten months read exactly like twelve once they are in a
+   * file. Marked here rather than at each call site so every export path of
+   * every source inherits it.
+   */
+  partialSweep?: boolean;
 }
+
+/**
+ * The word a partial sweep's filename carries, after the period or year.
+ *
+ * Read by a person next to the portal, so it is the panel's own Indonesian for
+ * it ("sebagian" = partial) and not a code: `FPM-2026-sebagian.xlsx` says what
+ * happened without a legend.
+ */
+export const PARTIAL_SWEEP_MARKER = "sebagian";
 
 function downloadFile(content: string | BlobPart, filename: string, mimeType: string): void {
   if (typeof document === "undefined") return;
@@ -241,6 +259,15 @@ export function processData(exportData: ExportData): ExportData {
 }
 
 export function generateDynamicFilename(exportData: ExportData): string {
+  const name = buildDynamicFilename(exportData);
+  // One place decides every grid filename, so the partial marker cannot be
+  // forgotten by a caller: a stopped sweep's export is a real file of an
+  // unfinished request, and its name is the only thing that can say so.
+  return exportData.partialSweep ? `${name}-${PARTIAL_SWEEP_MARKER}` : name;
+}
+
+/** The name of the file, before any partial-sweep marker. */
+function buildDynamicFilename(exportData: ExportData): string {
   const { data: originalData, filenameHint, source } = exportData;
   const spec = getExportSourceSpec(source);
   // The user's own prefix goes in FRONT of the per-source one, so `PTABC-FPK-072026`

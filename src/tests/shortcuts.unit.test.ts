@@ -15,11 +15,13 @@ const postToScraper = vi.hoisted(() => vi.fn());
 vi.mock("../content/bridge", () => ({ postToScraper }));
 
 // Mutable at test time because the panel key's page gate is its own predicate:
-// the panel is not on every supported export page, so one test flips it.
-let vatInvoicePage = true;
+// the panel is not on every supported export page, so one test flips it. It is
+// `isPanelPage` (either tab's gate) rather than either tab's own fact — the key
+// opens the OVERLAY, which decides the tab.
+let panelPage = true;
 vi.mock("../content/page-context", () => ({
   isSupportedExportPage: () => true,
-  isVatInvoicePage: () => vatInvoicePage,
+  isPanelPage: () => panelPage,
 }));
 
 /** One keydown, shaped the way the handler reads it. */
@@ -57,7 +59,7 @@ beforeEach(() => {
   postToScraper.mockClear();
   documentListeners = [];
   customEventListeners = new Map();
-  vatInvoicePage = true;
+  panelPage = true;
   vi.stubGlobal("CustomEvent", class {
     type: string;
     constructor(type: string) { this.type = type; }
@@ -184,10 +186,11 @@ describe("registerShortcuts", () => {
     expect(postToScraper).not.toHaveBeenCalled();
   });
 
-  it("answers nothing for the panel key outside the VAT invoice pages", () => {
-    // The panel's tabs exist on PPN Keluaran and PPN Masukan alone; elsewhere
+  it("answers nothing for the panel key outside the panel's pages", () => {
+    // The panel's tabs exist on the four e-Faktur PPN grids alone (the check on
+    // all four, the Komparator where a Referensi identifies a row); elsewhere
     // the key must leave the event to the portal.
-    vatInvoicePage = false;
+    panelPage = false;
     registerShortcuts(() => false);
     const opened = vi.fn();
     document.addEventListener("ch:compare-open", opened);

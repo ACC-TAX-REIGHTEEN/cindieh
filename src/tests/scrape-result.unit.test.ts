@@ -10,6 +10,7 @@ import {
   missingInvoicesMessage,
   scrapeErrorMessage,
   skippedInvoicesMessage,
+  stoppedSweepMessage,
   truncatedResultNotice,
 } from "../content/scrape-result";
 
@@ -114,6 +115,71 @@ describe("result warnings and errors", () => {
 // succeeds with an empty payload, so the scrape looks complete and the export
 // comes back short. These cases pin the diff that makes the gap visible, and the
 // two wordings that differ only in the reason they give.
+
+describe("stoppedSweepMessage", () => {
+  const summary = (counts: { period: string; rows: number; error?: string }[], planned = 12) => ({
+    counts,
+    totalRows: counts.reduce((sum, c) => sum + c.rows, 0),
+    planned,
+    emptyPeriods: [],
+    failedPeriods: counts.filter((c) => c.error).map((c) => c.period),
+  });
+
+  it("says how much of the year arrived, that nothing auto-runs, and that the file is named", () => {
+    const counts = Array.from({ length: 10 }, (_, i) => ({
+      period: `TD.007${String(i + 1).padStart(2, "0")}`,
+      rows: 14_351,
+    }));
+
+    const message = stoppedSweepMessage({ total: 143_510, periods: summary(counts) });
+
+    // The fraction is the fact a row count cannot carry: ten months look exactly
+    // like twelve once they are in a file.
+    expect(message).toContain("10 dari 12 masa pajak selesai");
+    expect(message).toContain("143.510 baris tetap tersimpan");
+    expect(message).toContain("Ekspor otomatis tidak dijalankan");
+    expect(message).toContain("sebagian");
+    // And the way out, named exactly as the menu entry that starts a sweep: a
+    // stop is a pause, so the panel must not leave the user thinking a whole new
+    // year is the only way to finish (ADR-0023).
+    expect(message).toContain('Klik "Ekspor 1 Tahun (12 Masa)" lagi');
+    expect(message).toContain("2 masa yang belum selesai");
+  });
+
+  it("offers no resume when every masa of the year is already in hand", () => {
+    // The stop that landed after the last period was recorded: there is nothing
+    // left to fetch, so pointing at the menu entry would send the user to start
+    // the year over.
+    const counts = Array.from({ length: 12 }, (_, i) => ({
+      period: `TD.007${String(i + 1).padStart(2, "0")}`,
+      rows: 1,
+    }));
+    const message = stoppedSweepMessage({ total: 12, periods: summary(counts) });
+    expect(message).toContain("12 dari 12 masa pajak selesai");
+    expect(message).not.toContain("Klik \"Ekspor 1 Tahun");
+  });
+
+  it("names a failed masa separately from the months that finished", () => {
+    const message = stoppedSweepMessage({
+      total: 10,
+      periods: summary([
+        { period: "TD.00701", rows: 10 },
+        { period: "TD.00702", rows: 0, error: "504 Gateway Timeout" },
+      ]),
+    });
+
+    expect(message).toContain("1 dari 12 masa pajak selesai");
+    expect(message).toContain("1 masa gagal diambil");
+  });
+
+  it("falls back to the row count when there is no per-masa summary", () => {
+    // Not the batch shape (a stop during a plain scrape never gets here), but the
+    // wording must stay total rather than print an empty fraction.
+    expect(stoppedSweepMessage({ total: 5 })).toBe(
+      "Proses dihentikan: 5 baris tetap tersimpan.",
+    );
+  });
+});
 
 describe("missing-invoice reporting", () => {
   it("reports requested numbers no row carries, once each", () => {

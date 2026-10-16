@@ -150,6 +150,84 @@ describe("year-wide batch sweep", () => {
     ]);
   });
 
+  // ── Resuming a stopped sweep ────────────────────
+
+  it("resumes over the masa still missing, in year order, and asks for nothing else", async () => {
+    mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
+    const ctx = makeCtx();
+
+    await startScraping(async () => capturedWithFilters("TD.00708"), ctx, {
+      sweepPeriods: ["TD.00711", "TD.00712"],
+      sweepYear: "2026",
+    });
+
+    // Two requests, not twelve: the kept months are not fetched twice, and the
+    // codes go out in the year's order however they arrived.
+    expect(filtersPerRequest().map((f) => f.period)).toEqual(["TD.00711", "TD.00712"]);
+  });
+
+  it("narrows a resume against the portal's own year plan, never beyond it", async () => {
+    mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
+    const ctx = makeCtx();
+
+    await startScraping(async () => capturedWithFilters("TD.00708"), ctx, {
+      // A code from another prefix (a stale list, or another grid's plan) is
+      // dropped rather than requested: a period value invented anywhere but the
+      // portal's own request is one the portal has never heard of (ADR-0018).
+      sweepPeriods: ["TD.00711", "ZZ.99911"],
+      sweepYear: "2026",
+    });
+
+    expect(filtersPerRequest().map((f) => f.period)).toEqual(["TD.00711"]);
+  });
+
+  it("refuses a resume whose grid no longer filters to the kept year", async () => {
+    mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
+    const ctx = makeCtx();
+
+    await startScraping(async () => capturedWithFilters("TD.00708", "2025"), ctx, {
+      sweepPeriods: ["TD.00711"],
+      sweepYear: "2026",
+    });
+
+    // Not one request: the period code carries no year of its own, so sweeping
+    // it under a 2025 filter would put 2025's August in a 2026 file.
+    expect(mockedXhrRequest).not.toHaveBeenCalled();
+    const error = sent(ctx).find((m) => m.type === "SCRAPE_ERROR") as { message: string };
+    expect(error.message).toMatch(/2025/);
+    expect(error.message).toMatch(/2026/);
+  });
+
+  it("refuses a resume whose codes match nothing in this grid's year", async () => {
+    mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
+    const ctx = makeCtx();
+
+    await startScraping(async () => capturedWithFilters("TD.00708"), ctx, {
+      sweepPeriods: ["ZZ.99911"],
+      sweepYear: "2026",
+    });
+
+    expect(mockedXhrRequest).not.toHaveBeenCalled();
+    const error = sent(ctx).find((m) => m.type === "SCRAPE_ERROR") as { message: string };
+    expect(error.message).toMatch(/tidak cocok/i);
+  });
+
+  it("reports the masa IT fetched, because the receiver unions them in", async () => {
+    mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
+    const ctx = makeCtx();
+
+    await startScraping(async () => capturedWithFilters("TD.00708"), ctx, {
+      sweepPeriods: ["TD.00711", "TD.00712"],
+      sweepYear: "2026",
+    });
+
+    const periods = completionOf(ctx).periods;
+    expect(periods?.counts.map((c) => c.period)).toEqual(["TD.00711", "TD.00712"]);
+    // The sweep reports its OWN scope; the receiver merges these counts with the
+    // kept ones, and THAT is where the year's 12 comes back (mergePeriodSummaries).
+    expect(periods?.planned).toBe(2);
+  });
+
   it("carries every other filter through untouched -- only the period's Value changes", async () => {
     mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
     const ctx = makeCtx();
@@ -315,17 +393,80 @@ describe("year-wide batch sweep", () => {
     expect(mockedXhrRequest.mock.calls.map((call) => call[1])).toEqual([0, 0]);
   });
 
-  it("stops between periods when the run is cancelled", async () => {
+  it("reports the masa it finished when the run is cancelled", async () => {
+    // The stop lands while the SECOND period is in flight: the first month is
+    // fully collected, the second is cut short (its response is dropped with the
+    // request, which is the stop's job), and eleven more were never asked for.
     let stop = false;
+    let call = 0;
     mockedXhrRequest.mockImplementation(async () => {
+      call += 1;
+      if (call === 1) return page([{ RecordId: 1 }]);
       stop = true;
-      return page([{ RecordId: 1 }]);
+      return page([{ RecordId: 2 }]);
     });
     const ctx = makeCtx({ isStopRequested: () => stop });
     await startScraping(async () => capturedWithFilters("TD.00708"), ctx, { batchMonths: 12 });
-    // A cancelled run emits no completion: nothing was swept, so a file must not
-    // be written that looks like a year.
-    expect(mockedXhrRequest).toHaveBeenCalledTimes(1);
+
+    expect(mockedXhrRequest).toHaveBeenCalledTimes(2);
+    const complete = completionOf(ctx);
+    // The months that did finish are kept, and flagged as a STOP rather than as
+    // a partial run: the receiver saves them for a deliberate export and runs
+    // nothing automatically, and the file it can make says "sebagian" in its
+    // name (run-lifecycle.salvage, exporter's marker).
+    expect(complete.cancelled).toBe(true);
+    expect(complete.partial).toBeUndefined();
+    expect(complete.total).toBe(1);
+    expect(complete.data).toEqual([{ RecordId: 1 }]);
+    // The year, because that is what a sweep is named for — the marker is added
+    // at export time, not baked into a hint other exports would inherit.
+    expect(complete.filenameHint).toBe("2026");
+    // How much of the year arrived: a row count cannot say that ten of twelve
+    // months are there and two are missing.
+    expect(complete.periods?.planned).toBe(12);
+    // Only the month that FINISHED is counted. The interrupted one is not an
+    // empty month, and reporting it as one would send the user to the portal to
+    // look for data the sweep never finished asking for.
+    expect(complete.periods?.counts.map((c) => c.period)).toEqual(["TD.00701"]);
+    expect(complete.periods?.emptyPeriods).toEqual([]);
+  });
+
+  it("keeps the pages of the period the stop interrupted", async () => {
+    // The stop lands mid-period, so the abort makes that period fail. The rows
+    // already fetched must not go with it, and the stop must not be reported as
+    // a scrape error — it is not a transport failure.
+    let stop = false;
+    let call = 0;
+    mockedXhrRequest.mockImplementation(async () => {
+      call += 1;
+      if (call === 1) return page([{ RecordId: 1 }]);
+      stop = true;
+      throw new Error("AbortError: run dibatalkan");
+    });
+    const ctx = makeCtx({ isStopRequested: () => stop });
+    await startScraping(async () => capturedWithFilters("TD.00708"), ctx, { batchMonths: 12 });
+
+    const complete = completionOf(ctx);
+    expect(complete.cancelled).toBe(true);
+    expect(complete.data).toEqual([{ RecordId: 1 }]);
+    expect(sent(ctx).find((m) => m.type === "SCRAPE_ERROR")).toBeUndefined();
+    // The interrupted period is not a "failed masa": it is the one the user
+    // stopped, and it is simply not in the counts.
+    expect(complete.periods?.failedPeriods).toEqual([]);
+    expect(complete.periods?.counts.map((c) => c.period)).toEqual(["TD.00701"]);
+  });
+
+  it("sends nothing when a stop arrives before any row did", async () => {
+    let stop = false;
+    mockedXhrRequest.mockImplementation(async () => {
+      stop = true;
+      return page([]);
+    });
+    const ctx = makeCtx({ isStopRequested: () => stop });
+    await startScraping(async () => capturedWithFilters("TD.00708"), ctx, { batchMonths: 12 });
+
+    // Nothing was collected, so there is nothing to keep and no file to name:
+    // the panel's own cancellation line is the whole truth.
     expect(sent(ctx).find((m) => m.type === "SCRAPE_COMPLETE")).toBeUndefined();
   });
 

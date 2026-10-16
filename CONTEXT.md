@@ -47,7 +47,7 @@ Withholding slip (PPh 21) — the portal's withholding-slips grid, which exports
 _Avoid_: withholding slip document (code constant: `WITHHOLDING_SLIPS`)
 
 **Referensi**:
-The internal reference number on an e-faktur (e.g. `SZ-0447/07/26`) that identifies a row and matches internal records against Coretax. Also usable in the secondary form **Referensi Lain** (Ref Lain).
+The internal reference number on an e-faktur (e.g. `SZ-0447/07/26`) that identifies a row and matches internal records against Coretax. Also usable in the secondary form **Referensi Lain** (Ref Lain). On **PPN Keluaran** it is the Wajib Pajak's own, so it identifies a row; on **PPN Masukan** it belongs to the seller, so it repeats and may be empty — which is why the Comparer does not run there while the Referensi *filter* (a lookup, not a match) is offered on both grids (ADR-0021).
 _Avoid_: reference number, ref
 
 ### Extension features
@@ -105,11 +105,19 @@ The efaktur-only filter (toolbar toggle "No. Faktur" on the four e-invoice grids
 _Avoid_: invoice filter, multi-invoice filter
 
 **Run**:
-One operation on a grid — a Scrape, a bulk download, or a targeted No. Faktur lookup — from the moment the Wajib Pajak asks for it until it ends. A Run spans both worlds: the bridge gives it a `runId` that rides every message, the Scraper owns its cancellation and identity (ADR-0010), and the isolated world owns its outcome and what it still owes (ADR-0014). One Run at a time per page; starting another cancels the first. A native download is not a Run: it carries no `runId`.
+One operation on a grid — a Scrape, a bulk download, a targeted No. Faktur lookup, or the resume of a stopped sweep — from the moment the Wajib Pajak asks for it until it ends. A Run spans both worlds: the bridge gives it a `runId` that rides every message, the Scraper owns its cancellation and identity (ADR-0010), and the isolated world owns its outcome and what it still owes (ADR-0014, and ADR-0022 for what a stop does to those requests). One Run at a time per page; starting another cancels the first. A native download is not a Run: it carries no `runId`.
 _Avoid_: scrape operation, job, task, export request, ScrapeRun
 
+**Partial sweep**:
+What a year-wide sweep leaves behind when the Wajib Pajak stops it: the rows of every masa that FINISHED, kept for a deliberate export, with nothing the Run still owed spent on them (ADR-0020). It is not a completed Run and not a rejected result — the rows are real, the request is unfinished — and any file made from them carries `-sebagian` in its name so a ten-month export cannot pass as a whole year. A period the stop cut short is not part of it at all: it is neither a month with rows nor an empty one.
+_Avoid_: cancelled result, interrupted export, partial year file
+
+**Resume**:
+Finishing a partial sweep by fetching only the masa it never finished, into the rows it kept (ADR-0023). It is the same menu entry as the sweep, and it is a NEW Run: the kept rows and their per-masa counts are carried in as the half it adds to, the union of the two halves settles as its result, and the file it writes is one whole year again (no `-sebagian`). The counts are the only memory — nothing is persisted — so a reload, a navigation or "Bersihkan cache" ends the ability to resume, and a resume whose grid year filter has moved is refused rather than mixed.
+_Avoid_: retry, continue scrape, partial export
+
 **Pending export**:
-An export, comparison or check the Wajib Pajak asked for before the grid data existed; the Run fulfils it automatically when it completes, and abandons it when the Run does not. A pending export is spent exactly once — a stop, a navigation, or a result rejected as incomplete leaves nothing behind for a later Run to fulfil against.
+An export, comparison or check the Wajib Pajak asked for before the grid data existed; the Run fulfils it automatically when it completes, and abandons it when the Run does not. A pending export is spent exactly once — a stop, a navigation, or a result rejected as incomplete leaves nothing behind for a later Run to fulfil against, because a request belongs to the Run that recorded it and dies with it (ADR-0022).
 _Avoid_: queued export, deferred export
 
 ### Comparer
@@ -135,11 +143,15 @@ A reverse check: only Coretax invoices dated on the given days of month (1–31)
 _Avoid_: day filter, daily date mode
 
 **Pengecekan (Checker)**:
-The value-accuracy tab of the panel (next to the Comparer): every scraped PPN Keluaran or PPN Masukan row's DPP, DPP Nilai Lain, and PPN are tested against the chosen **Acuan**; only rows that differ or carry incomplete data are ever listed. It runs on both VAT grids because it tests ONE invoice's arithmetic at a time — never a match between invoices.
+The value-accuracy tab of the panel (next to the Comparer): every scraped row's DPP, DPP Nilai Lain, and PPN are tested against the chosen **Acuan**; only rows that differ or carry incomplete data are ever listed. It runs on the four e-Faktur PPN grids — both invoice grids and both Retur grids — because it tests ONE row's arithmetic at a time, never a match between rows, and a retur nota carries the same three amounts (ADR-0024).
 _Avoid_: accuracy check, validation, audit
 
+**Row identity** (of a result row):
+What names one row of a result grid: the **Referensi** (or the No. Faktur where it is empty) on the two PPN invoice grids, the **NO RETUR** (or the No. Faktur where it is empty) on the two Retur grids, which have no Referensi column at all. A page fact of its own — decided per grid, and shared by the panel's table and the exported sheet so the two cannot name a row differently. Not the **Deduplication key** (which field makes two scraped rows the same row) and not `referenceIsIdentity` (whether a Referensi can key a match).
+_Avoid_: row key, unique id, primary key
+
 **Counterparty**:
-The other party on an invoice the Checker lists: the **Buyer** on PPN Keluaran, the **Seller** on PPN Masukan. The panel's column header and the exported sheet's header both follow it. Which party it is changes no arithmetic — only the words.
+The other party on a row the Checker lists: the **Buyer** on PPN Keluaran and on Retur PPN Keluaran, the **Seller** on PPN Masukan and on Retur PPN Masukan. The panel's column header and the exported sheet's header both follow it. Which party it is changes no arithmetic — only the words.
 _Avoid_: calling the PPN Masukan counterparty a "pembeli"
 
 **Acuan (Benchmark)**:
@@ -159,6 +171,9 @@ _Avoid_: content script side, page side
 **Bridge token**:
 The random value generated in the isolated world and passed to the scraper through the script URL. Every cross-world message must carry it to correlate messages with the bridge. MAIN-world scripts can observe it through the shared DOM and postMessage traffic, so it is not secret authentication against hostile same-page scripts. Source/origin checks bind the window and origin, not the JavaScript world; direction is a protocol field, not proof of sender identity. The two-worlds seam and token validation remain required with these accepted limitations (ADR-0007).
 _Avoid_: secret, token, security key
+
+**Page fact**:
+A yes/no question about the page in front of the user, answered by a predicate in `page-context.ts` (is this the SPT page, does this grid have a Referensi column, does a Referensi identify a row here, does the check run here, whose invoice do these rows carry), so features ask the page instead of re-deriving it from the URL. One fact answers ONE question: features that disagree on a page get two facts, not a shared one (ADR-0021).
 
 **Grid request**:
 The portal's own list request (URL + body with filters and paging) that the scraper captures once and replays with advancing `First`/`Rows` to scrape a grid.

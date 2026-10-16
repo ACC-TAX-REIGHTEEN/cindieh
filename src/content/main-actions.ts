@@ -18,6 +18,7 @@ import { postToScraper } from "./bridge";
 import { debugError, debugLog, debugWarn } from "./debug";
 import { getPreferences } from "./preferences";
 import { findMissingInvoices, skippedInvoicesMessage } from "./scrape-result";
+import { pendingPeriods } from "./scrape-batch";
 import { runLifecycle } from "./run-lifecycle";
 import { shouldConfirmBulkDownload } from "../shared/extension-preferences";
 
@@ -257,8 +258,23 @@ export const BATCH_MONTHS = 12;
  * pacing for a taxpayer of this size -- that starting it by accident costs a
  * wait and a stop. It says what it will do, that the panel shows progress, and
  * that it can be stopped, none of which the click itself conveys.
+ *
+ * The resume wording is the same function, because it is the same click: the
+ * entry stays "Ekspor 1 Tahun (12 Masa)" and what changes is that the file it
+ * finishes is the one a stop interrupted, not a new one. Saying so is the whole
+ * disclosure — the alternative, a silent resume, would look like a fresh sweep
+ * that finished suspiciously fast.
  */
-export function batchConfirmMessage(): string {
+export function batchConfirmMessage(resume?: { pending: number; finished: number }): string {
+  if (resume) {
+    return (
+      `Melanjutkan ekspor satu tahun: ${resume.finished} masa sudah tersimpan, ` +
+      `${resume.pending} masa tersisa akan diambil sekarang.\n\n` +
+      "Panel menampilkan progres per masa, dan proses bisa dihentikan kapan saja; " +
+      "berhenti lagi tidak menghilangkan masa yang sudah tersimpan.\n\n" +
+      "Lanjutkan?"
+    );
+  }
   return (
     "Ekspor satu tahun mengambil seluruh 12 masa pajak dalam satu file.\n\n" +
     "Prosesnya bisa memakan waktu beberapa menit. Panel menampilkan progres per masa, " +
@@ -276,6 +292,12 @@ export function batchConfirmMessage(): string {
  *
  * A declined confirmation leaves nothing behind: no Run is begun and nothing is
  * posted, because no completion would ever arrive to settle one.
+ *
+ * When the rows on hand are a STOPPED sweep, this is the resume: only the masa
+ * that never finished are requested, the kept rows and their per-masa counts
+ * stay in the Run (`begin("sweep-resume")`, ADR-0023), and nothing is thrown
+ * away. A sweep whose union is already whole starts fresh instead, exactly as
+ * it did before resuming existed.
  */
 export function startBatchExport(deps: ActionDeps): boolean {
   if (!deps.isBatchPage()) {
@@ -290,19 +312,37 @@ export function startBatchExport(deps: ActionDeps): boolean {
     );
     return false;
   }
-  if (!globalThis.confirm?.(batchConfirmMessage())) return false;
+  // A stopped sweep's rows are resumable: the masa it never finished are the
+  // only ones worth asking for, and asking for them again as a fresh year would
+  // throw away months the taxpayer already paid for in portal requests.
+  const kept = runLifecycle.result();
+  const pending = kept?.sweep ? pendingPeriods(kept.sweep) : [];
+  const resuming = pending.length > 0 && Boolean(kept?.data?.length);
+  const resume = resuming
+    ? { pending: pending.length, finished: kept?.sweep?.counts.filter((c) => !c.error).length ?? 0 }
+    : undefined;
+
+  if (!globalThis.confirm?.(batchConfirmMessage(resume))) return false;
 
   // The XLSX export is requested up front so the completed rows are written out
   // without a second click; the batch is a data scrape, so it asks for rows only.
   runLifecycle.request({ kind: "export", format: "xlsx" });
-  runLifecycle.begin("scrape");
+  runLifecycle.begin(resuming ? "sweep-resume" : "scrape");
   deps.showPanel();
   deps.updatePanelProgress(0, 0, "0s", "Menangkap request dari Angular...");
-  debugLog("[Cindieh] starting batch export over", BATCH_MONTHS, "periods");
+  debugLog(
+    resuming
+      ? `[Cindieh] resuming batch export over ${pending.length} periods`
+      : `[Cindieh] starting batch export over ${BATCH_MONTHS} periods`,
+  );
   deps.postToScraper({
     type: "START_SCRAPE",
     skipPdf: true,
-    batchMonths: BATCH_MONTHS,
+    // A resume names the masa it still needs and the year they belong to; the
+    // MAIN world narrows both against the grid's own request (ADR-0018).
+    ...(resuming
+      ? { sweepPeriods: pending, sweepYear: kept?.filenameHint }
+      : { batchMonths: BATCH_MONTHS }),
   });
   return true;
 }
@@ -310,7 +350,10 @@ export function startBatchExport(deps: ActionDeps): boolean {
 /**
  * Common export action handler shared by XLSX, CSV, and PDF.
  *
- * - If already running: stops the run and reports the cancellation, true.
+ * - If already running: stops the run and reports the cancellation, true. The
+ *   rows it had collected stay usable, but the requests it carried do not
+ *   (ADR-0022): this is the same stop the toolbar and the stop key run, with
+ *   the row drop left out.
  * - If data is available: exports immediately (PDF runs its filter +
  *   confirmation flow internally), returns true — or false when that flow
  *   declined it (no invoice matched the filter, or the user cancelled the
@@ -322,10 +365,12 @@ export function startBatchExport(deps: ActionDeps): boolean {
 export function handleExportAction(format: "xlsx" | "csv" | "pdf", deps: ActionDeps): boolean {
   if (runLifecycle.isRunning()) {
     deps.postToScraper({ type: "STOP_SCRAPE" });
-    // The aborted run emits no completion, so its request is dropped here (a
-    // later scrape must not be diffed against it) and the cancellation is
-    // surfaced like the panel toggle does, instead of implying idle reusable data.
-    runLifecycle.cancelExport();
+    // The stopped run emits no completion, so everything it owed dies here (a
+    // later scrape must not be diffed against it, and a queued comparison must
+    // not be spent on a later lookup's filtered subset — ADR-0022). Only the
+    // rows stay, and the cancellation is surfaced like the panel toggle does,
+    // instead of implying idle reusable data.
+    runLifecycle.stopKeepingRows();
     deps.updatePanelError(SCRAPE_CANCELLED_MESSAGE);
     return true;
   }
@@ -346,6 +391,9 @@ export function handleExportAction(format: "xlsx" | "csv" | "pdf", deps: ActionD
       source: result.source,
       mode: deps.getExportMode(),
       filenamePrefix: getPreferences().filenamePrefix,
+      // A stopped sweep's rows are exportable on purpose, and the filename says
+      // that is what they are (exporter.ts).
+      partialSweep: result.partialSweep,
     };
     if (format === "xlsx") {
       // Async because the writer first loads the SheetJS chunk. Wrapped in

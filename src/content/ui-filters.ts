@@ -6,7 +6,7 @@
 // the No. Faktur (multi-invoice) filter on every efaktur page.
 // ============================================================
 
-import { isEfakturPage, isOutputTaxPage } from "./page-context";
+import { hasReferenceFilter, isEfakturPage } from "./page-context";
 
 // MAX_RETRIES mirrors the value in ui.ts; it is repeated here because ui.ts
 // imports from this module (a shared constant would be circular).
@@ -46,9 +46,13 @@ function findColumnIndex(headerRow: HTMLTableRowElement, searchTexts: string[]):
 
 /**
  * Inject filter inputs into the table header.
+ *
+ * Offered wherever the grid carries a Referensi column, so PPN Masukan gets it
+ * too: a lookup there works, it just may return several rows that share the
+ * seller's reference.
  */
 export function injectGridFilters(): void {
-  if (!isOutputTaxPage()) return;
+  if (!hasReferenceFilter()) return;
   const thead = document.querySelector("thead");
   if (!thead) return;
 
@@ -108,7 +112,7 @@ export function injectGridFilters(): void {
  * Inject filter input into the toolbar.
  */
 export function injectToolbarFilter(retries = MAX_RETRIES): void {
-  if (!isOutputTaxPage()) return;
+  if (!hasReferenceFilter()) return;
   if (document.getElementById("ch-toolbar-filter-reference")) return;
 
   const buttons = Array.from(document.querySelectorAll("button"));

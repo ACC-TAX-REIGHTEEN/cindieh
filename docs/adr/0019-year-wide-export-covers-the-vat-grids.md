@@ -72,7 +72,39 @@ it is pure and unit-tested rather than discovered on a portal.
 - The manual portal loop must now include a batch run on each newly gated grid.
   Until that is recorded, "works on PPN Masukan and Retur" rests on the guard,
   not on a measurement — the same position ADR-0018 was in before its own
-  measurement, except the refusal path was built first this time.
+  measurement, except the refusal path was built first this time. The instrument
+  and the table for it are below (`Measurement`).
 - The menu item's presence and the sweep's own scope guard are deliberately two
   doors. The item is offered wherever the pages could support a sweep; whether
   THIS captured request can be swept is answered later, from the request itself.
+
+## Measurement
+
+The hint door is an interim, and the thing that ends it is data from the three
+unmeasured grids. That loop now has an instrument and a place to write the answer:
+
+- **The instrument is the tool that measured PPN Keluaran.**
+  `tools/masa-batch-diagnostic.js` phase 1b copies this decision's guard
+  (`findPeriodFilter`/`findYearFilter`/`periodPrefix`/`capturedYear`) and prints,
+  per grid: the period filter name and value and WHICH DOOR found them, the year
+  filter (or the `TaxYear`/`Year`/`Tahun` body field), every period/year-named
+  filter it passed over — a credit period above all — the guard's verdict, and
+  the twelve codes the sweep would request. It also prints the row for the
+  per-grid table in `tools/README.md`, so the measurement is written down in the
+  form the next change is made from.
+- **A real sweep logs the same reading**, before the guard can refuse
+  (`Sweep filters on <source>: …`, `describeSweepFilters` from
+  `scraper-actions.ts`). That is what makes a refusal self-reporting: the panel
+  says the filter was not recognised, and the console names the spelling that
+  would have to be learned. `readSweepFilters` is the fact and
+  `describeSweepFilters` is the wording, which is why the log can change without
+  touching a decision.
+- **The result is recorded in two places**: the per-grid table in
+  `tools/README.md` (next to the tool that produced it) and this ADR. A row that
+  reads "accepted through the name hint" means the grid works on a tolerated
+  coincidence; a row that names a different filter or value shape is a change to
+  `scrape-batch.ts` — the measured names and `periodPrefix`/`PERIOD_NAME_HINTS`,
+  never a wider hint door — together with its tests.
+
+Until those three rows are filled, "works on PPN Masukan and both Retur grids"
+rests on the refusal being safe, not on a measurement.

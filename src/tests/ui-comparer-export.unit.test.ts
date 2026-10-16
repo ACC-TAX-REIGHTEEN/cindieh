@@ -31,15 +31,42 @@ vi.mock("../content/run-lifecycle", async (importOriginal) => {
   return { ...actual, runLifecycle: actual.createRunLifecycle() };
 });
 // The page predicates default to TRUE: the panel gates its two tabs on which
-// page it is (the Komparator is PPN Keluaran's alone, Pengecekan runs on either
-// VAT grid), and nearly every case here needs both tabs present. The gating
-// cases move these two instead of stubbing a URL, because this file replaces
-// page-context wholesale — a location stub could never reach the mock.
+// page it is (the Komparator is PPN Keluaran's alone, Pengecekan runs on the
+// four e-Faktur PPN grids), and nearly every case here needs both tabs present.
+// The gating cases move these instead of stubbing a URL, because this file
+// replaces page-context wholesale — a location stub could never reach the mock.
+//
+// `output` and `returns` name the grid; `vat` says whether it carries a
+// Referensi column (the filter's fact AND the checker's identity column, which
+// the retur grids get as "No Retur"), and `identity` is the Komparator's own
+// gate — deliberately separate from all of them: the panel asks whether a
+// Referensi identifies a row here, not which of the four grids this is.
 // `vi.hoisted` because the factory below runs above the module body.
-const pageGates = vi.hoisted(() => ({ output: true, vat: true }));
+const pageGates = vi.hoisted(() => ({
+  output: true,
+  returns: false,
+  vat: true,
+  identity: true,
+  checker: true,
+  // A URL none of the four knows, which `openPanel` documents as reachable for
+  // a caller that is not going through the toolbar.
+  unknown: false,
+}));
 vi.mock("../content/page-context", () => ({
-  isOutputTaxPage: () => pageGates.output,
-  isVatInvoicePage: () => pageGates.vat,
+  isOutputTaxPage: () => !pageGates.unknown && pageGates.output && !pageGates.returns,
+  isInputTaxPage: () => !pageGates.unknown && !pageGates.output && !pageGates.returns,
+  isOutputReturnPage: () => !pageGates.unknown && pageGates.output && pageGates.returns,
+  isInputReturnPage: () => !pageGates.unknown && !pageGates.output && pageGates.returns,
+  isCheckerPage: () => pageGates.checker,
+  isPanelPage: () => pageGates.checker || pageGates.identity,
+  referenceIsIdentity: () => pageGates.identity,
+  // The filter's fact tracks the VAT grids: Pengecekan's tab imports it for the
+  // hand-back, which is what the panel gates on `identity` above.
+  hasReferenceFilter: () => pageGates.vat,
+  checkerRowIdentity: () => (pageGates.vat ? "referensi" : "no-retur"),
+  // A retur row on the Keluaran side carries the BUYER: the counterparty follows
+  // the SIDE, not the grid kind.
+  counterpartyIsBuyer: () => pageGates.output,
 }));
 
 const comparison: ComparisonResult = {
@@ -52,6 +79,7 @@ const comparison: ComparisonResult = {
 };
 const checker: CheckResult = {
   reference: "000123", counterpartyName: "Pembeli", invoiceDate: "01/07/2026",
+  returnNumber: "RET-0007", returnDate: "15/07/2026",
   counterpartyTIN: "0012345678901234", taxInvoiceNumber: "04012600023333322",
   dppSystem: 1234567.890123, dppNilaiLainSystem: 1131687.125678, ppnSystem: 0,
   dppExpected: 1234567, dppNilaiLainExpected: 1131687, ppnExpected: 0,
@@ -236,6 +264,38 @@ describe("result XLSX rows and AOA readback", () => {
     const header = buildCheckerExportRows([checker], "DPP")[0];
     expect(header[3]).toBe("Nama Pembeli");
     expect(header[4]).toBe("NPWP/NIK Pembeli");
+  });
+
+  it("names and dates a retur row's sheet by its own document", () => {
+    // A retur sheet identifies its rows the way the grid does: the NO RETUR and
+    // the retur date, not the reference and invoice date of the invoice the
+    // retur returns (which the row also carries).
+    const rows = buildCheckerExportRows([checker], "DPP", "pembeli", "no-retur");
+
+    expect(rows[0].slice(0, 3)).toEqual(["No", "No Retur", "Tanggal Retur"]);
+    expect(rows[1][1]).toBe(checker.returnNumber);
+    expect(rows[1][2]).toBe(checker.returnDate);
+  });
+
+  it("falls back to the invoice number for a retur row with no NO RETUR", () => {
+    const rows = buildCheckerExportRows(
+      [{ ...checker, returnNumber: "" }],
+      "DPP",
+      "pembeli",
+      "no-retur",
+    );
+
+    expect(rows[1][1]).toBe(checker.taxInvoiceNumber);
+  });
+
+  it("leaves the invoice grids' sheet exactly as it was", () => {
+    // The default identity is the pre-existing one, field for field: the retur
+    // grids joined without moving what PPN Keluaran and PPN Masukan export.
+    const rows = buildCheckerExportRows([checker], "DPP", "pembeli", "referensi");
+
+    expect(rows[0].slice(0, 3)).toEqual(["No", "Referensi", "Tanggal"]);
+    expect(rows[1][1]).toBe(checker.reference);
+    expect(rows[1][2]).toBe(checker.invoiceDate);
   });
 
   it("leaves incomplete checker amounts blank and preserves invoice fallback identifiers", () => {
@@ -487,7 +547,11 @@ describe("the panel as a modal dialog", () => {
   beforeEach(async () => {
     vi.resetModules();
     pageGates.output = true;
+    pageGates.returns = false;
     pageGates.vat = true;
+    pageGates.identity = true;
+    pageGates.checker = true;
+    pageGates.unknown = false;
     doc = stubFakeDom().doc;
     const create = doc.createElement.bind(doc);
     vi.spyOn(doc, "createElement").mockImplementation((tag) =>
@@ -651,10 +715,60 @@ describe("the panel as a modal dialog", () => {
     expect(view("ch-comparer-view-compare").classList.contains("ch-hidden")).toBe(false);
   });
 
-  it("hides the Komparator tab on PPN Masukan and lands in Pengecekan", () => {
-    // A VAT grid that is not PPN Keluaran: Pengecekan applies, the Komparator
-    // does not.
+  it("names the grid the panel is on, all four of them", () => {
+    // The grid's NAME is its own fact: it is what the "still fetching" line says
+    // while a check waits for data, and two of the four would silently be
+    // reported as one of the invoice grids if it were read off a page gate.
+    pageGates.returns = false;
+    pageGates.output = true;
+    expect(panel.currentGridLabel()).toBe("PPN Keluaran");
     pageGates.output = false;
+    expect(panel.currentGridLabel()).toBe("PPN Masukan");
+    pageGates.returns = true;
+    expect(panel.currentGridLabel()).toBe("Retur PPN Masukan");
+    pageGates.output = true;
+    expect(panel.currentGridLabel()).toBe("Retur PPN Keluaran");
+
+    // And a page no predicate knows, which the toolbar never reaches but a
+    // direct caller can.
+    pageGates.unknown = true;
+    expect(panel.currentGridLabel()).toBe("grid");
+    pageGates.unknown = false;
+  });
+
+  it("offers Pengecekan alone on a Retur grid, and lands in it", () => {
+    // The four-grid extension (ADR-0024): a retur row carries the same three
+    // amounts, so the check runs there — while the Komparator has no Referensi
+    // to match on, and the identity column the tab renders is the NO RETUR.
+    pageGates.returns = true;
+    pageGates.vat = false;
+    pageGates.identity = false;
+
+    panel.openPanel("compare");
+
+    expect(tab("ch-tab-compare").classList.contains("ch-hidden")).toBe(true);
+    expect(tab("ch-tab-checker").classList.contains("ch-hidden")).toBe(false);
+    expect(tab("ch-tab-checker").classList.contains("ch-comparer-tab-active")).toBe(true);
+    expect(view("ch-comparer-view-compare").classList.contains("ch-hidden")).toBe(true);
+    expect(view("ch-comparer-view-checker").classList.contains("ch-hidden")).toBe(false);
+  });
+
+  it("hides Pengecekan where the check cannot run at all", () => {
+    // The page gate is its own fact: a grid outside the four e-Faktur PPN grids
+    // gets neither tab.
+    pageGates.checker = false;
+    pageGates.identity = false;
+
+    panel.openPanel("check");
+
+    expect(tab("ch-tab-checker").classList.contains("ch-hidden")).toBe(true);
+  });
+
+  it("hides the Komparator tab on PPN Masukan and lands in Pengecekan", () => {
+    // A VAT grid where a Referensi is not an identity: Pengecekan applies, the
+    // Komparator does not.
+    pageGates.output = false;
+    pageGates.identity = false;
 
     // The request is for the Komparator, which this page cannot serve: it
     // falls back to the tab the page can, rather than opening a comparison

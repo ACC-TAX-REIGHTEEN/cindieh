@@ -31,7 +31,11 @@
 // trusted (an invoice number such as `010.000-26.00000012` also ends in two
 // digits that look like a month). A period filter whose value is in no known
 // format stops the sweep with a message that says so, which is also the
-// feedback that measures the next grid. See ADR-0018/ADR-0019.
+// feedback that measures the next grid. That feedback is not left to a message:
+// `readSweepFilters` reports which door found each filter, `describeSweepFilters`
+// words it, and scraper-actions logs the line before the guard can refuse — so a
+// run on a still-unmeasured grid hands over the spelling it needs. See
+// ADR-0018/ADR-0019 and tools/README.md (the measurement per grid).
 // ============================================================
 
 /** The body key the portal's grid requests carry their filters under. */
@@ -63,6 +67,15 @@ export interface PeriodSummary {
   counts: PeriodCount[];
   /** Total rows across every period. */
   totalRows: number;
+  /**
+   * How many periods the sweep was ASKED for.
+   *
+   * Equal to `counts.length` on a finished sweep, and larger on one the user
+   * stopped — which is the whole reason it is carried: the panel can then say
+   * "10 dari 12 masa" instead of leaving the user to work out how much of the
+   * year is missing from a row count alone.
+   */
+  planned: number;
   /** Periods that returned nothing although others returned something. */
   emptyPeriods: string[];
   /** Periods that failed outright. */
@@ -148,28 +161,57 @@ function filterNameMatches(filter: GridFilter, hints: readonly string[]): boolea
   return hints.some((hint) => name.includes(hint));
 }
 
-/** Index of the filter that selects the tax period, or -1. */
-function periodFilterIndex(filters: GridFilter[]): number {
+/**
+ * Which door found a sweep filter.
+ *
+ * `measured` is the name read off the live portal; `hint` is the pair of weaker
+ * signals an unmeasured grid is reached through — a period/year name AND a
+ * value in the measured format. Keeping the door in the reading is what lets a
+ * run say which grids still rest on a guess, and it is the thing the portal
+ * loop collects when it measures the next grid (ADR-0019).
+ */
+export type SweepFilterDoor = "measured" | "hint";
+
+/** One filter a sweep would use, and the door that found it. */
+interface FoundFilter {
+  index: number;
+  door: SweepFilterDoor;
+}
+
+/** The filter that selects the tax period, and how it was found. */
+function findPeriodFilter(filters: GridFilter[]): FoundFilter | null {
   const measured = filters.findIndex((f) => f?.PropertyName === PERIOD_PROPERTY);
-  if (measured >= 0) return measured;
-  return filters.findIndex(
+  if (measured >= 0) return { index: measured, door: "measured" };
+  const hinted = filters.findIndex(
     (f) =>
       filterNameMatches(f, PERIOD_NAME_HINTS) &&
       !filterNameMatches(f, CREDIT_NAME_HINTS) &&
       periodPrefix(String(f?.Value ?? "")) !== null,
   );
+  return hinted >= 0 ? { index: hinted, door: "hint" } : null;
 }
 
-/** Index of the filter that selects the tax year, or -1. */
-function yearFilterIndex(filters: GridFilter[]): number {
+/** Index of the filter that selects the tax period, or -1. */
+function periodFilterIndex(filters: GridFilter[]): number {
+  return findPeriodFilter(filters)?.index ?? -1;
+}
+
+/** The filter that selects the tax year, and how it was found. */
+function findYearFilter(filters: GridFilter[]): FoundFilter | null {
   const measured = filters.findIndex((f) => f?.PropertyName === YEAR_PROPERTY);
-  if (measured >= 0) return measured;
-  return filters.findIndex(
+  if (measured >= 0) return { index: measured, door: "measured" };
+  const hinted = filters.findIndex(
     (f) =>
       filterNameMatches(f, YEAR_NAME_HINTS) &&
       !filterNameMatches(f, CREDIT_NAME_HINTS) &&
       YEAR_SHAPE.test(String(f?.Value ?? "").trim()),
   );
+  return hinted >= 0 ? { index: hinted, door: "hint" } : null;
+}
+
+/** Index of the filter that selects the tax year, or -1. */
+function yearFilterIndex(filters: GridFilter[]): number {
+  return findYearFilter(filters)?.index ?? -1;
 }
 
 /**
@@ -203,6 +245,23 @@ export function planPeriods(periodValue: string, count = 12): string[] {
   if (!prefix) return [];
   const months = Math.max(0, Math.min(12, Math.trunc(count)));
   return Array.from({ length: months }, (_, i) => periodCode(prefix, i + 1));
+}
+
+/**
+ * The period codes a resume message asks for, or undefined when it asks for none.
+ *
+ * The same guard as `batchMonthCount`, for the same reason: the value crossed a
+ * world boundary and nothing vouches for it. A code that is not in the measured
+ * period shape is dropped here, and scraper-actions then narrows what survives
+ * against the portal's own year plan — this is the shape check, that is the
+ * scope check.
+ */
+export function resumePeriodCodes(requested: unknown): string[] | undefined {
+  if (!Array.isArray(requested)) return undefined;
+  const codes = requested.filter(
+    (value): value is string => typeof value === "string" && periodPrefix(value) !== null,
+  );
+  return codes.length > 0 ? [...new Set(codes)] : undefined;
 }
 
 /**
@@ -243,6 +302,21 @@ export function capturedPeriod(capturedRawBody: string): string | null {
 }
 
 /**
+ * The body field a request carries its year under instead of a filter.
+ *
+ * The retur grids may state their year as a body field; the same keys the retur
+ * grids' filename hint (page-context.ts) reads. The field is carried through
+ * every sweep request untouched, so the year stays pinned either way.
+ */
+function yearBodySide(body: Record<string, unknown>): SweepFilterSide | null {
+  for (const key of YEAR_BODY_KEYS) {
+    const text = String(body[key] ?? "").trim();
+    if (YEAR_SHAPE.test(text)) return { name: key, value: text, door: "hint" };
+  }
+  return null;
+}
+
+/**
  * The year the captured request is filtered to, or null.
  *
  * A batch sweeps every month of ONE year, so its filename has to name the year.
@@ -258,14 +332,86 @@ export function capturedYear(capturedRawBody: string): string | null {
     const text = String(filters[index]?.Value ?? "").trim();
     return YEAR_SHAPE.test(text) ? text : null;
   }
-  // The retur grids may state their year as a body field rather than a filter;
-  // the same keys its filename hint reads. The field is carried through every
-  // sweep request untouched, so the year stays pinned either way.
-  for (const key of YEAR_BODY_KEYS) {
-    const text = String(body[key] ?? "").trim();
-    if (YEAR_SHAPE.test(text)) return text;
-  }
-  return null;
+  return yearBodySide(body)?.value ?? null;
+}
+
+/** One side of a sweep-filter reading: the filter, its value, and the door. */
+export interface SweepFilterSide {
+  name: string;
+  value: string;
+  door: SweepFilterDoor;
+}
+
+/**
+ * What a captured request offers a sweep, and what it merely LOOKS like it
+ * offers.
+ *
+ * `seen` is the load-bearing field on a grid whose filter names were never
+ * measured: every filter whose NAME says period or year, used or not, so the
+ * line this module prints names the spelling the guard would have to learn
+ * rather than leaving the user with "belum dikenali" and no next step. A
+ * credit-named filter is listed on purpose — it is exactly the thing that must
+ * NOT be swept by, and a reading that hid it would hide the reason a request
+ * was refused.
+ */
+export interface SweepFilterReading {
+  period: SweepFilterSide | null;
+  year: SweepFilterSide | null;
+  seen: string[];
+}
+
+function sideOf(filter: GridFilter | undefined, door: SweepFilterDoor): SweepFilterSide {
+  return {
+    name: String(filter?.PropertyName ?? ""),
+    value: String(filter?.Value ?? ""),
+    door,
+  };
+}
+
+/**
+ * Reads what a captured request offers a sweep, without judging it.
+ *
+ * The reading is the FACT and `describeSweepFilters` is the wording; the split
+ * exists so the guard's decision can be logged on a live grid without a test
+ * having to assert against an Indonesian log line. Nothing here decides whether
+ * a sweep may run — `batchScopeError` does, from the same filters.
+ */
+export function readSweepFilters(capturedRawBody: string): SweepFilterReading {
+  const body = parseBody(capturedRawBody);
+  const filters = filtersOf(body);
+  const period = findPeriodFilter(filters);
+  const year = findYearFilter(filters);
+  return {
+    period: period ? sideOf(filters[period.index], period.door) : null,
+    year: year ? sideOf(filters[year.index], year.door) : yearBodySide(body),
+    seen: filters
+      .filter((f) => filterNameMatches(f, PERIOD_NAME_HINTS) || filterNameMatches(f, YEAR_NAME_HINTS))
+      .map((f) => String(f?.PropertyName ?? "")),
+  };
+}
+
+/**
+ * One line naming what a captured request offered a sweep and through which
+ * door — printed by scraper-actions before the guard can refuse, so a refusal
+ * on an unmeasured grid arrives with the spelling it would have to learn.
+ */
+export function describeSweepFilters(capturedRawBody: string): string {
+  const reading = readSweepFilters(capturedRawBody);
+  return [
+    `period=${describeFilterSide(reading.period, true)}`,
+    `year=${describeFilterSide(reading.year, false)}`,
+    `period/year-named filters seen: ${reading.seen.length > 0 ? reading.seen.join(", ") : "none"}`,
+  ].join(" · ");
+}
+
+function describeFilterSide(side: SweepFilterSide | null, isPeriod: boolean): string {
+  if (!side) return "none";
+  const door = side.door === "measured" ? "measured name" : "name hint";
+  // A period filter that IS there but reads as no code at all is the shape an
+  // unmeasured grid has: the distinction is what tells the next run whether to
+  // learn a format or look for a filter.
+  const shape = isPeriod && periodPrefix(side.value) === null ? ", value in no known format" : "";
+  return `${side.name}=${side.value} (${door}${shape})`;
 }
 
 /**
@@ -321,8 +467,12 @@ export function batchScopeError(capturedRawBody: string): string | null {
  * period produced something — a taxpayer genuinely idle for a month is normal,
  * so flagging every zero would train the user to ignore the flag. A period that
  * FAILED is listed separately: that is a transport problem, not a quiet month.
+ *
+ * `planned` defaults to what the counts themselves say, which is the finished
+ * sweep; a stopped sweep passes the count it was asked for so the report can
+ * name the gap (scrape-result.ts).
  */
-export function summarisePeriods(counts: PeriodCount[]): PeriodSummary {
+export function summarisePeriods(counts: PeriodCount[], planned = counts.length): PeriodSummary {
   const failedPeriods = counts.filter((c) => c.error).map((c) => c.period);
   const withRows = counts.filter((c) => !c.error && c.rows > 0).map((c) => c.period);
   const emptyPeriods =
@@ -332,7 +482,60 @@ export function summarisePeriods(counts: PeriodCount[]): PeriodSummary {
   return {
     counts,
     totalRows: counts.reduce((sum, c) => sum + c.rows, 0),
+    planned,
     emptyPeriods,
     failedPeriods,
   };
+}
+
+/**
+ * The masa a resumed sweep must still fetch: the year's plan minus the periods
+ * that FINISHED.
+ *
+ * "Finished" means recorded without an error, so the two states a stopped sweep
+ * leaves behind are both resumed:
+ *
+ *  * a period that FAILED has no rows — the year is missing it entirely;
+ *  * a period the stop cut short is not recorded at all (ADR-0020 keeps an
+ *    interrupted request out of the counts, because "masa tanpa baris" would
+ *    tell the reader to go and check a month the sweep never finished asking
+ *    for).
+ *
+ * Returns an empty list when nothing was kept: with no count there is no year to
+ * plan from. Callers then have nothing to resume and must start a fresh sweep
+ * rather than send an empty list — a sweep asked for no periods would report a
+ * finished year without making a single request.
+ */
+export function pendingPeriods(summary: PeriodSummary): string[] {
+  const seed = summary.counts[0]?.period;
+  if (!seed) return [];
+  const plan = planPeriods(seed, summary.planned);
+  const finished = new Set(
+    summary.counts.filter((count) => !count.error).map((count) => count.period),
+  );
+  return plan.filter((code) => !finished.has(code));
+}
+
+/**
+ * The union of a kept sweep's summary and the one that came back on top of it.
+ *
+ * A resumed sweep reports only the masa it fetched, so the panel line, the
+ * completion notification and the file's own `-sebagian` question must all be
+ * answered from the UNION. The incoming counts win for a period they cover
+ * again — a resumed retry of a failed masa replaces that failure with the
+ * retry's outcome — and `planned` keeps the larger of the two, because a resumed
+ * sweep is asked for a subset of the year it belongs to.
+ *
+ * The empty/failed lists are not merged by hand: `summarisePeriods` is the one
+ * place that decides what counts as empty, so the union goes back through it.
+ * Counts come out in code order, which is month order for one year.
+ */
+export function mergePeriodSummaries(
+  previous: PeriodSummary,
+  incoming: PeriodSummary,
+): PeriodSummary {
+  const byPeriod = new Map(previous.counts.map((count) => [count.period, count]));
+  for (const count of incoming.counts) byPeriod.set(count.period, count);
+  const counts = [...byPeriod.values()].sort((a, b) => a.period.localeCompare(b.period));
+  return summarisePeriods(counts, Math.max(previous.planned, incoming.planned));
 }

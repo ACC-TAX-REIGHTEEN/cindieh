@@ -5,7 +5,7 @@ Skrip console yang ditempel di DevTools untuk menjawab pertanyaan tentang **port
 | Skrip | Pertanyaan yang dijawab | Status |
 |---|---|---|
 | [`reference-search-diagnostic.js`](reference-search-diagnostic.js) | Kenapa pencarian referensi ≤ 6 karakter instan tapi > 6 karakter sangat lambat — lambatnya di server DJP atau di ekstensi/portal? | Sudah dijalankan 24 Sep 2026, hasilnya jadi dasar ADR-0012 |
-| [`masa-batch-diagnostic.js`](masa-batch-diagnostic.js) | Apakah fitur **ekspor satu tahun sekaligus** (batch lintas masa pajak) mungkin di portal, atau terhalang batas portal? Apakah batas halaman server bisa memotong data secara senyap? | Dijalankan Okt 2026 di PPN Keluaran — hasilnya menentukan ADR-0018 dan fitur ekspor satu tahun (77dde73). Jalankan di PPN Masukan/Retur untuk mengukur nama & format filter masa grid tersebut, yang menentukan ADR-0019 |
+| [`masa-batch-diagnostic.js`](masa-batch-diagnostic.js) | Apakah fitur **ekspor satu tahun sekaligus** (batch lintas masa pajak) mungkin di portal, atau terhalang batas portal? Apakah batas halaman server bisa memotong data secara senyap? Filter apa yang dipakai tiap grid, dan apakah penjaga sweep menerima permintaannya? | Dijalankan Okt 2026 di PPN Keluaran — hasilnya menentukan ADR-0018 dan fitur ekspor satu tahun (77dde73). Fase 1b mencetak **verdict penjaga sweep** per grid (`__cindiehMasaDiag.jalankan([1])` atau `__cindiehMasaDiag.verdictFilter()`); jalankan di PPN Masukan dan kedua grid Retur lalu isi tabel **Pengukuran filter per grid** di bawah — itulah yang menghapus ketergantungan ADR-0019 pada pintu petunjuk nama |
 
 ---
 
@@ -71,6 +71,30 @@ Blok **Jawaban singkat** meringkas tiga hal yang harus diputuskan sebelum fitur 
 | Duplikat antara masa (Jan/Feb, Feb/Mar)? | **0** | 44.237 baris = 44.237 unik, dengan kunci yang persis sama dengan `mergeRows` |
 
 **Belum terukur:** masa ke-4 sampai ke-12, khususnya batas tahun baru Des→Jan — kasus bukti kredit yang sempat masuk Januari tahun berikutnya, risiko duplikasi lintas periode yang paling mungkin — dan endpoint selain PPN Keluaran. Fitur yang sudah dikirim menganggap hasil ini berlaku umum untuk masa yang belum diukur.
+
+### Pengukuran filter per grid (ADR-0019)
+
+Ekspor satu tahun hanya bisa dijalankan kalau penjaga `batchScopeError` ([scrape-batch.ts](../src/content/scrape-batch.ts)) menemukan **dua** filter di body request grid: masa pajak dan tahun pajak. Baru PPN Keluaran yang namanya diukur (`TaxInvoicePeriod`/`TaxInvoiceYear`). Tiga grid lain masuk lewat pintu yang lebih sempit — nama yang menyebut period/masa atau year/tahun **plus** nilai yang berbentuk kode `TD.007MM` — karena nama filter mereka belum pernah dibaca dari portal. Pintu itu memang lebih sempit dari yang diperlukan, tetapi selama baris sebuah grid di bawah masih kosong, kelolosan grid itu **kebetulan yang ditoleransi, bukan pengukuran** — dan `periodPrefix` hanya bisa belajar dari data.
+
+Fase 1b menjawabnya per grid, memakai aturan penjaga yang disalin ke dalam skrip:
+
+1. Buka halaman grid yang mau diukur, pilih **satu** masa di filter portal → **Cari** → biarkan tabel tampil.
+2. Tempel `masa-batch-diagnostic.js` di Console.
+3. `__cindiehMasaDiag.jalankan([1])` (fase 1 + 1b saja). Kalau templatenya sudah tertangkap: `__cindiehMasaDiag.verdictFilter()`.
+4. Salin baris yang dicetak (formatnya sama dengan tabel di bawah) dan isi barisnya. Sertakan jalur mana yang dipakai penjaga — `nama terukur` atau `petunjuk nama`.
+
+Yang dicetak fase 1b: nama filter masa + nilainya + lewat pintu mana, nama filter tahun (atau field body `TaxYear`/`Year`/`Tahun`), daftar semua filter yang namanya berbau masa/tahun **termasuk yang ditolak** (filter berkredit, mis. `PeriodCredit`), keputusan penjaga (DITERIMA/DITOLAK) beserta alasannya, dan dua belas kode masa yang akan disapu. Log yang sama muncul saat ekstensi menjalankan sweep sungguhan (`?chdebug=1`; baris `Sweep filters on <sumber>: …` di `scraper-actions.ts`), jadi penolakan di panel selalu bisa dicocokkan dengan pembacaan yang menyebabkannya.
+
+| Halaman | Endpoint | Filter masa | Filter tahun | Penjaga | Rencana |
+|---|---|---|---|---|---|
+| e-Faktur PPN Keluaran | `/einvoiceportal/api/outputinvoice/list` | `TaxInvoicePeriod=TD.00708` (nama terukur, `MatchMode` `equals`) | `TaxInvoiceYear=2026` | DITERIMA — menyapu TD.00701..TD.00712 untuk tahun 2026 | TD.00701..TD.00712 |
+| e-Faktur PPN Masukan | | | | **belum diukur** | |
+| Retur PPN Keluaran | | | | **belum diukur** | |
+| Retur PPN Masukan | | | | **belum diukur** | |
+
+Aturan setelah sebuah baris terisi: **nama yang terukur menang.** Kalau satu grid ternyata memakai nama (atau bentuk nilai) lain, perubahan yang benar adalah mempelajarinya di `scrape-batch.ts` — `periodPrefix` dan daftar nama petunjuknya, bersama testnya — lalu mencatatnya di ADR-0019; yang **bukan** jawaban adalah melonggarkan lebih jauh pintu petunjuk nama. Baris berisi "DITERIMA lewat petunjuk nama" berarti grid itu jalan, tapi belum terukur.
+
+> **Catatan cakupan:** fase 2-4 (batas `Rows`, jumlah total yang bisa dipercaya, durasi per masa, kebutuhan `RecordId`) sengaja **tidak** diulang per grid — pertanyaan itu terjawab untuk endpoint e-Faktur dan tidak berubah antar grid e-Faktur. Yang perlu dijalankan per grid hanya fase 1 dan 1b.
 
 ### Kepatuhan
 

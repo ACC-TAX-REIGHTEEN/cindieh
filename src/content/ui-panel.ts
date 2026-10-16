@@ -15,7 +15,14 @@
 // overlay's behaviour, not its markup.
 // ============================================================
 
-import { isOutputTaxPage, isVatInvoicePage } from "./page-context";
+import {
+  isCheckerPage,
+  isInputReturnPage,
+  isInputTaxPage,
+  isOutputReturnPage,
+  isOutputTaxPage,
+  referenceIsIdentity,
+} from "./page-context";
 import { startScrape } from "./main-actions";
 import { showPanel, updatePanelProgress } from "./ui-badge";
 import { postToScraper } from "./bridge";
@@ -160,13 +167,20 @@ export function openPanel(targetTab: PanelTab = "compare"): void {
     setBackgroundInert(true);
 
     // Both tabs are gated per page, and the tab that does not apply is HIDDEN
-    // rather than offered and then refused. Pengecekan is a PPN-grid check: on
-    // any other page there is nothing for it to read. The Komparator matches
+    // rather than offered and then refused. Pengecekan runs on the four e-Faktur
+    // PPN grids — both invoice grids and both Retur grids, because a retur row
+    // carries the same DPP / DPP Nilai Lain / PPN. The Komparator matches
     // internal records to Coretax by Referensi, and a PPN Masukan Referensi is
     // the seller's — the reason README.md gives for the Komparator staying off
-    // PPN Masukan (and Retur carries no such grid for it either).
-    const canCheck = isVatInvoicePage();
-    const canCompare = isOutputTaxPage();
+    // PPN Masukan, and off the Retur grids, which have no Referensi at all.
+    //
+    // Two DIFFERENT facts, not one: `isCheckerPage` (where the check applies)
+    // and `referenceIsIdentity` (where a Referensi identifies a row). Neither is
+    // `isOutputTaxPage`, and neither is the filter's own fact
+    // (`hasReferenceFilter`) — Pengecekan's hand-back searches the injected
+    // Referensi filter, which PPN Masukan has as well.
+    const canCheck = isCheckerPage();
+    const canCompare = referenceIsIdentity();
     const tabCompareBtn = document.getElementById("ch-tab-compare");
     const tabCheckerBtn = document.getElementById("ch-tab-checker");
     if (tabCompareBtn) {
@@ -249,5 +263,13 @@ export function searchReference(reference: string): void {
  * is simply the wrong grid.
  */
 export function currentGridLabel(): string {
-  return isOutputTaxPage() ? "PPN Keluaran" : "PPN Masukan";
+  // The grid's own NAME, which is a question of its own: the four e-Faktur PPN
+  // grids have four names, and `isOutputTaxPage` answers a different one. A
+  // label read off the page gate would tell someone on Retur PPN Masukan that
+  // Cindieh is fetching "data PPN Masukan".
+  if (isOutputTaxPage()) return "PPN Keluaran";
+  if (isInputTaxPage()) return "PPN Masukan";
+  if (isOutputReturnPage()) return "Retur PPN Keluaran";
+  if (isInputReturnPage()) return "Retur PPN Masukan";
+  return "grid";
 }

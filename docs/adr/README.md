@@ -23,3 +23,9 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0017 | [A large scrape result crosses the bridge in chunks](0017-chunked-scrape-result-transfer.md) | Accepted |
 | 0018 | [A year-wide export is ONE Run over every tax period](0018-year-wide-batch-export-is-one-run.md) | Accepted — scope extended by 0019 |
 | 0019 | [The year-wide export covers every e-Faktur VAT grid](0019-year-wide-export-covers-the-vat-grids.md) | Accepted |
+| 0020 | [A stopped year-wide sweep reports what it finished, and keeps the rows](0020-a-stopped-sweep-reports-what-it-finished.md) | Accepted |
+| 0021 | [A grid's Referensi facts are two: it can be filtered by one, and a Referensi identifies a row](0021-referensi-filter-and-identity-are-two-page-facts.md) | Accepted |
+| 0022 | [A Run owns the requests it records; a stop retires all of them, and the rows survive](0022-a-run-owns-the-requests-it-records.md) | Accepted |
+| 0023 | [A stopped sweep is resumable: only the masa that never finished are re-run, into the rows it kept](0023-a-stopped-sweep-can-be-resumed.md) | Accepted |
+| 0024 | [Pengecekan covers the four e-Faktur PPN grids, and a row's identity is a page fact of its own](0024-checker-covers-the-retur-grids.md) | Accepted |
+

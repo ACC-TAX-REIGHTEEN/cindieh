@@ -5,6 +5,7 @@
 
 import type { MessageHandler } from "./postmessage-guard";
 import type { ScrapeComplete } from "./scraper-types";
+import { pendingPeriods, type PeriodSummary } from "./scrape-batch";
 
 /** Runs inside the dispatcher, after its source/origin/token guard. */
 export function currentRunHandlers(
@@ -200,6 +201,44 @@ export function batchResultNotice(summary: {
     );
   }
   return headline + ".";
+}
+
+/**
+ * What the panel says when a sweep was stopped and its rows were kept.
+ *
+ * Four facts, in the order the user needs them: how much of the year arrived,
+ * that nothing is running on what did (a stop cancels what the sweep owed),
+ * that the rows are still theirs to export, and that the sweep can be RESUMED
+ * rather than repeated. The filename sentence is the load-bearing one — a
+ * ten-month sweep makes a ten-month file, and the user must not have to infer
+ * that from a row count. `exporter.ts` is what actually marks the name; this
+ * says so before the file exists, and the resume sentence names the same menu
+ * entry the sweep was started from (ADR-0023).
+ */
+export function stoppedSweepMessage(
+  complete: Pick<ScrapeComplete, "total" | "periods">,
+): string {
+  const rows = `${complete.total.toLocaleString("id-ID")} baris tetap tersimpan`;
+  const summary: PeriodSummary | undefined = complete.periods;
+  if (!summary) return `Proses dihentikan: ${rows}.`;
+
+  // Finished counts what the sweep actually got; a period that failed is not a
+  // month of the year to its reader, so it is named separately rather than
+  // folded into the progress fraction.
+  const finished = summary.counts.filter((count) => !count.error).length;
+  const failed = summary.failedPeriods.length;
+  const failures = failed > 0 ? `, ${failed} masa gagal diambil` : "";
+  const pending = pendingPeriods(summary).length;
+  const resume =
+    pending > 0
+      ? ` Klik "Ekspor 1 Tahun (12 Masa)" lagi untuk melanjutkan ${pending} masa yang belum selesai; masa yang sudah tersimpan tidak akan diambil ulang.`
+      : "";
+
+  return (
+    `Proses dihentikan: ${finished} dari ${summary.planned} masa pajak selesai${failures}, ${rows}. ` +
+    "Ekspor otomatis tidak dijalankan; bila data ini diekspor, nama berkasnya ditandai \"sebagian\"." +
+    resume
+  );
 }
 
 export function scrapeErrorMessage(message?: string): string {

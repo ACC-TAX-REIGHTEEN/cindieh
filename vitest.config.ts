@@ -9,7 +9,7 @@
 // regression — new logic shipping without tests — does. Raise them as coverage
 // improves; never lower them to make a red build green.
 //
-// Measured 2026-10-15 on the whole suite (1638 tests). The modules that hold
+// Measured 2026-10-16 on the whole suite (1749 tests). The modules that hold
 // the baseline down are recorded in AGENTS.md so a low number reads as a known
 // gap rather than a mystery.
 
@@ -54,8 +54,19 @@ export default defineConfig({
       // with the keyboard stop settling its Run through the toolbar's stop path,
       // the failed-masa retry in the year sweep, and the notification naming a
       // sweep's losses, and now to 92.9/86.2/89.3/94.3 with the year-wide export
-      // gated onto the four e-Faktur PPN grids behind its scope guard (ADR-0019).
-      // The measured numbers are 93.32/86.6/89.74/94.72.
+      // gated onto the four e-Faktur PPN grids behind its scope guard (ADR-0019),
+      // and to the same floors with the stop-salvage (ADR-0020), whose own suites
+      // paid for it: run-lifecycle, scrape-result, bridge, exporter, the batch
+      // sweep and the main boot harness each grew cases — and then raised to
+      // 93.2/86.6/90.0/94.5 by the two features that followed, the Referensi
+      // filter reaching both PPN grids (ADR-0021), the stop retiring every
+      // request a Run carried (ADR-0022) and the resumable stopped sweep
+      // (ADR-0023), whose pure arithmetic (pendingPeriods, mergePeriodSummaries)
+      // is fully covered and whose union merge is driven end to end by the boot
+      // harness — and then to the same floors with the accuracy check reaching
+      // the two Retur grids (ADR-0024), whose four page facts, identity table
+      // and view wiring each brought their own cases.
+      // The measured numbers are 93.68/87.24/90.64/95.06.
       //
       // The cushion is deliberately ~0.4 points, the same gap the floors have
       // always kept: enough that ordinary churn cannot redden the build, small
@@ -69,10 +80,10 @@ export default defineConfig({
       // is covered directly. Do not paper the gap over by lowering a floor; move
       // it by testing the seam underneath.
       thresholds: {
-        statements: 92.9,
-        branches: 86.2,
-        functions: 89.3,
-        lines: 94.3,
+        statements: 93.2,
+        branches: 86.6,
+        functions: 90,
+        lines: 94.5,
       },
     },
   },

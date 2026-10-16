@@ -18,6 +18,7 @@ function comparison(overrides: Partial<ComparisonResult> = {}): ComparisonResult
 function check(overrides: Partial<CheckResult> = {}): CheckResult {
   return {
     reference: "000123", counterpartyName: "Pembeli", invoiceDate: "01/07/2026",
+    returnNumber: "RET-0007", returnDate: "15/07/2026",
     counterpartyTIN: "0012345678901234", taxInvoiceNumber: "04012600023333322",
     dppSystem: 1000, dppNilaiLainSystem: 916, ppnSystem: 100,
     dppExpected: 1000, dppNilaiLainExpected: 916, ppnExpected: 100,
@@ -181,6 +182,39 @@ describe("checkerColumns", () => {
 
   it("shows the raw checker status, unlike the comparer's friendly label", () => {
     expect(cells(checkerColumns("DPP"), check({ benchmark: "DPP" }))[9]).toBe("DPP NL Berbeda");
+  });
+
+  it("names and dates a retur row by its own document, not the invoice it returns", () => {
+    const retur = check({ returnNumber: "RET-0007", returnDate: "15/07/2026" });
+    const columns = checkerColumns("DPP", "pembeli", "no-retur");
+
+    expect(labels(columns)).toEqual([
+      "No", "No Retur", "Tanggal Retur", "Nama Pembeli",
+      "DPP", "DPP NL", "PPN", "Selisih DPP NL", "Selisih PPN", "Status",
+    ]);
+    expect(cells(columns, retur)[1]).toBe("RET-0007");
+    expect(cells(columns, retur)[2]).toBe("15/07/2026");
+  });
+
+  it("falls back to the invoice number for a retur row with no NO RETUR", () => {
+    // The retur grids' counterpart of the Referensi fallback: a row that has to
+    // be findable in the report even when its own identifier is missing.
+    const columns = checkerColumns("DPP", "pembeli", "no-retur");
+    expect(cells(columns, check({ returnNumber: "" }))[1]).toBe("04012600023333322");
+  });
+
+  it("keeps the invoice identity as the default, at the same width and class", () => {
+    // The two grids differ in the WORDS and the two cells they read; the shape
+    // of the table does not move, so a screenshot of either reads the same.
+    const asInvoice = checkerColumns("DPP");
+    const asRetur = checkerColumns("DPP", "pembeli", "no-retur");
+
+    expect(labels(asInvoice)).toEqual(labels(checkerColumns("DPP", "pembeli", "referensi")));
+    expect(asRetur.map((c) => c.className)).toEqual(asInvoice.map((c) => c.className));
+    expect(asRetur.map((c) => c.label)).toEqual([
+      "No", "No Retur", "Tanggal Retur",
+      ...labels(asInvoice).slice(3),
+    ]);
   });
 
   it("names the counterparty for the side of the transaction", () => {

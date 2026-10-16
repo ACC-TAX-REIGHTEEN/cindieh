@@ -23,6 +23,20 @@
  * getRowDedupeKey() (scraper-helpers.ts) jatuh ke stableStringify yang mahal
  * kalau kedua field itu kosong, jadi ini ikut menentukan berapa mahal dedupe.
  *
+ *   E. LeWAT PINTU MANA penjaga sweep menemukan filter masa/tahun di grid ini,
+ *      dan apakah permintaannya MENERIMA/MENOLAK? Fase 1b menyalin aturan
+ *      penjaga (batchScopeError di scrape-batch.ts) lalu mencetak verdictnya,
+ *      plus satu baris siap-tempel untuk tabel pengukuran di tools/README.md.
+ *      Ini pertanyaan yang ditinggalkan ADR-0019: PPN Masukan dan kedua grid
+ *      Retur belum pernah diukur, jadi di sana sweep masih jalan lewat pintu
+ *      "petunjuk nama + format nilai" — hasil fase 1b inilah yang menghapus
+ *      ketergantungan itu.
+ *
+ *   Untuk mengukur grid yang belum terukur (PPN Masukan, Retur PPN Keluaran,
+ *   Retur PPN Masukan): jalankan `jalankan([1])` saja. Fase 2-4 mengukur
+ *   perilaku server yang sudah terjawab untuk PPN Keluaran dan tidak perlu
+ *   diulang per grid; fase 1 dan 1b cukup.
+ *
  * CARA PAKAI
  *   1. Buka halaman e-Faktur PPN Keluaran (atau PPN Masukan/SPT/Bukti Potong).
  *   2. Pilih SATU masa pajak di filter portal, klik Cari, dan biarkan tabel
@@ -50,6 +64,7 @@
  *   __cindiehMasaDiag.fase2()               -> probe batas Rows saja
  *   __cindiehMasaDiag.fase3(["2026-01"])    -> satu masa, diukur
  *   __cindiehMasaDiag.hasil                 -> data mentah (JSON)
+ *   __cindiehMasaDiag.verdictFilter()       -> verdict penjaga + baris siap-tempel
  *   __cindiehMasaDiag.templateUlang()       -> kosongkan template, ambil lagi
  *   __cindiehMasaDiag.pulihkan()            -> lepas semua patch skrip ini
  * ========================================================================== */
@@ -79,7 +94,7 @@
   const diag = {
     versi: "1.0.0",
     config: CONFIG,
-    hasil: { template: null, batasRows: [], masa: [] },
+    hasil: { template: null, penjaga: null, batasRows: [], masa: [] },
     temuan: [],
     catatan: [],
   };
@@ -315,6 +330,180 @@
     );
   }
 
+  // ── Salinan aturan penjaga sweep (src/content/scrape-batch.ts) ───────────
+  /**
+   * Fase 1b menilai apakah penjaga sweep Cindieh (batchScopeError) akan
+   * MENERIMA permintaan grid ini, dan lewat pintu mana filter masa/tahunnya
+   * ditemukan.
+   *
+   * ATURAN DI BAWAH ADALAH SALINAN dari scrape-batch.ts (findPeriodFilter /
+   * findYearFilter / periodPrefix / capturedYear / describeSweepFilters).
+   * Skrip ini tidak ter-bundle ke dist/ dan tidak bisa mengimpor modul itu,
+   * jadi salinannya memang sengaja: kalau aturan di sana berubah, ubah di sini
+   * juga — kalau tidak, verdictnya menyesatkan.
+   */
+  const PENJAGA = {
+    PERIOD_PROPERTY: "TaxInvoicePeriod",
+    YEAR_PROPERTY: "TaxInvoiceYear",
+    PERIOD_NAME_HINTS: ["period", "masa"],
+    YEAR_NAME_HINTS: ["year", "tahun"],
+    CREDIT_NAME_HINTS: ["credit", "kredit"],
+    YEAR_BODY_KEYS: ["TaxYear", "Year", "Tahun"],
+    YEAR_SHAPE: /^(20|19)\d{2}$/,
+    PERIOD_SHAPE: /^(.*\d{3})(0[1-9]|1[0-2])$/,
+  };
+
+  const cocokNama = (nama, hints) =>
+    hints.some((h) => String(nama || "").toLowerCase().includes(h));
+
+  /** Bagian tetap kode masa (TD.007), atau null kalau nilainya bukan kode masa. */
+  const prefiksMasa = (nilai) => {
+    const m = String(nilai ?? "").match(PENJAGA.PERIOD_SHAPE);
+    return m ? m[1] : null;
+  };
+
+  function cariFilterMasa(filters) {
+    const terukur = filters.findIndex((f) => f && f.PropertyName === PENJAGA.PERIOD_PROPERTY);
+    if (terukur >= 0) return { index: terukur, pintu: "nama terukur" };
+    const petunjuk = filters.findIndex(
+      (f) =>
+        f &&
+        cocokNama(f.PropertyName, PENJAGA.PERIOD_NAME_HINTS) &&
+        !cocokNama(f.PropertyName, PENJAGA.CREDIT_NAME_HINTS) &&
+        prefiksMasa(f.Value) !== null,
+    );
+    return petunjuk >= 0 ? { index: petunjuk, pintu: "petunjuk nama" } : null;
+  }
+
+  function cariFilterTahun(filters) {
+    const terukur = filters.findIndex((f) => f && f.PropertyName === PENJAGA.YEAR_PROPERTY);
+    if (terukur >= 0) return { index: terukur, pintu: "nama terukur" };
+    const petunjuk = filters.findIndex(
+      (f) =>
+        f &&
+        cocokNama(f.PropertyName, PENJAGA.YEAR_NAME_HINTS) &&
+        !cocokNama(f.PropertyName, PENJAGA.CREDIT_NAME_HINTS) &&
+        PENJAGA.YEAR_SHAPE.test(String(f.Value ?? "").trim()),
+    );
+    return petunjuk >= 0 ? { index: petunjuk, pintu: "petunjuk nama" } : null;
+  }
+
+  /** Tahun yang dibawa body sebagai FIELD, bukan filter (fallback grid Retur). */
+  function tahunDariBody(body) {
+    for (const key of PENJAGA.YEAR_BODY_KEYS) {
+      const text = String(body[key] ?? "").trim();
+      if (PENJAGA.YEAR_SHAPE.test(text)) return { nama: key, nilai: text, pintu: "field body" };
+    }
+    return null;
+  }
+
+  const namaHalaman = () => String(document.title || "").replace(/\s+/g, " ").trim().slice(0, 48) || "(tanpa judul)";
+
+  /** Baris tabel pengukuran — satu baris per grid, siap ditempel ke README/ADR. */
+  const JUDUL_TABEL =
+    "| Halaman | Endpoint | Filter masa | Filter tahun | Penjaga | Rencana |\n|---|---|---|---|---|---|";
+
+  /** Cetak verdict fase 1b — SATU tempat, dipakai fase 1 dan perintah manual. */
+  function cetakVerdict(penjaga) {
+    console.group(
+      "%c[Cindieh/diag] FASE 1b — apakah penjaga sweep MENERIMA grid ini",
+      "color:#0a7;font-weight:bold",
+    );
+    console.log(`Halaman: ${namaHalaman()} · ${penjaga.url}`);
+    console.log(
+      `Filter masa  : ${penjaga.masa ? `${penjaga.masa.nama} = ${penjaga.masa.nilai} (lewat ${penjaga.masa.pintu})` : "tidak ditemukan"}`,
+    );
+    console.log(
+      `Filter tahun : ${penjaga.tahun ? `${penjaga.tahun.nama} = ${penjaga.tahun.nilai} (lewat ${penjaga.tahun.pintu})` : "tidak ditemukan"}`,
+    );
+    console.log(`Filter berbau masa/tahun yang terlihat: ${penjaga.terlihat.join(", ") || "-"}`);
+    console.log(
+      `%c${penjaga.keputusan}%c — ${penjaga.alasan}`,
+      penjaga.keputusan === "DITERIMA" ? "color:#0a7;font-weight:bold" : "color:#c00;font-weight:bold",
+      "",
+    );
+    if (penjaga.rencana.length) {
+      console.log(`Rencana sweep: ${penjaga.rencana.length} masa · ${penjaga.rencana[0]}..${penjaga.rencana[11]}`);
+    }
+    console.log("%cTempel baris ini ke tabel pengukuran di tools/README.md dan docs/adr/0019:", "color:#0a7");
+    console.log(JUDUL_TABEL);
+    console.log(penjaga.baris);
+    console.log("Data: __cindiehMasaDiag.hasil.penjaga · fase 1 saja: __cindiehMasaDiag.jalankan([1])");
+    console.groupEnd();
+  }
+
+  /**
+   * Verdict penjaga untuk satu body: apa yang ditemukan, lewat pintu mana,
+   * keputusannya, dan untuk pengukuran satu baris tabel.
+   */
+  function verdictPenjaga(body, url) {
+    const filters = Array.isArray(body.Filters)
+      ? body.Filters
+      : Array.isArray(body.filters)
+        ? body.filters
+        : [];
+    const masa = cariFilterMasa(filters);
+    const tahun = cariFilterTahun(filters);
+    const nilaiMasa = masa ? String(filters[masa.index]?.Value ?? "") : "";
+    const prefiks = prefiksMasa(nilaiMasa);
+    const sisiMasa = masa
+      ? { nama: String(filters[masa.index]?.PropertyName ?? ""), nilai: nilaiMasa, pintu: masa.pintu }
+      : null;
+    const sisiTahun = tahun
+      ? {
+          nama: String(filters[tahun.index]?.PropertyName ?? ""),
+          nilai: String(filters[tahun.index]?.Value ?? "").trim(),
+          pintu: tahun.pintu,
+        }
+      : tahunDariBody(body);
+    const terlihat = filters
+      .filter(
+        (f) =>
+          f &&
+          (cocokNama(f.PropertyName, PENJAGA.PERIOD_NAME_HINTS) ||
+            cocokNama(f.PropertyName, PENJAGA.YEAR_NAME_HINTS)),
+      )
+      .map((f) => String(f.PropertyName));
+
+    let keputusan;
+    let alasan;
+    if (!sisiMasa) {
+      const bernamaMasa = filters.filter((f) => f && cocokNama(f.PropertyName, PENJAGA.PERIOD_NAME_HINTS));
+      const kreditBernilai = bernamaMasa.filter(
+        (f) => cocokNama(f.PropertyName, PENJAGA.CREDIT_NAME_HINTS) && prefiksMasa(f.Value) !== null,
+      );
+      keputusan = "DITOLAK";
+      alasan = kreditBernilai.length
+        ? `filter masa berkode benar hanya ada pada nama berkredit (${kreditBernilai
+            .map((f) => f.PropertyName)
+            .join(", ")}) — penjaga tidak memakainya (panel akan melaporkan "belum dikenali") karena itu masa KREDIT, bukan masa dokumen`
+        : bernamaMasa.length
+          ? "ada filter bernama masa, tapi nilainya tidak dikenali sebagai kode TD.007MM — FORMAT NILAI inilah yang harus dipelajari periodPrefix()"
+          : "tidak ada filter masa sama sekali di body — sweep tidak mungkin lewat jalur ini";
+    } else if (!prefiks) {
+      keputusan = "DITOLAK";
+      alasan = `filter masa ditemukan (${sisiMasa.nama}) tapi nilainya bukan kode TD.007MM`;
+    } else if (!sisiTahun) {
+      keputusan = "DITOLAK";
+      alasan =
+        "tidak ada filter tahun dan tidak ada field TaxYear/Year/Tahun — kode masa tidak membawa tahunnya sendiri";
+    } else {
+      keputusan = "DITERIMA";
+      alasan = `akan menyapu ${prefiks}01..${prefiks}12 untuk tahun ${sisiTahun.nilai}`;
+    }
+
+    const rencana = prefiks
+      ? Array.from({ length: 12 }, (_, i) => `${prefiks}${String(i + 1).padStart(2, "0")}`)
+      : [];
+    const selMasa = sisiMasa ? `${sisiMasa.nama}=${sisiMasa.nilai} (${sisiMasa.pintu})` : "(tidak ada)";
+    const selTahun = sisiTahun ? `${sisiTahun.nama}=${sisiTahun.nilai} (${sisiTahun.pintu})` : "(tidak ada)";
+    const baris =
+      `| ${namaHalaman()} | ${pathOf(url)} | ${selMasa} | ${selTahun} | ` +
+      `${keputusan} — ${alasan} | ${rencana.length ? `${rencana[0]}..${rencana[11]}` : "-"} |`;
+
+    return { keputusan, alasan, masa: sisiMasa, tahun: sisiTahun, terlihat, rencana, baris, url: pathOf(url) };
+  }
+
   // ── Fase 1: apa yang sebenarnya dikirim portal? ──────────────────────────
   async function fase1() {
     if (!templat.ada) {
@@ -360,6 +549,27 @@
     if (CONFIG.verbose) console.log("Body mentah:", templat.body);
     console.log("Data: __cindiehMasaDiag.hasil.template");
     console.groupEnd();
+
+    // Fase 1b — pertanyaan ADR-0019: lewat pintu mana penjaga menemukannya?
+    const penjaga = verdictPenjaga(parsed, templat.url);
+    laporan.penjaga = penjaga;
+    diag.hasil.penjaga = penjaga;
+    cetakVerdict(penjaga);
+
+    if (penjaga.keputusan === "DITERIMA") {
+      diag.temuan.push(
+        penjaga.masa.pintu === "nama terukur"
+          ? `Penjaga sweep MENERIMA grid ini lewat NAMA TERUKUR (${penjaga.masa.nama}), jadi tidak ada ketergantungan pada pintu petunjuk nama. ` +
+              `Catat di tools/README.md + ADR-0019 bahwa grid ini terukur.`
+          : `Penjaga sweep MENERIMA grid ini lewat PETUNJUK NAMA (${penjaga.masa.nama} = ${penjaga.masa.nilai}), bukan nama terukur. ` +
+              `Sampai nama itu tercatat di tools/README.md + ADR-0019, kelolosan grid ini masih kebetulan yang ditoleransi — bukan pengukuran.`,
+      );
+    } else {
+      diag.temuan.push(
+        `Penjaga sweep MENOLAK grid ini: ${penjaga.alasan}. Penolakan ini JUSTRU pengukurannya — catat baris di atas ke ` +
+          `tools/README.md (bagian pengukuran filter per grid) dan docs/adr/0019 sebelum mengubah pintunya.`,
+      );
+    }
 
     if (kandidat.length) {
       diag.temuan.push(
@@ -705,11 +915,37 @@
     templat.headers = {};
     templat.body = "";
     diag.hasil.template = null;
+    diag.hasil.penjaga = null;
     console.log(
       "%c[Cindieh/diag] Template dikosongkan. Pilih masa baru di filter portal, klik Cari, " +
         "lalu jalankan __cindiehMasaDiag.jalankan() lagi.",
       "color:#0a7",
     );
+  };
+
+  /**
+   * Ulangi fase 1b saja untuk grid yang sedang terbuka — tanpa memutar fase 2-4
+   * yang sudah terjawab untuk PPN Keluaran. Inilah pengukuran per grid
+   * (PPN Masukan, Retur PPN Keluaran, Retur PPN Masukan).
+   */
+  diag.verdictFilter = function verdictFilterManual() {
+    if (!templat.ada) {
+      console.warn(
+        "%c[Cindieh/diag] Belum ada template request grid. Pilih satu masa di filter portal → Cari → biarkan tabel tampil, lalu ulangi.",
+        "color:#c00;font-weight:bold",
+      );
+      return null;
+    }
+    let parsed = {};
+    try {
+      parsed = JSON.parse(templat.body);
+    } catch {
+      /* sudah dijaga saat merekam */
+    }
+    const penjaga = verdictPenjaga(parsed, templat.url);
+    diag.hasil.penjaga = penjaga;
+    cetakVerdict(penjaga);
+    return penjaga;
   };
 
   diag.fase2 = () => fase2().then(() => fase4());
@@ -726,6 +962,7 @@
     }
     diag.temuan = [];
     diag.catatan = [];
+    diag.hasil.penjaga = null;
     diag.hasil.batasRows = [];
     diag.hasil.masa = [];
     console.log(

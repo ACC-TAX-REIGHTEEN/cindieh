@@ -10,17 +10,20 @@
 
 import { browserAPI } from "./browser-shim";
 import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode, type StoredExportMode } from "../shared/export-preferences";
-import { isOutputTaxPage, isSupportedExportPage } from "./page-context";
+import { hasReferenceFilter, isSupportedExportPage } from "./page-context";
 import { createMessageDispatcher } from "./postmessage-guard";
-import { generateBridgeToken, getBridgeToken, getActiveRunId, isCurrentRunMessage, postToScraper } from "./bridge";
+import { generateBridgeToken, getBridgeToken, getActiveRunId, isCurrentRunMessage, isStoppedRunMessage, postToScraper } from "./bridge";
 import {
   currentRunHandlers,
   failedItemsNotice,
   batchResultNotice,
+  stoppedSweepMessage,
   scrapeErrorMessage,
   truncatedResultNotice,
 } from "./scrape-result";
 import { runLifecycle } from "./run-lifecycle";
+import { mergePeriodSummaries } from "./scrape-batch";
+import { unionRows } from "./scraper-helpers";
 import type { ScrapeComplete, ScrapeDataChunkMessage } from "./scraper-types";
 import {
   addResultChunk,
@@ -262,7 +265,10 @@ const observer = new MutationObserver(() => {
   // Debounce injections to avoid fighting with SPA/Angular rendering
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
-    if (isOutputTaxPage()) {
+    // Both surfaces of the Referensi filter — the toolbar box and the grid
+    // column — belong to the grids that HAVE a Referensi column, which is not
+    // the same question as whether a Referensi identifies a row there.
+    if (hasReferenceFilter()) {
       injectToolbarFilter();
       injectGridFilters();
     }
@@ -327,6 +333,27 @@ function publishIncomplete(message: string): void {
   }
 }
 
+/**
+ * The page messages this world acts on: the current Run's own traffic, plus the
+ * stop report of the Run that STOP_SCRAPE just retired.
+ *
+ * A stopped year-wide sweep produces its report AFTER the stop, out of rows it
+ * already had, so it necessarily arrives under the id the stop retired — the
+ * alternative was throwing away the masa that had already finished (see
+ * scraper-actions.ts and ADR-0020). The window is exactly as wide as that
+ * report: the chunk stream a large result travels in (ADR-0017) plus the
+ * completion that names how many chunks must arrive. Admitting only the
+ * completion would leave the assembly empty and turn a kept sweep into
+ * "transfer hasil tidak lengkap" — precisely the large taxpayer the salvage
+ * exists for. Both are matched against the retired id, so any other late
+ * message from a cancelled run cannot pose as the current Run's.
+ */
+function isAcceptedPageMessage(msg: Record<string, unknown>): boolean {
+  if (msg.type === "SCRAPE_DATA_CHUNK") return isCurrentRunMessage(msg) || isStoppedRunMessage(msg);
+  if (msg.type === "SCRAPE_COMPLETE" && msg.cancelled === true) return isStoppedRunMessage(msg);
+  return isCurrentRunMessage(msg);
+}
+
 const pageMessageDispatcher = createMessageDispatcher({
   direction: "FROM_PAGE",
   token: getBridgeToken,
@@ -384,7 +411,45 @@ const pageMessageDispatcher = createMessageDispatcher({
         return;
       }
 
-      const outcome = runLifecycle.complete({ ...complete, data: rows });
+      // A completion that carries per-masa counts is a year-wide sweep, and the
+      // rows already on hand may be the kept half of one a stop salvaged: this is
+      // the resume, so the union is what settles, what the panel reports and what
+      // the file will hold (ADR-0023). Both guards matter — a completion with no
+      // counts is not a sweep, and a Run with no kept counts has nothing to be
+      // resumed against (a fresh sweep starts from nothing on purpose).
+      const kept = runLifecycle.result();
+      const resuming = Boolean(complete.periods && kept?.sweep);
+      const mergedRows = resuming ? unionRows(kept?.data ?? [], rows) : rows;
+      const settled: ScrapeComplete = {
+        ...complete,
+        data: mergedRows,
+        total: mergedRows.length,
+        periods:
+          resuming && kept?.sweep && complete.periods
+            ? {
+                ...mergePeriodSummaries(kept.sweep, complete.periods),
+                // The union's two halves were counted by two independent
+                // accumulators, so their counts can overlap where a failed masa
+                // had already collected rows that the resumed retry fetched
+                // again. The panel names what the FILE holds, which is the
+                // deduplicated union (ADR-0016), not the sum of the counts.
+                totalRows: mergedRows.length,
+              }
+            : complete.periods,
+      };
+
+      const outcome = runLifecycle.complete(settled);
+
+      if (outcome.kind === "salvaged") {
+        // A stopped sweep: the Run kept the months that finished (the flag is
+        // what decides that, in run-lifecycle), so the panel replaces its own
+        // cancellation line with how much of the year survived. Nothing runs
+        // automatically, and an export the user then asks for names the file as
+        // partial (exporter.ts). A stopped RESUME reports the union it kept, so
+        // the count it names is a whole sweep's remaining work, not this half's.
+        updatePanelStatus(stoppedSweepMessage(settled));
+        return;
+      }
 
       if (outcome.kind === "rejected") {
         updatePanelError(outcome.message);
@@ -393,7 +458,7 @@ const pageMessageDispatcher = createMessageDispatcher({
       }
 
       updatePanelComplete(
-        complete.total || 0,
+        settled.total || 0,
         complete.pages || 0,
         complete.elapsed || "0s",
         undefined,
@@ -410,9 +475,11 @@ const pageMessageDispatcher = createMessageDispatcher({
       // A batch has no server-side total to check against, so its
       // per-period row counts are the completeness evidence and the panel
       // reports them. Says it AFTER the completion line, which owns "selesai".
-      if (complete.periods) {
-        updatePanelStatus(batchResultNotice(complete.periods));
-        debugLog("Batch selesai:", complete.periods);
+      if (settled.periods) {
+        // The union's counts, not this half's: a resumed sweep reports the whole
+        // year it just completed, which is what the file holds.
+        updatePanelStatus(batchResultNotice(settled.periods));
+        debugLog("Batch selesai:", settled.periods);
       }
 
       // A short page is only the end of the data if the server agrees it is.
@@ -442,13 +509,14 @@ const pageMessageDispatcher = createMessageDispatcher({
         void publishCompletion(
           complete.kind ?? "scrape",
           describeCompletion({
-            total: complete.total || 0,
+            total: settled.total || 0,
             failureCount: complete.failureCount,
             missing: outcome.shortfall?.count ?? 0,
             // A batch run's own completeness evidence: the toast must not call a
-            // sweep with a failed or vanished month a clean success.
-            failedPeriods: complete.periods?.failedPeriods.length,
-            emptyPeriods: complete.periods?.emptyPeriods.length,
+            // sweep with a failed or vanished month a clean success. The union's
+            // lists, so a resumed sweep cannot hide the half that failed first.
+            failedPeriods: settled.periods?.failedPeriods.length,
+            emptyPeriods: settled.periods?.emptyPeriods.length,
             truncated: complete.truncated,
           }),
           Date.now(),
@@ -489,7 +557,7 @@ const pageMessageDispatcher = createMessageDispatcher({
       debugLog("Reference prefix search found no rows for", msg.value);
       updatePanelStatus(`Referensi "${String(msg.value)}" tidak ditemukan.`);
     },
-  }, isCurrentRunMessage),
+  }, isAcceptedPageMessage),
 });
 window.addEventListener("message", (event) => pageMessageDispatcher.handle(event));
 
@@ -644,7 +712,7 @@ function applyPageState(): void {
     injectExportButton();
     injectMultiInvoiceFilter();
     injectComparerModal();
-    if (isOutputTaxPage()) {
+    if (hasReferenceFilter()) {
       injectToolbarFilter();
       setTimeout(() => {
         injectGridFilters();

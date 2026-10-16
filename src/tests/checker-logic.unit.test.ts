@@ -476,6 +476,8 @@ describe("applyCheckerStatusFilter", () => {
   function makeMockResult(status: string): CheckResult {
     return {
       taxInvoiceNumber: "001",
+      returnNumber: "",
+      returnDate: "",
       invoiceDate: "01/01/2026",
       counterpartyName: "",
       counterpartyTIN: "",
@@ -526,6 +528,8 @@ describe("formatCheckSummary", () => {
   it("returns formatted count when mismatched results exist", () => {
     const mockResult = {
       taxInvoiceNumber: "001",
+      returnNumber: "",
+      returnDate: "",
       invoiceDate: "01/01/2026",
       counterpartyName: "",
       counterpartyTIN: "",
@@ -545,5 +549,65 @@ describe("formatCheckSummary", () => {
     };
 
     expect(formatCheckSummary([mockResult])).toBe("Ditemukan 1 faktur dengan nilai tidak sesuai.");
+  });
+});
+
+// ── A row's own document: invoice or retur nota ─────────────────────────
+// The checker runs on all four e-Faktur grids. What it DOES with a row does not
+// depend on which grid that is — the three amounts are the same fields — but
+// which field NAMES and DATES the row does, so the two are carried as their own
+// fields rather than folded into one fallback chain.
+
+describe("a row's own document", () => {
+  /** A retur nota: the fields the two Retur grids send (export-source.ts). */
+  const returRow = {
+    ReturnNumber: "RET-0007",
+    ReturnDate: "2026-07-15",
+    TaxInvoiceNumber: "04012600023333322",
+    TaxInvoiceDate: "2026-07-01",
+    BuyerName: "PT Contoh",
+    BuyerTIN: "0012345678901234",
+    SellingPrice: 1_000_000,
+    OtherTaxBase: 916_667,
+    VAT: 110_001,
+  };
+
+  it("carries the NO RETUR and the retur date, beside the invoice it returns", () => {
+    const found = checkRowAccuracy(returRow, "DPP");
+
+    // The arithmetic is unchanged by the grid: this row's PPN is wrong and is
+    // reported exactly as an invoice row's would be.
+    expect(found?.status).toBe("PPN Berbeda");
+    expect(found?.returnNumber).toBe("RET-0007");
+    expect(found?.returnDate).toBe("15/07/2026");
+    // Both dates are present on a retur row, which is why they are two fields:
+    // one chain could only ever have produced one of them.
+    expect(found?.invoiceDate).toBe("01/07/2026");
+    expect(found?.taxInvoiceNumber).toBe("04012600023333322");
+    expect(found?.counterpartyName).toBe("PT Contoh");
+  });
+
+  it("leaves both empty on an invoice row, which carries neither field", () => {
+    const found = checkRowAccuracy({
+      Reference: "REF-001",
+      TaxInvoiceNumber: "04012600023333322",
+      TaxInvoiceDate: "2026-07-01",
+      SellingPrice: 1_000_000,
+      OtherTaxBase: 916_667,
+      VAT: 110_001,
+    }, "DPP");
+
+    expect(found?.returnNumber).toBe("");
+    expect(found?.returnDate).toBe("");
+  });
+
+  it("does not read a NO RETUR as the invoice number", () => {
+    // `ReturnInvoiceNumber` (which the taxInvoiceNumber chain does read) is the
+    // INVOICE as a retur names it; `ReturnNumber` is the retur's own document.
+    // Taking one for the other would label a retur row with the wrong number.
+    const found = checkRowAccuracy({ ReturnNumber: "RET-0007" }, "DPP");
+
+    expect(found?.taxInvoiceNumber).toBe("");
+    expect(found?.returnNumber).toBe("RET-0007");
   });
 });

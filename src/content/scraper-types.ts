@@ -50,7 +50,17 @@ export interface ScrapeComplete {
   source: ExportSource;
   /** Incomplete results must not trigger pending exports or comparisons. */
   partial?: boolean;
-  /** Reserved for explicitly reported cancellation; actions currently emit no completion on stop. */
+  /**
+   * The user stopped the run, and `data` carries the rows it had already
+   * collected when it stopped — for a year-wide sweep, every masa that
+   * finished before the stop.
+   *
+   * The rows are real; only the REQUEST is unfinished. So this is not the
+   * rejected-partial flag: the receiver keeps them for a deliberate export and
+   * runs nothing automatically (see `run-lifecycle.salvage`). A cancelled
+   * completion with an empty `data` keeps the older meaning — there was nothing
+   * to keep — and is rejected rather than salvaged.
+   */
   cancelled?: boolean;
   /**
    * The server reported MORE matching rows than the scrape collected.
@@ -157,6 +167,24 @@ export type FromContentMessage = (
        * keeps working unchanged.
        */
       batchMonths?: number;
+      /**
+       * Sweep exactly these period codes instead of a count of months: the
+       * resume half of a year-wide sweep.
+       *
+       * The isolated world kept the rows of the masa that finished and sends
+       * back only the codes still missing (scrape-batch.pendingPeriods). The
+       * MAIN world narrows them against the portal's own year plan, so a stale
+       * or forged list can never request a period the portal did not offer.
+       * Absent means the ordinary count-based sweep, or no sweep at all.
+       */
+      sweepPeriods?: string[];
+      /**
+       * The tax year the kept rows were swept for. A sweep reads a period code
+       * as whatever year the grid's SEPARATE year filter says (scrape-batch.ts),
+       * so a filter that moved since the stop would mix two years into one file —
+       * the sweep refuses instead of adding them.
+       */
+      sweepYear?: string;
     }
   | { type: "STOP_SCRAPE" }
   | { type: "RESET_SCRAPER" }

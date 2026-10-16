@@ -20,11 +20,26 @@ vi.mock("../content/run-lifecycle", async (importOriginal) => {
   return { ...actual, runLifecycle: actual.createRunLifecycle() };
 });
 
-/** Which grid the fake portal says we are on. Flipped by the production cases. */
-const page = { outputTax: true };
+/**
+ * Which grid the fake portal says we are on, and whether it has an injected
+ * Referensi filter. Flipped by the production cases, and deliberately INDEPENDENT
+ * flags, because the questions are: `side` + `returns` are the grid's name,
+ * `refFilter` is whether a lookup can be handed back, the identity column
+ * follows the grid (a retur row has no Referensi at all) and the counterparty
+ * follows the side (Retur Keluaran still carries the BUYER). PPN Masukan is the
+ * case that proves they are separate facts: it filters, but has no identity.
+ */
+const page = { side: "out" as "out" | "in", returns: false, refFilter: true };
 vi.mock("../content/page-context", () => ({
-  isOutputTaxPage: () => page.outputTax,
-  isVatInvoicePage: () => true,
+  isOutputTaxPage: () => page.side === "out" && !page.returns,
+  isInputTaxPage: () => page.side === "in" && !page.returns,
+  isOutputReturnPage: () => page.side === "out" && page.returns,
+  isInputReturnPage: () => page.side === "in" && page.returns,
+  isCheckerPage: () => true,
+  isPanelPage: () => true,
+  hasReferenceFilter: () => page.refFilter,
+  checkerRowIdentity: () => (page.returns ? "no-retur" : "referensi"),
+  counterpartyIsBuyer: () => page.side === "out",
 }));
 
 // The production tab's "no data yet" path reaches the real bridge. Mocking the
@@ -128,6 +143,7 @@ describe("the tab Pengecekan, on its own", () => {
         openCheckTab,
         gridLabel: () => "PPN Keluaran",
         counterparty: () => "pembeli",
+        identity: () => "referensi",
         canSearchInGrid: () => true,
         ...deps,
       },
@@ -290,6 +306,39 @@ describe("the tab Pengecekan, on its own", () => {
     expect(headers()).toContain("Nama Penjual");
   });
 
+  it("labels the identity column for the grid, and exports the same one", async () => {
+    // The seam, so this proves the tab renders AND writes whatever identity it
+    // is handed. A retur row is a "No Retur" on screen and in the file; the
+    // production wiring above proves which grid hands it which one.
+    await mount({ identity: () => "no-retur", counterparty: () => "pembeli" });
+    finishRun([row({ VAT: 110_001, ReturnNumber: "RET-0007", ReturnDate: "2026-07-15" })]);
+    fire("ch-checker-check-btn");
+
+    expect(headers()).toContain("No Retur");
+    expect(headers()).toContain("Tanggal Retur");
+    expect(headers()).not.toContain("Referensi");
+    expect(cells(bodyRows()[0])).toContain("RET-0007");
+    expect(cells(bodyRows()[0])).toContain("15/07/2026");
+
+    fire("ch-checker-export-btn");
+    const [rows] = vi.mocked(h.exporter.downloadXLSXFile).mock.calls[0];
+    expect(rows[0]).toEqual([
+      "No", "No Retur", "Tanggal Retur", "Nama Pembeli", "NPWP/NIK Pembeli",
+      "DPP", "DPP NL", "PPN", "Selisih DPP NL", "Selisih PPN", "Status",
+    ]);
+    expect(rows[1][1]).toBe("RET-0007");
+    expect(rows[1][2]).toBe("15/07/2026");
+  });
+
+  it("falls back to the invoice number when a retur row has no NO RETUR", async () => {
+    // A retur row with an empty NO RETUR still has to be findable in the report,
+    // exactly as an invoice row with no Referensi is.
+    await mount({ identity: () => "no-retur" });
+    finishRun([row({ VAT: 110_001 })]);
+    fire("ch-checker-check-btn");
+    expect(cells(bodyRows()[0])).toContain("04012600023333322");
+  });
+
   it("re-runs the whole grid when the Acuan changes", () => {
     // A row whose DPP is wrong for its DPP NL: under DPP the base is what is
     // tested, under DPP NL it is the derived DPP that is. The verdict therefore
@@ -441,8 +490,9 @@ describe("the tab Pengecekan, on its own", () => {
   });
 
   it("offers no search on a grid that has no Referensi filter injected", async () => {
-    // PPN Masukan: main.ts injects the reference filters on isOutputTaxPage()
-    // alone, so a double-click there would silently do nothing.
+    // A Retur grid: main.ts injects no reference filter there, so a
+    // double-click would silently do nothing. (PPN Masukan DOES have one — a
+    // lookup works with a seller's reference too.)
     await mount({ canSearchInGrid: () => false });
     finishRun([row({ VAT: 110_001 })]);
     fire("ch-checker-check-btn");
@@ -452,29 +502,78 @@ describe("the tab Pengecekan, on its own", () => {
 
   it("reads the side of the transaction, the grid's name and its filter from the page", async () => {
     // The seam proves the tab obeys what it is told; this proves the PRODUCTION
-    // tab is told the right things. Without it, `canSearchInGrid: isOutputTaxPage`
+    // tab is told the right things. Without it, `canSearchInGrid`, `identity`
     // and `counterparty` could be wired to anything and every case above would
     // still pass, because they all inject their own answers.
-    page.outputTax = true;
+    page.side = "out";
+    page.returns = false;
+    page.refFilter = true;
     await mount({}, true);
     finishRun([row({ VAT: 110_001 })]);
     fire("ch-checker-check-btn");
     expect(headers()).toContain("Nama Pembeli");
+    expect(headers()).toContain("Referensi");
     expect(bodyRows()[0].listeners.dblclick ?? []).toHaveLength(1);
 
-    // PPN Masukan: the invoice's SELLER, and no injected filter to search into.
-    page.outputTax = false;
+    // PPN Masukan: the invoice's SELLER, and a hand-back that still lands — the
+    // injected filter is a LOOKUP, and a seller's reference answers one even
+    // when several purchases share it. Gating on the identity fact instead of
+    // the filter fact would drop this double-click silently, which is exactly
+    // the coupling the two page facts exist to break.
+    page.side = "in";
+    page.refFilter = true;
     await mount({}, true);
     finishRun([row({ VAT: 110_001 })]);
     fire("ch-checker-check-btn");
     expect(headers()).toContain("Nama Penjual");
+    expect(bodyRows()[0].listeners.dblclick ?? []).toHaveLength(1);
+
+    // A grid with no injected filter has nothing to search into.
+    page.refFilter = false;
+    await mount({}, true);
+    finishRun([row({ VAT: 110_001 })]);
+    fire("ch-checker-check-btn");
     expect(bodyRows()[0].listeners.dblclick ?? []).toHaveLength(0);
 
     h.run.reset();
-    page.outputTax = false;
+    page.side = "in";
+    page.refFilter = true;
     fire("ch-checker-check-btn");
     expect(el("ch-checker-status").textContent).toContain("scraping data PPN Masukan");
-    page.outputTax = true;
+    page.side = "out";
+  });
+
+  it("names a retur row by its NO RETUR, and keeps the buyer on Retur Keluaran", async () => {
+    // The production wiring on a Retur grid: the identity follows the GRID (no
+    // Referensi column exists there) while the counterparty follows the SIDE
+    // (Retur Keluaran carries the buyer, exactly as the invoice it returns
+    // does). One page fact asked to answer both would get one of them wrong.
+    page.side = "out";
+    page.returns = true;
+    page.refFilter = false;
+    await mount({}, true);
+    finishRun([row({ VAT: 110_001, ReturnNumber: "RET-0001", ReturnDate: "2026-07-15" })]);
+    fire("ch-checker-check-btn");
+
+    expect(headers()).toContain("No Retur");
+    expect(headers()).toContain("Tanggal Retur");
+    expect(headers()).not.toContain("Referensi");
+    expect(headers()).toContain("Nama Pembeli");
+    expect(cells(bodyRows()[0])).toContain("RET-0001");
+    expect(cells(bodyRows()[0])).toContain("15/07/2026");
+    // No Referensi filter is injected on a retur grid, so no hand-back is
+    // offered — the identity of the row is still read, it just cannot be looked
+    // up in the portal.
+    expect(bodyRows()[0].listeners.dblclick ?? []).toHaveLength(0);
+
+    // And the progress line names the grid the user is on.
+    h.run.reset();
+    fire("ch-checker-check-btn");
+    expect(el("ch-checker-status").textContent).toContain("scraping data Retur PPN Keluaran");
+
+    page.side = "out";
+    page.returns = false;
+    page.refFilter = true;
   });
 
   // ── Export ───────────────────────────────────────

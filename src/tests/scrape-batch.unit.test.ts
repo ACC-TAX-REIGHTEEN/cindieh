@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   PERIOD_PROPERTY,
   capturedPeriod,
+  mergePeriodSummaries,
   overridesForPeriod,
+  pendingPeriods,
   periodCode,
   periodPrefix,
   planPeriods,
@@ -30,6 +32,94 @@ const CAPTURED = JSON.stringify({
       CaseSensitive: true,
     },
   ],
+});
+
+// ── Resuming a stopped sweep ─────────────────────────
+
+/** Counts for one year, as a sweep builds them: one entry per masa it recorded. */
+function countsOf(...periods: [string, number, string?][]): PeriodCount[] {
+  return periods.map(([period, rows, error]) => ({ period, rows, error }));
+}
+
+describe("pendingPeriods — what a resume still has to fetch", () => {
+  it("names the masa a stop never got to, in year order", () => {
+    // Stopped after ten: the two that produced no counts are the work left.
+    const summary = summarisePeriods(
+      countsOf(
+        ["TD.00701", 4], ["TD.00702", 0], ["TD.00703", 7], ["TD.00704", 1],
+        ["TD.00705", 2], ["TD.00706", 3], ["TD.00707", 9], ["TD.00708", 5],
+        ["TD.00709", 6], ["TD.00710", 8],
+      ),
+      12,
+    );
+    expect(pendingPeriods(summary)).toEqual(["TD.00711", "TD.00712"]);
+  });
+
+  it("resumes a masa that FAILED but not one that was simply empty", () => {
+    // A failed masa holds no rows and the year is missing it; an empty masa was
+    // answered by the portal and is a month the taxpayer really has nothing in.
+    // Re-asking the second would spend a request to learn nothing.
+    const summary = summarisePeriods(
+      countsOf(["TD.00701", 3], ["TD.00702", 0, "Masa tidak diambil."]),
+      3,
+    );
+    expect(pendingPeriods(summary)).toEqual(["TD.00702", "TD.00703"]);
+  });
+
+  it("has nothing to resume when nothing was kept", () => {
+    // No count means no year to plan from: the caller must start a fresh sweep
+    // rather than send an empty list, which would report a finished year without
+    // making one request.
+    expect(pendingPeriods(summarisePeriods([]))).toEqual([]);
+  });
+
+  it("is empty once the union covers the year", () => {
+    const kept = summarisePeriods(countsOf(["TD.00701", 3]), 12);
+    const resumed = summarisePeriods(
+      countsOf(...["02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]
+        .map((m) => [`TD.007${m}`, 1] as [string, number])),
+      12,
+    );
+    expect(pendingPeriods(mergePeriodSummaries(kept, resumed))).toEqual([]);
+  });
+});
+
+describe("mergePeriodSummaries — the union a resume builds", () => {
+  it("folds the resumed masa in and keeps the year's own scope", () => {
+    const kept = summarisePeriods(countsOf(["TD.00701", 3], ["TD.00702", 0, "gagal"]), 12);
+    const resumed = summarisePeriods(countsOf(["TD.00702", 5], ["TD.00703", 0]), 2);
+
+    const union = mergePeriodSummaries(kept, resumed);
+
+    // `planned` is the year, not the half that just arrived: the fraction the
+    // panel prints must read "3 dari 12", never "2 dari 2".
+    expect(union.planned).toBe(12);
+    expect(union.counts.map((c) => c.period)).toEqual([
+      "TD.00701", "TD.00702", "TD.00703",
+    ]);
+    // The retry replaces the failure it retried, and the month the portal
+    // answered with nothing is flagged only because its neighbours have rows.
+    expect(union.failedPeriods).toEqual([]);
+    expect(union.emptyPeriods).toEqual(["TD.00703"]);
+    expect(union.totalRows).toBe(8);
+  });
+
+  it("lets the incoming count win for a period it covers again", () => {
+    const kept = summarisePeriods(countsOf(["TD.00701", 1]), 12);
+    const resumed = summarisePeriods(countsOf(["TD.00701", 9]), 12);
+    expect(mergePeriodSummaries(kept, resumed).counts).toEqual([{ period: "TD.00701", rows: 9 }]);
+  });
+
+  it("recomputes the empty and failed lists instead of merging them by hand", () => {
+    // A union of two all-empty halves is not an anomaly: nothing had rows on
+    // either side, so the rule that flags an empty masa between populated ones
+    // must not fire.
+    const kept = summarisePeriods(countsOf(["TD.00701", 0]), 12);
+    const resumed = summarisePeriods(countsOf(["TD.00702", 0]), 12);
+    const union = mergePeriodSummaries(kept, resumed);
+    expect(union.emptyPeriods).toEqual([]);
+    expect(union.totalRows).toBe(0);
+  });
 });
 
 describe("the portal's period code", () => {
@@ -150,6 +240,16 @@ describe("what a whole batch produced", () => {
     expect(summary.totalRows).toBe(44237);
     expect(summary.emptyPeriods).toEqual([]);
     expect(summary.failedPeriods).toEqual([]);
+  });
+
+  it("carries how many periods the sweep was asked for", () => {
+    const counts: PeriodCount[] = [{ period: "TD.00701", rows: 16756 }];
+    // A finished sweep: the counts ARE the whole answer.
+    expect(summarisePeriods(counts).planned).toBe(1);
+    // A stopped one: the counts stop where the user stopped, and `planned` is
+    // what lets the panel say "10 dari 12 masa" instead of leaving the gap to be
+    // inferred from a row count.
+    expect(summarisePeriods(counts, 12).planned).toBe(12);
   });
 
   it("flags a period that came back empty among periods that did not", () => {

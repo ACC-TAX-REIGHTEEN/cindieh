@@ -26,7 +26,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { getExportSourceSpec } from "../content/export-source";
-import { isSupportedExportPage, describePortalPage } from "../content/page-context";
+import { isSupportedExportPage, isCheckerPage, describePortalPage } from "../content/page-context";
 import type { ExportSource } from "../content/page-context";
 import { getStatusLabel } from "../content/comparer-logic";
 import { generateDynamicFilename } from "../content/exporter";
@@ -467,7 +467,52 @@ describe("microsite — supported portal pages", () => {
   });
 });
 
-// ── Status labels: comparer + checker ─────────────────────────────────────
+// ── The grids the accuracy check covers ────────────────────────────────
+//
+describe("microsite — the grids the accuracy check covers", () => {
+  /**
+   * The four e-Faktur PPN grids and the name each is printed under. The LABEL
+   * is the page's own wording (`ui-panel.currentGridLabel` builds the same
+   * four, from the URL instead of from a list); the GATE is read from the code,
+   * so a grid the check no longer runs on cannot stay advertised.
+   */
+  const CHECKER_GRIDS: readonly { readonly url: string; readonly label: string }[] = [
+    { url: `${PORTAL}/e-invoice-portal/output-tax`, label: "PPN Keluaran" },
+    { url: `${PORTAL}/e-invoice-portal/input-tax`, label: "PPN Masukan" },
+    { url: `${PORTAL}/e-invoice-portal/output-return`, label: "Retur PPN Keluaran" },
+    { url: `${PORTAL}/e-invoice-portal/input-return`, label: "Retur PPN Masukan" },
+  ];
+
+  it("names every grid the check runs on", () => {
+    const checkerPanel = panel("p6");
+    expect(checkerPanel, "the Pengecekan tab (p6) lost its panel").not.toBe("");
+
+    for (const { url, label } of CHECKER_GRIDS) {
+      expect(
+        isCheckerPage(url),
+        `page-context.ts no longer runs the check on ${url} — drop it from this suite`,
+      ).toBe(true);
+      expect(checkerPanel.includes(label), `the Pengecekan panel does not name ${label}`).toBe(true);
+    }
+  });
+
+  it("advertises no page the check cannot run on", () => {
+    // The other direction, and the reason the copy names all four grids instead
+    // of saying "the PPN pages": a supported page outside the four must not be
+    // readable as one where Pengecekan runs.
+    for (const url of [
+      `${PORTAL}/returnsheets-portal/value-added-tax-return`,
+      `${PORTAL}/returnsheets-portal/article-21-26-tax-return`,
+      `${PORTAL}/withholding-slips-portal/my-withholding-slips`,
+    ]) {
+      expect(isCheckerPage(url)).toBe(false);
+      const name = describePortalPage(url).replace("Terhubung: ", "");
+      expect(panel("p6").includes(name), `the Pengecekan panel names ${name}`).toBe(false);
+    }
+  });
+});
+
+// ── Status labels: comparer + checker ─────────────────────────────────
 
 describe("microsite — status labels", () => {
   const comparerLegend = statusLegend("p5");

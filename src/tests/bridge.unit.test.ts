@@ -46,6 +46,45 @@ describe("createBridge — token generation and messaging", () => {
     expect(b.isCurrentRunMessage({ type: "REFERENCE_SEARCH_NOT_FOUND" })).toBe(true);
   });
 
+  it("admits the stopped Run's salvage report, and nothing else under its id", () => {
+    const win = {
+      location: { origin: "https://coretaxdjp.pajak.go.id", href: "https://coretaxdjp.pajak.go.id/a" },
+      postMessage: vi.fn(),
+    };
+    const b = createBridge(win as unknown as Window);
+    b.postToScraper({ type: "START_SCRAPE" });
+    const stopped = b.getActiveRunId();
+    b.postToScraper({ type: "STOP_SCRAPE" });
+    const next = b.getActiveRunId();
+
+    // The one report a stop must still recognise: a stopped sweep describes
+    // itself AFTER the stop, so it necessarily arrives under the retired id.
+    expect(b.isStoppedRunMessage({ type: "SCRAPE_COMPLETE", runId: stopped })).toBe(true);
+    // ...while the ordinary current-run test refuses it, which is what keeps the
+    // exception to a single message type in main.ts.
+    expect(b.isCurrentRunMessage({ type: "SCRAPE_COMPLETE", runId: stopped })).toBe(false);
+    // The bridge answers the ID question only; WHICH message types may use that
+    // window is the router's call (main.ts admits exactly one).
+    expect(b.isStoppedRunMessage({ type: "SCRAPE_PROGRESS", runId: stopped })).toBe(true);
+    // Not the live run, and not an unscoped message either.
+    expect(b.isStoppedRunMessage({ type: "SCRAPE_COMPLETE", runId: next })).toBe(false);
+    expect(b.isStoppedRunMessage({ type: "SCRAPE_COMPLETE" })).toBe(false);
+
+    // A teardown leaves nothing behind, and that includes no salvage window.
+    b.postToScraper({ type: "RESET_SCRAPER" });
+    expect(b.isStoppedRunMessage({ type: "SCRAPE_COMPLETE", runId: next })).toBe(false);
+  });
+
+  it("has no salvage window before any stop", () => {
+    const win = {
+      location: { origin: "https://coretaxdjp.pajak.go.id", href: "https://coretaxdjp.pajak.go.id/a" },
+      postMessage: vi.fn(),
+    };
+    const b = createBridge(win as unknown as Window);
+    b.postToScraper({ type: "START_SCRAPE" });
+    expect(b.isStoppedRunMessage({ type: "SCRAPE_COMPLETE", runId: b.getActiveRunId() })).toBe(false);
+  });
+
   it("rejects a stale completion after the page URL changes without any new run", () => {
     const win = {
       location: { origin: "https://coretaxdjp.pajak.go.id", href: "https://coretaxdjp.pajak.go.id/a" },

@@ -500,7 +500,7 @@ describe("the year-wide export entry", () => {
   });
 });
 
-// ── The Komparator's entry point ────────────────────────────────────────
+// ── The Komparator's entry point ──────────────────────────────────────
 // The Bandingkan button is PPN Keluaran's alone: the Komparator matches
 // internal records to Coretax by Referensi, and a PPN Masukan Referensi is the
 // seller's (README.md, "Kenapa Komparator tidak ikut ke PPN Masukan?").

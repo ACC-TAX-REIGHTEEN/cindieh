@@ -1,7 +1,8 @@
 // Pure result grids for the AOA writer; display formatting never changes values.
 import type { ComparisonResult } from "./comparer";
 import type { BenchmarkType, CheckResult } from "./checker-logic";
-import { COUNTERPARTY_LABEL, type Counterparty } from "./result-columns";
+import { CHECKER_IDENTITIES, COUNTERPARTY_LABEL, type Counterparty } from "./result-columns";
+import type { CheckerRowIdentity } from "./page-context";
 
 export type ResultExportRows = (string | number | null)[][];
 
@@ -23,14 +24,22 @@ export function buildComparisonExportRows(
   ];
 }
 
+/**
+ * The checker sheet. The identity column is the grid's own (a retur row is a
+ * "No Retur", an invoice row a "Referensi"), read from the table the panel
+ * reads, so the file and the screen identify a row the same way. The default is
+ * the invoice grids' identity.
+ */
 export function buildCheckerExportRows(
   results: readonly CheckResult[],
   benchmark: BenchmarkType,
   counterparty: Counterparty = "pembeli",
+  identity: CheckerRowIdentity = "referensi",
 ): ResultExportRows {
+  const identitySpec = CHECKER_IDENTITIES[identity];
   return [
     [
-      "No", "Referensi", "Tanggal",
+      "No", identitySpec.label, identitySpec.dateLabel,
       `Nama ${COUNTERPARTY_LABEL[counterparty]}`,
       `NPWP/NIK ${COUNTERPARTY_LABEL[counterparty]}`,
       "DPP", "DPP NL", "PPN",
@@ -39,7 +48,7 @@ export function buildCheckerExportRows(
       "Status",
     ],
     ...results.map((r, idx) => [
-      idx + 1, r.reference || r.taxInvoiceNumber, r.invoiceDate,
+      idx + 1, identitySpec.value(r), identitySpec.date(r),
       r.counterpartyName, r.counterpartyTIN,
       r.dppSystem, r.dppNilaiLainSystem, r.ppnSystem,
       benchmark === "DPP" ? r.dppNilaiLainDiff : r.dppDiff,

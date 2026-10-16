@@ -25,6 +25,7 @@ import {
   batchScopeError,
   capturedPeriod,
   capturedYear,
+  describeSweepFilters,
   overridesForPeriod,
   planPeriods,
   summarisePeriods,
@@ -383,13 +384,30 @@ export const PERIOD_RETRY_DELAY_MS = 2000;
  * @param interceptRequest - Promise factory that resolves with the captured XHR.
  * @param options.skipPdf - On withholding pages, collect the rows without the
  *   bulk PDF download that a withholding scrape otherwise performs.
+ * @param options.batchMonths - Sweep this many months of the year, from January.
+ * @param options.sweepPeriods - Sweep exactly these period codes instead: the
+ *   resume half of a year-wide sweep (see scrape-batch.pendingPeriods).
+ * @param options.sweepYear - The year the kept rows belong to, for a resume:
+ *   the sweep refuses when the grid's own year filter no longer matches it.
  */
 export async function startScraping(
   interceptRequest: () => Promise<CapturedRequest>,
   ctx: ScraperContext,
-  options: { skipPdf?: boolean; batchMonths?: number } = {},
+  options: {
+    skipPdf?: boolean;
+    batchMonths?: number;
+    sweepPeriods?: string[];
+    sweepYear?: string;
+  } = {},
 ): Promise<void> {
-  debugLog(`▶ Starting scrape${options.batchMonths ? ` (${options.batchMonths} masa)` : ""}...`);
+  // A resume is a sweep too: it asks for a subset of the year.
+  const resume = options.sweepPeriods?.length ? options.sweepPeriods : undefined;
+  const sweeping = Boolean(options.batchMonths || resume);
+  debugLog(
+    `▶ Starting scrape${
+      sweeping ? ` (${resume ? `${resume.length} masa dilanjutkan` : `${options.batchMonths} masa`})` : ""
+    }...`,
+  );
   if (ctx.isStopRequested()) return;
 
   try {
@@ -412,18 +430,86 @@ export async function startScraping(
     // codes come from the request the portal just made (never from anything
     // invented here), and the year is a SEPARATE filter that decides which year
     // those codes read. See batchScopeError for what each missing one costs.
-    const batchError = options.batchMonths ? batchScopeError(captured.rawBody) : null;
+    //
+    // The reading is logged BEFORE that guard can throw, because the grids whose
+    // filter names were never measured are the ones most likely to be refused,
+    // and the refusal is the measurement: this line names the spelling the guard
+    // would have to learn (ADR-0019, tools/README.md).
+    if (sweeping) {
+      debugLog(`Sweep filters on ${captured.source}: ${describeSweepFilters(captured.rawBody)}`);
+    }
+    const batchError = sweeping ? batchScopeError(captured.rawBody) : null;
     if (batchError) throw new Error(batchError);
 
-    const periods = options.batchMonths
-      ? planPeriods(capturedPeriod(captured.rawBody) ?? "", options.batchMonths)
-      : [];
+    const year = capturedYear(captured.rawBody);
+    // A resume says which year its kept rows came from. The grid's year filter
+    // is what decides which year a period code READS as, so a filter that moved
+    // since the stop would put two years in one file — refuse instead of
+    // fetching the same month codes from another year.
+    if (resume && options.sweepYear && year !== options.sweepYear) {
+      throw new Error(
+        `Filter tahun grid sekarang ${year ?? "belum diset"}, sedangkan sisa ekspor berasal dari tahun ${options.sweepYear}. ` +
+          "Setel filter tahun grid ke tahun itu, lalu lanjutkan kembali.",
+      );
+    }
+
+    // A resume NARROWS the portal's own year plan: the codes arrive from the
+    // isolated world, and one outside the plan is dropped rather than requested,
+    // because a period value invented anywhere but the portal's own request is a
+    // period the portal has never heard of (ADR-0018).
+    const periods = resume
+      ? planPeriods(capturedPeriod(captured.rawBody) ?? "").filter((code) => resume.includes(code))
+      : options.batchMonths
+        ? planPeriods(capturedPeriod(captured.rawBody) ?? "", options.batchMonths)
+        : [];
+
+    if (resume && periods.length === 0) {
+      throw new Error(
+        "Masa yang diminta untuk dilanjutkan tidak cocok dengan filter grid saat ini. " +
+          "Muat ulang grid pada tahun yang sama, lalu coba lagi.",
+      );
+    }
     const accumulator: ScrapeAccumulator = { allData: [], seen: new Set<string>() };
     const periodCounts: PeriodCount[] = [];
 
     let page = 0;
     let truncated = false;
     let expectedTotal: number | null = null;
+
+    // The report a stopped sweep owes, built from what it already has.
+    //
+    // The ONE place a stop surfaces is the check after the period loop: an
+    // interrupted request is caught by the per-period try below and recorded as
+    // that period's failure, the stop then breaks the loop, and this is what
+    // runs. A stop with no rows sends nothing — there is nothing to keep, and
+    // the panel's own cancellation line is then the whole truth.
+    //
+    // `cancelled` (not `partial`) is the load-bearing part: the receiver keeps
+    // these rows for a deliberate export and runs nothing automatically, because
+    // a stopped year must not produce a file that looks finished (run-lifecycle
+    // .salvage, exporter's partial marker).
+    const emitStoppedSweep = (): void => {
+      const rows = accumulator.allData;
+      if (periods.length === 0 || rows.length === 0) return;
+      debugLog(
+        `⏹ Stopped after ${periodCounts.length}/${periods.length} periods — keeping ${rows.length} rows`,
+      );
+      sendScrapeComplete(ctx.sendToContent, {
+        type: "SCRAPE_COMPLETE",
+        data: rows,
+        fields: [...collectFields(rows)],
+        total: rows.length,
+        pages: page,
+        elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}s`,
+        // The sweep cannot start without a year filter (batchScopeError), so the
+        // year IS the name — the isolated world marks it as partial at export.
+        filenameHint: capturedYear(captured.rawBody) || undefined,
+        source: captured.source,
+        cancelled: true,
+        truncated,
+        periods: summarisePeriods(periodCounts, periods.length),
+      });
+    };
 
     // One period at a time, into ONE accumulator. The row counts are taken
     // around each call rather than from the server: the server's count is per
@@ -473,6 +559,11 @@ export async function startScraping(
         debugError(`❌ Masa ${period} gagal:`, failure);
         continue;
       }
+      // A stop during this period cut it short. It is neither a month with rows
+      // nor an empty one, so it is not recorded at all: a stopped span is not a
+      // finding about the taxpayer's data, and "masa tanpa baris" would tell the
+      // reader to go and check a month the sweep never finished asking for.
+      if (ctx.isStopRequested()) break;
       page += result.page;
       periodCounts.push({ period, rows: accumulator.allData.length - before });
       truncated = truncated || result.truncated;
@@ -506,6 +597,7 @@ export async function startScraping(
 
     if (ctx.isStopRequested()) {
       debugLog("⏹ Stopped by user.");
+      emitStoppedSweep();
       return;
     }
 

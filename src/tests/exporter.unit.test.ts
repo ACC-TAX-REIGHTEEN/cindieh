@@ -106,6 +106,28 @@ describe("escapeCSV", () => {
 // ============================================================
 // generateDynamicFilename — prefix correctness for all 11 ExportSource values
 // ============================================================
+describe("generateDynamicFilename — a stopped sweep's file", () => {
+	it("marks the name, because ten months read like twelve in a file", () => {
+		const exportData: ExportData = {
+			data: [],
+			fields: [],
+			source: "INPUT_TAX",
+			filenameHint: "2026",
+			partialSweep: true,
+		};
+
+		expect(generateDynamicFilename(exportData)).toBe("FPM-2026-sebagian");
+	});
+
+	it("leaves a whole run's name alone", () => {
+		const whole: ExportData = { data: [], fields: [], source: "INPUT_TAX", filenameHint: "2026" };
+
+		expect(generateDynamicFilename(whole)).toBe("FPM-2026");
+		// Explicitly false is the same thing: only the exception is marked.
+		expect(generateDynamicFilename({ ...whole, partialSweep: false })).toBe("FPM-2026");
+	});
+});
+
 describe("generateDynamicFilename — prefix for each ExportSource", () => {
 	const allSources: ExportSource[] = [
 		"OUTPUT_TAX",
