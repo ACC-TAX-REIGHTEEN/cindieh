@@ -11,7 +11,7 @@
 
 import { extractFilenameHintFromBody } from "./page-context";
 import type { ExportSource } from "./page-context";
-import { debugLog, debugError, debugWarn } from "./debug";
+import { debugLog, debugError } from "./debug";
 import { sendScrapeComplete } from "./scrape-result-transfer";
 import { mergeRows, collectFields, describePdfItem } from "./scraper-helpers";
 import {
@@ -28,9 +28,9 @@ import {
   describeSweepFilters,
   overridesForPeriod,
   planPeriods,
-  summarisePeriods,
-  type PeriodCount,
+  type PeriodSummary,
 } from "./scrape-batch";
+import { runPeriodSweep } from "./period-sweep";
 import {
   DEFAULT_DELAY_PRESET,
   scaleDelay,
@@ -367,17 +367,6 @@ export async function downloadBulkWithholdingPdf(
 // ── Main scraping orchestrator ────────────────────────
 
 /**
- * Attempts per period in a year-wide sweep: the first, plus at most one retry.
- * One transient failure would otherwise cost the rest of the year — a re-run the
- * user pays for with twelve requests, where a retry costs one. Sequential, so the
- * request rate during the retry is unchanged.
- */
-export const PERIOD_ATTEMPTS = 2;
-
-/** Pause before a period's one retry — paced like every other delay. */
-export const PERIOD_RETRY_DELAY_MS = 2000;
-
-/**
  * Full scrape: intercept → paginate → (bulk PDF if withholding) → complete.
  * Caller is responsible for setting `isRunning` state before and after.
  *
@@ -472,141 +461,57 @@ export async function startScraping(
       );
     }
     const accumulator: ScrapeAccumulator = { allData: [], seen: new Set<string>() };
-    const periodCounts: PeriodCount[] = [];
 
     let page = 0;
     let truncated = false;
     let expectedTotal: number | null = null;
+    let periodSummary: PeriodSummary | null = null;
 
-    // The report a stopped sweep owes, built from what it already has.
-    //
-    // The ONE place a stop surfaces is the check after the period loop: an
-    // interrupted request is caught by the per-period try below and recorded as
-    // that period's failure, the stop then breaks the loop, and this is what
-    // runs. A stop with no rows sends nothing — there is nothing to keep, and
-    // the panel's own cancellation line is then the whole truth.
-    //
-    // `cancelled` (not `partial`) is the load-bearing part: the receiver keeps
-    // these rows for a deliberate export and runs nothing automatically, because
-    // a stopped year must not produce a file that looks finished (run-lifecycle
-    // .salvage, exporter's partial marker).
-    const emitStoppedSweep = (): void => {
-      const rows = accumulator.allData;
-      if (periods.length === 0 || rows.length === 0) return;
-      debugLog(
-        `⏹ Stopped after ${periodCounts.length}/${periods.length} periods — keeping ${rows.length} rows`,
-      );
-      sendScrapeComplete(ctx.sendToContent, {
-        type: "SCRAPE_COMPLETE",
-        data: rows,
-        fields: [...collectFields(rows)],
-        total: rows.length,
-        pages: page,
-        elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}s`,
-        // The sweep cannot start without a year filter (batchScopeError), so the
-        // year IS the name — the isolated world marks it as partial at export.
-        filenameHint: capturedYear(captured.rawBody, captured.source) || undefined,
-        source: captured.source,
-        cancelled: true,
-        truncated,
-        periods: summarisePeriods(periodCounts, periods.length),
-      });
-    };
-
-    // One period at a time, into ONE accumulator. The row counts are taken
-    // around each call rather than from the server: the server's count is per
-    // period and, on this endpoint, is not a count at all (see readGridTotal).
-    for (const [index, period] of periods.entries()) {
-      if (ctx.isStopRequested()) break;
-      const before = accumulator.allData.length;
-      let result: ScrapePaginatedResult | null = null;
-      let failure: string | null = null;
-
-      // A period gets ONE retry, and it is abandoned the moment the run is
-      // stopped. The sweep below is the only place a whole year is fetched, so
-      // a single transient failure here would otherwise cost every month still
-      // to come.
-      for (let attempt = 1; attempt <= PERIOD_ATTEMPTS && !ctx.isStopRequested(); attempt++) {
-        try {
-          // Throws when the captured request has no period filter, which is the
-          // case where a "batch" would silently re-scrape one period N times.
-          result = await scrapePaginated(
+    // A sweep is its own module: the period loop, its one retry, the per-period
+    // counts and the report a stop owes all live there, so those rules are
+    // measurable without a portal request (period-sweep.ts, ADR-0018/0020).
+    if (periods.length > 0) {
+      const sweep = await runPeriodSweep({
+        captured,
+        periods,
+        rows: accumulator,
+        ctx,
+        startedAt: startTime,
+        // `overridesForPeriod` throws when the request carries no period filter
+        // — the case where a "batch" would silently re-scrape one month twelve
+        // times. The scope guard above refuses that before this loop is entered.
+        fetchPeriod: (period) =>
+          scrapePaginated(
             captured,
             step,
             ctx,
             overridesForPeriod(captured.rawBody, period, 0, step, captured.source),
             accumulator,
-          );
-          failure = null;
-          break;
-        } catch (err) {
-          failure = err instanceof Error ? err.message : String(err);
-          if (attempt < PERIOD_ATTEMPTS && !ctx.isStopRequested()) {
-            debugWarn(`Masa ${period} gagal (percobaan ${attempt}), dicoba sekali lagi:`, failure);
-            await ctx.delay(scaleDelay(PERIOD_RETRY_DELAY_MS, pacingOf(ctx)));
-          }
-        }
-      }
-
-      if (!result) {
-        // Nothing after the retry either: the period is recorded and the sweep
-        // continues — eleven months of a year is worth more than none, and the
-        // summary lists it as failed rather than quietly short.
-        if (ctx.isStopRequested()) break;
-        periodCounts.push({
-          period,
-          rows: accumulator.allData.length - before,
-          error: failure ?? "Masa tidak diambil.",
-        });
-        debugError(`❌ Masa ${period} gagal:`, failure);
-        continue;
-      }
-      // A stop during this period cut it short. It is neither a month with rows
-      // nor an empty one, so it is not recorded at all: a stopped span is not a
-      // finding about the taxpayer's data, and "masa tanpa baris" would tell the
-      // reader to go and check a month the sweep never finished asking for.
-      if (ctx.isStopRequested()) break;
-      page += result.page;
-      periodCounts.push({ period, rows: accumulator.allData.length - before });
-      truncated = truncated || result.truncated;
-      ctx.sendToContent({
-        type: "SCRAPE_PROGRESS",
-        total: accumulator.allData.length,
-        page,
-        elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}s`,
-        status: `Masa ${index + 1}/${periods.length} (${period}) — ${accumulator.allData.length} baris`,
+          ),
       });
-      // Between periods the pause is the run's own, not a page's, so it is
-      // paced like every other inter-request delay: it may only ever be slower.
-      if (index + 1 < periods.length && !ctx.isStopRequested()) {
-        await ctx.delay(scaleDelay(100, pacingOf(ctx)));
-      }
-    }
-
-    if (periods.length === 0) {
+      // The stopped report has already gone out, built from the masa that
+      // finished; settling this as a completion would contradict it (ADR-0020).
+      if (sweep.stopped) return;
+      page = sweep.pages;
+      truncated = sweep.truncated;
+      periodSummary = sweep.summary;
+      // The per-period counts cannot be compared against one total, so the
+      // server's claim is dropped rather than reported against the whole year.
+      expectedTotal = null;
+    } else {
       const result = await scrapePaginated(captured, step, ctx, {}, accumulator);
       page = result.page;
       truncated = result.truncated;
       expectedTotal = result.expectedTotal;
-    } else if (truncated) {
-      // The per-period counts cannot be compared against one total, so the
-      // server's claim is dropped rather than reported against the whole year.
-      expectedTotal = null;
     }
 
     const allData = accumulator.allData;
-    const periodSummary = periods.length > 0 ? summarisePeriods(periodCounts) : null;
 
     if (ctx.isStopRequested()) {
+      // Only a plain scrape reaches here: a sweep's stop is reported and
+      // returned above, and a stopped ordinary scrape has never sent anything.
       debugLog("⏹ Stopped by user.");
-      emitStoppedSweep();
       return;
-    }
-
-    if (periodSummary?.emptyPeriods.length) {
-      debugWarn(
-        `Masa kosong di tengah periode berisi data: ${periodSummary.emptyPeriods.join(", ")}`,
-      );
     }
 
     const fieldSet = collectFields(allData);

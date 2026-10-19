@@ -84,9 +84,9 @@ export default defineConfig({
       // is covered directly. Do not paper the gap over by lowering a floor; move
       // it by testing the seam underneath.
       thresholds: {
-        statements: 93.8,
-        branches: 87.8,
-        functions: 91.3,
+        statements: 93.9,
+        branches: 88.0,
+        functions: 91.4,
         lines: 95.1,
       },
     },
