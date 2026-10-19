@@ -11,12 +11,49 @@ import {
   generateDynamicFilename,
   downloadWorkbookFile,
   createXlsxChunkLoader,
+  resultNumberFormats,
+  RESULT_DIFFERENCE_FORMAT,
+  RESULT_NUMBER_FORMAT,
   XLSX_CHUNK_PATH,
   type XlsxModule,
 } from "../content/exporter";
 import { getExportSourceSpec } from "../content/export-source";
 import type { ExportData } from "../content/exporter";
 import { stubFakeDom, type FakeDoc, type FakeEl } from "./__mocks__/fake-dom";
+
+// ============================================================
+// resultNumberFormats — a result sheet's formats, read off its columns
+// ============================================================
+describe("resultNumberFormats", () => {
+	it("maps each declared column format to the column's own index", () => {
+		const formats = resultNumberFormats([
+			{},
+			{ format: "amount" },
+			{},
+			{ format: "difference" },
+			{ format: "amount" },
+		]);
+
+		expect(formats).toEqual({
+			1: RESULT_NUMBER_FORMAT,
+			3: RESULT_DIFFERENCE_FORMAT,
+			4: RESULT_NUMBER_FORMAT,
+		});
+	});
+
+	it("leaves text columns and the row number unformatted", () => {
+		// The "No" column is a number too, but a plain one: formatting it as an
+		// amount is how a report starts showing "1,00" next to its own row count.
+		expect(resultNumberFormats([{}, {}, {}])).toEqual({});
+	});
+
+	it("follows the columns, so inserting one ahead of the amounts shifts nothing", () => {
+		const before = resultNumberFormats([{ format: "amount" }]);
+		const after = resultNumberFormats([{}, { format: "amount" }]);
+		expect(before).toEqual({ 0: RESULT_NUMBER_FORMAT });
+		expect(after).toEqual({ 1: RESULT_NUMBER_FORMAT });
+	});
+});
 
 // ============================================================
 // buildCSV

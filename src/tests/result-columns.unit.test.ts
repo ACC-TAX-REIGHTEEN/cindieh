@@ -2,7 +2,17 @@
 // These pin what used to be four index-coupled arrays inside a renderer:
 // which columns exist, in what order, with which class and which cell value.
 import { describe, it, expect } from "vitest";
-import { comparisonColumns, checkerColumns } from "../content/result-columns";
+import {
+  COUNTERPARTY_LABEL,
+  checkerColumns,
+  checkerSchema,
+  checkerSheetColumns,
+  comparerSchema,
+  comparerSheetColumns,
+  comparisonColumns,
+  type Counterparty,
+} from "../content/result-columns";
+import type { CheckerRowIdentity } from "../content/page-context";
 import type { ComparisonResult, ComparisonStatus } from "../content/comparer";
 import type { BenchmarkType, CheckResult } from "../content/checker-logic";
 
@@ -99,6 +109,80 @@ describe("comparisonColumns", () => {
 
   it("numbers rows from the page's start index rather than restarting", () => {
     expect(cells(comparisonColumns(false), comparison(), 20)[0]).toBe("21");
+  });
+});
+
+describe("comparerSchema — the grid beside the wider file", () => {
+  /** The sheet half's labels, in the file's own order. */
+  function sheetLabels(refLainEnabled: boolean): string[] {
+    return labels(comparerSheetColumns(refLainEnabled));
+  }
+
+  it("declares the file's wider columns beside the grid's, in the file's order", () => {
+    expect(sheetLabels(false)).toEqual([
+      "No", "Referensi", "Nama Pembeli", "Tanggal", "NIK/NPWP", "Nomor Faktur Pajak",
+      "DPP Coretax", "DPP Baru", "PPN Coretax", "PPN Baru", "Selisih PPN", "Status",
+    ]);
+    expect(sheetLabels(true)).toEqual([
+      "No", "Referensi", "Referensi Lain", "Nama Pembeli", "Tanggal", "NIK/NPWP",
+      "Nomor Faktur Pajak", "DPP Coretax", "DPP Baru", "PPN Coretax", "PPN Baru",
+      "Selisih PPN", "Status",
+    ]);
+  });
+
+  it("gives every grid column a file column, and only three the grid does not show", () => {
+    // The invariant the pairing exists for: the grid's order is the file's order
+    // with the file-only columns taken out, so a column cannot be on the table
+    // and missing from the sheet (or sit somewhere else there).
+    const FILE_ONLY = ["Tanggal", "NIK/NPWP", "Nomor Faktur Pajak"];
+    for (const refLainEnabled of [false, true]) {
+      const schema = comparerSchema(refLainEnabled);
+      const sheet = sheetLabels(refLainEnabled);
+
+      expect(schema.filter((column) => column.screen === null)).toHaveLength(FILE_ONLY.length);
+      expect(sheet.filter((label) => !FILE_ONLY.includes(label))).toEqual(
+        labels(comparisonColumns(refLainEnabled)),
+      );
+      expect(sheet).toHaveLength(comparisonColumns(refLainEnabled).length + FILE_ONLY.length);
+    }
+  });
+
+  it("writes the raw status and raw amounts in the file, the friendly label and formatted amounts on screen", () => {
+    const row = comparison({ status: "DPP_BERBEDA" });
+    const schema = comparerSchema(false);
+    const sheet = comparerSheetColumns(false);
+
+    expect(cells(comparisonColumns(false), row)).toContain("DPP Berbeda");
+    expect(sheet.map((column) => column.value(row, 0))).toContain("DPP_BERBEDA");
+    // A number stays a number so a spreadsheet can sum it.
+    const dppCoretax = sheet.findIndex((column) => column.label === "DPP Coretax");
+    expect(sheet[dppCoretax]!.value(row, 0)).toBe(row.dppSistem);
+    // The file-only columns read the row's own document fields.
+    const value = (label: string): string | number | null =>
+      schema.find((column) => column.sheet.label === label)!.sheet.value(row, 0);
+    expect(value("Tanggal")).toBe(row.invoiceDate);
+    expect(value("NIK/NPWP")).toBe(row.buyerTIN);
+    expect(value("Nomor Faktur Pajak")).toBe(row.taxInvoiceNumber);
+  });
+
+  it("marks the amount columns as amounts, and nothing else", () => {
+    // What the workbook's number formats are derived from (exporter.resultNumberFormats).
+    const amounts = comparerSheetColumns(true)
+      .filter((column) => column.format === "amount")
+      .map((column) => column.label);
+    expect(amounts).toEqual([
+      "DPP Coretax", "DPP Baru", "PPN Coretax", "PPN Baru", "Selisih PPN",
+    ]);
+    expect(comparerSheetColumns(true).map((column) => column.format)).not.toContain("difference");
+    expect(comparerSheetColumns(true)[0]!.format).toBeUndefined();
+    expect(comparerSheetColumns(true).at(-1)!.format).toBeUndefined();
+  });
+
+  it("returns a fresh schema each call", () => {
+    const first = comparerSchema(false);
+    first.pop();
+    expect(comparerSchema(false)).toHaveLength(12);
+    expect(comparerSchema(true)).toHaveLength(13);
   });
 });
 
@@ -241,5 +325,105 @@ describe("checkerColumns", () => {
     expect(checkerColumns("DPP")).toHaveLength(10);
     expect(comparisonColumns(false)).toHaveLength(9);
     expect(comparisonColumns(false)).toHaveLength(9);
+  });
+});
+
+// ── The checker's two views of one table ──────────────
+// The grid and the file used to be described separately, so a column could be
+// added to one and silently left out of the other. `checkerSchema` is now the one
+// definition: every column carries the sheet half (required) and, optionally,
+// the table half. These pin both readings of it, and the two asymmetries that
+// remain deliberate: the file's NPWP/NIK column, and a cell formatted for the
+// eye but written raw for the spreadsheet.
+
+describe("checkerSchema — one table for the grid and the file", () => {
+  const BENCHMARKS: BenchmarkType[] = ["DPP", "DPP_NILAI_LAIN", "PPN"];
+  const SIDES: Counterparty[] = ["pembeli", "penjual"];
+  const IDENTITIES: CheckerRowIdentity[] = ["referensi", "no-retur"];
+
+  it("is what both views read", () => {
+    for (const benchmark of BENCHMARKS) {
+      const schema = checkerSchema(benchmark);
+      expect(labels(checkerColumns(benchmark))).toEqual(
+        schema.flatMap((column) => (column.screen ? [column.screen.label] : [])),
+      );
+      expect(checkerSheetColumns(benchmark).map((column) => column.label)).toEqual(
+        schema.map((column) => column.sheet.label),
+      );
+    }
+  });
+
+  it("puts every column the table shows into the file, in the same order", () => {
+    // The property the shared schema exists for. A new table column without a
+    // sheet half does not compile; this catches the other direction — a column
+    // the file forgets, or reorders, on any of the twelve grid/benchmark pairs.
+    for (const benchmark of BENCHMARKS) {
+      for (const counterparty of SIDES) {
+        for (const identity of IDENTITIES) {
+          const table = labels(checkerColumns(benchmark, counterparty, identity));
+          const sheet = checkerSheetColumns(benchmark, counterparty, identity).map((c) => c.label);
+          expect(sheet.filter((label) => table.includes(label))).toEqual(table);
+        }
+      }
+    }
+  });
+
+  it("keeps the counterparty's NPWP/NIK in the file only, and says whose it is", () => {
+    for (const side of SIDES) {
+      const fileOnly = checkerSchema("DPP", side)
+        .filter((column) => column.screen === null)
+        .map((column) => column.sheet.label);
+
+      expect(fileOnly).toEqual([`NPWP/NIK ${COUNTERPARTY_LABEL[side]}`]);
+      expect(labels(checkerColumns("DPP", side))).not.toContain(fileOnly[0]);
+    }
+  });
+
+  it("formats one amount for the eye and writes the same amount raw for the sheet", () => {
+    const dpp = checkerSchema("DPP").find((column) => column.sheet.label === "DPP");
+    expect(dpp?.screen).not.toBeNull();
+
+    expect(dpp?.screen?.value(check({ dppSystem: 1234 }), 0)).toBe("1.234");
+    expect(dpp?.sheet.value(check({ dppSystem: 1234 }), 0)).toBe(1234);
+    // Missing stays missing on both sides, but only as a cell the writer can
+    // leave empty: "-" in the table, null in the file.
+    expect(dpp?.screen?.value(check({ dppSystem: null }), 0)).toBe("-");
+    expect(dpp?.sheet.value(check({ dppSystem: null }), 0)).toBeNull();
+  });
+
+  it("numbers the sheet's rows exactly as the table numbers them", () => {
+    const no = checkerSchema("DPP")[0]!;
+    expect(no.screen?.value(check(), 20)).toBe("21");
+    expect(no.sheet.value(check(), 20)).toBe(21);
+  });
+
+  it("hides a difference within tolerance in the table but keeps the number in the file", () => {
+    // The suppression is a display rule; a spreadsheet still gets the value.
+    const row = check({ benchmark: "DPP", dppNilaiLainDiff: 1, tolerance: 1 });
+    const column = checkerSchema("DPP").find((c) => c.sheet.label === "Selisih DPP NL");
+
+    expect(column?.screen?.value(row, 0)).toBe("-");
+    expect(column?.sheet.value(row, 0)).toBe(1);
+  });
+
+  it("names and dates both halves by the grid's own document", () => {
+    const schema = checkerSchema("DPP", "pembeli", "no-retur");
+    expect(schema.slice(1, 3).map((column) => [column.screen?.label, column.sheet.label])).toEqual([
+      ["No Retur", "No Retur"],
+      ["Tanggal Retur", "Tanggal Retur"],
+    ]);
+
+    const retur = check({ returnNumber: "RET-0007", returnDate: "15/07/2026" });
+    expect(schema[1]?.sheet.value(retur, 0)).toBe("RET-0007");
+    expect(schema[2]?.sheet.value(retur, 0)).toBe("15/07/2026");
+  });
+
+  it("gives every column a unique label, so a column can be named unambiguously", () => {
+    for (const benchmark of BENCHMARKS) {
+      for (const side of SIDES) {
+        const sheet = checkerSheetColumns(benchmark, side).map((c) => c.label);
+        expect(new Set(sheet).size).toBe(sheet.length);
+      }
+    }
   });
 });

@@ -16,7 +16,7 @@
 // ============================================================
 
 import type { ComparisonResult } from "./comparer";
-import { downloadXLSXFile, downloadCSVFile, RESULT_NUMBER_FORMAT } from "./exporter";
+import { downloadXLSXFile, downloadCSVFile, resultNumberFormats } from "./exporter";
 import {
   buildComparisonExportRows,
   COMPARISON_EXPORT_BASENAME,
@@ -24,7 +24,7 @@ import {
   resultExportFilename,
   type ResultExportFormat,
 } from "./comparer-export";
-import { comparisonColumns } from "./result-columns";
+import { comparerSheetColumns, comparisonColumns } from "./result-columns";
 import { runLifecycle } from "./run-lifecycle";
 import { getPreferences } from "./preferences";
 import {
@@ -668,10 +668,9 @@ function handleExportResults(format: ResultExportFormat): void {
     downloadCSVFile(rows, filename);
     return;
   }
-  const firstAmount = session.refLainEnabled ? 7 : 6;
+  // The amount columns' positions come from the same schema the rows do, so a
+  // new sheet-only column cannot shift the formats one column left.
   void downloadXLSXFile(rows, filename, "Perbandingan", {
-    numberFormats: Object.fromEntries(
-      Array.from({ length: 5 }, (_, i) => [firstAmount + i, RESULT_NUMBER_FORMAT]),
-    ),
-  }).catch((err: unknown) => reportResultExportFailure(err, STATUS_ID));
+    numberFormats: resultNumberFormats(comparerSheetColumns(session.refLainEnabled)),
+  }).catch((err: unknown) => reportResultExportFailure(err, status));
 }

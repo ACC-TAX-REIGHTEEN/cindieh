@@ -18,7 +18,7 @@
 // and the overlay it lives in comes from ui-panel.ts.
 // ============================================================
 
-import { downloadXLSXFile, downloadCSVFile, RESULT_NUMBER_FORMAT, RESULT_DIFFERENCE_FORMAT } from "./exporter";
+import { downloadXLSXFile, downloadCSVFile, resultNumberFormats } from "./exporter";
 import {
   buildCheckerExportRows,
   CHECKER_EXPORT_BASENAME,
@@ -26,7 +26,12 @@ import {
   resultExportFilename,
   type ResultExportFormat,
 } from "./comparer-export";
-import { CHECKER_IDENTITIES, checkerColumns, type Counterparty } from "./result-columns";
+import {
+  CHECKER_IDENTITIES,
+  checkerColumns,
+  checkerSheetColumns,
+  type Counterparty,
+} from "./result-columns";
 import { runLifecycle, type RunLifecycle } from "./run-lifecycle";
 import { getPreferences } from "./preferences";
 import {
@@ -456,11 +461,12 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
       downloadCSVFile(rows, filename);
       return;
     }
+    // The formats' positions come from the same schema the rows do, so a column
+    // added ahead of the amounts cannot shift them (exporter.resultNumberFormats).
     void downloadXLSXFile(rows, filename, "Pengecekan", {
-      numberFormats: {
-        5: RESULT_NUMBER_FORMAT, 6: RESULT_NUMBER_FORMAT, 7: RESULT_NUMBER_FORMAT,
-        8: RESULT_DIFFERENCE_FORMAT, 9: RESULT_DIFFERENCE_FORMAT,
-      },
+      numberFormats: resultNumberFormats(
+        checkerSheetColumns(session.benchmark, deps.counterparty(), deps.identity()),
+      ),
     }).catch((err: unknown) => reportResultExportFailure(err, "ch-checker-status"));
   }
 
@@ -480,6 +486,7 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
   }
 
   const view: CheckerView = {
+
     root,
     filterMenu: null,
     inject() {

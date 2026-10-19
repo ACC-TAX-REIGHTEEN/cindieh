@@ -629,6 +629,38 @@ describe("the tab Pengecekan, on its own", () => {
     expect(h.exporter.downloadCSVFile).not.toHaveBeenCalled();
   });
 
+  it("formats the Excel cells by the header, not by a counted position", () => {
+    // The formats follow the column schema (exporter.resultNumberFormats), so a
+    // column added ahead of the amounts moves every one of them right. This reads
+    // the positions off the sheet's own header, which is what a hand-written
+    // index map here would have silently disagreed with.
+    finishRun([row({ VAT: 110_001 })]);
+    fire("ch-checker-check-btn");
+
+    fire("ch-checker-export-btn");
+
+    const [rows, , , options] = vi.mocked(h.exporter.downloadXLSXFile).mock.calls[0];
+    const formats = options?.numberFormats ?? {};
+    const header = rows[0] as string[];
+    const at = (label: string) => header.indexOf(label);
+
+    expect(formats[at("DPP")]).toBe(h.exporter.RESULT_NUMBER_FORMAT);
+    expect(formats[at("DPP NL")]).toBe(h.exporter.RESULT_NUMBER_FORMAT);
+    expect(formats[at("PPN")]).toBe(h.exporter.RESULT_NUMBER_FORMAT);
+    const differences = header
+      .map((label, index) => ({ label, index }))
+      .filter(({ label }) => label.startsWith("Selisih"));
+    expect(differences).toHaveLength(2);
+    for (const { index } of differences) {
+      expect(formats[index]).toBe(h.exporter.RESULT_DIFFERENCE_FORMAT);
+    }
+    // Nothing else is formatted: the row number is a number too, and an amount
+    // format on it is how a report starts printing "1,00" beside its own count.
+    expect(Object.keys(formats).map(Number).sort((a, b) => a - b)).toEqual(
+      [at("DPP"), at("DPP NL"), at("PPN"), ...differences.map((d) => d.index)].sort((a, b) => a - b),
+    );
+  });
+
   it("exports the grid to CSV, which needs no chunk and cannot fail", () => {
     finishRun([row({ VAT: 110_001 })]);
     fire("ch-checker-check-btn");

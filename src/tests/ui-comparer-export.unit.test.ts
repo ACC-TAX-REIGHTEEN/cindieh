@@ -13,8 +13,14 @@ import {
   resultExportFilename,
 } from "../content/comparer-export";
 import {
+  checkerColumns,
+  checkerSheetColumns,
+  comparerSheetColumns,
+} from "../content/result-columns";
+import {
   buildAoaWorkbook,
   buildCSV,
+  resultNumberFormats,
   RESULT_DIFFERENCE_FORMAT,
   RESULT_NUMBER_FORMAT,
 } from "../content/exporter";
@@ -164,6 +170,16 @@ describe("result CSV rows", () => {
   // CSV is hand-rolled, so the same grid must survive the text path with its
   // amounts still numeric-looking and its commas quoted rather than shifting
   // every later column by one.
+  it("writes the comparison file's wider columns, in the file's order", () => {
+    // The exported contract, pinned at the export boundary: the three columns the
+    // panel's grid never shows sit between Nama Pembeli and the amounts exactly
+    // as the schema declares them (ADR-0030).
+    expect(buildComparisonExportRows([comparison], false)[0]).toEqual([
+      "No", "Referensi", "Nama Pembeli", "Tanggal", "NIK/NPWP", "Nomor Faktur Pajak",
+      "DPP Coretax", "DPP Baru", "PPN Coretax", "PPN Baru", "Selisih PPN", "Status",
+    ]);
+  });
+
   it("writes the comparison grid with the same column count as the XLSX grid", () => {
     const rows = buildComparisonExportRows([comparison], true);
     const lines = buildCSV(rows).replace("\uFEFF", "").trim().split("\n");
@@ -204,6 +220,38 @@ describe("result CSV rows", () => {
   });
 });
 
+describe("the workbook's number formats follow the column schema", () => {
+  it("formats the comparison's amount columns wherever the schema puts them", () => {
+    // The positions used to be arithmetic here (`refLain ? 7 : 6`), which is the
+    // drift the shared schema removes: the three file-only columns move every
+    // amount one place right, and only the schema knows that.
+    expect(resultNumberFormats(comparerSheetColumns(false))).toEqual({
+      6: RESULT_NUMBER_FORMAT,
+      7: RESULT_NUMBER_FORMAT,
+      8: RESULT_NUMBER_FORMAT,
+      9: RESULT_NUMBER_FORMAT,
+      10: RESULT_NUMBER_FORMAT,
+    });
+    expect(resultNumberFormats(comparerSheetColumns(true))).toEqual({
+      7: RESULT_NUMBER_FORMAT,
+      8: RESULT_NUMBER_FORMAT,
+      9: RESULT_NUMBER_FORMAT,
+      10: RESULT_NUMBER_FORMAT,
+      11: RESULT_NUMBER_FORMAT,
+    });
+  });
+
+  it("keeps the checker's signed difference columns signed", () => {
+    expect(resultNumberFormats(checkerSheetColumns("DPP"))).toEqual({
+      5: RESULT_NUMBER_FORMAT,
+      6: RESULT_NUMBER_FORMAT,
+      7: RESULT_NUMBER_FORMAT,
+      8: RESULT_DIFFERENCE_FORMAT,
+      9: RESULT_DIFFERENCE_FORMAT,
+    });
+  });
+});
+
 describe("result XLSX rows and AOA readback", () => {
   it.each([true, false])("preserves comparison values with refLain=%s", (refLainEnabled) => {
     const rows = buildComparisonExportRows([comparison, {
@@ -235,18 +283,30 @@ describe("result XLSX rows and AOA readback", () => {
   it.each<BenchmarkType>(["DPP", "DPP_NILAI_LAIN", "PPN"])("preserves checker values for %s, including differences within tolerance", (benchmark) => {
     const rows = buildCheckerExportRows([{ ...checker, benchmark }], benchmark);
     const sheet = readback(buildAoaWorkbook(XLSX, rows, "Pengecekan", {
-      numberFormats: { 5: RESULT_NUMBER_FORMAT, 6: RESULT_NUMBER_FORMAT, 7: RESULT_NUMBER_FORMAT,
-        8: RESULT_DIFFERENCE_FORMAT, 9: RESULT_DIFFERENCE_FORMAT },
+      numberFormats: resultNumberFormats(checkerSheetColumns(benchmark)),
     }));
-    expectNumeric(sheet.F2, checker.dppSystem!);
-    expectNumeric(sheet.G2, checker.dppNilaiLainSystem!);
-    expectNumeric(sheet.H2, 0);
-    expectNumeric(sheet.I2, (benchmark === "DPP" ? checker.dppNilaiLainDiff : checker.dppDiff)!, RESULT_DIFFERENCE_FORMAT);
-    expectNumeric(sheet.J2, (benchmark === "PPN" ? checker.dppNilaiLainDiff : checker.ppnDiff)!, RESULT_DIFFERENCE_FORMAT);
-    expectText(sheet.B2, checker.reference);
-    expectText(sheet.E2, checker.counterpartyTIN);
-    expect(rows[0][8]).toBe(benchmark === "DPP" ? "Selisih DPP NL" : "Selisih DPP");
-    expect(rows[0][9]).toBe(benchmark === "PPN" ? "Selisih DPP NL" : "Selisih PPN");
+    // Positions come from the header the schema wrote, never counted here: the
+    // retur identity and the counterparty's NPWP sit ahead of the amounts, and a
+    // hand-written letter (F2, G2...) is exactly what stopped following them.
+    const header = rows[0] as string[];
+    const at = (label: string) => header.indexOf(label);
+    const cellAt = (rowNumber: number, label: string) =>
+      sheet[XLSX.utils.encode_cell({ r: rowNumber, c: at(label) })]!;
+
+    expectNumeric(cellAt(1, "DPP"), checker.dppSystem!);
+    expectNumeric(cellAt(1, "DPP NL"), checker.dppNilaiLainSystem!);
+    expectNumeric(cellAt(1, "PPN"), 0);
+    expectNumeric(cellAt(1, benchmark === "DPP" ? "Selisih DPP NL" : "Selisih DPP"),
+      (benchmark === "DPP" ? checker.dppNilaiLainDiff : checker.dppDiff)!, RESULT_DIFFERENCE_FORMAT);
+    expectNumeric(cellAt(1, benchmark === "PPN" ? "Selisih DPP NL" : "Selisih PPN"),
+      (benchmark === "PPN" ? checker.dppNilaiLainDiff : checker.ppnDiff)!, RESULT_DIFFERENCE_FORMAT);
+    expectText(cellAt(1, "Referensi"), checker.reference);
+    expectText(cellAt(1, "NPWP/NIK Pembeli"), checker.counterpartyTIN);
+    // The two signed columns stay together, in schema order, right before Status.
+    expect(header.slice(at("PPN") + 1, at("Status"))).toEqual([
+      benchmark === "DPP" ? "Selisih DPP NL" : "Selisih DPP",
+      benchmark === "PPN" ? "Selisih DPP NL" : "Selisih PPN",
+    ]);
   });
 
   it.each([
@@ -264,6 +324,23 @@ describe("result XLSX rows and AOA readback", () => {
     const header = buildCheckerExportRows([checker], "DPP")[0];
     expect(header[3]).toBe("Nama Pembeli");
     expect(header[4]).toBe("NPWP/NIK Pembeli");
+  });
+
+  it("derives the checker header from the column schema the grid renders", () => {
+    // One table decides both views (result-columns.checkerSchema). Spelling a
+    // header out in this module again — which is what used to happen, with its
+    // own benchmark ternaries — is exactly what this fails on: every label must
+    // be the schema's, in the schema's order, with every table column present.
+    for (const benchmark of ["DPP", "DPP_NILAI_LAIN", "PPN"] as const) {
+      for (const side of ["pembeli", "penjual"] as const) {
+        const header = buildCheckerExportRows([checker], benchmark, side)[0];
+
+        expect(header).toEqual(checkerSheetColumns(benchmark, side).map((column) => column.label));
+
+        const table = checkerColumns(benchmark, side).map((column) => column.label);
+        expect(header.filter((label) => table.includes(String(label)))).toEqual(table);
+      }
+    }
   });
 
   it("names and dates a retur row's sheet by its own document", () => {

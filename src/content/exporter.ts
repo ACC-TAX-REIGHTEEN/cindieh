@@ -106,6 +106,26 @@ export interface AoaXLSXOptions {
 export const RESULT_NUMBER_FORMAT = "#,##0.##########";
 export const RESULT_DIFFERENCE_FORMAT = "+#,##0.##########;-#,##0.##########;0";
 
+/**
+ * The workbook's number formats for a result sheet, read off its COLUMN SCHEMA
+ * rather than counted by hand in each tab.
+ *
+ * A column declares what kind of number it holds (`result-columns.SheetColumn.format`),
+ * and its position is wherever the schema puts it — so adding a sheet-only
+ * column ahead of the amounts no longer silently shifts every format one column
+ * left, which is the bug this shape exists to prevent.
+ */
+export function resultNumberFormats(
+  columns: readonly { readonly format?: "amount" | "difference" }[],
+): Record<number, string> {
+  const formats: Record<number, string> = {};
+  columns.forEach((column, index) => {
+    if (column.format === "amount") formats[index] = RESULT_NUMBER_FORMAT;
+    else if (column.format === "difference") formats[index] = RESULT_DIFFERENCE_FORMAT;
+  });
+  return formats;
+}
+
 /** The SheetJS module as this project consumes it. */
 export type XlsxModule = typeof import("xlsx");
 

@@ -1,34 +1,45 @@
 // Pure result grids for the AOA writer; display formatting never changes values.
 import type { ComparisonResult } from "./comparer";
 import type { BenchmarkType, CheckResult } from "./checker-logic";
-import { CHECKER_IDENTITIES, COUNTERPARTY_LABEL, type Counterparty } from "./result-columns";
+import {
+  checkerSheetColumns,
+  comparerSheetColumns,
+  type Counterparty,
+  type SheetColumn,
+} from "./result-columns";
 import type { CheckerRowIdentity } from "./page-context";
 
 export type ResultExportRows = (string | number | null)[][];
 
-export function buildComparisonExportRows(
-  results: readonly ComparisonResult[],
-  refLainEnabled: boolean,
-): ResultExportRows {
+/** The header plus one row per record, both read off the same column list. */
+function sheetRows<T>(columns: readonly SheetColumn<T>[], rows: readonly T[]): ResultExportRows {
   return [
-    [
-      "No", "Referensi", ...(refLainEnabled ? ["Referensi Lain"] : []),
-      "Nama Pembeli", "Tanggal", "NIK/NPWP", "Nomor Faktur Pajak",
-      "DPP Coretax", "DPP Baru", "PPN Coretax", "PPN Baru", "Selisih PPN", "Status",
-    ],
-    ...results.map((r, idx) => [
-      idx + 1, r.reference, ...(refLainEnabled ? [r.refLain] : []),
-      r.buyerName, r.invoiceDate, r.buyerTIN, r.taxInvoiceNumber,
-      r.dppSistem, r.dppExcel, r.ppnSistem, r.ppnExcel, r.ppnSelisih, r.status,
-    ]),
+    columns.map((column) => column.label),
+    ...rows.map((row, index) => columns.map((column) => column.value(row, index))),
   ];
 }
 
 /**
- * The checker sheet. The identity column is the grid's own (a retur row is a
- * "No Retur", an invoice row a "Referensi"), read from the table the panel
- * reads, so the file and the screen identify a row the same way. The default is
- * the invoice grids' identity.
+ * The comparison sheet, built from the SAME column schema the grid renders
+ * (`result-columns.comparerSchema`), so the file could not carry a column the
+ * schema does not know about — and the three columns only it shows (Tanggal,
+ * NIK/NPWP, Nomor Faktur Pajak) are declared there as sheet-only columns
+ * instead of being a second header written here (ADR-0030).
+ */
+export function buildComparisonExportRows(
+  results: readonly ComparisonResult[],
+  refLainEnabled: boolean,
+): ResultExportRows {
+  return sheetRows(comparerSheetColumns(refLainEnabled), results);
+}
+
+/**
+ * The checker sheet, built from the SAME column schema the grid renders
+ * (`result-columns.checkerSchema`), so a column cannot exist on the table and be
+ * missing from the file — or head a column here with a label the table does not
+ * use. The file is still the wider view: the schema declares the counterparty's
+ * NPWP/NIK as a sheet-only column. The default is the invoice grids' identity
+ * and PPN Keluaran's counterparty, exactly as the table defaults.
  */
 export function buildCheckerExportRows(
   results: readonly CheckResult[],
@@ -36,26 +47,7 @@ export function buildCheckerExportRows(
   counterparty: Counterparty = "pembeli",
   identity: CheckerRowIdentity = "referensi",
 ): ResultExportRows {
-  const identitySpec = CHECKER_IDENTITIES[identity];
-  return [
-    [
-      "No", identitySpec.label, identitySpec.dateLabel,
-      `Nama ${COUNTERPARTY_LABEL[counterparty]}`,
-      `NPWP/NIK ${COUNTERPARTY_LABEL[counterparty]}`,
-      "DPP", "DPP NL", "PPN",
-      benchmark === "DPP" ? "Selisih DPP NL" : "Selisih DPP",
-      benchmark === "PPN" ? "Selisih DPP NL" : "Selisih PPN",
-      "Status",
-    ],
-    ...results.map((r, idx) => [
-      idx + 1, identitySpec.value(r), identitySpec.date(r),
-      r.counterpartyName, r.counterpartyTIN,
-      r.dppSystem, r.dppNilaiLainSystem, r.ppnSystem,
-      benchmark === "DPP" ? r.dppNilaiLainDiff : r.dppDiff,
-      benchmark === "PPN" ? r.dppNilaiLainDiff : r.ppnDiff,
-      r.status,
-    ]),
-  ];
+  return sheetRows(checkerSheetColumns(benchmark, counterparty, identity), results);
 }
 
 // ── Filenames ───────────────────────────────────────────────────
