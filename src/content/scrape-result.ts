@@ -241,6 +241,54 @@ export function stoppedSweepMessage(
   );
 }
 
+/**
+ * What the panel says when a resumable sweep was restored after a reload
+ * (ADR-0023).
+ *
+ * It names the same things the sweep itself named — how much of the year survived
+ * and how much is left — because a user who refreshed the tab has no other way
+ * to learn that the earlier work was not wasted. It does NOT claim anything just
+ * happened, and it does not claim anything is running: a restored sweep is only
+ * an offer.
+ *
+ * Two states reach this line, and `partialSweep` is what tells them apart in
+ * words: a STOPPED sweep's kept half is still going to be filed as `-sebagian`,
+ * while a sweep that FINISHED with a masa the portal failed to deliver was never
+ * stopped — its missing month is retried, not continued.
+ */
+export function restoredSweepMessage(
+  rows: number,
+  summary: PeriodSummary,
+  partialSweep: boolean,
+): string {
+  const finished = summary.counts.filter((count) => !count.error).length;
+  const pending = pendingPeriods(summary).length;
+  const head =
+    "Data ekspor satu tahun dipulihkan setelah halaman dimuat ulang: " +
+    `${finished} dari ${summary.planned} masa pajak, ${rows.toLocaleString("id-ID")} baris tersimpan. `;
+
+  if (pending === 0) {
+    return (
+      head +
+      (partialSweep
+        ? "Ekspor otomatis tidak dijalankan; bila data ini diekspor, nama berkasnya ditandai \"sebagian\"."
+        : "Ekspor otomatis tidak dijalankan.")
+    );
+  }
+  if (!partialSweep) {
+    return (
+      head +
+      `Klik "Ekspor 1 Tahun (12 Masa)" untuk mengambil ulang ${pending} masa yang gagal diambil; ` +
+      "masa yang sudah tersimpan tidak akan diambil ulang."
+    );
+  }
+  return (
+    head +
+    `Klik "Ekspor 1 Tahun (12 Masa)" untuk melanjutkan ${pending} masa yang belum selesai; ` +
+    "masa yang sudah tersimpan tidak akan diambil ulang."
+  );
+}
+
 export function scrapeErrorMessage(message?: string): string {
   return `${message || "Proses gagal."} Ekspor dan pemeriksaan otomatis dibatalkan. Periksa sesi Coretax dan filter, lalu jalankan ulang.`;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ScrapeComplete } from "../content/scraper-types";
-import { createRunLifecycle } from "../content/run-lifecycle";
+import { createRunLifecycle, type RunResult } from "../content/run-lifecycle";
 import { summarisePeriods } from "../content/scrape-batch";
 
 // A Run owns three things: whether it is in flight, what it still owes, and
@@ -610,5 +610,175 @@ describe("onRetired", () => {
     run.cancelPending("compare");
 
     expect(retired).toEqual([]);
+  });
+});
+// ── What a resume would start from ────────────────────
+// A stopped sweep's kept half is the one part of a Run worth surviving the page
+// (ADR-0023). Every mutator announces it, so persisting it is a rule of the
+// life-cycle rather than something three stop paths happen to do.
+
+/** The per-masa counts a stopped sweep leaves behind. */
+const STOPPED_SWEEP = {
+  counts: [{ period: "TD.00701", rows: 1 }],
+  totalRows: 1,
+  planned: 12,
+  emptyPeriods: [],
+  failedPeriods: [],
+};
+
+/** Twelve finished masa: a whole year, so nothing is pending. */
+const WHOLE_SWEEP = {
+  counts: Array.from({ length: 12 }, (_, i) => ({
+    period: `TD.007${String(i + 1).padStart(2, "0")}`,
+    rows: 1,
+  })),
+  totalRows: 12,
+  planned: 12,
+  emptyPeriods: [],
+  failedPeriods: [],
+};
+
+describe("onResumable", () => {
+  function collect() {
+    const run = createRunLifecycle();
+    const seen: (RunResult | null)[] = [];
+    run.onResumable((result) => seen.push(result));
+    return { run, seen };
+  }
+
+  it("announces the half a stop kept, with its flag and counts", () => {
+    const { run, seen } = collect();
+    run.begin("scrape");
+
+    run.complete(complete({ cancelled: true, filenameHint: "2026", periods: STOPPED_SWEEP }));
+
+    expect(seen.at(-1)).toMatchObject({
+      partialSweep: true,
+      filenameHint: "2026",
+      source: "OUTPUT_TAX",
+      sweep: STOPPED_SWEEP,
+    });
+  });
+
+  it("announces a finished sweep whose year still owes a masa", () => {
+    const { run, seen } = collect();
+    run.begin("scrape");
+
+    // A completion, not a stop: the sweep ran to its plan and one masa failed.
+    // No partial flag — the file keeps its plain name — but the counts are what
+    // make these rows worth persisting, because the next year export retries
+    // exactly the masa the portal never delivered.
+    run.complete(complete({ filenameHint: "2026", periods: STOPPED_SWEEP }));
+
+    expect(seen.at(-1)).toMatchObject({
+      filenameHint: "2026",
+      source: "OUTPUT_TAX",
+      sweep: STOPPED_SWEEP,
+    });
+    expect(seen.at(-1)?.partialSweep).toBeUndefined();
+  });
+
+  it("announces nothing to resume when a stop drops the rows", () => {
+    const { run, seen } = collect();
+    run.begin("scrape");
+
+    run.stop({ keepRows: false });
+
+    expect(seen.at(-1)).toBeNull();
+  });
+
+  it("clears what a previous run kept when a whole completion replaces the rows", () => {
+    const { run, seen } = collect();
+    run.begin("scrape");
+    run.complete(complete({ cancelled: true, periods: STOPPED_SWEEP }));
+    expect(seen.at(-1)).not.toBeNull();
+
+    run.begin("sweep-resume");
+    run.complete(complete({ periods: STOPPED_SWEEP }));
+
+    // These rows are a whole year now: the announcement carries their counts but
+    // no partial flag, which is what makes them a fresh sweep rather than a half
+    // one to resume.
+    expect(seen.at(-1)?.partialSweep).toBeUndefined();
+  });
+
+  it("announces after a reset, which is what forgets the stored half", () => {
+    const { run, seen } = collect();
+    run.begin("scrape");
+    run.complete(complete({ cancelled: true, periods: STOPPED_SWEEP }));
+
+    run.reset();
+
+    expect(seen.at(-1)).toBeNull();
+  });
+});
+
+describe("restore", () => {
+  const kept: RunResult = {
+    data: [{ RecordId: "1" }, { RecordId: "2" }],
+    fields: ["RecordId"],
+    filenameHint: "2026",
+    source: "OUTPUT_TAX",
+    partialSweep: true,
+    sweep: STOPPED_SWEEP,
+  };
+
+  it("adopts a stored half-sweep without beginning a Run", () => {
+    const run = createRunLifecycle();
+
+    expect(run.restore(kept)).toBe(true);
+
+    expect(run.isRunning()).toBe(false);
+    expect(run.result()).toEqual(kept);
+    expect(run.pendingExport()).toBeNull();
+  });
+
+  it("adopts a finished sweep's rows too, and keeps them unmarked", () => {
+    // Retrying the masa the portal failed to deliver is the same resume, so the
+    // rows are just as worth adopting — but nothing about them was stopped, so
+    // restoring them must not add a flag that names the file `-sebagian`.
+    const run = createRunLifecycle();
+
+    expect(run.restore({ ...kept, partialSweep: false })).toBe(true);
+
+    expect(run.result()?.partialSweep).toBeUndefined();
+    expect(run.result()?.sweep).toEqual(STOPPED_SWEEP);
+  });
+
+  it("adopts no request with the rows, so nothing runs on a reload", () => {
+    const run = createRunLifecycle();
+    run.restore(kept);
+    run.begin("bulk-pdf");
+
+    const outcome = run.complete(complete());
+
+    expect(outcome.kind === "accepted" && outcome.followUp).toEqual([]);
+  });
+
+  it("refuses a result with no masa left to resume", () => {
+    const run = createRunLifecycle();
+
+    // A whole year is not an offer to resume, whichever way its rows ended.
+    expect(run.restore({ ...kept, sweep: WHOLE_SWEEP })).toBe(false);
+    expect(run.restore({ ...kept, partialSweep: false, sweep: WHOLE_SWEEP })).toBe(false);
+    expect(run.restore({ ...kept, sweep: undefined })).toBe(false);
+    expect(run.restore({ ...kept, data: [] })).toBe(false);
+    expect(run.result()).toBeNull();
+  });
+
+  it("refuses to overwrite rows this world already holds", () => {
+    const run = withResult();
+
+    expect(run.restore(kept)).toBe(false);
+    expect(run.result()?.data).toEqual([{ TaxInvoiceNumber: "001" }]);
+  });
+
+  it("refuses while a Run is in flight", () => {
+    const run = createRunLifecycle();
+    run.begin("scrape");
+
+    expect(run.restore(kept)).toBe(false);
+    expect(run.result()).toBeNull();
+    expect(run.isRunning()).toBe(true);
   });
 });

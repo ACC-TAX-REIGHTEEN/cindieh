@@ -30,8 +30,9 @@ masa that never finished are fetched.**
   code, `planned` months long — ADR-0020) and subtracts every period recorded
   **without an error**. Both states a stop leaves behind are therefore resumed:
   a period that FAILED (rows may exist, the month is incomplete) and a period the
-  stop cut short (not recorded at all). Nothing is persisted between runs; the
-  counts are the whole memory. The same arithmetic answers a second, older
+  stop cut short (not recorded at all). Nothing else is persisted between runs;
+  the counts are the whole memory (the kept half itself was later made to
+  survive a reload — see the amendment below). The same arithmetic answers a second, older
   question for free: a sweep that FINISHED with a masa the portal failed to
   deliver also has pending masa, so the same entry retries that month instead of
   the user reading the failure notice and starting the year over.
@@ -77,6 +78,77 @@ masa that never finished are fetched.**
   failed resume must never be worse than no resume at all. Every other start
   still drops its result when it ends badly.
 
+## Amendment 2026-10-17: the kept half survives a reload
+
+**What changed.** The rows a stop salvaged and their per-masa counts are now
+written to extension storage, and a reloaded tab reads them back and offers the
+same resume. Only the half itself is stored: no pending request travels with it,
+because a stop retired those (ADR-0022, ADR-0027), so a refresh cannot revive a
+comparison or an export the user never re-asked for.
+
+- **The Run announces, `main.ts` persists.** Every mutator of the life-cycle
+  (`begin`, `stop`, `reset`, `complete`) ends by announcing what a resume would
+  start from (`onResumable`), so a path that drops the rows clears the snapshot
+  and a path that keeps them writes it, without either being remembered
+  separately. `restore()` is the other end, and it adopts the stored rows as a
+  RESULT rather than starting a Run: nothing is in flight and nothing is owed.
+- **Only a stopped sweep qualified at the time.** `partialSweep` and the counts
+  were both required, which is why the flag is stored instead of inferred: a whole
+  sweep carries counts too. A stopped sweep with no rows, or one whose grid is
+  unknown, is not stored at all — a snapshot that cannot be matched to a grid
+  could only be offered to the wrong one. (Widened by the 2026-10-19 amendment
+  below: what qualifies is any sweep with a masa still pending, stopped or not.)
+- **The page decides, by SOURCE.** `snapshotAppliesTo` compares the stored
+  source with `getPageExportSource()`: a Keluaran half-year is not offered on
+  Masukan even though both sweep. A tab that loaded on another workbook page
+  keeps the snapshot and offers it once the user navigates to the right grid.
+- **A stored snapshot is guarded on the way in, never trusted.** Version, shape
+  and a 24-hour window are checked before its rows may become a Run's, and a blob
+  that fails any of them is DROPPED rather than repaired. The window exists
+  because a resume is a pause, not an archive: a masa fetched last week can have
+  gained an invoice since, and nothing in the merge could see that.
+- **Too large to store is not stored short.** Above about 4 MB of serialized
+  sweep the write is skipped and the reload simply has no resume — the behaviour
+  before this existed — because a truncated snapshot would make the resumed file
+  short in exactly the way its own counts deny.
+- **A stop still writes no FILE, and starts nothing.** What it writes is the
+  snapshot a later click reads, which leaves ADR-0020's "nothing runs
+  automatically" intact: `restore()` adopts rows and begins no Run.
+- **Navigation still forgets.** `reset()` is the isolated world's one path that
+  forgets everything, and the snapshot goes with it, so a tab that moves to
+  another page cannot come back to rows from the one before.
+
+## Amendment 2026-10-19: a sweep that finished with a failed masa survives too
+
+**What changed.** The snapshot is no longer restricted to a STOP `partialSweep`.
+A sweep that ran to its plan while the portal failed to deliver a masa is stored
+as well, and a reloaded tab offers the same one-month retry it could already make
+in the tab that ran it. Nothing else about the entry moves: same menu item, same
+confirmation, same union merge, same `pendingPeriods` arithmetic.
+
+- **The test is `pendingPeriods`, not the flag.** What makes rows resumable is
+  masa still missing, and both states have some: a stop has the masa it never
+  reached, a finished sweep has the ones the portal failed on. `sweepContentOf`,
+  `readSnapshot` and `restore()` all ask that one question, so the second state
+  is not a special case anywhere — it is the same year one step later.
+- **The flag is still carried, because it is about the FILE, not about the
+  offer.** A restored stop is still exported as `-sebagian`; a finished sweep was
+  never stopped and keeps its plain year name even though a month is missing. The
+  stored `partialSweep` is therefore a boolean fact about the rows rather than a
+  qualification, and `restore()` re-installs it as it was instead of asserting it.
+- **A whole year is still not stored.** With nothing pending there is nothing to
+  resume, so the same announcement that writes a short year CLEARS the snapshot
+  once the last missing masa arrives — including the completion of a successful
+  retry, which is what makes the stored half go away by itself.
+- **The panel says which of the two it restored.** `restoredSweepMessage` takes
+  the flag, and a finished sweep is offered a RETRY of the masa the portal failed
+  on rather than a continuation of a stop; the `-sebagian` sentence is said only
+  where it is true.
+- **Version stays 1.** The shape only loosened (`partialSweep: true` → any
+  boolean), so a snapshot written before this amendment still reads back — and one
+  that has since had its last masa filled in is dropped by the pending-masa guard
+  instead of being offered as a resume that would fetch nothing.
+
 ## Consequences
 
 - A stop costs a pause. Press the entry again to fetch the missing masa; the
@@ -99,14 +171,23 @@ masa that never finished are fetched.**
   longer holds — and the finished file would lose its `-sebagian` name while still
   missing those months. `state.sweep` is therefore whatever the settling
   completion carried, and nothing else.
-- **Known limits, deliberately not paid for here:** a resume cannot survive a page
-  reload or navigation — the kept rows are in memory, and persisting 150k rows to
-  extension storage is a different decision. A stop during a resume keeps the
-  union and reports the masa still missing, so a resumed sweep can be stopped and
-  resumed again, each stop keeping everything that finished. And a resume whose
-  year filter no longer matches fails loudly with instructions rather than
-  quietly producing a mixed-year file.
+- **Known limits:** a reload is covered (see the amendment), navigation is not —
+  `reset()` forgets the kept half, deliberately, so a tab that has moved on does
+  not offer rows from the page it left. A sweep too large for extension storage
+  is not persisted, and a stored one expires after a day. A stop during a resume
+  keeps the union and reports the masa still missing, so a resumed sweep can be
+  stopped and resumed again, each stop keeping everything that finished. And a
+  resume whose year filter no longer matches fails loudly with instructions
+  rather than quietly producing a mixed-year file.
+- Manual portal check (failed masa): let a year export finish with one masa the
+  portal refused (throttle the connection through that month), reload the tab, and
+  confirm the panel says the rows were restored and offers to RETRY that one masa,
+  that the entry asks for exactly it, and that the file the retry writes carries no
+  `-sebagian`.
 - Manual portal check: start a year export, stop it after two or three masa, then
   click the same entry and confirm that the dialog names the kept and remaining
   masa, that only the missing months are requested, that the panel reports one
   whole year when it finishes, and that the exported name carries no `-sebagian`.
+  Reload the tab first and confirm the panel says the half-year was restored and
+  that the same entry still offers the remaining masa — then reload on another
+  e-Faktur grid and confirm it is NOT offered there.

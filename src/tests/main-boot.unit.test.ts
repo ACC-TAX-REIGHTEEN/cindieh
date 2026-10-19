@@ -37,6 +37,8 @@ const RESET_REQUEST_KEY = "cindiehResetRequest";
 const NOTIFY_ON_COMPLETE_KEY = "cindiehNotifyOnComplete";
 const COMPLETION_STORAGE_KEY = "cindiehLastCompletion";
 const SHOW_PANEL_REQUEST_KEY = "cindiehShowPanelRequest";
+/** `SWEEP_SNAPSHOT_STORAGE_KEY` in sweep-snapshot.ts. */
+const SWEEP_SNAPSHOT_KEY = "cindiehSweepSnapshot";
 
 // ── Doubles ───────────────────────────────────────────
 
@@ -190,6 +192,7 @@ async function bootMain(
         set: vi.fn(async (payload: Record<string, unknown>) => {
           extensionWrites.push(payload);
         }),
+        remove: vi.fn(async () => {}),
       },
       onChanged: {
         addListener: (fn: (changes: Record<string, { newValue?: unknown }>, area: string) => void) => {
@@ -1184,6 +1187,54 @@ describe("main boot — resuming a stopped sweep", () => {
       expect(status(env)).toContain("Gagal membuat berkas Excel"),
     );
   });
+
+  it("stows the rows a finished sweep with a failed masa leaves", async () => {
+    // The other half of the same survival: a sweep that RAN TO ITS PLAN with one
+    // masa the portal never delivered is just as resumable as a stopped one, so
+    // the announcement turns into a snapshot a reload can read — without the
+    // partial flag, which is what keeps the file's plain year name.
+    const { env, run, runId } = await bootRunningOnGrid();
+    const elevenMasa = {
+      counts: [
+        ...Array.from({ length: 11 }, (_, i) => ({
+          period: `TD.007${String(i + 1).padStart(2, "0")}`,
+          rows: 1,
+        })),
+        { period: "TD.00712", rows: 0, error: "504 Gateway Timeout" },
+      ],
+      totalRows: 11,
+      planned: 12,
+      emptyPeriods: [],
+      failedPeriods: ["TD.00712"],
+    };
+
+    fromPage(env, {
+      type: "SCRAPE_COMPLETE",
+      data: [{ RecordId: 1 }, { RecordId: 2 }],
+      fields: ["RecordId"],
+      total: 2,
+      filenameHint: "2026",
+      source: "OUTPUT_TAX",
+      periods: elevenMasa,
+      runId,
+    });
+    await flush();
+
+    expect(run.result()?.partialSweep).toBeUndefined();
+    expect(run.result()?.sweep?.failedPeriods).toEqual(["TD.00712"]);
+
+    const payload = env.extensionWrites.filter((written) => SWEEP_SNAPSHOT_KEY in written).at(-1);
+    const snapshot = payload?.[SWEEP_SNAPSHOT_KEY];
+    expect(snapshot).toMatchObject({
+      partialSweep: false,
+      source: "OUTPUT_TAX",
+      sweep: { planned: 12, failedPeriods: ["TD.00712"] },
+    });
+    // The writer and the reader must agree about what a reload can use, so the
+    // blob is validated by the guard that will read it rather than by eye.
+    const { readSnapshot } = await import("../content/sweep-snapshot");
+    expect(readSnapshot(snapshot, Date.now())).not.toBeNull();
+  });
 });
 
 // ── The in-page event seam ────────────────────────────
@@ -1336,6 +1387,121 @@ describe("main boot — the in-page event seam", () => {
     expect(countPosted(env, "START_SCRAPE")).toBe(0);
     const run = (await import("../content/run-lifecycle")).runLifecycle;
     expect(run.isRunning()).toBe(false);
+  });
+
+  // ── A stopped sweep after a reload ──────────────────
+  // The rows and their per-masa counts are the only record of which masa the
+  // portal already delivered, so the half a stop kept is written where a
+  // refreshed tab can find it (ADR-0023). These drive that from the boot the
+  // page actually performs, not from the store's own API.
+
+  /** A stored half-sweep: two masa of twelve, on PPN Keluaran. */
+  const storedSweep = () => ({
+    version: 1,
+    savedAt: Date.now(),
+    partialSweep: true,
+    data: [{ RecordId: "1" }, { RecordId: "2" }],
+    fields: ["RecordId"],
+    filenameHint: "2026",
+    source: "OUTPUT_TAX",
+    sweep: {
+      counts: [
+        { period: "TD.00701", rows: 1 },
+        { period: "TD.00702", rows: 1 },
+      ],
+      totalRows: 2,
+      planned: 12,
+      emptyPeriods: [],
+      failedPeriods: [],
+    },
+  });
+
+  /**
+   * A stored sweep that FINISHED: eleven masa delivered, one failed, and nothing
+   * was stopped — so the file keeps its plain year name and only the retry is
+   * owed (ADR-0023).
+   */
+  const storedFinishedSweep = () => ({
+    ...storedSweep(),
+    partialSweep: false,
+    sweep: {
+      counts: [
+        ...Array.from({ length: 11 }, (_, i) => ({
+          period: `TD.007${String(i + 1).padStart(2, "0")}`,
+          rows: 1,
+        })),
+        { period: "TD.00712", rows: 0, error: "504 Gateway Timeout" },
+      ],
+      totalRows: 11,
+      planned: 12,
+      emptyPeriods: [],
+      failedPeriods: ["TD.00712"],
+    },
+  });
+
+  it("offers to resume a stopped sweep whose rows outlived the page", async () => {
+    const env = await bootMain({ href: OUTPUT_TAX_URL });
+    addPortalUploadAnchor(env);
+    env.fire("load");
+    await env.resolveStored({ [ENABLED_KEY]: true, [SWEEP_SNAPSHOT_KEY]: storedSweep() });
+    await flush();
+
+    const run = (await import("../content/run-lifecycle")).runLifecycle;
+    expect(run.isRunning()).toBe(false);
+    expect(run.result()?.data).toHaveLength(2);
+    expect(run.result()?.partialSweep).toBe(true);
+    // The panel says the earlier stop was not wasted, and names what is left.
+    expect(status(env)).toContain("dipulihkan");
+    expect(status(env)).toContain("10 masa yang belum selesai");
+
+    // And the same menu entry is still the resume: only the missing masa are
+    // asked for, never the two the tab already holds.
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    env.fireDoc("ch:export-batch");
+
+    const posted = lastPosted(env, "START_SCRAPE");
+    expect(posted?.sweepYear).toBe("2026");
+    expect(posted?.sweepPeriods).toHaveLength(10);
+    expect(posted).not.toHaveProperty("batchMonths");
+  });
+
+  it("offers to retry the masa a finished sweep never received, after a reload", async () => {
+    const env = await bootMain({ href: OUTPUT_TAX_URL });
+    addPortalUploadAnchor(env);
+    env.fire("load");
+    await env.resolveStored({ [ENABLED_KEY]: true, [SWEEP_SNAPSHOT_KEY]: storedFinishedSweep() });
+    await flush();
+
+    const run = (await import("../content/run-lifecycle")).runLifecycle;
+    expect(run.isRunning()).toBe(false);
+    expect(run.result()?.data).toHaveLength(2);
+    // Nothing was stopped, so the year is not marked partial: the file a later
+    // export writes keeps its plain name even though the year is a month short.
+    expect(run.result()?.partialSweep).toBeUndefined();
+    expect(status(env)).toContain("dipulihkan");
+    expect(status(env)).toContain("mengambil ulang 1 masa yang gagal diambil");
+
+    // The same menu entry is still the retry: eleven masa are already here, so
+    // only the failed one is asked for.
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    env.fireDoc("ch:export-batch");
+
+    const posted = lastPosted(env, "START_SCRAPE");
+    expect(posted?.sweepYear).toBe("2026");
+    expect(posted?.sweepPeriods).toEqual(["TD.00712"]);
+  });
+
+  it("withholds a stored sweep from another grid", async () => {
+    const env = await bootMain({ href: INPUT_TAX_URL });
+    env.fire("load");
+    await env.resolveStored({ [ENABLED_KEY]: true, [SWEEP_SNAPSHOT_KEY]: storedSweep() });
+    await flush();
+
+    const run = (await import("../content/run-lifecycle")).runLifecycle;
+    // The rows belong to PPN Keluaran's grid: offering them here would resume a
+    // year into a different workbook page.
+    expect(run.result()).toBeNull();
+    expect(status(env)).not.toContain("dipulihkan");
   });
 
   it("starts a scrape from the auto-start event, and never restarts a live run", async () => {

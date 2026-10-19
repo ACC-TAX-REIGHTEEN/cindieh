@@ -18,7 +18,7 @@
 // ============================================================
 
 import type { ExportSource } from "./page-context";
-import type { PeriodSummary } from "./scrape-batch";
+import { pendingPeriods, type PeriodSummary } from "./scrape-batch";
 import type { ScrapeComplete } from "./scraper-types";
 import {
   findMissingInvoices,
@@ -202,6 +202,44 @@ export interface RunLifecycle {
   noteRequestedInvoices(numbers: readonly string[]): void;
 
   /**
+   * Adopt a sweep's rows that outlived the page they were collected on
+   * (ADR-0023).
+   *
+   * A reload takes the rows with it, and the per-masa counts are the only record
+   * of which masa the portal already delivered — so the resumable part of a
+   * sweep is written where a refreshed tab can find it. This is the other end:
+   * the rows come back as a Run's OWN result, never as a Run. Nothing is in
+   * flight, no request is owed, and nothing runs. The rows' own flag is restored
+   * with them: a stop's kept half is still named `-sebagian`, while a sweep that
+   * finished with a failed masa was never a stop and keeps its plain name.
+   *
+   * Two states qualify, and the test is the same one that decided whether to
+   * store them: masa still missing (`pendingPeriods`). A stopped sweep has the
+   * ones it never reached, and a finished sweep has the masa the portal failed to
+   * deliver — the retry of a failed month is the same resume.
+   *
+   * Returns false when nothing was adopted — a result whose year has no masa
+   * pending, or a Run already in flight (a page that is already working must not
+   * be overwritten by an older one).
+   */
+  restore(result: RunResult): boolean;
+
+  /**
+   * Hear what a resume would start from, whenever it changes.
+   *
+   * A sweep's rows with masa still missing are the one part of a Run's state
+   * that is worth surviving the page — a stop's kept half, or a sweep that
+   * finished with a masa the portal failed to deliver — so they are announced
+   * like a retirement is: one place,
+   * called after every state change, so a new path that drops the rows cannot
+   * leave a stale snapshot behind (or a new path that keeps them fail to save).
+   *
+   * One listener: main.ts writes it to storage, which is a browser concern this
+   * module deliberately does not have.
+   */
+  onResumable(listener: (result: RunResult | null) => void): void;
+
+  /**
    * Hear about the requests a retirement took, in the order the panel runs
    * them.
    *
@@ -274,6 +312,7 @@ export function createRunLifecycle(): RunLifecycle {
   const state = freshState();
 
   let retireListener: ((kinds: readonly RunIntent["kind"][]) => void) | null = null;
+  let resumableListener: ((result: RunResult | null) => void) | null = null;
 
   /**
    * Everything this Run owes, spent in one step. Returns the kinds it took, so
@@ -329,7 +368,40 @@ export function createRunLifecycle(): RunLifecycle {
     // otherwise. Either way this is what a later resume reads to know what is
     // still missing.
     state.sweep = completion.periods ?? state.sweep;
-    stop({ keepRows: true });
+    endRun({ keepRows: true });
+  }
+
+  /** The reusable state, in the shape callers read it. */
+  function readResult(): RunResult | null {
+    // Both guards, because the export path has always required both: a
+    // successful PDF run carries no fields of its own and keeps the grid
+    // schema it was scraped with.
+    if (!state.data || !state.fields) return null;
+    const result: RunResult = {
+      data: state.data,
+      fields: state.fields,
+      filenameHint: state.filenameHint,
+      source: state.source,
+    };
+    // Omitted rather than set false: an absent flag IS a whole run, which is
+    // the export path's own default, so only the exception is carried.
+    if (state.partialSweep) result.partialSweep = true;
+    // Same reasoning: only a sweep's rows carry the per-masa counts a resume
+    // needs to know which masa are still missing.
+    if (state.sweep) result.sweep = state.sweep;
+    return result;
+  }
+
+  /**
+   * Tell the one listener what a resume would start from now.
+   *
+   * Called after EVERY state change that can touch the rows or the counts — the
+   * four mutators below — which is what makes persisting a rule rather than a
+   * thing three stop paths remember. A listener that sees the same content twice
+   * is expected (a resume start and its stop both announce the kept half).
+   */
+  function announce(): void {
+    resumableListener?.(readResult());
   }
 
   /** Everything this Run produced. */
@@ -352,8 +424,12 @@ export function createRunLifecycle(): RunLifecycle {
    * in is cleared, and the retirement runs before the rows are dropped, so a tab
    * hanging off `onRetired` sees the same kinds whichever row decision ended the
    * Run.
+   *
+   * Internal on purpose: the interface's `stop` is this call plus the one
+   * announcement of what a resume would start from, and `salvage`, `settle` and
+   * `reset` use it directly so a completion announces once rather than twice.
    */
-  function stop({ keepRows }: StopOptions): void {
+  function endRun({ keepRows }: StopOptions): void {
     state.isRunning = false;
     // A resume can only ever ADD to the union a stop salvaged, so ending it
     // early — a stop, a failure, a rejected result — costs the masa it was
@@ -367,6 +443,85 @@ export function createRunLifecycle(): RunLifecycle {
     if (!keep) dropResult();
   }
 
+  /**
+   * Settle a finished Run. Every path returns, so the announcement lives in
+   * `complete` in the returned interface rather than at each of these returns.
+   */
+  function settle(completion: ScrapeComplete): RunOutcome {
+    // Settled BEFORE the incompleteness rules, which count `cancelled` as a
+    // rejection — and rightly so, for the one cancellation that carries
+    // nothing. A stopped sweep that got rows is the exception: they are real,
+    // they are the user's, and they must not be thrown away with the request.
+    if (completion.cancelled && (completion.data?.length ?? 0) > 0) {
+      salvage(completion);
+      return { kind: "salvaged" };
+    }
+
+    const rejection = incompleteResultMessage(completion);
+    if (rejection) {
+      // A refused result is not usable, so it goes the way of a stop that
+      // keeps nothing — including a resumed sweep, whose union survives while
+      // the half this Run was fetching does not (ADR-0023).
+      endRun({ keepRows: false });
+      return { kind: "rejected", message: rejection };
+    }
+
+    state.isRunning = false;
+    state.data = completion.data || null;
+    // Successful PDF downloads carry no fields; retain the original grid
+    // schema rather than discarding it.
+    if (completion.fields?.length) state.fields = completion.fields;
+    state.filenameHint = completion.filenameHint;
+    state.source = completion.source;
+    state.resumingSweep = false;
+    // A completion that reached this line is whole: whatever the previous run
+    // kept as a partial sweep does not describe these rows.
+    state.partialSweep = false;
+    // The counts travel with the rows they describe, and this completion just
+    // REPLACED those rows — so a completion that carries no counts describes
+    // no sweep, and one that came before it must not survive it. That covers
+    // a targeted No. Faktur lookup (whose rows are the filtered SUBSET) and a
+    // bulk PDF run's own grid scrape: leaving the old counts behind would let
+    // the next year-export offer to "resume" a year whose masa the isolated
+    // world no longer holds, and a finished resume would drop the `-sebagian`
+    // name off a file that is not a whole year.
+    state.sweep = completion.periods ?? null;
+
+    // The request is spent here, whatever happens next, so a later Run can
+    // never be diffed against a stale list.
+    const requested = state.requestedInvoices;
+    state.requestedInvoices = [];
+
+    const missing = findMissingInvoices(requested, completion.data ?? []);
+    const shortfall: Shortfall | null =
+      missing.length === 0
+        ? null
+        : {
+            count: missing.length,
+            notice:
+              completion.kind === "pdf"
+                ? null
+                : missingInvoicesMessage(requested.length, missing),
+          };
+
+    // Spend what this Run owed, in the order the panel has always run it.
+    const followUp: FollowUp[] = [];
+    if (state.pendingCompare) {
+      state.pendingCompare = false;
+      followUp.push({ kind: "compare" });
+    }
+    if (state.pendingCheck) {
+      state.pendingCheck = false;
+      followUp.push({ kind: "check" });
+    }
+    if (state.pendingExportFormat) {
+      followUp.push({ kind: "export", format: state.pendingExportFormat });
+      state.pendingExportFormat = null;
+    }
+
+    return { kind: "accepted", followUp, shortfall };
+  }
+
   return {
     isRunning: () => state.isRunning,
 
@@ -376,12 +531,16 @@ export function createRunLifecycle(): RunLifecycle {
       // being reusable. A targeted lookup, a bulk PDF download and a resumed
       // sweep all read the kept rows, so they keep them.
       if (start === "scrape") dropResult();
-      // The resume rule in `stop` lasts only as long as the Run that declared
+      // The resume rule in `endRun` lasts only as long as the Run that declared
       // it, so it is set here for every start.
       state.resumingSweep = start === "sweep-resume";
+      announce();
     },
 
-    stop,
+    stop(options) {
+      endRun(options);
+      announce();
+    },
 
     reset() {
       // "Bersihkan cache" and SPA navigation forget everything, and forgetting IS
@@ -390,12 +549,46 @@ export function createRunLifecycle(): RunLifecycle {
       // showing the line it wrote when it queued its request, and a reset
       // retires that request too — forgetting silently is this path's documented
       // job, but a promise left standing is not part of forgetting (ADR-0026).
-      stop({ keepRows: false });
+      endRun({ keepRows: false });
       // `freshState()` is the one definition of a fresh Run, so a field added to
       // RunState later is cleared here without anyone remembering to. It is also
-      // what makes this forget a resumed sweep's union, which `stop` itself
+      // what makes this forget a resumed sweep's union, which `endRun` itself
       // keeps: navigation must not leave rows to resume against.
       Object.assign(state, freshState());
+      // Announced AFTER the wipe: the stored half-year is part of what this
+      // forgets, and a listener reading it any earlier would see the rows the
+      // wipe is about to take.
+      announce();
+    },
+
+    restore(result) {
+      if (state.isRunning) return false;
+      // Rows already here are newer than anything on disk, and a second set
+      // cannot be merged into them: only a resume's own completion may add to
+      // the union it is finishing (ADR-0023).
+      if (state.data) return false;
+      if (!result.sweep) return false;
+      // Only a year with masa still missing is resumable: a whole sweep has
+      // nothing to offer, and adopting it would hand every later click a resume
+      // to decide against for no reason.
+      if (pendingPeriods(result.sweep).length === 0) return false;
+      if (result.data.length === 0 || result.fields.length === 0) return false;
+
+      state.data = result.data;
+      state.fields = result.fields;
+      state.filenameHint = result.filenameHint;
+      state.source = result.source;
+      // The flag travels with the rows it describes: restoring a stopped sweep
+      // must not quietly drop the `-sebagian` name off its file, and restoring a
+      // finished sweep must not add one.
+      state.partialSweep = result.partialSweep === true;
+      state.sweep = result.sweep;
+      announce();
+      return true;
+    },
+
+    onResumable(listener) {
+      resumableListener = listener;
     },
 
     onRetired(listener) {
@@ -420,99 +613,14 @@ export function createRunLifecycle(): RunLifecycle {
       state.requestedInvoices = [...numbers];
     },
 
-    result() {
-      // Both guards, because the export path has always required both: a
-      // successful PDF run carries no fields of its own and keeps the grid
-      // schema it was scraped with.
-      if (!state.data || !state.fields) return null;
-      const result: RunResult = {
-        data: state.data,
-        fields: state.fields,
-        filenameHint: state.filenameHint,
-        source: state.source,
-      };
-      // Omitted rather than set false: an absent flag IS a whole run, which is
-      // the export path's own default, so only the exception is carried.
-      if (state.partialSweep) result.partialSweep = true;
-      // Same reasoning: only a sweep's rows carry the per-masa counts a resume
-      // needs to know which masa are still missing.
-      if (state.sweep) result.sweep = state.sweep;
-      return result;
-    },
+    result: readResult,
 
     complete(completion) {
-      // Settled BEFORE the incompleteness rules, which count `cancelled` as a
-      // rejection — and rightly so, for the one cancellation that carries
-      // nothing. A stopped sweep that got rows is the exception: they are real,
-      // they are the user's, and they must not be thrown away with the request.
-      if (completion.cancelled && (completion.data?.length ?? 0) > 0) {
-        salvage(completion);
-        return { kind: "salvaged" };
-      }
-
-      const rejection = incompleteResultMessage(completion);
-      if (rejection) {
-        // A refused result is not usable, so it goes the way of a stop that
-        // keeps nothing — including a resumed sweep, whose union survives while
-        // the half this Run was fetching does not (ADR-0023).
-        stop({ keepRows: false });
-        return { kind: "rejected", message: rejection };
-      }
-
-      state.isRunning = false;
-      state.data = completion.data || null;
-      // Successful PDF downloads carry no fields; retain the original grid
-      // schema rather than discarding it.
-      if (completion.fields?.length) state.fields = completion.fields;
-      state.filenameHint = completion.filenameHint;
-      state.source = completion.source;
-      state.resumingSweep = false;
-      // A completion that reached this line is whole: whatever the previous run
-      // kept as a partial sweep does not describe these rows.
-      state.partialSweep = false;
-      // The counts travel with the rows they describe, and this completion just
-      // REPLACED those rows — so a completion that carries no counts describes
-      // no sweep, and one that came before it must not survive it. That covers
-      // a targeted No. Faktur lookup (whose rows are the filtered SUBSET) and a
-      // bulk PDF run's own grid scrape: leaving the old counts behind would let
-      // the next year-export offer to "resume" a year whose masa the isolated
-      // world no longer holds, and a finished resume would drop the `-sebagian`
-      // name off a file that is not a whole year.
-      state.sweep = completion.periods ?? null;
-
-      // The request is spent here, whatever happens next, so a later Run can
-      // never be diffed against a stale list.
-      const requested = state.requestedInvoices;
-      state.requestedInvoices = [];
-
-      const missing = findMissingInvoices(requested, completion.data ?? []);
-      const shortfall: Shortfall | null =
-        missing.length === 0
-          ? null
-          : {
-              count: missing.length,
-              notice:
-                completion.kind === "pdf"
-                  ? null
-                  : missingInvoicesMessage(requested.length, missing),
-            };
-
-      // Spend what this Run owed, in the order the panel has always run it.
-      const followUp: FollowUp[] = [];
-      if (state.pendingCompare) {
-        state.pendingCompare = false;
-        followUp.push({ kind: "compare" });
-      }
-      if (state.pendingCheck) {
-        state.pendingCheck = false;
-        followUp.push({ kind: "check" });
-      }
-      if (state.pendingExportFormat) {
-        followUp.push({ kind: "export", format: state.pendingExportFormat });
-        state.pendingExportFormat = null;
-      }
-
-      return { kind: "accepted", followUp, shortfall };
+      const outcome = settle(completion);
+      // After the settle, whichever way it went: a salvage just adopted the rows
+      // a reload could offer, and a rejection just dropped them.
+      announce();
+      return outcome;
     },
   };
 }

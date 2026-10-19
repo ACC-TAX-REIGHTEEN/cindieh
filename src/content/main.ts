@@ -10,7 +10,7 @@
 
 import { browserAPI } from "./browser-shim";
 import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode, type StoredExportMode } from "../shared/export-preferences";
-import { hasReferenceFilter, isSupportedExportPage } from "./page-context";
+import { getPageExportSource, hasReferenceFilter, isSupportedExportPage } from "./page-context";
 import { createMessageDispatcher } from "./postmessage-guard";
 import { generateBridgeToken, getBridgeToken, getActiveRunId, isCurrentRunMessage, isStoppedRunMessage, postToScraper } from "./bridge";
 import {
@@ -18,10 +18,12 @@ import {
   failedItemsNotice,
   batchResultNotice,
   stoppedSweepMessage,
+  restoredSweepMessage,
   scrapeErrorMessage,
   truncatedResultNotice,
 } from "./scrape-result";
 import { runLifecycle } from "./run-lifecycle";
+import { snapshotAppliesTo, sweepSnapshotStore, type SweepSnapshot } from "./sweep-snapshot";
 import { mergePeriodSummaries } from "./scrape-batch";
 import { unionRows } from "./scraper-helpers";
 import type { ScrapeComplete, ScrapeDataChunkMessage } from "./scraper-types";
@@ -220,6 +222,9 @@ browserAPI.storage.onChanged.addListener((changes, areaName) => {
     extensionEnabled = applied.enabled;
     if (extensionEnabled) {
       applyPageState();
+      // Re-enabling is a fresh paint, not a fresh page: a half-sweep read while
+      // the extension was off is still offerable now.
+      offerResumableSweep();
     } else {
       teardownInjectedUi();
     }
@@ -691,6 +696,58 @@ runLifecycle.onRetired((kinds) => {
   }
 });
 
+// ── A resumable sweep across a reload ─────────────────
+
+/**
+ * A sweep with masa still missing that this tab may still offer, or null.
+ *
+ * Two states arrive here — a stop's kept half and a sweep that finished with a
+ * masa the portal failed to deliver — and both are the same offer: the year is
+ * short, and the same menu entry finishes it.
+ *
+ * Held in memory as well as in storage so that a tab which loaded on another
+ * workbook page can still resume once the user navigates to the grid the rows
+ * came from: the snapshot is read once, at boot, and the page decides.
+ */
+let keptSweep: SweepSnapshot | null = null;
+
+/**
+ * Write the resumable part of a Run wherever a reloaded tab can find it
+ * (ADR-0023).
+ *
+ * The life-cycle announces every change that can touch the rows or the counts, so
+ * this listener is the only persistence path — a stop that drops the rows clears
+ * the snapshot through the same announcement, and no stop control can forget
+ * either half.
+ */
+runLifecycle.onResumable((result) => sweepSnapshotStore.save(result));
+
+/**
+ * Offer a restored sweep to the current page, if it belongs here.
+ *
+ * Called at boot and after a navigation, which are the two moments the page can
+ * change out from under the rows. The guard is the SOURCE, not something about
+ * the URL's exact shape: the rows are filed by grid, so a snapshot from PPN
+ * Keluaran is not offered on PPN Masukan even though both sweep.
+ */
+function offerResumableSweep(): void {
+  const snapshot = keptSweep;
+  if (!snapshot || !extensionEnabled) return;
+  if (!snapshotAppliesTo(snapshot, getPageExportSource())) return;
+  if (!runLifecycle.restore(snapshot)) return;
+
+  // Consumed: a later navigation resets the Run, and re-offering here would
+  // resurrect rows the reset was asked to forget.
+  keptSweep = null;
+  updatePanelStatus(
+    restoredSweepMessage(snapshot.data.length, snapshot.sweep, snapshot.partialSweep),
+  );
+  debugLog(
+    `[Cindieh] restored a resumable sweep: ${snapshot.data.length} rows, ` +
+      `${snapshot.sweep.counts.length}/${snapshot.sweep.planned} periods`,
+  );
+}
+
 // Search a reference in Coretax (from the comparer table)
 document.addEventListener("ch:search-reference", (e: Event) => {
   const detail = (e as CustomEvent).detail as { reference?: string } | undefined;
@@ -783,6 +840,11 @@ function onNavigate(): void {
   // captured request cache, filter state, running flags, etc.
   postToScraper({ type: "RESET_SCRAPER" });
 
+  // The reset above announced the emptied Run, which cleared the stored half;
+  // the copy read at boot is offered again, because the new page may be the grid
+  // it came from.
+  offerResumableSweep();
+
   void preferencesReady.then(applyPageState);
 }
 
@@ -796,6 +858,12 @@ function init(): void {
   void preferencesReady.then(() => {
     debugLog("Preferensi diterapkan; mode:", extensionEnabled ? "aktif" : "nonaktif");
     applyPageState();
+    // A refresh is the case this exists for: the rows and their per-masa counts
+    // outlive the page, so the same menu entry still offers to finish the year.
+    void sweepSnapshotStore.load().then((snapshot) => {
+      keptSweep = snapshot;
+      offerResumableSweep();
+    });
   });
 
   window.addEventListener("unhandledrejection", (event) => {

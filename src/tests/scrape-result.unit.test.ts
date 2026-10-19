@@ -8,6 +8,7 @@ import {
   incompleteResultMessage,
   MAX_LISTED_FAILED_ITEMS,
   missingInvoicesMessage,
+  restoredSweepMessage,
   scrapeErrorMessage,
   skippedInvoicesMessage,
   stoppedSweepMessage,
@@ -178,6 +179,48 @@ describe("stoppedSweepMessage", () => {
     expect(stoppedSweepMessage({ total: 5 })).toBe(
       "Proses dihentikan: 5 baris tetap tersimpan.",
     );
+  });
+});
+
+describe("restoredSweepMessage", () => {
+  const summary = (counts: { period: string; rows: number; error?: string }[], planned = 12) => ({
+    counts,
+    totalRows: counts.reduce((sum, c) => sum + c.rows, 0),
+    planned,
+    emptyPeriods: [],
+    failedPeriods: counts.filter((c) => c.error).map((c) => c.period),
+  });
+  const masa = (length: number, error?: (index: number) => string | undefined) =>
+    Array.from({ length }, (_, i) => {
+      const period = `TD.007${String(i + 1).padStart(2, "0")}`;
+      const failure = error?.(i);
+      return failure ? { period, rows: 0, error: failure } : { period, rows: 14_351 };
+    });
+
+  it("offers to continue the masa a stop left behind", () => {
+    const message = restoredSweepMessage(143_510, summary(masa(10)), true);
+
+    expect(message).toContain("10 dari 12 masa pajak");
+    expect(message).toContain("143.510 baris tersimpan");
+    expect(message).toContain("melanjutkan 2 masa yang belum selesai");
+  });
+
+  it("offers to RETRY the masa a finished sweep never received", () => {
+    // Not a stop: the sweep ran to its plan and one masa failed, so the words are
+    // a retry rather than a continuation — and nothing about the file is marked
+    // `sebagian`, because nothing was stopped.
+    const counts = masa(12, (i) => (i === 11 ? "504 Gateway Timeout" : undefined));
+    const message = restoredSweepMessage(157_861, summary(counts), false);
+
+    expect(message).toContain("11 dari 12 masa pajak");
+    expect(message).toContain("mengambil ulang 1 masa yang gagal diambil");
+    expect(message).not.toContain("sebagian");
+  });
+
+  it("names the partial marker only for rows a stop kept, even with nothing pending", () => {
+    const counts = masa(12);
+    expect(restoredSweepMessage(12, summary(counts), true)).toContain('ditandai "sebagian"');
+    expect(restoredSweepMessage(12, summary(counts), false)).not.toContain("sebagian");
   });
 });
 
