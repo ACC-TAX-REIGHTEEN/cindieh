@@ -75,4 +75,4 @@ Consequences:
   must read "No Retur"/"Tanggal Retur", the exported file must carry the same headers, and a
   double-click must do nothing (there is no filter to search into).
 
-Status: accepted.
+Status: accepted. The four facts are now four READS of one row per grid (`page-context.PANEL_GRIDS`, ADR-0028), and `isVatInvoicePage`'s equality with `hasReferenceFilter` is asserted by a test rather than left as a comment.

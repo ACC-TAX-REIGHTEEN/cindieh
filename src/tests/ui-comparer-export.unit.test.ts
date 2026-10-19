@@ -73,6 +73,33 @@ vi.mock("../content/page-context", () => ({
   // A retur row on the Keluaran side carries the BUYER: the counterparty follows
   // the SIDE, not the grid kind.
   counterpartyIsBuyer: () => pageGates.output,
+  // The panel reads its per-grid facts from ONE row (page-context.PANEL_GRIDS),
+  // so this file — which replaces the module wholesale — supplies a row instead
+  // of only the predicates. The knobs above still drive every other stub.
+  panelGridFacts: () =>
+    pageGates.unknown
+      ? null
+      : {
+          label: pageGates.returns
+            ? pageGates.output
+              ? "Retur PPN Keluaran"
+              : "Retur PPN Masukan"
+            : pageGates.output
+              ? "PPN Keluaran"
+              : "PPN Masukan",
+          statusLabel: pageGates.returns
+            ? pageGates.output
+              ? "Retur PPN Keluaran"
+              : "Retur PPN Masukan"
+            : pageGates.output
+              ? "e-Faktur PPN Keluaran"
+              : "e-Faktur PPN Masukan",
+          counterpartyIsBuyer: pageGates.output,
+          rowIdentity: pageGates.vat ? "referensi" : "no-retur",
+          comparerTab: pageGates.identity,
+          checkerTab: pageGates.checker,
+          referenceFilter: pageGates.vat,
+        },
 }));
 
 const comparison: ComparisonResult = {

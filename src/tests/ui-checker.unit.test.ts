@@ -30,17 +30,37 @@ vi.mock("../content/run-lifecycle", async (importOriginal) => {
  * case that proves they are separate facts: it filters, but has no identity.
  */
 const page = { side: "out" as "out" | "in", returns: false, refFilter: true };
-vi.mock("../content/page-context", () => ({
-  isOutputTaxPage: () => page.side === "out" && !page.returns,
-  isInputTaxPage: () => page.side === "in" && !page.returns,
-  isOutputReturnPage: () => page.side === "out" && page.returns,
-  isInputReturnPage: () => page.side === "in" && page.returns,
-  isCheckerPage: () => true,
-  isPanelPage: () => true,
-  hasReferenceFilter: () => page.refFilter,
-  checkerRowIdentity: () => (page.returns ? "no-retur" : "referensi"),
-  counterpartyIsBuyer: () => page.side === "out",
-}));
+vi.mock("../content/page-context", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../content/page-context")>();
+  // The grid's ROW comes from the real table, so the names it prints here are the
+  // production ones (`currentGridLabel` reads the same row) instead of a second
+  // copy of the four labels in this file (ADR-0028).
+  const gridId = (): keyof typeof actual.PANEL_GRIDS =>
+    page.returns
+      ? page.side === "out"
+        ? "OUTPUT_RETURN"
+        : "INPUT_RETURN"
+      : page.side === "out"
+        ? "OUTPUT_TAX"
+        : "INPUT_TAX";
+  return {
+    ...actual,
+    isOutputTaxPage: () => page.side === "out" && !page.returns,
+    isInputTaxPage: () => page.side === "in" && !page.returns,
+    isOutputReturnPage: () => page.side === "out" && page.returns,
+    isInputReturnPage: () => page.side === "in" && page.returns,
+    panelGridFacts: () => actual.PANEL_GRIDS[gridId()],
+    isCheckerPage: () => true,
+    isPanelPage: () => true,
+    // The filter is the one fact the flags keep independent of the grid, because
+    // PPN Masukan is the case that proves a lookup and a row identity are two
+    // questions.
+    hasReferenceFilter: () => page.refFilter,
+    referenceIsIdentity: () => page.side === "out" && !page.returns,
+    checkerRowIdentity: () => (page.returns ? "no-retur" : "referensi"),
+    counterpartyIsBuyer: () => page.side === "out",
+  };
+});
 
 // The production tab's "no data yet" path reaches the real bridge. Mocking the
 // two ends of it keeps that case about the tab's own decision.

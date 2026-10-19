@@ -1376,9 +1376,14 @@ describe("main boot — the in-page event seam", () => {
     // The toolbar itself arrived — this is not a general injection failure...
     expect(env.doc.getElementById("ch-scrape-btn")).not.toBeNull();
     // ...and its entry point is named for the check, not for a comparer this
-    // grid cannot serve (a PPN Masukan Referensi is the seller's).
-    const btn = env.doc.getElementById("ch-compare-btn");
-    expect(btn?.getAttribute("aria-label")).toBe("Pengecekan keakuratan nilai");
+    // grid cannot serve (a PPN Masukan Referensi is the seller's). The element
+    // is `ch-panel-btn` for that reason: it opens the PANEL, whose tab is
+    // decided per grid.
+    const btn = env.doc.getElementById("ch-panel-btn");
+    // The name comes from the grid's own row, through the one function that
+    // spells it, rather than from a second copy of the sentence here.
+    const { panelEntryLabel } = await import("../content/page-context");
+    expect(btn?.getAttribute("aria-label")).toBe(panelEntryLabel(INPUT_TAX_URL));
 
     for (const fn of btn?.listeners.click ?? []) fn({ stopPropagation: () => {} });
 

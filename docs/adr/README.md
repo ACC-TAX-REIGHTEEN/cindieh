@@ -31,5 +31,6 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0025 | [The panel's toolbar entry point asks the panel's fact, and is named for the tab its page can serve](0025-the-panel-entry-point-is-the-panels-own-fact.md) | Accepted |
 | 0026 | [A retirement announces the requests it takes, so no tab keeps promising them](0026-a-retirement-announces-the-requests-it-takes.md) | Accepted |
 | 0027 | [One stop door: every stop control settles a Run the same way, and states its own row decision](0027-one-stop-door-with-an-explicit-row-decision.md) | Accepted |
+| 0028 | [The panel's page facts are one row per grid, and every predicate is a read of it](0028-one-row-per-grid-for-the-panels-page-facts.md) | Accepted |
 | 0029 | [A tab's status line is one module, and its kind is the guard](0029-a-tabs-status-line-is-one-module.md) | Accepted |
 | 0030 | [The comparison's file columns are declared with its grid columns](0030-the-comparison-file-columns-are-declared-with-its-grid.md) | Accepted |

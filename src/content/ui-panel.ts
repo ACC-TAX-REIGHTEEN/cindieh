@@ -15,14 +15,7 @@
 // overlay's behaviour, not its markup.
 // ============================================================
 
-import {
-  isCheckerPage,
-  isInputReturnPage,
-  isInputTaxPage,
-  isOutputReturnPage,
-  isOutputTaxPage,
-  referenceIsIdentity,
-} from "./page-context";
+import { isCheckerPage, panelGridFacts, referenceIsIdentity } from "./page-context";
 import { startScrape } from "./main-actions";
 import { showPanel, updatePanelProgress } from "./ui-badge";
 import { postToScraper } from "./bridge";
@@ -281,12 +274,11 @@ export const RETIRED_REQUEST_NOTICE =
  */
 export function currentGridLabel(): string {
   // The grid's own NAME, which is a question of its own: the four e-Faktur PPN
-  // grids have four names, and `isOutputTaxPage` answers a different one. A
+  // grids have four names, and `isOutputTaxPage` answers a different one — a
   // label read off the page gate would tell someone on Retur PPN Masukan that
-  // Cindieh is fetching "data PPN Masukan".
-  if (isOutputTaxPage()) return "PPN Keluaran";
-  if (isInputTaxPage()) return "PPN Masukan";
-  if (isOutputReturnPage()) return "Retur PPN Keluaran";
-  if (isInputReturnPage()) return "Retur PPN Masukan";
-  return "grid";
+  // Cindieh is fetching "data PPN Masukan". The names now live in the panel's
+  // per-grid table (page-context.PANEL_GRIDS), beside the tab gates and the
+  // column facts, so the label a notice prints and the facts the panel applies
+  // to that grid are read from one row.
+  return panelGridFacts()?.label ?? "grid";
 }

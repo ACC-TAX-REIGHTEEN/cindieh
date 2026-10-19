@@ -173,7 +173,11 @@ The random value generated in the isolated world and passed to the scraper throu
 _Avoid_: secret, token, security key
 
 **Page fact**:
-A yes/no question about the page in front of the user, answered by a predicate in `page-context.ts` (is this the SPT page, does this grid have a Referensi column, does a Referensi identify a row here, does the check run here, whose invoice do these rows carry), so features ask the page instead of re-deriving it from the URL. One fact answers ONE question: features that disagree on a page get two facts, not a shared one (ADR-0021).
+A yes/no question about the page in front of the user, answered by a predicate in `page-context.ts` (is this the SPT page, does this grid have a Referensi column, does a Referensi identify a row here, does the check run here, whose invoice do these rows carry), so features ask the page instead of re-deriving it from the URL. One fact answers ONE question: features that disagree on a page get two facts, not a shared one (ADR-0021). **Grid facts** — the panel's share of them — are one row per grid (`PANEL_GRIDS`): every such predicate is a read of that row, so the questions stay apart while their answers cannot drift (ADR-0028).
+
+**Panel grid** (a `PanelGridId`):
+One of the four e-Faktur PPN grids the panel can open on, as a row of `PANEL_GRIDS`: its name in the panel, its name in the popup, whose invoice its rows carry, what identifies one row, which tabs it gets, and whether it takes the injected Referensi filter. The row is the answer; the predicates are the questions.
+_Avoid_: supported page, export page (both are other lists)
 
 **Grid request**:
 The portal's own list request (URL + body with filters and paging) that the scraper captures once and replays with advancing `First`/`Rows` to scrape a grid.

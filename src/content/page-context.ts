@@ -54,14 +54,121 @@ export function isInputReturnPage(url = location.href): boolean {
  * purchases. Named for what the rows ARE, not for what a feature may do with
  * them — several questions are answered around these grids, and this is one.
  *
- * Used today by the Referensi filter's page fact (`hasReferenceFilter`),
- * because a Referensi column is what these two grids have and the Retur grids
- * do not. The Comparer is its own fact (`referenceIsIdentity`), and the checker
- * a third (`isCheckerPage`) which is WIDER than this: a retur row carries the
- * same DPP / DPP Nilai Lain / PPN, so the check runs there too.
+ * The Referensi filter happens to be offered on exactly these grids (a Referensi
+ * column is what they have and the Retur grids do not), but the filter's page
+ * fact (`hasReferenceFilter`) reads `PANEL_GRIDS`, not this predicate: the two
+ * are held together by a test rather than by one calling the other (ADR-0028).
+ * The Comparer is its own fact (`referenceIsIdentity`), and the checker a third
+ * (`isCheckerPage`) which is WIDER than this: a retur row carries the same
+ * DPP / DPP Nilai Lain / PPN, so the check runs there too.
  */
 export function isVatInvoicePage(url = location.href): boolean {
 	return isOutputTaxPage(url) || isInputTaxPage(url);
+}
+
+// ── The per-grid table the panel reads ─────────────────────────
+//
+// Which grid this is, and everything the panel's tabs, columns and notices ask
+// about it, is ONE row per grid below. The QUESTIONS keep their own names — the
+// projections that follow — because they genuinely disagree: PPN Masukan takes
+// a Referensi filter that identifies nothing (ADR-0021), and Retur PPN
+// Keluaran carries the buyer on a grid that is not the output-tax one
+// (ADR-0024). What collapses is where the ANSWERS live: once here, so the
+// entry point, the tabs, the columns and the copy that describes them cannot
+// drift apart (ADR-0028).
+
+/** The grids the panel knows about, as a key into the table. */
+export type PanelGridId = "OUTPUT_TAX" | "INPUT_TAX" | "OUTPUT_RETURN" | "INPUT_RETURN";
+
+/** What ONE grid is, for every panel question the table answers. */
+export interface GridFacts {
+	/** The grid's own name, for progress lines and notices ("PPN Masukan"). */
+	readonly label: string;
+	/**
+	 * The popup's status-line name for the same grid, in the portal's fuller
+	 * spelling ("e-Faktur PPN Masukan"). Carried beside `label` rather than
+	 * derived, because the two wordings differ by more than a prefix on the retur
+	 * grids — a derivation rule is a second place for the name to live.
+	 */
+	readonly statusLabel: string;
+	/** Do the rows carry the BUYER (true) or the SELLER (false)? */
+	readonly counterpartyIsBuyer: boolean;
+	/** What names ONE row of a Pengecekan result here. */
+	readonly rowIdentity: CheckerRowIdentity;
+	/** Is the Komparator tab offered here? */
+	readonly comparerTab: boolean;
+	/** Is the Pengecekan tab offered here? */
+	readonly checkerTab: boolean;
+	/** Does the grid take Cindieh's Referensi filter (toolbar box and column input)? */
+	readonly referenceFilter: boolean;
+}
+
+/**
+ * ONE row per grid, holding every value the panel reads about a grid.
+ *
+ * Adding a column, renaming a grid or moving a tab's gate is ONE edit here,
+ * and the projections below cannot disagree with each other because they are
+ * reads of the same row. Two gates are deliberately NOT in this table:
+ * `isEfakturPage()` (the year-wide export's gate) keeps its own predicate so
+ * that widening the table cannot silently widen the sweep, and
+ * `isVatInvoicePage()` keeps the meaning it is named for (whose rows these are).
+ */
+export const PANEL_GRIDS: Record<PanelGridId, GridFacts> = {
+	OUTPUT_TAX: {
+		label: "PPN Keluaran",
+		statusLabel: "e-Faktur PPN Keluaran",
+		counterpartyIsBuyer: true,
+		rowIdentity: "referensi",
+		comparerTab: true,
+		checkerTab: true,
+		referenceFilter: true,
+	},
+	INPUT_TAX: {
+		label: "PPN Masukan",
+		statusLabel: "e-Faktur PPN Masukan",
+		// The row carries the SELLER, and the reference is the seller's too —
+		// which is why it may be FILTERED by one but cannot be MATCHED on one.
+		counterpartyIsBuyer: false,
+		rowIdentity: "referensi",
+		comparerTab: false,
+		checkerTab: true,
+		referenceFilter: true,
+	},
+	OUTPUT_RETURN: {
+		label: "Retur PPN Keluaran",
+		statusLabel: "Retur PPN Keluaran",
+		// A retur nota carries the buyer exactly as the invoice it returns does.
+		counterpartyIsBuyer: true,
+		// A retur grid has no Referensi column at all, so its rows are named by
+		// their NO RETUR and have no filter to be looked up by.
+		rowIdentity: "no-retur",
+		comparerTab: false,
+		checkerTab: true,
+		referenceFilter: false,
+	},
+	INPUT_RETURN: {
+		label: "Retur PPN Masukan",
+		statusLabel: "Retur PPN Masukan",
+		counterpartyIsBuyer: false,
+		rowIdentity: "no-retur",
+		comparerTab: false,
+		checkerTab: true,
+		referenceFilter: false,
+	},
+};
+
+/**
+ * The panel's row for this page, or null when the page carries no grid.
+ *
+ * The lookup goes through `getPageExportSource`, so a grid is recognised by the
+ * same predicates that name it everywhere else rather than by a second set of
+ * URL patterns that could drift from them.
+ */
+export function panelGridFacts(url = location.href): GridFacts | null {
+	const source = getPageExportSource(url);
+	// The cast is safe: getPageExportSource answers exactly these four or null.
+	if (!source || !(source in PANEL_GRIDS)) return null;
+	return PANEL_GRIDS[source as PanelGridId];
 }
 
 /**
@@ -73,12 +180,14 @@ export function isVatInvoicePage(url = location.href): boolean {
  * promise, and it holds on PPN Masukan even though a seller's reference is not
  * unique: three purchases that share a reference IS an answer to a lookup.
  *
- * Today this is `isVatInvoicePage` under another name, and that is the point —
- * widening the filter to a grid, or narrowing it, is a decision about a lookup,
- * not a side effect of which page the panel happens to be on.
+ * Read from the grid's row (PANEL_GRIDS), which today marks exactly the two
+ * VAT-invoice grids — the same set `isVatInvoicePage` is named for, and a test
+ * holds the two together. Widening the filter to a grid, or narrowing it, is a
+ * decision about a lookup, not a side effect of which page the panel happens to
+ * be on.
  */
 export function hasReferenceFilter(url = location.href): boolean {
-	return isVatInvoicePage(url);
+	return panelGridFacts(url)?.referenceFilter ?? false;
 }
 
 /**
@@ -92,7 +201,7 @@ export function hasReferenceFilter(url = location.href): boolean {
  * filter itself is still offered — one grid, two answers.
  */
 export function referenceIsIdentity(url = location.href): boolean {
-	return isOutputTaxPage(url);
+	return panelGridFacts(url)?.comparerTab ?? false;
 }
 
 /**
@@ -102,21 +211,18 @@ export function referenceIsIdentity(url = location.href): boolean {
  * The check tests ONE row's arithmetic at a time — do its DPP, DPP Nilai Lain
  * and PPN agree with each other — and a retur row carries those three amounts
  * exactly as an invoice row does (`SellingPrice`, `OtherTaxBase`, `VAT`). Whose
- * document it is, and whether a Referensi identifies it, change nothing here.
+ * document it is, and whether a Referensi identifies it, change nothing here —
+ * but all three read one row of PANEL_GRIDS, so they cannot drift apart.
  *
  * Named apart from `isEfakturPage`, which covers the same four grids today and
  * answers a different question: that one gates the year-wide EXPORT (a tax year
  * can be swept on these grids), this one gates the CHECK (a row on these grids
  * has the three amounts). Adding a fifth grid to one must be a deliberate
- * decision for the other, which is why neither delegates to the other.
+ * decision for the other, which is why the export gate is NOT a projection of
+ * the table and neither delegates to the other.
  */
 export function isCheckerPage(url = location.href): boolean {
-	return (
-		isOutputTaxPage(url) ||
-		isInputTaxPage(url) ||
-		isOutputReturnPage(url) ||
-		isInputReturnPage(url)
-	);
+	return panelGridFacts(url)?.checkerTab ?? false;
 }
 
 /**
@@ -138,7 +244,47 @@ export function isCheckerPage(url = location.href): boolean {
 export type CheckerRowIdentity = "referensi" | "no-retur";
 
 export function checkerRowIdentity(url = location.href): CheckerRowIdentity {
-	return isVatInvoicePage(url) ? "referensi" : "no-retur";
+	return panelGridFacts(url)?.rowIdentity ?? "no-retur";
+}
+
+// ── The panel's toolbar entry, named ───────────────────
+
+/**
+ * The two names the panel's toolbar entry can carry, spelled once.
+ *
+ * The button opens the OVERLAY and the grid decides which tab it lands on, so it
+ * is named for the tab its page can serve (ADR-0025). They are constants rather
+ * than literals at the injection site for the same reason the grid labels are:
+ * the microsite's per-grid table and this module's own test both have to name
+ * them, and a copy of a sentence is a second place for it to change.
+ */
+export const COMPARER_ENTRY_LABEL = "Bandingkan data penjualan";
+export const CHECKER_ENTRY_LABEL = "Pengecekan keakuratan nilai";
+
+/**
+ * What the panel's toolbar entry is called for ONE grid.
+ *
+ * The derivation, kept apart from the page lookup so the injection site (which
+ * already holds the row) can ask it without reading the URL again, while a test
+ * holding a URL can use the projection below.
+ */
+export function panelEntryLabelFor(facts: GridFacts): string {
+	return facts.comparerTab ? COMPARER_ENTRY_LABEL : CHECKER_ENTRY_LABEL;
+}
+
+/**
+ * What the panel's toolbar entry is called on this page, or null where there is
+ * no button to inject.
+ *
+ * ONE read of the grid's row, like every other projection here: a page the panel
+ * cannot serve gets no name (the button is not injected at all), PPN Keluaran —
+ * whose Referensi identifies a row — gets the Komparator's name, and PPN Masukan
+ * and both Retur grids get the check's. A grid moved between tabs in PANEL_GRIDS
+ * therefore renames the button without a second mapping to remember.
+ */
+export function panelEntryLabel(url = location.href): string | null {
+	const facts = panelGridFacts(url);
+	return facts ? panelEntryLabelFor(facts) : null;
 }
 
 /**
@@ -152,7 +298,7 @@ export function checkerRowIdentity(url = location.href): CheckerRowIdentity {
  * — which is why the counterparty column needs this fact rather than that one.
  */
 export function counterpartyIsBuyer(url = location.href): boolean {
-	return isOutputTaxPage(url) || isOutputReturnPage(url);
+	return panelGridFacts(url)?.counterpartyIsBuyer ?? false;
 }
 
 /**
@@ -164,7 +310,8 @@ export function counterpartyIsBuyer(url = location.href): boolean {
  * two facts itself (ui-panel.ts).
  */
 export function isPanelPage(url = location.href): boolean {
-	return isCheckerPage(url) || referenceIsIdentity(url);
+	const facts = panelGridFacts(url);
+	return Boolean(facts && (facts.checkerTab || facts.comparerTab));
 }
 
 export function isEfakturPage(url = location.href): boolean {
@@ -212,10 +359,11 @@ export function isSupportedExportPage(url = location.href): boolean {
  */
 export function describePortalPage(url: string | undefined): string {
   if (!url) return "Buka portal Coretax untuk memakai fitur ekspor.";
-  if (isOutputTaxPage(url)) return "Terhubung: e-Faktur PPN Keluaran";
-  if (isInputTaxPage(url)) return "Terhubung: e-Faktur PPN Masukan";
-  if (isOutputReturnPage(url)) return "Terhubung: Retur PPN Keluaran";
-  if (isInputReturnPage(url)) return "Terhubung: Retur PPN Masukan";
+  // The four grids word their status line from the same row the panel reads,
+  // so "PPN Keluaran" in a progress line and "e-Faktur PPN Keluaran" in the
+  // popup cannot name two different grids.
+  const grid = panelGridFacts(url);
+  if (grid) return `Terhubung: ${grid.statusLabel}`;
   if (isSptPage(url)) {
     return normalizeUrl(url).includes("article-21-26")
       ? "Terhubung: SPT PPh 21/26"

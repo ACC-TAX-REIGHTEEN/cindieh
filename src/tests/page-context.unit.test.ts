@@ -13,7 +13,14 @@ import {
   isCheckerPage,
   checkerRowIdentity,
   counterpartyIsBuyer,
+  panelEntryLabel,
+  panelEntryLabelFor,
+  COMPARER_ENTRY_LABEL,
+  CHECKER_ENTRY_LABEL,
   isPanelPage,
+  panelGridFacts,
+  PANEL_GRIDS,
+  type PanelGridId,
   isSptPage,
   isWithholdingPage,
   isSupportedExportPage,
@@ -256,6 +263,104 @@ describe("isPanelPage — is there a tab to offer here?", () => {
     // OVERLAY: either tab having something to offer is enough.
     for (const url of [...Object.values(URLS), "https://example.com/anything"]) {
       expect(isPanelPage(url)).toBe(isCheckerPage(url) || referenceIsIdentity(url));
+    }
+  });
+});
+
+describe("panelEntryLabel — what the panel's toolbar entry is called", () => {
+  it("names the tab the grid's row offers", () => {
+    // The button opens the OVERLAY, so its name follows the tab the page can
+    // serve: the Komparator's own name only where a Referensi identifies a row
+    // (ADR-0025). Read from the constants rather than retyped, because the page
+    // follows THIS wording — microsite-sync holds the published table to it.
+    expect(panelEntryLabel(URLS.outputTax)).toBe(COMPARER_ENTRY_LABEL);
+    expect(panelEntryLabel(URLS.inputTax)).toBe(CHECKER_ENTRY_LABEL);
+    expect(panelEntryLabel(URLS.outputReturn)).toBe(CHECKER_ENTRY_LABEL);
+    expect(panelEntryLabel(URLS.inputReturn)).toBe(CHECKER_ENTRY_LABEL);
+  });
+
+  it("has no name where there is no button, and is the row's derivation everywhere else", () => {
+    for (const url of [...Object.values(URLS), "https://example.com/anything"]) {
+      const facts = panelGridFacts(url);
+      expect(panelEntryLabel(url), url).toBe(facts ? panelEntryLabelFor(facts) : null);
+    }
+    expect(panelEntryLabel(URLS.withholding)).toBeNull();
+    expect(panelEntryLabel(URLS.sptVat)).toBeNull();
+  });
+});
+
+// ── PANEL_GRIDS: the one table the panel's facts come from ──────────────────
+
+describe("PANEL_GRIDS — one row per grid, and every projection is a read of it", () => {
+  /** The four grids the panel knows, paired with the URL each is recognised by. */
+  const ROWS: readonly (readonly [PanelGridId, string])[] = [
+    ["OUTPUT_TAX", URLS.outputTax],
+    ["INPUT_TAX", URLS.inputTax],
+    ["OUTPUT_RETURN", URLS.outputReturn],
+    ["INPUT_RETURN", URLS.inputReturn],
+  ];
+
+  it("covers exactly the four e-Faktur grids, and no other page resolves to a row", () => {
+    // Both directions: every row is reachable from a URL, and nothing outside
+    // those URLs gets one. A grid added to the page map without a row here (or
+    // the reverse) is a panel that answers "no tab" on a grid it supports.
+    for (const [id, url] of ROWS) expect(getPageExportSource(url)).toBe(id);
+    expect(Object.keys(PANEL_GRIDS).sort()).toEqual(ROWS.map(([id]) => id).sort());
+    for (const url of [URLS.sptVat, URLS.sptPph, URLS.withholding, URLS.unrelated]) {
+      expect(panelGridFacts(url), url).toBeNull();
+    }
+  });
+
+  it("is what every projection answers, row by row", () => {
+    // The projections keep their own names because the questions disagree, but
+    // not their own answers: one row per grid is the only place a fact lives, so
+    // the toolbar entry point, the two tabs, the checker's columns and the
+    // popup's copy cannot describe one grid two ways (ADR-0028).
+    for (const [, url] of ROWS) {
+      const facts = panelGridFacts(url)!;
+      expect(facts, url).not.toBeNull();
+      expect(hasReferenceFilter(url), url).toBe(facts.referenceFilter);
+      expect(referenceIsIdentity(url), url).toBe(facts.comparerTab);
+      expect(isCheckerPage(url), url).toBe(facts.checkerTab);
+      expect(checkerRowIdentity(url), url).toBe(facts.rowIdentity);
+      expect(counterpartyIsBuyer(url), url).toBe(facts.counterpartyIsBuyer);
+      expect(panelEntryLabel(url), url).toBe(panelEntryLabelFor(facts));
+      expect(isPanelPage(url), url).toBe(facts.checkerTab || facts.comparerTab);
+      expect(describePortalPage(url), url).toBe(`Terhubung: ${facts.statusLabel}`);
+    }
+  });
+
+  it("gives each grid its own name, and each name its own row", () => {
+    // Two rows sharing a label would make a progress line (or a popup status
+    // line) name the wrong grid while every fact still read correctly.
+    const labels = Object.values(PANEL_GRIDS).map((facts) => facts.label);
+    const statuses = Object.values(PANEL_GRIDS).map((facts) => facts.statusLabel);
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(new Set(statuses).size).toBe(statuses.length);
+    for (const label of [...labels, ...statuses]) expect(label.trim()).not.toBe("");
+  });
+
+  it("holds the deliberate disagreements as data, not as prose", () => {
+    // PPN Masukan: looked up by a Referensi, never matched on one (ADR-0021).
+    expect(PANEL_GRIDS.INPUT_TAX.referenceFilter).toBe(true);
+    expect(PANEL_GRIDS.INPUT_TAX.comparerTab).toBe(false);
+    // Retur PPN Keluaran: carries the BUYER, but is not the output-tax grid, has
+    // no Referensi column to filter, and gets no Komparator tab (ADR-0024).
+    expect(PANEL_GRIDS.OUTPUT_RETURN.counterpartyIsBuyer).toBe(true);
+    expect(isOutputTaxPage(URLS.outputReturn)).toBe(false);
+    expect(PANEL_GRIDS.OUTPUT_RETURN.referenceFilter).toBe(false);
+    expect(PANEL_GRIDS.OUTPUT_RETURN.comparerTab).toBe(false);
+    // A Retur row is still a row the check can run on, named by its NO RETUR.
+    expect(PANEL_GRIDS.OUTPUT_RETURN.checkerTab).toBe(true);
+    expect(PANEL_GRIDS.OUTPUT_RETURN.rowIdentity).toBe("no-retur");
+  });
+
+  it("keeps the Referensi filter on the two invoice grids", () => {
+    // `isVatInvoicePage` is the name of "these rows are invoices"; the filter is
+    // offered on exactly those grids. A deliberate coupling, so it is pinned
+    // here rather than left to a comment in either module (ADR-0021).
+    for (const [, url] of ROWS) {
+      expect(hasReferenceFilter(url), url).toBe(isVatInvoicePage(url));
     }
   });
 });

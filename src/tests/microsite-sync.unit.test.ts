@@ -3,7 +3,8 @@
 //
 // `microsite/index.html` copies facts that live in TypeScript: filename
 // prefixes, manifest permissions, keyboard shortcuts, the list of portal pages,
-// the status labels of the comparer and the accuracy checker, the generated
+// the status labels of the comparer and the accuracy checker, the Pengecekan
+// panel's per-grid entry-point name and column headers, the generated
 // export filenames, and every popup control. Nothing in the build fails when
 // one of those moves, so this suite is the thing that fails instead: add an
 // export source, a permission, a shortcut, a portal path, a status, a filename
@@ -26,8 +27,19 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { getExportSourceSpec } from "../content/export-source";
-import { isSupportedExportPage, isCheckerPage, describePortalPage } from "../content/page-context";
-import type { ExportSource } from "../content/page-context";
+import {
+  isSupportedExportPage,
+  isCheckerPage,
+  describePortalPage,
+  panelEntryLabel,
+  PANEL_GRIDS,
+} from "../content/page-context";
+import type { ExportSource, PanelGridId } from "../content/page-context";
+import {
+  CHECKER_COUNTERPARTY_COLUMNS,
+  CHECKER_IDENTITIES,
+  type Counterparty,
+} from "../content/result-columns";
 import { getStatusLabel } from "../content/comparer-logic";
 import { generateDynamicFilename } from "../content/exporter";
 import { generateOutputTaxFilename, generateWithholdingFilename } from "../content/downloader";
@@ -469,19 +481,37 @@ describe("microsite — supported portal pages", () => {
 
 // ── The grids the accuracy check covers ────────────────────────────────
 //
+/**
+ * The URL of every grid the panel knows, by its row's id.
+ *
+ * ONE copy for the two blocks below: the check-coverage block walks it to prove
+ * the GATES, and the per-grid claims block walks it to ask the code what a grid's
+ * entry point and columns are called. A grid added to `PANEL_GRIDS` without a URL
+ * here is a compile error, and a URL that stops resolving to its row is a
+ * `PANEL_GRIDS[id]` lookup that fails the moment either block runs.
+ */
+const GRID_URLS: Record<PanelGridId, string> = {
+  OUTPUT_TAX: `${PORTAL}/e-invoice-portal/output-tax`,
+  INPUT_TAX: `${PORTAL}/e-invoice-portal/input-tax`,
+  OUTPUT_RETURN: `${PORTAL}/e-invoice-portal/output-return`,
+  INPUT_RETURN: `${PORTAL}/e-invoice-portal/input-return`,
+};
+
 describe("microsite — the grids the accuracy check covers", () => {
   /**
-   * The four e-Faktur PPN grids and the name each is printed under. The LABEL
-   * is the page's own wording (`ui-panel.currentGridLabel` builds the same
-   * four, from the URL instead of from a list); the GATE is read from the code,
-   * so a grid the check no longer runs on cannot stay advertised.
+   * The four e-Faktur PPN grids and the name each is printed under. BOTH come
+   * from the code: the URL from the grid's own id, the LABEL from the panel's row
+   * for it (`page-context.PANEL_GRIDS` — the same row `currentGridLabel` prints),
+   * and the GATE from `isCheckerPage`. A grid renamed on screen, or one the check
+   * no longer runs on, therefore cannot stay advertised here.
    */
-  const CHECKER_GRIDS: readonly { readonly url: string; readonly label: string }[] = [
-    { url: `${PORTAL}/e-invoice-portal/output-tax`, label: "PPN Keluaran" },
-    { url: `${PORTAL}/e-invoice-portal/input-tax`, label: "PPN Masukan" },
-    { url: `${PORTAL}/e-invoice-portal/output-return`, label: "Retur PPN Keluaran" },
-    { url: `${PORTAL}/e-invoice-portal/input-return`, label: "Retur PPN Masukan" },
-  ];
+  const CHECKER_GRIDS: readonly {
+    readonly url: string;
+    readonly label: string;
+    readonly facts: (typeof PANEL_GRIDS)[PanelGridId];
+  }[] = (
+    Object.entries(GRID_URLS) as [PanelGridId, string][]
+  ).map(([id, url]) => ({ url, label: PANEL_GRIDS[id].label, facts: PANEL_GRIDS[id] }));
 
   it("names every grid the check runs on", () => {
     const checkerPanel = panel("p6");
@@ -509,6 +539,101 @@ describe("microsite — the grids the accuracy check covers", () => {
       const name = describePortalPage(url).replace("Terhubung: ", "");
       expect(panel("p6").includes(name), `the Pengecekan panel names ${name}`).toBe(false);
     }
+  });
+});
+
+// ── The Pengecekan panel's per-grid claims ─────────────────────────────
+//
+// The tab used to make three claims in PROSE: that the toolbar button is named
+// "Bandingkan data penjualan" on PPN Keluaran and "Pengecekan keakuratan nilai"
+// elsewhere, that the counterparty column follows the grid, and that a retur row
+// is named by its NO RETUR. Nothing compared those sentences with the code, so a
+// renamed button or a re-labelled column could leave the page describing a panel
+// that no longer exists. They now live in ONE table in that panel, and this block
+// walks it against the sources of truth: the grid's NAME and its column headers
+// from `result-columns` (the same table the tab renders), its SIDE and IDENTITY
+// from the grid's row in `PANEL_GRIDS`, and the entry point's name from
+// `panelEntryLabel` — the function `ui.ts` names the real button with.
+
+describe("microsite — the Pengecekan panel's per-grid claims", () => {
+  /**
+   * The table's own columns, in the order the page writes them. The header row is
+   * checked too: a column silently dropped would otherwise let every row below
+   * compare shifted cells and still pass.
+   */
+  const CLAIM_COLUMNS = [
+    "Grid",
+    "Tombol pintu masuk",
+    "Kolom pihak lain",
+    "Kolom identitas",
+    "Kolom tanggal",
+  ];
+
+  /**
+   * The rows of the panel's claims table, cells only.
+   *
+   * Scoped to the table by its class rather than to the panel, for the reason the
+   * prefix and permission tables are: "PPN Masukan" is named all over this panel,
+   * so a search of the whole thing would keep passing after the table itself went
+   * stale. A missing table THROWS rather than returning no rows, so every
+   * assertion below cannot turn vacuous by accident.
+   */
+  const claimRows = (): string[][] => {
+    const table = flat(
+      panel("p6").match(/<table class="mini-table grid-claims">([\s\S]*?)<\/table>/)?.[1] ?? "",
+    );
+    if (!table) {
+      throw new Error("the Pengecekan panel lost its per-grid claims table — update this suite");
+    }
+    return [...table.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map((row) =>
+      [...row[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)].map((cell) =>
+        cell[1].replace(/<[^>]+>/g, "").trim(),
+      ),
+    );
+  };
+
+  /** The grids the check runs on, as the page gate itself answers it. */
+  const CHECKER_GRIDS = (Object.entries(GRID_URLS) as [PanelGridId, string][]).filter(
+    ([, url]) => isCheckerPage(url),
+  );
+
+  it("heads the claims table with what each row says", () => {
+    expect(claimRows()[0]).toEqual(CLAIM_COLUMNS);
+  });
+
+  it("mirrors the button name and the two per-grid columns the code renders", () => {
+    const rows = claimRows().slice(1);
+    // Both directions in one shape: the gate is what decides which grids may
+    // appear, so a row for a grid the check cannot run on fails the count as
+    // well as the lookup below, and a grid left out fails it just as loudly.
+    expect(rows, "the claims table does not name exactly the grids the check runs on").toHaveLength(
+      CHECKER_GRIDS.length,
+    );
+
+    for (const [id, url] of CHECKER_GRIDS) {
+      const facts = PANEL_GRIDS[id];
+      // The side and the identity are PAGE facts; the words they produce are the
+      // result schema's, read here from the same two tables the tab renders.
+      const counterparty: Counterparty = facts.counterpartyIsBuyer ? "pembeli" : "penjual";
+      const identity = CHECKER_IDENTITIES[facts.rowIdentity];
+      const row = rows.find((cells) => cells[0] === facts.label);
+
+      expect(row, `the claims table has no row for ${facts.label}`).toEqual([
+        facts.label,
+        panelEntryLabel(url),
+        CHECKER_COUNTERPARTY_COLUMNS[counterparty].label,
+        identity.label,
+        identity.dateLabel,
+      ]);
+    }
+  });
+
+  it("names the same entry point in the Komparator tab's own step", () => {
+    // PPN Keluaran's button is described in BOTH tabs, and the comparer's step is
+    // the one that says which button to click there. Checked against the same
+    // function the other tab's table is, so the two descriptions of one button
+    // cannot disagree.
+    expect(panel("p5")).toContain(panelEntryLabel(GRID_URLS.OUTPUT_TAX) ?? "");
   });
 });
 

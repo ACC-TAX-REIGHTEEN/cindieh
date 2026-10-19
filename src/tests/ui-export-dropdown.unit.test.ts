@@ -26,6 +26,7 @@ import {
   setExportFormatDefault,
   setOneClickExport,
 } from "../content/ui";
+import { PANEL_GRIDS, panelEntryLabel, type PanelGridId } from "../content/page-context";
 import { stubFakeDom, type FakeDoc, type FakeEl } from "./__mocks__/fake-dom";
 
 const OUTPUT_TAX_URL = "https://coretaxdjp.pajak.go.id/e-invoice-portal/output-tax";
@@ -500,7 +501,7 @@ describe("the year-wide export entry", () => {
     expect(doc.getElementById("ch-export-dropdown")).not.toBeNull();
     expect(doc.getElementById("ch-export-batch-item")).toBeNull();
     // No tab to offer on an SPT page, so no entry point into the panel either.
-    expect(doc.getElementById("ch-compare-btn")).toBeNull();
+    expect(doc.getElementById("ch-panel-btn")).toBeNull();
   });
 });
 
@@ -515,39 +516,35 @@ describe("the year-wide export entry", () => {
 // page cannot serve. Which tab it lands on is ui-panel's own decision, made
 // from the same two facts; this suite pins the button and its name.
 describe("the panel's entry point", () => {
-  const PANEL_GRIDS: readonly {
-    grid: string;
-    href: string;
-    anchorId: string;
-    label: string;
+  /** Each grid's page, and the portal button its toolbar is anchored beside. */
+  const GRIDS: readonly {
+    readonly id: PanelGridId;
+    readonly href: string;
+    readonly anchorId: string;
   }[] = [
-    {
-      grid: "PPN Keluaran",
-      href: OUTPUT_TAX_URL,
-      anchorId: "SubmitSelectedInvoicesButton",
-      label: "Bandingkan data penjualan",
-    },
-    {
-      grid: "PPN Masukan",
-      href: INPUT_TAX_URL,
-      anchorId: "CreditInvoiceButtonButton",
-      label: "Pengecekan keakuratan nilai",
-    },
-    {
-      grid: "Retur PPN Keluaran",
-      href: OUTPUT_RETURN_URL,
-      anchorId: "CancelSelectedInvoicesButton",
-      label: "Pengecekan keakuratan nilai",
-    },
-    {
-      grid: "Retur PPN Masukan",
-      href: INPUT_RETURN_URL,
-      anchorId: "SubmitReturnButton",
-      label: "Pengecekan keakuratan nilai",
-    },
+    { id: "OUTPUT_TAX", href: OUTPUT_TAX_URL, anchorId: "SubmitSelectedInvoicesButton" },
+    { id: "INPUT_TAX", href: INPUT_TAX_URL, anchorId: "CreditInvoiceButtonButton" },
+    { id: "OUTPUT_RETURN", href: OUTPUT_RETURN_URL, anchorId: "CancelSelectedInvoicesButton" },
+    { id: "INPUT_RETURN", href: INPUT_RETURN_URL, anchorId: "SubmitReturnButton" },
   ];
 
-  it.each(PANEL_GRIDS)(
+  /**
+   * The grid's name and the label its button must carry, both read from the
+   * panel's own row: the name is `PANEL_GRIDS[id].label` (the one
+   * `currentGridLabel` prints) and the label is the TAB that row offers, through
+   * the one function that spells an entry point (`panelEntryLabel`). A grid moved
+   * between tabs in the table therefore re-labels the button in the code and in
+   * this expectation together, instead of a second hand-written mapping drifting
+   * from it.
+   */
+  const CASES = GRIDS.map(({ id, href, anchorId }) => ({
+    grid: PANEL_GRIDS[id].label,
+    href,
+    anchorId,
+    label: panelEntryLabel(href),
+  }));
+
+  it.each(CASES)(
     "is injected on $grid, named for the tab that page can open",
     async ({ href, anchorId, label }) => {
       vi.stubGlobal("location", { href });
@@ -559,7 +556,7 @@ describe("the panel's entry point", () => {
 
       injectExportButton();
 
-      const btn = el("ch-compare-btn");
+      const btn = el("ch-panel-btn");
       // Icon-only control: the name has to be on the element, not only in the
       // tooltip a screen reader does not reliably announce.
       expect(btn.getAttribute("aria-label")).toBe(label);
@@ -574,4 +571,46 @@ describe("the panel's entry point", () => {
       expect(vi.mocked(await import("../content/ui-comparer")).injectComparerModal).toHaveBeenCalled();
     },
   );
+
+  it("is removed with the rest of the toolbar on navigation", () => {
+    injectExportButton();
+    expect(doc.getElementById("ch-panel-btn")).not.toBeNull();
+
+    removeExportButton();
+
+    // Teardown drops it by the REFERENCE it took at injection, so the getter and
+    // the setter have to name the same element: one left named for the Komparator
+    // would leak a button onto the next page.
+    expect(doc.getElementById("ch-panel-btn")).toBeNull();
+    expect(doc.getElementById("ch-export-dropdown")).toBeNull();
+  });
+
+  it("moves with the rest of the toolbar when Angular re-renders its header", () => {
+    const anchor = el("SubmitSelectedInvoicesButton");
+    // The toolbar is placed beside the page's own action button, in its header.
+    const header = doc.createElement("div");
+    doc.body.appendChild(header);
+    header.appendChild(anchor);
+
+    injectExportButton();
+    const panelBtn = el("ch-panel-btn");
+    expect(panelBtn.parentElement).toBe(header);
+
+    // Angular rebuilt the header around the same action button, and the dropdown
+    // itself survived somewhere else: the toolbar is MOVED, not re-injected.
+    const rebuiltHeader = doc.createElement("div");
+    doc.body.appendChild(rebuiltHeader);
+    rebuiltHeader.appendChild(anchor);
+    const stray = doc.createElement("div");
+    doc.body.appendChild(stray);
+    stray.appendChild(el("ch-export-dropdown"));
+
+    injectExportButton();
+
+    // The placement list names the same id this module injects, so the entry
+    // point travels with the dropdown instead of being left in the replaced
+    // header (or rebuilt, which would cost the click its listener).
+    expect(panelBtn.parentElement).toBe(rebuiltHeader);
+    expect(doc.getElementById("ch-panel-btn")).toBe(panelBtn);
+  });
 });

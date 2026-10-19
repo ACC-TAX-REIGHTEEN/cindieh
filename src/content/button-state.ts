@@ -14,9 +14,11 @@ let _exportDropdownBtnEl: HTMLButtonElement | null = null; // non-withholding: e
 let _pdfBtnEl: HTMLButtonElement | null = null;            // efaktur: "Download PDF" button
 let _scrapeBtnEl: HTMLButtonElement | null = null;         // efaktur: "Scrape Data" icon button
 // efaktur: the Bandingkan / Pengecekan panel's toolbar entry. One button named
-// for the tab its page can serve (ui.ts, ADR-0025), keeping the Komparator's
-// old name rather than inventing a third one for the same element.
-let _compareBtnEl: HTMLButtonElement | null = null;
+// for the tab its page can serve (ui.ts, ADR-0025) — and named for the PANEL,
+// not for the Komparator, because on three of the four grids it opens
+// Pengecekan rather than a comparison (ADR-0028 took the same step for the
+// facts behind its label).
+let _panelBtnEl: HTMLButtonElement | null = null;
 
 // ── Getters ───────────────────────────────────────────
 
@@ -36,8 +38,8 @@ export function getScrapeBtnEl(): HTMLButtonElement | null {
   return _scrapeBtnEl;
 }
 
-export function getCompareBtnEl(): HTMLButtonElement | null {
-  return _compareBtnEl;
+export function getPanelBtnEl(): HTMLButtonElement | null {
+  return _panelBtnEl;
 }
 
 // ── Setters ───────────────────────────────────────────
@@ -58,8 +60,8 @@ export function setScrapeBtnEl(el: HTMLButtonElement | null): void {
   _scrapeBtnEl = el;
 }
 
-export function setCompareBtnEl(el: HTMLButtonElement | null): void {
-  _compareBtnEl = el;
+export function setPanelBtnEl(el: HTMLButtonElement | null): void {
+  _panelBtnEl = el;
 }
 
 export function resetAllButtonRefs(): void {
@@ -67,5 +69,5 @@ export function resetAllButtonRefs(): void {
   _exportDropdownBtnEl = null;
   _pdfBtnEl = null;
   _scrapeBtnEl = null;
-  _compareBtnEl = null;
+  _panelBtnEl = null;
 }

@@ -11,11 +11,11 @@ import {
   isInputTaxPage,
   isOutputReturnPage,
   isOutputTaxPage,
-  isPanelPage,
   isSptPage,
   isSupportedExportPage,
   isWithholdingPage,
-  referenceIsIdentity,
+  panelEntryLabelFor,
+  panelGridFacts,
 } from "./page-context";
 
 import { getExportButtonLabel } from "./ui-badge";
@@ -33,13 +33,13 @@ import {
   setExportDropdownBtnEl,
   setPdfBtnEl,
   setScrapeBtnEl,
-  setCompareBtnEl,
+  setPanelBtnEl,
   resetAllButtonRefs,
   getExportBtnEl,
   getExportDropdownBtnEl,
   getPdfBtnEl,
   getScrapeBtnEl,
-  getCompareBtnEl,
+  getPanelBtnEl,
 } from "./button-state";
 
 // ── Constants ─────────────────────────────────────────
@@ -274,7 +274,7 @@ function injectedToolbarNodes(): HTMLElement[] {
     document.getElementById("ch-export-btn"),
     document.getElementById("ch-export-pdf-btn"),
     document.getElementById("ch-scrape-btn"),
-    document.getElementById("ch-compare-btn"),
+    document.getElementById("ch-panel-btn"),
   ].filter((node): node is HTMLElement => node !== null);
 }
 
@@ -337,8 +337,8 @@ function clearInjectedToolbar(): void {
   }
   const scrapeBtn = getScrapeBtnEl();
   if (scrapeBtn) scrapeBtn.remove();
-  const compareBtn = getCompareBtnEl();
-  if (compareBtn) compareBtn.remove();
+  const panelBtn = getPanelBtnEl();
+  if (panelBtn) panelBtn.remove();
   resetAllButtonRefs();
   dropdownNodes = null;
 }
@@ -346,7 +346,7 @@ function clearInjectedToolbar(): void {
 /**
  * Inject the export controls into the toolbar. Every supported page gets the
  * XLSX/CSV dropdown; withholding slips pair it with a bulk "Unduh PDF" button,
- * and e-faktur pages pair it with the PDF, scrape and comparer icon buttons.
+ * and e-faktur pages pair it with the PDF, scrape and panel-entry icon buttons.
  */
 export function injectExportButton(retries = MAX_RETRIES): void {
   // True when this call has to rebuild a toolbar Angular took away, as opposed
@@ -522,7 +522,8 @@ export function injectExportButton(retries = MAX_RETRIES): void {
 
       // ── Add the panel's entry point ──────────────────
       // ONE button into the Bandingkan / Pengecekan panel, on every page the
-      // panel has a tab to offer (`isPanelPage`: the four e-Faktur PPN grids).
+      // panel has a tab to offer (a `panelGridFacts()` row: the four e-Faktur PPN
+      // grids).
       // It is named for the TAB it will open, not for the panel's
       // Keluaran-only feature: on PPN Keluaran it opens the Komparator, while
       // on PPN Masukan and both Retur grids — where a Referensi is somebody
@@ -532,37 +533,46 @@ export function injectExportButton(retries = MAX_RETRIES): void {
       //
       // Gating this on the comparer's own fact is what left PPN Masukan with no
       // entry point while the keyboard already reached the check there: the
-      // entry point opens the OVERLAY, so it asks the overlay's question
-      // (ADR-0021, ADR-0025). The click sends the same `ch:compare-open` event
-      // as the shortcut, so the panel's own gate picks the tab and the
+      // entry point opens the OVERLAY, so it asks the grid's row for the tab it
+      // can serve (ADR-0021, ADR-0025). The click sends the same `ch:compare-open`
+      // event as the shortcut, so the panel's own gate picks the tab and the
       // open-once / Escape semantics stay single-sourced.
-      if (isPanelPage()) {
-        const canCompare = referenceIsIdentity();
-        const panelEntryLabel = canCompare
-          ? "Bandingkan data penjualan"
-          : "Pengecekan keakuratan nilai";
-        setCompareBtnEl(document.createElement("button"));
-        const compareBtn = getCompareBtnEl()!;
-        compareBtn.id = "ch-compare-btn";
-        compareBtn.type = "button";
-        compareBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight ch-icon-btn";
-        compareBtn.title = panelEntryLabel;
-        compareBtn.setAttribute("aria-label", panelEntryLabel);
+      // ONE read of the grid's row: the presence, the name and the icon are
+      // three renderings of the same decision, so they cannot disagree about
+      // which tab this button opens. The name itself comes from the one function
+      // that spells a row's entry point (page-context.panelEntryLabelFor), which
+      // is also what the microsite's per-grid table is checked against
+      // (PANEL_GRIDS, ADR-0025, ADR-0028).
+      const gridFacts = panelGridFacts();
+      if (gridFacts) {
+        const canCompare = gridFacts.comparerTab;
+        const entryName = panelEntryLabelFor(gridFacts);
+        setPanelBtnEl(document.createElement("button"));
+        const panelBtn = getPanelBtnEl()!;
+        panelBtn.id = "ch-panel-btn";
+        panelBtn.type = "button";
+        panelBtn.className = "p-element btn ct-btn-group mr-1 p-button p-component ch-btn-highlight ch-icon-btn";
+        panelBtn.title = entryName;
+        panelBtn.setAttribute("aria-label", entryName);
 
-        const compareIcon = document.createElement("span");
-        compareIcon.className = `p-button-icon p-button-icon-left pi ${canCompare ? "pi-list" : "pi-check-circle"}`;
-        compareIcon.setAttribute("aria-hidden", "true");
+        const panelIcon = document.createElement("span");
+        panelIcon.className = `p-button-icon p-button-icon-left pi ${canCompare ? "pi-list" : "pi-check-circle"}`;
+        panelIcon.setAttribute("aria-hidden", "true");
 
-        compareBtn.appendChild(compareIcon);
+        panelBtn.appendChild(panelIcon);
 
         if (insertMode === "before") {
-          containerNode.insertBefore(compareBtn, anchorEl);
+          containerNode.insertBefore(panelBtn, anchorEl);
         } else {
-          containerNode.appendChild(compareBtn);
+          containerNode.appendChild(panelBtn);
         }
 
-        compareBtn.addEventListener("click", (e: MouseEvent) => {
+        panelBtn.addEventListener("click", (e: MouseEvent) => {
           e.stopPropagation();
+          // The event name is the OVERLAY's open command, shared with
+          // Ctrl+Shift+B, and predates the panel hosting two tabs: it says
+          // "open the panel", not "open the Comparer", which is why the button
+          // that sends it is named for the panel (ADR-0025).
           document.dispatchEvent(new CustomEvent("ch:compare-open"));
         });
       }
@@ -659,9 +669,10 @@ function buildExportDropdown(
 
   // The year-wide sweep, on every e-Faktur PPN grid (Keluaran, Masukan, and
   // both Retur) — each is filed per masa, so a year is the natural unit. The
-  // sweep reads its period codes from the captured request and stops with a
-  // message when that request carries no period filter it recognises, so no
-  // grid silently exports the wrong year (scrape-batch.ts). Offered here rather
+  // entry is offered wherever the pages could support a sweep; whether a grid's
+  // request may actually be swept is answered later, from the measured table in
+  // scrape-batch.ts, and a grid with no measured row refuses with a message
+  // rather than guessing at its filters. Offered here rather
   // than as its own toolbar button so it costs no space on the seven pages that
   // cannot use it.
   if (isEfakturPage()) {
@@ -766,12 +777,12 @@ export function removeExportButton(): void {
   const exportDropdown = document.getElementById("ch-export-dropdown");
   const pdfBtn = getPdfBtnEl();
   const scrapeBtn = getScrapeBtnEl();
-  const compareBtn = getCompareBtnEl();
+  const panelBtn = getPanelBtnEl();
   if (exportBtn) exportBtn.remove();
   if (exportDropdown) exportDropdown.remove();
   if (pdfBtn) pdfBtn.remove();
   if (scrapeBtn) scrapeBtn.remove();
-  if (compareBtn) compareBtn.remove();
+  if (panelBtn) panelBtn.remove();
   resetAllButtonRefs();
   dropdownNodes = null;
 }
