@@ -18,33 +18,30 @@ import { startScraping, scrapePaginated, type ScraperContext } from "../content/
 import { xhrRequest } from "../content/scraper-xhr";
 import type { CapturedRequest, ScrapeComplete, ScrapeMessage } from "../content/scraper-types";
 import type { GridPage } from "../content/scraper-xhr";
+import {
+  capturedFilters,
+  gridRequest,
+  rawBodyWithFilters,
+  rawBodyWithoutSweepFilter,
+  rawBodyWithSweep,
+} from "./__mocks__/grid-requests";
 
 const mockedXhrRequest = vi.mocked(xhrRequest);
 
 /**
- * A captured request shaped like the one the portal actually makes: the period
- * and year arrive as body filters, not as query parameters. Synthesising the
- * codes locally would produce twelve period values the portal has never heard of.
+ * The captured PPN Keluaran request, re-asked for one period of one year.
+ *
+ * Built from the fixture rather than written out here: the sweep is only ever
+ * exercised against the body the portal actually sends, so a change in what the
+ * portal sends changes what these tests prove instead of passing unnoticed.
  */
 function capturedWithFilters(period: string, year = "2026"): CapturedRequest {
+  const fixture = gridRequest("OUTPUT_TAX");
   return {
-    url: "https://coretaxdjp.pajak.go.id/einvoiceportal/api/outputinvoice/list",
+    url: fixture.url ?? "",
     headers: { "Content-Type": "application/json" },
     body: null,
-    rawBody: JSON.stringify({
-      TaxpayerAggregateIdentifier: " taxpayer-id ",
-      SellerTaxpayerAggregateIdentifier: "",
-      First: 0,
-      Rows: 50,
-      SortField: "",
-      SortOrder: "",
-      LanguageId: "id",
-      Filters: [
-        { PropertyName: "TaxInvoicePeriod", Value: period, MatchMode: "equals", CaseSensitive: true },
-        { PropertyName: "TaxInvoiceYear", Value: year, MatchMode: "equals", CaseSensitive: true },
-        { PropertyName: "TaxInvoiceStatus", Value: ["CREATED"], MatchMode: "contains", CaseSensitive: true },
-      ],
-    }),
+    rawBody: rawBodyWithSweep("OUTPUT_TAX", { period, year }),
     response: null,
     initialData: [],
     initialFirst: 0,
@@ -236,10 +233,22 @@ describe("year-wide batch sweep", () => {
     const sentFilters = filtersPerRequest();
     // Dropping TaxInvoiceStatus or MatchMode would silently widen the sweep to
     // statuses the user never asked for, or turn equals into a prefix match.
-    expect(sentFilters[0].status).toEqual(["CREATED"]);
-    expect(sentFilters[1].status).toEqual(["CREATED"]);
-    expect(sentFilters[0].matchMode).toBe("equals");
-    expect(sentFilters[1].matchMode).toBe("equals");
+    // Both expectations are read from the CAPTURE, so the claim is "identical to
+    // what the portal sent" rather than "identical to this test's idea of it" —
+    // which is how a hand-built body used to pass against a value no request had.
+    const capture = capturedFilters("OUTPUT_TAX");
+    const status = capture.find((filter) => filter.PropertyName === "TaxInvoiceStatus")?.Value;
+    const periodMatchMode = capture.find(
+      (filter) => filter.PropertyName === "TaxInvoicePeriod",
+    )?.MatchMode;
+    expect(status, "the capture must carry a status filter").toBeDefined();
+    expect(sentFilters[0].status).toEqual(status);
+    expect(sentFilters[1].status).toEqual(status);
+    expect(sentFilters[0].matchMode).toBe(periodMatchMode);
+    expect(sentFilters[1].matchMode).toBe(periodMatchMode);
+    // The one thing that DOES change, per request: the period itself.
+    expect(sentFilters[0].period).toBe("TD.00701");
+    expect(sentFilters[1].period).toBe("TD.00702");
   });
 
   it("shares ONE dedupe set across periods, so an invoice in two months is collected once", async () => {
@@ -329,7 +338,7 @@ describe("year-wide batch sweep", () => {
     const ctx = makeCtx();
     const noPeriod: CapturedRequest = {
       ...capturedWithFilters("TD.00708"),
-      rawBody: JSON.stringify({ First: 0, Rows: 50, Filters: [] }),
+      rawBody: rawBodyWithFilters("OUTPUT_TAX", []),
     };
     await startScraping(async () => noPeriod, ctx, { batchMonths: 12 });
 
@@ -348,20 +357,35 @@ describe("year-wide batch sweep", () => {
     // never filtered to.
     const noYear: CapturedRequest = {
       ...capturedWithFilters("TD.00708"),
-      rawBody: JSON.stringify({
-        First: 0,
-        Rows: 50,
-        Filters: [
-          { PropertyName: "TaxInvoicePeriod", Value: "TD.00708", MatchMode: "equals" },
-        ],
-      }),
+      rawBody: rawBodyWithoutSweepFilter("OUTPUT_TAX", "year"),
     };
     await startScraping(async () => noYear, ctx, { batchMonths: 12 });
 
     expect(mockedXhrRequest).not.toHaveBeenCalled();
     expect(sent(ctx).find((m) => m.type === "SCRAPE_COMPLETE")).toBeUndefined();
     const error = sent(ctx).find((m) => m.type === "SCRAPE_ERROR");
-    expect((error as { message?: string } | undefined)?.message).toContain("tahun pajak");
+    expect((error as { message?: string } | undefined)?.message).toContain("TaxInvoiceYear");
+  });
+
+  it("refuses a grid whose sweep filters were never measured", async () => {
+    // The request carries perfectly ordinary filters; what is missing is a
+    // measured row for the GRID (ADR-0019). No name hint, value shape or
+    // lookalike spelling buys a sweep on a grid nobody has read.
+    mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
+    const ctx = makeCtx();
+    const unmeasured = gridRequest("INPUT_TAX");
+    const request: CapturedRequest = {
+      ...capturedWithFilters("TD.00708"),
+      url: unmeasured.url ?? "",
+      rawBody: unmeasured.rawBody,
+      source: unmeasured.source,
+    };
+    await startScraping(async () => request, ctx, { batchMonths: 12 });
+
+    expect(mockedXhrRequest).not.toHaveBeenCalled();
+    expect(sent(ctx).find((m) => m.type === "SCRAPE_COMPLETE")).toBeUndefined();
+    const error = sent(ctx).find((m) => m.type === "SCRAPE_ERROR");
+    expect((error as { message?: string } | undefined)?.message).toMatch(/belum pernah diukur/);
   });
 
   it("does not require a year filter for an ordinary single-period scrape", async () => {
@@ -372,11 +396,7 @@ describe("year-wide batch sweep", () => {
     const ctx = makeCtx();
     const noYear: CapturedRequest = {
       ...capturedWithFilters("TD.00708"),
-      rawBody: JSON.stringify({
-        First: 0,
-        Rows: 50,
-        Filters: [{ PropertyName: "TaxInvoicePeriod", Value: "TD.00708" }],
-      }),
+      rawBody: rawBodyWithoutSweepFilter("OUTPUT_TAX", "year"),
     };
     await startScraping(async () => noYear, ctx);
 

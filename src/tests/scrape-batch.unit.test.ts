@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  PERIOD_PROPERTY,
+  MEASURED_SWEEP_FILTERS,
   capturedPeriod,
   mergePeriodSummaries,
   overridesForPeriod,
@@ -11,28 +11,22 @@ import {
   summarisePeriods,
   type PeriodCount,
 } from "../content/scrape-batch";
+import {
+  capturedFilters,
+  rawBodyOf,
+  rawBodyWithFilters,
+  type EfakturSource,
+} from "./__mocks__/grid-requests";
 
-// The body the portal actually sent on 2026-10-06, captured off
-// /einvoiceportal/api/outputinvoice/list.
-const CAPTURED = JSON.stringify({
-  SellerTaxpayerAggregateIdentifier: "seller-1",
-  First: 0,
-  Rows: 50,
-  SortField: "TaxInvoiceDate",
-  SortOrder: "desc",
-  LanguageId: "id-ID",
-  TaxpayerAggregateIdentifier: "taxpayer-1",
-  Filters: [
-    { PropertyName: PERIOD_PROPERTY, Value: "TD.00708", MatchMode: "equals", CaseSensitive: true },
-    { PropertyName: "TaxInvoiceYear", Value: "2026", MatchMode: "equals", CaseSensitive: true },
-    {
-      PropertyName: "TaxInvoiceStatus",
-      Value: ["CREATED", "APPROVED", "SAVED_INVALID"],
-      MatchMode: "contains",
-      CaseSensitive: true,
-    },
-  ],
-});
+/** The one measured grid, and its names as the table records them. */
+const SOURCE: EfakturSource = "OUTPUT_TAX";
+const PERIOD_PROPERTY = MEASURED_SWEEP_FILTERS.OUTPUT_TAX?.period ?? "";
+const YEAR_PROPERTY = MEASURED_SWEEP_FILTERS.OUTPUT_TAX?.year ?? "";
+
+// The captured body — the portal's own request of 2026-10-06, kept in
+// grid-requests.ts with its provenance — rather than a body described here. The
+// readers below are then proved against what the portal actually sends.
+const CAPTURED = rawBodyOf(SOURCE);
 
 // ── Resuming a stopped sweep ─────────────────────────
 
@@ -153,14 +147,14 @@ describe("the portal's period code", () => {
   });
 
   it("reads the period the captured request is on", () => {
-    expect(capturedPeriod(CAPTURED)).toBe("TD.00708");
-    expect(capturedPeriod("{}")).toBeNull();
+    expect(capturedPeriod(CAPTURED, SOURCE)).toBe("TD.00708");
+    expect(capturedPeriod("{}", SOURCE)).toBeNull();
   });
 });
 
 describe("re-requesting the grid for one period", () => {
   it("changes the period and nothing else", () => {
-    const overrides = overridesForPeriod(CAPTURED, "TD.00701", 0, 500) as {
+    const overrides = overridesForPeriod(CAPTURED, "TD.00701", 0, 500, SOURCE) as {
       Filters: Record<string, unknown>[];
       First: number;
       Rows: number;
@@ -177,7 +171,7 @@ describe("re-requesting the grid for one period", () => {
     // The year filter and the status filter survive untouched — a batch that
     // dropped the status filter would export drafts the user never asked for.
     expect(overrides.Filters[1]).toEqual({
-      PropertyName: "TaxInvoiceYear",
+      PropertyName: YEAR_PROPERTY,
       Value: "2026",
       MatchMode: "equals",
       CaseSensitive: true,
@@ -191,38 +185,33 @@ describe("re-requesting the grid for one period", () => {
 
   it("does not mutate the captured body", () => {
     const before = JSON.parse(CAPTURED) as { Filters: { Value: unknown }[] };
-    overridesForPeriod(CAPTURED, "TD.00701", 0, 500);
+    overridesForPeriod(CAPTURED, "TD.00701", 0, 500, SOURCE);
     expect(before.Filters[0].Value).toBe("TD.00708");
   });
 
-  it("varies the period filter on a grid whose filter is named differently", () => {
-    // PPN Masukan and the retur grids were not measured, so the sweep has to
-    // find their period filter by name hint + value format and leave the rest
-    // of the array, year included, alone.
-    const body = JSON.stringify({
-      First: 0,
-      Rows: 50,
-      Filters: [
-        { PropertyName: "TaxPeriod", Value: "TD.00703", MatchMode: "equals" },
-        { PropertyName: "Year", Value: "2026", MatchMode: "equals" },
-      ],
-    });
+  it("refuses a grid whose filters were never measured", () => {
+    // The removed hint door used to sweep this body on a name plus a value in
+    // the measured format. With no measured row, nothing may be re-requested:
+    // twelve months of a grid nobody has read is a file the user cannot trust.
+    const body = rawBodyOf("INPUT_TAX");
 
-    const overrides = overridesForPeriod(body, "TD.00701", 0, 500) as {
-      Filters: Record<string, unknown>[];
-    };
-
-    expect(overrides.Filters[0]).toMatchObject({ PropertyName: "TaxPeriod", Value: "TD.00701" });
-    expect(overrides.Filters[1]).toMatchObject({ PropertyName: "Year", Value: "2026" });
+    expect(() => overridesForPeriod(body, "TD.00701", 0, 500, "INPUT_TAX")).toThrow();
   });
 
   it("refuses when the request has no period filter at all", () => {
     // Silently scraping the same period twelve times and calling it a year is
-    // the worst outcome available, so this is a hard stop.
-    const body = JSON.stringify({ Filters: [{ PropertyName: "TaxInvoiceYear", Value: "2026" }] });
-    expect(() => overridesForPeriod(body, "TD.00701", 0, 500)).toThrow(/TaxInvoicePeriod/);
-    expect(() => overridesForPeriod("{}", "TD.00701", 0, 500)).toThrow(/TaxInvoicePeriod/);
-    expect(() => overridesForPeriod("not json", "TD.00701", 0, 500)).toThrow(/TaxInvoicePeriod/);
+    // the worst outcome available, so this is a hard stop. The body is the
+    // capture with its period filter taken away — the portal's own request
+    // minus one filter, not a request invented for the test.
+    const body = rawBodyWithFilters(
+      SOURCE,
+      capturedFilters(SOURCE).filter((filter) => filter.PropertyName !== PERIOD_PROPERTY),
+    );
+    expect(() => overridesForPeriod(body, "TD.00701", 0, 500, SOURCE)).toThrow(/TaxInvoicePeriod/);
+    expect(() => overridesForPeriod("{}", "TD.00701", 0, 500, SOURCE)).toThrow(/TaxInvoicePeriod/);
+    expect(() => overridesForPeriod("not json", "TD.00701", 0, 500, SOURCE)).toThrow(
+      /TaxInvoicePeriod/,
+    );
   });
 });
 

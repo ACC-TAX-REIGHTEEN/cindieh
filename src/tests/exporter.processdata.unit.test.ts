@@ -3,6 +3,7 @@
 import { describe, it, expect } from "vitest";
 import { processData, type ExportData } from "../content/exporter";
 import type { ExportSource } from "../content/page-context";
+import { gridRow } from "./__mocks__/grid-requests";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -19,22 +20,10 @@ function makeExportData(
 // ── OUTPUT_TAX (default path) ─────────────────────────────────────────────────
 
 describe("processData — OUTPUT_TAX (default hardcoded fields)", () => {
-  const row = {
-    TaxInvoiceDate: "2026-04-15T00:00:00+07:00",
-    TaxInvoicePeriod: "04",
-    TaxInvoiceYear: "2026",
-    BuyerName: "PT Maju Jaya",
-    BuyerTIN: "123456789",
-    TaxInvoiceNumber: "0400000001",
-    TaxInvoiceStatus: "Normal",
-    BuyerStatus: "PKP",
-    SellingPrice: 568000,
-    OtherTaxBase: 0,
-    VAT: 62480,
-    STLG: 0,
-    Reference: "REF-001",
-    ExtraField: "should be dropped",
-  };
+  // The grid's canonical row, read from the fixture (grid-requests.ts) rather
+  // than written here: the columns are proved against one shape shared with the
+  // sweep's readers, and a scenario variant below still spells its own.
+  const row = gridRow("OUTPUT_TAX");
 
   it("emits Indonesian OUTPUT_TAX export headers", () => {
     const result = processData(makeExportData("OUTPUT_TAX", [row]));
@@ -113,24 +102,7 @@ describe("processData — OUTPUT_TAX (default hardcoded fields)", () => {
 // ── INPUT_TAX ─────────────────────────────────────────────────────────────────
 
 describe("processData � INPUT_TAX", () => {
-  const row = {
-    TaxInvoiceDate: "2026-03-10T00:00:00+07:00",
-    TaxInvoicePeriod: "TD.00703",
-    TaxInvoiceYear: "2026",
-    SellerTaxpayerName: "PT Supplier",
-    SellerTIN: "987654321",
-    TaxInvoiceNumber: "0100000999",
-    TaxInvoiceStatus: "APPROVED",
-    BuyerStatus: "CREDITED",
-    PeriodCredit: "TD.00704",
-    YearCredit: "2026",
-    SellingPrice: 1000000,
-    OtherTaxBase: 916667,
-    VAT: 110000,
-    STLG: 0,
-    Reference: "REF-IN-001",
-    ExtraField: "should be dropped",
-  };
+  const row = gridRow("INPUT_TAX");
 
   it("emits Indonesian INPUT_TAX export headers", () => {
     const result = processData(makeExportData("INPUT_TAX", [row]));
@@ -199,23 +171,7 @@ describe("processData � INPUT_TAX", () => {
 });
 
 describe("processData - OUTPUT_RETURN", () => {
-  const row = {
-    BuyerTIN: "0639343490201000",
-    BuyerTaxpayerNameClear: "PT Buyer Clear",
-    TaxInvoiceNumber: "0400000123",
-    TaxInvoiceDate: "2026-06-18T00:00:00+07:00",
-    ReturnNumber: "RET-OUT-001",
-    ReturnDate: "2026-07-01T00:00:00+07:00",
-    TaxInvoicePeriod: "TD.00706",
-    TaxInvoiceYear: "2026",
-    BuyerStatus: "CREDITED",
-    TaxInvoiceStatus: "APPROVED",
-    SellingPrice: 291215,
-    OtherTaxBase: 266947,
-    VAT: 32034,
-    STLG: 0,
-    ExtraField: "should be dropped",
-  };
+  const row = gridRow("OUTPUT_RETURN");
 
   it("emits Indonesian OUTPUT_RETURN export headers", () => {
     const result = processData(makeExportData("OUTPUT_RETURN", [row]));
@@ -251,23 +207,7 @@ describe("processData - OUTPUT_RETURN", () => {
 });
 
 describe("processData - INPUT_RETURN", () => {
-  const row = {
-    SellerTIN: "0016232159201000",
-    SellerTaxpayerName: "PT Seller",
-    TaxInvoiceNumber: "0100000123",
-    TaxInvoiceDate: "2026-06-18T00:00:00+07:00",
-    ReturnNumber: "RET-IN-001",
-    ReturnDate: "2026-07-02T00:00:00+07:00",
-    TaxInvoicePeriod: "TD.00706",
-    TaxInvoiceYear: "2026",
-    BuyerStatus: "CREDITED",
-    TaxInvoiceStatus: "APPROVED",
-    SellingPrice: 1000000,
-    OtherTaxBase: 916667,
-    VAT: 110000,
-    STLG: 0,
-    ExtraField: "should be dropped",
-  };
+  const row = gridRow("INPUT_RETURN");
 
   it("emits Indonesian INPUT_RETURN export headers", () => {
     const result = processData(makeExportData("INPUT_RETURN", [row]));

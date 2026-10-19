@@ -1,24 +1,49 @@
-// Unit tests for the batch helpers added after scrape-batch's first suite:
-// the requested-month normaliser and the captured-year reader.
+// Unit tests for the batch helpers around scrape-batch's reader and guard:
+// the requested-month normaliser, the captured-year reader, and the per-grid
+// table of MEASURED sweep filters.
 //
-// Both guard a request that crosses a world boundary, so both are about what
-// they REJECT: a bad number must degrade to an ordinary scrape rather than into
-// a sweep of nothing or a sweep of everything.
+// The table is the point of the suite. A sweep may only run on a grid whose
+// filter names were read off the portal, so most of what is asserted here is
+// the refusal: an unmeasured grid refuses even when its request carries the
+// measured spellings, because a lookalike is not a measurement.
 import { describe, expect, it } from "vitest";
+import type { ExportSource } from "../content/page-context";
 import {
-  PERIOD_PROPERTY,
-  YEAR_PROPERTY,
+  MEASURED_SWEEP_FILTERS,
   batchMonthCount,
   batchScopeError,
-  capturedYear,
   capturedPeriod,
+  capturedYear,
   describeSweepFilters,
+  measuredSweepFilters,
   readSweepFilters,
   resumePeriodCodes,
 } from "../content/scrape-batch";
+import {
+  capturedFilters,
+  rawBodyOf,
+  rawBodyWith,
+  rawBodyWithFilters,
+  type EfakturSource,
+  type GridFilter,
+} from "./__mocks__/grid-requests";
 
-function body(filters: { PropertyName: string; Value: unknown }[]): string {
-  return JSON.stringify({ First: 0, Rows: 50, Filters: filters });
+/** The only measured grid. */
+const SOURCE: EfakturSource = "OUTPUT_TAX";
+
+/** The e-Faktur PPN grids with no measured row yet. */
+const UNMEASURED: EfakturSource[] = ["INPUT_TAX", "OUTPUT_RETURN", "INPUT_RETURN"];
+
+/** The measured names, read from the table so a rename cannot drift silently. */
+const PERIOD_PROPERTY = MEASURED_SWEEP_FILTERS.OUTPUT_TAX?.period ?? "";
+const YEAR_PROPERTY = MEASURED_SWEEP_FILTERS.OUTPUT_TAX?.year ?? "";
+
+/**
+ * The captured body with its filters swapped: the portal's own request around
+ * whatever filter list a scenario needs, instead of a body written from scratch.
+ */
+function body(filters: GridFilter[]): string {
+  return rawBodyWithFilters(SOURCE, filters);
 }
 
 describe("resumePeriodCodes", () => {
@@ -81,23 +106,50 @@ describe("batchMonthCount", () => {
   });
 });
 
-describe("capturedYear", () => {
-  it("reads the year the grid is filtered to", () => {
-    const raw = body([
-      { PropertyName: "TaxInvoicePeriod", Value: "TD.00708" },
-      { PropertyName: YEAR_PROPERTY, Value: "2026" },
-    ]);
-    expect(capturedYear(raw)).toBe("2026");
+describe("the measured sweep-filter table", () => {
+  // These two names are the measurement ADR-0019 asked for, taken off the live
+  // portal on 2026-10-06. Pinned literally: a rename without a fresh measurement
+  // would be a guess, and a guess here issues twelve requests for months nobody
+  // confirmed the endpoint honours.
+  it("records PPN Keluaran's measured filter names", () => {
+    expect(MEASURED_SWEEP_FILTERS.OUTPUT_TAX).toEqual({
+      period: "TaxInvoicePeriod",
+      year: "TaxInvoiceYear",
+    });
+    expect(PERIOD_PROPERTY).not.toBe("");
+    expect(YEAR_PROPERTY).not.toBe("");
   });
 
-  it("accepts a numeric year, which is how a JSON body would carry it", () => {
-    expect(capturedYear(body([{ PropertyName: YEAR_PROPERTY, Value: 2026 }]))).toBe("2026");
+  it.each(UNMEASURED)("has no row for %s, which is what refuses the sweep", (source) => {
+    expect(measuredSweepFilters(source)).toBeNull();
+    // And the table itself says so, rather than the row being an empty object
+    // some later reader could treat as a measurement.
+    expect(MEASURED_SWEEP_FILTERS[source]).toBeUndefined();
   });
 
   it.each([
-    ["no filters at all", "{\"First\":0}"],
+    ["no source at all", null],
+    ["an undefined source", undefined],
+    ["a source outside the e-Faktur grids", "WITHHOLDING_SLIPS" as ExportSource],
+  ])("answers null for %s", (_label, source) => {
+    expect(measuredSweepFilters(source)).toBeNull();
+  });
+});
+
+describe("capturedYear", () => {
+  it("reads the year the grid is filtered to", () => {
+    // The capture itself: period and year as the portal sent them.
+    expect(capturedYear(rawBodyOf(SOURCE), SOURCE)).toBe("2026");
+  });
+
+  it("accepts a numeric year, which is how a JSON body would carry it", () => {
+    expect(capturedYear(body([{ PropertyName: YEAR_PROPERTY, Value: 2026 }]), SOURCE)).toBe("2026");
+  });
+
+  it.each([
+    ["no filters at all", rawBodyWith(SOURCE, { Filters: undefined })],
     ["an empty filter list", body([])],
-    ["no year filter", body([{ PropertyName: "TaxInvoicePeriod", Value: "TD.00708" }])],
+    ["no year filter", body([{ PropertyName: PERIOD_PROPERTY, Value: "TD.00708" }])],
     ["a non-year value", body([{ PropertyName: YEAR_PROPERTY, Value: "TD.00708" }])],
     ["a two-digit year", body([{ PropertyName: YEAR_PROPERTY, Value: "26" }])],
     ["a year with trailing text", body([{ PropertyName: YEAR_PROPERTY, Value: "2026 SPT" }])],
@@ -105,7 +157,7 @@ describe("capturedYear", () => {
     ["unparseable JSON", "{not json"],
     ["an empty string", ""],
   ])("returns null for %s — a wrong year is worse than none", (_label, raw) => {
-    expect(capturedYear(raw)).toBeNull();
+    expect(capturedYear(raw, SOURCE)).toBeNull();
   });
 
   it("agrees with capturedPeriod about which filters the body actually carries", () => {
@@ -114,191 +166,184 @@ describe("capturedYear", () => {
     const raw = body([
       { PropertyName: "TaxInvoiceStatus", Value: ["CREATED"] },
       { PropertyName: YEAR_PROPERTY, Value: "2026" },
-      { PropertyName: "TaxInvoicePeriod", Value: "TD.00708" },
+      { PropertyName: PERIOD_PROPERTY, Value: "TD.00708" },
     ]);
-    expect(capturedYear(raw)).toBe("2026");
-    expect(capturedPeriod(raw)).toBe("TD.00708");
+    expect(capturedYear(raw, SOURCE)).toBe("2026");
+    expect(capturedPeriod(raw, SOURCE)).toBe("TD.00708");
+  });
+
+  it.each(UNMEASURED)("reads no year on %s, because no study says where it lives", (source) => {
+    // Two bodies: the grid's own fixture, and the PPN Keluaran capture dropped
+    // into it so the request carries the measured spellings as well. Neither is
+    // read, because nobody has confirmed this endpoint honours those names.
+    const measuredNames = rawBodyWithFilters(source, capturedFilters(SOURCE));
+    expect(capturedYear(rawBodyOf(source), source)).toBeNull();
+    expect(capturedPeriod(rawBodyOf(source), source)).toBeNull();
+    expect(capturedYear(measuredNames, source)).toBeNull();
+    expect(capturedPeriod(measuredNames, source)).toBeNull();
   });
 });
 
-describe("batchScopeError", () => {
-  const BOTH = body([
-    { PropertyName: "TaxInvoicePeriod", Value: "TD.00708" },
-    { PropertyName: YEAR_PROPERTY, Value: "2026" },
-  ]);
+describe("batchScopeError — the measured grid", () => {
+  // The measured grid's own capture: it carries both filters, so it is the
+  // request that satisfies the guard — a fixture the readers are proved
+  // against, not a body built to please them.
+  const BOTH = rawBodyOf(SOURCE);
 
   it("lets a sweep run when the request carries the period and the year", () => {
-    expect(batchScopeError(BOTH)).toBeNull();
+    expect(batchScopeError(BOTH, SOURCE)).toBeNull();
   });
 
   it("names the missing PERIOD, which would sweep one month twelve times", () => {
     const raw = body([{ PropertyName: YEAR_PROPERTY, Value: "2026" }]);
-    expect(batchScopeError(raw)).toContain("masa pajak");
+    // The message names the filter the table expects, so the fix is obvious and
+    // a stale table is visible instead of mysterious.
+    expect(batchScopeError(raw, SOURCE)).toContain(PERIOD_PROPERTY);
   });
 
   it("names the missing YEAR, which the period code does not carry itself", () => {
-    // The message has to say which filter is missing: "the request cannot be
-    // swept" without saying why leaves the user re-trying the same filter.
-    const raw = body([{ PropertyName: "TaxInvoicePeriod", Value: "TD.00708" }]);
-    expect(batchScopeError(raw)).toContain("tahun pajak");
+    const raw = body([{ PropertyName: PERIOD_PROPERTY, Value: "TD.00708" }]);
+    expect(batchScopeError(raw, SOURCE)).toContain(YEAR_PROPERTY);
   });
 
   it.each([
     ["unparseable JSON", "{not json"],
     ["an empty string", ""],
-    ["a body with no filters", "{\"First\":0}"],
+    ["a body with no filters", rawBodyWith(SOURCE, { Filters: undefined })],
     ["an empty filter list", body([])],
     ["a period value that is not a code", body([
-      { PropertyName: "TaxInvoicePeriod", Value: "Agustus" },
+      { PropertyName: PERIOD_PROPERTY, Value: "Agustus" },
       { PropertyName: YEAR_PROPERTY, Value: "2026" },
     ])],
   ])("refuses %s rather than sweeping something unnamed", (_label, raw) => {
-    expect(batchScopeError(raw)).not.toBeNull();
+    expect(batchScopeError(raw, SOURCE)).not.toBeNull();
   });
 
   it("accepts a numeric year, the way capturedYear does", () => {
     const raw = body([
-      { PropertyName: "TaxInvoicePeriod", Value: "TD.00708" },
+      { PropertyName: PERIOD_PROPERTY, Value: "TD.00708" },
       { PropertyName: YEAR_PROPERTY, Value: 2026 },
     ]);
-    expect(batchScopeError(raw)).toBeNull();
+    expect(batchScopeError(raw, SOURCE)).toBeNull();
+  });
+
+  it("distinguishes an unreadable period value from a missing filter", () => {
+    // Unreadable is not the same as absent: nothing here can be swept, but the
+    // filter IS there, so the message must not send the user hunting for it.
+    const raw = body([
+      { PropertyName: PERIOD_PROPERTY, Value: "2026-07" },
+      { PropertyName: YEAR_PROPERTY, Value: "2026" },
+    ]);
+    expect(batchScopeError(raw, SOURCE)).toMatch(/belum dikenali/);
+    expect(batchScopeError(raw, SOURCE)).not.toContain(`tidak punya filter ${PERIOD_PROPERTY}`);
   });
 });
 
-describe("the other VAT grids", () => {
-  // Only PPN Keluaran's filter names were measured. On the other three grids a
-  // filter is accepted on TWO signals together — a name that says period/year
-  // and a value in the measured format — because the value alone cannot be
-  // trusted (an invoice number also ends in two digits that look like a month).
+describe("a grid that was never measured", () => {
+  // This is the whole point of the table: no hint, no value shape and no
+  // similar-sounding property name buys a sweep on a grid nobody has read.
+  // The measured grid's capture, dropped into an unmeasured grid's reader:
+  // perfectly ordinary filters, still refused — because what is missing is a
+  // row for THIS grid, not a filter its body happens to carry.
+  const LOOKS_RIGHT = rawBodyOf(SOURCE);
 
-  it("reads a period filter the portal spelled differently, plus a year filter", () => {
-    const raw = body([
-      { PropertyName: "TaxPeriod", Value: "TD.00703" },
-      { PropertyName: "Year", Value: "2026" },
-    ]);
-    expect(capturedPeriod(raw)).toBe("TD.00703");
-    expect(capturedYear(raw)).toBe("2026");
-    expect(batchScopeError(raw)).toBeNull();
+  it.each(UNMEASURED)("refuses %s even when the request carries the measured names", (source) => {
+    const error = batchScopeError(LOOKS_RIGHT, source);
+    expect(error).not.toBeNull();
+    expect(error).toMatch(/belum pernah diukur/);
+    // Not a complaint about this request's filters: the grid itself is the
+    // reason, and the message has to say so or the user keeps re-trying.
+    expect(error).not.toContain("tidak punya filter");
   });
 
-  it("reads the year from a body field, the way the retur filename hint does", () => {
-    const raw = JSON.stringify({
-      Filters: [{ PropertyName: "TaxInvoicePeriod", Value: "TD.00705" }],
-      TaxYear: "2025",
-    });
-    expect(capturedYear(raw)).toBe("2025");
-    expect(batchScopeError(raw)).toBeNull();
+  it("refuses a grid whose filters are spelled differently, which used to pass", () => {
+    // The removed hint door accepted this on a name plus a value in the measured
+    // shape. The INPUT_TAX fixture's stand-in carries exactly that — a
+    // period-named filter with a TD.007MM value — and it is now a refusal: a
+    // lookalike name is not evidence that the endpoint honours it.
+    const raw = rawBodyOf("INPUT_TAX");
+    expect(batchScopeError(raw, "INPUT_TAX")).toMatch(/belum pernah diukur/);
+    expect(capturedPeriod(raw, "INPUT_TAX")).toBeNull();
+    expect(capturedYear(raw, "INPUT_TAX")).toBeNull();
   });
 
   it("never mistakes an invoice-number filter for the period, however its value ends", () => {
-    // `010.000-26.00000012` ends in a month-looking pair too. A value-only
-    // match here would sweep twelve invoice numbers instead of twelve months.
+    // `010.000-26.00000012` ends in a month-looking pair too. It is not a
+    // candidate on any grid, measured or not.
     const raw = body([
       { PropertyName: "TaxInvoiceNumber", Value: "010.000-26.00000012" },
       { PropertyName: YEAR_PROPERTY, Value: "2026" },
     ]);
-    expect(capturedPeriod(raw)).toBeNull();
-    expect(batchScopeError(raw)).toContain("tidak punya filter masa pajak");
+    expect(capturedPeriod(raw, SOURCE)).toBeNull();
+    expect(batchScopeError(raw, SOURCE)).toContain(PERIOD_PROPERTY);
   });
 
-  it("refuses a period-named filter whose value is in no known format", () => {
-    // This refusal is also the measurement: it is what a grid reports when its
-    // filter is real but spelled outside the family the code knows.
+  it("never sweeps by a credit period, which is a different period entirely", () => {
+    // PPN Masukan's request may carry the credit period beside the document
+    // period. Even with a row for that grid, only the recorded name would count;
+    // today the grid has no row at all, and the credit spelling is just one more
+    // filter in the reading.
     const raw = body([
-      { PropertyName: "TaxPeriod", Value: "2026-07" },
-      { PropertyName: YEAR_PROPERTY, Value: "2026" },
+      { PropertyName: "PeriodCredit", Value: "TD.00703" },
+      { PropertyName: "YearCredit", Value: "2026" },
     ]);
-    // Unreadable is not the same as absent: nothing here can be swept, but the
-    // filter IS there, so the message must not send the user hunting for it.
-    expect(capturedPeriod(raw)).toBeNull();
-    expect(batchScopeError(raw)).toMatch(/belum dikenali/);
-    expect(batchScopeError(raw)).not.toContain("tidak punya filter masa pajak");
-  });
-
-  it.each([
-    ["PeriodCredit", "YearCredit"],
-    ["PeriodCredit", "TaxInvoiceYear"],
-    ["TaxInvoicePeriod", "YearCredit"],
-  ])("never sweeps by the credit period (%s / %s)", (periodName, yearName) => {
-    // A credit period is a second period filter PPN Masukan may carry; sweeping
-    // by it would return twelve coherent months of the WRONG period.
-    const raw = body([
-      { PropertyName: periodName, Value: "TD.00703" },
-      { PropertyName: yearName, Value: "2026" },
-    ]);
-    const creditPeriod = periodName.includes("Credit");
-    const creditYear = yearName.includes("Credit");
-    expect(capturedPeriod(raw)).toBe(creditPeriod ? null : "TD.00703");
-    expect(capturedYear(raw)).toBe(creditYear ? null : "2026");
-    expect(batchScopeError(raw)).not.toBeNull();
-  });
-
-  it("prefers the measured names when a request carries both spellings", () => {
-    const raw = body([
-      { PropertyName: "TaxPeriod", Value: "TD.00703" },
-      { PropertyName: "TaxInvoicePeriod", Value: "TD.00708" },
-      { PropertyName: "Year", Value: "2025" },
-      { PropertyName: YEAR_PROPERTY, Value: "2026" },
-    ]);
-    expect(capturedPeriod(raw)).toBe("TD.00708");
-    expect(capturedYear(raw)).toBe("2026");
+    expect(capturedPeriod(raw, "INPUT_TAX")).toBeNull();
+    expect(capturedYear(raw, "INPUT_TAX")).toBeNull();
+    expect(batchScopeError(raw, "INPUT_TAX")).toMatch(/belum pernah diukur/);
   });
 });
 
 describe("the reading the guard decides on", () => {
-  // The measurement ADR-0019 left open is taken from this reading: a grid that
-  // still answers through the hint door is one whose filter NAMES are guesses,
-  // and the log line is what hands over the spelling to learn. So the reading
-  // has to distinguish the two doors, and it has to name the filters it passed
-  // over — a credit period most of all.
+  // A refusal is still the measurement: the log line names what the request
+  // carries so the missing row can be written from it. That makes the reading
+  // the artifact to pin, not just an implementation detail.
 
-  it("names the door each filter was found through", () => {
-    const measured = body([
-      { PropertyName: PERIOD_PROPERTY, Value: "TD.00708" },
-      { PropertyName: YEAR_PROPERTY, Value: "2026" },
-    ]);
-    expect(readSweepFilters(measured)).toEqual({
-      period: { name: "TaxInvoicePeriod", value: "TD.00708", door: "measured" },
-      year: { name: YEAR_PROPERTY, value: "2026", door: "measured" },
-      seen: ["TaxInvoicePeriod", YEAR_PROPERTY],
+  it("reports the measured row, the filters, and everything else the request had", () => {
+    // The capture: period, year and status — exactly the filters the line below
+    // names, in the order the portal sent them.
+    const measured = rawBodyOf(SOURCE);
+    expect(readSweepFilters(measured, SOURCE)).toEqual({
+      measurement: { period: PERIOD_PROPERTY, year: YEAR_PROPERTY },
+      period: { name: PERIOD_PROPERTY, value: "TD.00708" },
+      year: { name: YEAR_PROPERTY, value: "2026" },
+      seen: [PERIOD_PROPERTY, YEAR_PROPERTY, "TaxInvoiceStatus"],
     });
     // Pinned as a whole because the line IS the artifact the portal loop reads
     // back: a reworded log is a changed instruction to whoever measures next.
-    expect(describeSweepFilters(measured)).toBe(
-      "period=TaxInvoicePeriod=TD.00708 (measured name) · year=TaxInvoiceYear=2026 (measured name) · " +
-        "period/year-named filters seen: TaxInvoicePeriod, TaxInvoiceYear",
+    expect(describeSweepFilters(measured, SOURCE)).toBe(
+      `period=${PERIOD_PROPERTY}=TD.00708 · year=${YEAR_PROPERTY}=2026 · ` +
+        `filters seen: ${PERIOD_PROPERTY}, ${YEAR_PROPERTY}, TaxInvoiceStatus`,
     );
   });
 
-  it("says so when the sweep still rests on a name hint", () => {
-    const hinted = body([
-      { PropertyName: "TaxPeriod", Value: "TD.00703" },
-      { PropertyName: "Year", Value: "2026" },
-    ]);
-    expect(readSweepFilters(hinted)).toEqual({
-      period: { name: "TaxPeriod", value: "TD.00703", door: "hint" },
-      year: { name: "Year", value: "2026", door: "hint" },
-      seen: ["TaxPeriod", "Year"],
+  it("says the grid is unmeasured, and names what its request carries", () => {
+    // The grid's own fixture, whose stand-in filters are named Period/Year.
+    const raw = rawBodyOf("INPUT_TAX");
+    expect(readSweepFilters(raw, "INPUT_TAX")).toEqual({
+      measurement: null,
+      period: null,
+      year: null,
+      seen: ["Period", "Year"],
     });
-    expect(describeSweepFilters(hinted)).toContain("period=TaxPeriod=TD.00703 (name hint)");
-    expect(describeSweepFilters(hinted)).toContain("year=Year=2026 (name hint)");
+    expect(describeSweepFilters(raw, "INPUT_TAX")).toBe(
+      "grid belum terukur · filters seen: Period, Year",
+    );
   });
 
   it("reports a measured period filter whose value is in no known format", () => {
-    // This is an unmeasured grid's real shape: the filter is not missing, its
-    // VALUE is outside the family periodPrefix reads. Saying "no period filter"
-    // would send the user hunting for one that is already there.
+    // A measured grid whose spelling moved: the filter is not missing, its VALUE
+    // is outside the family periodPrefix reads. Saying "no period filter" would
+    // send the user hunting for one that is already there.
     const raw = body([
       { PropertyName: PERIOD_PROPERTY, Value: "Agustus" },
       { PropertyName: YEAR_PROPERTY, Value: "2026" },
     ]);
-    expect(readSweepFilters(raw).period).toEqual({
+    expect(readSweepFilters(raw, SOURCE).period).toEqual({
       name: PERIOD_PROPERTY,
       value: "Agustus",
-      door: "measured",
     });
-    expect(describeSweepFilters(raw)).toContain(
-      `period=${PERIOD_PROPERTY}=Agustus (measured name, value in no known format)`,
+    expect(describeSweepFilters(raw, SOURCE)).toContain(
+      `period=${PERIOD_PROPERTY}=Agustus, value in no known format`,
     );
   });
 
@@ -306,91 +351,34 @@ describe("the reading the guard decides on", () => {
     ["an empty value", ""],
     ["no value key at all", undefined],
   ])("reads a measured period filter that carries %s", (_label, value) => {
-    // A filter present with nothing in it is an unmeasured shape of its own: the
-    // name is the measured one, so the sweep finds the FILTER and still has no
-    // code to derive twelve periods from. The reading has to show that rather
-    // than report the filter as absent.
     const raw = body([
       { PropertyName: PERIOD_PROPERTY, Value: value },
       { PropertyName: YEAR_PROPERTY, Value: "2026" },
     ]);
-    expect(readSweepFilters(raw).period).toEqual({
+    expect(readSweepFilters(raw, SOURCE).period).toEqual({
       name: PERIOD_PROPERTY,
       value: "",
-      door: "measured",
     });
-    expect(describeSweepFilters(raw)).toContain(
-      `period=${PERIOD_PROPERTY}= (measured name, value in no known format)`,
+    expect(describeSweepFilters(raw, SOURCE)).toContain(
+      `period=${PERIOD_PROPERTY}=, value in no known format`,
     );
-    expect(batchScopeError(raw)).toMatch(/belum dikenali/);
-  });
-
-  it("lists a period-named filter it refused, so the refusal is the measurement", () => {
-    // `TaxPeriod = 2026-07` is a period spelled outside the measured family: the
-    // sweep cannot use it, and the line says exactly which spelling to learn
-    // next instead of only that the grid was not recognised.
-    const raw = body([
-      { PropertyName: "TaxPeriod", Value: "2026-07" },
-      { PropertyName: YEAR_PROPERTY, Value: "2026" },
-    ]);
-    const reading = readSweepFilters(raw);
-    expect(reading.period).toBeNull();
-    expect(reading.seen).toEqual(["TaxPeriod", YEAR_PROPERTY]);
-    expect(describeSweepFilters(raw)).toContain("period=none");
-    expect(describeSweepFilters(raw)).toContain("period/year-named filters seen: TaxPeriod, TaxInvoiceYear");
-  });
-
-  it.each([
-    ["PeriodCredit", "YearCredit"],
-    ["PeriodCredit", YEAR_PROPERTY],
-    [PERIOD_PROPERTY, "YearCredit"],
-  ])("shows the credit filters it passed over (%s / %s)", (periodName, yearName) => {
-    // A credit period is the one thing that must never be swept by; keeping it
-    // in `seen` is what makes "the guard refused this request" explainable.
-    const raw = body([
-      { PropertyName: periodName, Value: "TD.00703" },
-      { PropertyName: yearName, Value: "2026" },
-    ]);
-    const reading = readSweepFilters(raw);
-    expect(reading.period?.name).toBe(periodName.includes("Credit") ? undefined : periodName);
-    expect(reading.year?.name).toBe(yearName.includes("Credit") ? undefined : yearName);
-    expect(reading.seen).toEqual([periodName, yearName]);
-  });
-
-  it("reads the year a request carries as a body field", () => {
-    // The retur grids may state it that way rather than as a filter, and the
-    // reading has to show that is where the year came from — that is the
-    // measurement that decides whether the body-field fallback is needed there.
-    const raw = JSON.stringify({
-      Filters: [{ PropertyName: "TaxInvoicePeriod", Value: "TD.00705" }],
-      TaxYear: "2025",
-    });
-    expect(readSweepFilters(raw).year).toEqual({ name: "TaxYear", value: "2025", door: "hint" });
-    expect(describeSweepFilters(raw)).toContain("year=TaxYear=2025 (name hint)");
+    expect(batchScopeError(raw, SOURCE)).toMatch(/belum dikenali/);
   });
 
   it.each([
     ["an empty filter list", body([])],
-    ["a body with no filters key", '{"First":0}'],
+    ["a body with no filters key", rawBodyWith(SOURCE, { Filters: undefined })],
     ["unparseable JSON", "{not json"],
     ["an empty string", ""],
-  ])("reports nothing found for %s, without inventing a filter", (_label, raw) => {
-    expect(readSweepFilters(raw)).toEqual({ period: null, year: null, seen: [] });
-    expect(describeSweepFilters(raw)).toBe(
-      "period=none · year=none · period/year-named filters seen: none",
+  ])("reports nothing found in %s, without inventing a filter", (_label, raw) => {
+    expect(readSweepFilters(raw, SOURCE)).toEqual({
+      measurement: { period: PERIOD_PROPERTY, year: YEAR_PROPERTY },
+      period: null,
+      year: null,
+      seen: [],
+    });
+    expect(describeSweepFilters(raw, SOURCE)).toBe(
+      "period=none · year=none · filters seen: none",
     );
-  });
-
-  it("does not count a period-year sounding name it never reads values from", () => {
-    // `TaxInvoiceStatus` names neither period nor year, and a filter whose name
-    // is unrelated is not a candidate — the seen list is the measurement, so it
-    // must not collect noise.
-    const raw = body([
-      { PropertyName: PERIOD_PROPERTY, Value: "TD.00708" },
-      { PropertyName: YEAR_PROPERTY, Value: "2026" },
-      { PropertyName: "TaxInvoiceStatus", Value: ["CREATED"] },
-      { PropertyName: "SellerTaxpayerAggregateIdentifier", Value: "seller-1" },
-    ]);
-    expect(readSweepFilters(raw).seen).toEqual([PERIOD_PROPERTY, YEAR_PROPERTY]);
   });
 });

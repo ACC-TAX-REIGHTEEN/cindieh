@@ -431,17 +431,19 @@ export async function startScraping(
     // invented here), and the year is a SEPARATE filter that decides which year
     // those codes read. See batchScopeError for what each missing one costs.
     //
-    // The reading is logged BEFORE that guard can throw, because the grids whose
-    // filter names were never measured are the ones most likely to be refused,
-    // and the refusal is the measurement: this line names the spelling the guard
-    // would have to learn (ADR-0019, tools/README.md).
+    // The reading is logged BEFORE that guard can throw, because a grid with no
+    // measured row is refused outright and the line says so: it names the filters
+    // this request carries, which is the spelling to record in the table
+    // (ADR-0019, tools/README.md).
     if (sweeping) {
-      debugLog(`Sweep filters on ${captured.source}: ${describeSweepFilters(captured.rawBody)}`);
+      debugLog(
+        `Sweep filters on ${captured.source}: ${describeSweepFilters(captured.rawBody, captured.source)}`,
+      );
     }
-    const batchError = sweeping ? batchScopeError(captured.rawBody) : null;
+    const batchError = sweeping ? batchScopeError(captured.rawBody, captured.source) : null;
     if (batchError) throw new Error(batchError);
 
-    const year = capturedYear(captured.rawBody);
+    const year = capturedYear(captured.rawBody, captured.source);
     // A resume says which year its kept rows came from. The grid's year filter
     // is what decides which year a period code READS as, so a filter that moved
     // since the stop would put two years in one file — refuse instead of
@@ -458,9 +460,9 @@ export async function startScraping(
     // because a period value invented anywhere but the portal's own request is a
     // period the portal has never heard of (ADR-0018).
     const periods = resume
-      ? planPeriods(capturedPeriod(captured.rawBody) ?? "").filter((code) => resume.includes(code))
+      ? planPeriods(capturedPeriod(captured.rawBody, captured.source) ?? "").filter((code) => resume.includes(code))
       : options.batchMonths
-        ? planPeriods(capturedPeriod(captured.rawBody) ?? "", options.batchMonths)
+        ? planPeriods(capturedPeriod(captured.rawBody, captured.source) ?? "", options.batchMonths)
         : [];
 
     if (resume && periods.length === 0) {
@@ -503,7 +505,7 @@ export async function startScraping(
         elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}s`,
         // The sweep cannot start without a year filter (batchScopeError), so the
         // year IS the name — the isolated world marks it as partial at export.
-        filenameHint: capturedYear(captured.rawBody) || undefined,
+        filenameHint: capturedYear(captured.rawBody, captured.source) || undefined,
         source: captured.source,
         cancelled: true,
         truncated,
@@ -532,7 +534,7 @@ export async function startScraping(
             captured,
             step,
             ctx,
-            overridesForPeriod(captured.rawBody, period, 0, step),
+            overridesForPeriod(captured.rawBody, period, 0, step, captured.source),
             accumulator,
           );
           failure = null;
@@ -624,7 +626,7 @@ export async function startScraping(
     // is worse than no name at all. Falls back to the month hint when the
     // request carries no year filter, which is still honest.
     if (periods.length > 0) {
-      filenameHint = capturedYear(captured.rawBody) || filenameHint;
+      filenameHint = capturedYear(captured.rawBody, captured.source) || filenameHint;
       debugLog("Batch filename hint (year):", filenameHint);
     }
 
