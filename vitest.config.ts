@@ -65,8 +65,12 @@ export default defineConfig({
       // is fully covered and whose union merge is driven end to end by the boot
       // harness — and then to the same floors with the accuracy check reaching
       // the two Retur grids (ADR-0024), whose four page facts, identity table
-      // and view wiring each brought their own cases.
-      // The measured numbers are 93.68/87.24/90.64/95.06.
+      // and view wiring each brought their own cases — and now raised to
+      // 93.6/87.6/91.1/94.9 by the result columns reaching their file through one
+      // schema (ADR-0030) and by a resumable sweep surviving a reload in BOTH of
+      // its states: a stop's kept half and a sweep that FINISHED with a masa the
+      // portal failed to deliver (ADR-0023 amendment).
+      // The measured numbers are 93.99/88.03/91.55/95.31.
       //
       // The cushion is deliberately ~0.4 points, the same gap the floors have
       // always kept: enough that ordinary churn cannot redden the build, small
@@ -80,10 +84,10 @@ export default defineConfig({
       // is covered directly. Do not paper the gap over by lowering a floor; move
       // it by testing the seam underneath.
       thresholds: {
-        statements: 93.2,
-        branches: 86.6,
-        functions: 90,
-        lines: 94.5,
+        statements: 93.6,
+        branches: 87.6,
+        functions: 91.1,
+        lines: 94.9,
       },
     },
   },
