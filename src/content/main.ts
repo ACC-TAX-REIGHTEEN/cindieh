@@ -13,27 +13,12 @@ import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode, type StoredExportMode } f
 import { getPageExportSource, hasReferenceFilter, isSupportedExportPage } from "./page-context";
 import { createMessageDispatcher } from "./postmessage-guard";
 import { generateBridgeToken, getBridgeToken, getActiveRunId, isCurrentRunMessage, isStoppedRunMessage, postToScraper } from "./bridge";
-import {
-  currentRunHandlers,
-  failedItemsNotice,
-  batchResultNotice,
-  stoppedSweepMessage,
-  restoredSweepMessage,
-  scrapeErrorMessage,
-  truncatedResultNotice,
-} from "./scrape-result";
+import { currentRunHandlers, restoredSweepMessage } from "./scrape-result";
 import { runLifecycle } from "./run-lifecycle";
 import { snapshotAppliesTo, sweepSnapshotStore, type SweepSnapshot } from "./sweep-snapshot";
-import { mergePeriodSummaries } from "./scrape-batch";
-import { unionRows } from "./scraper-helpers";
 import type { ScrapeComplete, ScrapeDataChunkMessage } from "./scraper-types";
-import {
-  addResultChunk,
-  createResultChunkBuffer,
-  missingResultChunks,
-  resetResultChunks,
-  resolveResultRows,
-} from "./result-chunks";
+import { addResultChunk, createResultChunkBuffer } from "./result-chunks";
+import { failedRun, settleCompletion, type RunReport } from "./completion-intake";
 import {
   destroyBadge,
   injectBadge,
@@ -115,7 +100,7 @@ import {
 } from "./preferences";
 import { mirrorPacingToPageWorld } from "./page-pacing";
 import { REFERENCE_FAST_MATCH_MODE, REFERENCE_FIELD } from "./reference-search";
-import { describeCompletion, publishCompletion, SHOW_PANEL_REQUEST_KEY } from "./completion-notice";
+import { publishCompletion, SHOW_PANEL_REQUEST_KEY } from "./completion-notice";
 import {
   createActionDeps,
   handleExportAction,
@@ -326,16 +311,73 @@ async function injectScraper(): Promise<void> {
 // scraper sends in. New message types register in the table.
 
 /**
- * Announce a run that did NOT complete — a hard failure or a result rejected as
- * partial/cancelled. The success path publishes inline; these paths used to
- * return first, so a user who opted in only ever heard about runs that went
- * well, which is backwards: the panel is least likely to be watched when a long
- * download dies. Opt-in gate and storage hand-off live in completion-notice.ts.
- * The page href rides along so a click on the toast returns to this exact grid.
+ * Paint one completion's report, then announce it and do what the Run owed.
+ *
+ * The report is DATA (completion-intake.ts, ADR-0031): it names the updates in
+ * the order they belong on screen and says what the notification should read,
+ * including for a run that failed. This function is the only place that turns
+ * those names into badge calls, so the ordering rule is testable without a
+ * page and the badge is still the one thing that needs a document.
+ *
+ * The page href rides along on the notification so a click on the toast returns
+ * to this exact grid; the opt-in gate and the storage hand-off live in
+ * completion-notice.ts.
  */
-function publishIncomplete(message: string): void {
-  if (getPreferences().notifyOnComplete) {
-    void publishCompletion("error", message, Date.now(), location.href);
+function applyReport(report: RunReport): void {
+  for (const update of report.updates) {
+    if (update.kind === "complete") {
+      updatePanelComplete(
+        update.total,
+        update.pages,
+        update.elapsed,
+        undefined,
+        update.runKind,
+        update.failedItems,
+      );
+    } else if (update.kind === "status") {
+      updatePanelStatus(update.text);
+    } else {
+      updatePanelError(update.text);
+    }
+  }
+
+  // Diagnostics for the two findings that are not a line of their own once the
+  // panel is painted. Only an accepted run: a salvage is its own account.
+  if (report.ending === "accepted" && report.completion?.periods) {
+    // The union's counts, not this half's: a resumed sweep reports the whole
+    // year it just completed, which is what the file holds.
+    debugLog("Batch selesai:", report.completion.periods);
+  }
+  if (report.ending === "accepted" && report.completion?.truncated) {
+    debugWarn(
+      "Scrape terpotong: " +
+        report.completion.total +
+        " dari " +
+        (report.completion.expectedTotal ?? "tak diketahui") +
+        " baris terkumpul.",
+    );
+  }
+
+  // Desktop notification is opt-in and raised by the background worker; see
+  // completion-notice.ts for why the hand-off goes through storage. A failed or
+  // refused run announces itself too: the panel is least likely to be watched
+  // when a long download dies.
+  if (report.notification && getPreferences().notifyOnComplete) {
+    void publishCompletion(
+      report.notification.kind,
+      report.notification.detail,
+      Date.now(),
+      location.href,
+    );
+  }
+
+  // Whatever the Run still owed — a pending comparison, check or export, spent
+  // exactly once, in the order the panel has always run them. The export goes
+  // through the same decision tree the buttons use.
+  for (const step of report.followUp) {
+    if (step.kind === "compare") runPendingCompare();
+    else if (step.kind === "check") runPendingCheck();
+    else handleExportAction(step.format, actionDeps);
   }
 }
 
@@ -398,146 +440,17 @@ const pageMessageDispatcher = createMessageDispatcher({
     },
 
     SCRAPE_COMPLETE: (msg) => {
-      const complete = msg as unknown as ScrapeComplete;
-      const expected = complete.dataChunks;
-      const rows = resolveResultRows(resultChunks, complete);
-      const missing = expected === undefined ? [] : missingResultChunks(resultChunks, expected);
-      resetResultChunks(resultChunks);
-
-      if (rows === null) {
-        // The transfer lost a chunk. Exporting what did arrive would be
-        // indistinguishable from a short grid, which is the one thing
-        // the truncated-export notice exists to rule out.
-        const message =
-          `Transfer hasil tidak lengkap: ${missing.length} bagian data tidak diterima. ` +
-          "Coba ekspor kembali.";
-        debugError(message);
-        updatePanelError(message);
-        publishIncomplete(message);
-        return;
-      }
-
-      // A completion that carries per-masa counts is a year-wide sweep, and the
-      // rows already on hand may be the kept half of one a stop salvaged: this is
-      // the resume, so the union is what settles, what the panel reports and what
-      // the file will hold (ADR-0023). Both guards matter — a completion with no
-      // counts is not a sweep, and a Run with no kept counts has nothing to be
-      // resumed against (a fresh sweep starts from nothing on purpose).
-      const kept = runLifecycle.result();
-      const resuming = Boolean(complete.periods && kept?.sweep);
-      const mergedRows = resuming ? unionRows(kept?.data ?? [], rows) : rows;
-      const settled: ScrapeComplete = {
-        ...complete,
-        data: mergedRows,
-        total: mergedRows.length,
-        periods:
-          resuming && kept?.sweep && complete.periods
-            ? {
-                ...mergePeriodSummaries(kept.sweep, complete.periods),
-                // The union's two halves were counted by two independent
-                // accumulators, so their counts can overlap where a failed masa
-                // had already collected rows that the resumed retry fetched
-                // again. The panel names what the FILE holds, which is the
-                // deduplicated union (ADR-0016), not the sum of the counts.
-                totalRows: mergedRows.length,
-              }
-            : complete.periods,
-      };
-
-      const outcome = runLifecycle.complete(settled);
-
-      if (outcome.kind === "salvaged") {
-        // A stopped sweep: the Run kept the months that finished (the flag is
-        // what decides that, in run-lifecycle), so the panel replaces its own
-        // cancellation line with how much of the year survived. Nothing runs
-        // automatically, and an export the user then asks for names the file as
-        // partial (exporter.ts). A stopped RESUME reports the union it kept, so
-        // the count it names is a whole sweep's remaining work, not this half's.
-        updatePanelStatus(stoppedSweepMessage(settled));
-        return;
-      }
-
-      if (outcome.kind === "rejected") {
-        updatePanelError(outcome.message);
-        publishIncomplete(outcome.message);
-        return;
-      }
-
-      updatePanelComplete(
-        settled.total || 0,
-        complete.pages || 0,
-        complete.elapsed || "0s",
-        undefined,
-        complete.kind,
-        complete.failedItems,
+      // One call: the transfer is consumed, the resume merged, the Run settled,
+      // and every panel update and notification decided (completion-intake.ts,
+      // ADR-0031). Painting the report is applyReport's job, so nothing about
+      // the ORDER of those lines can drift from what the module decided.
+      applyReport(
+        settleCompletion({
+          completion: msg as unknown as ScrapeComplete,
+          transfer: resultChunks,
+          run: runLifecycle,
+        }),
       );
-
-      // A run can come back short without failing: a targeted No. Faktur scrape
-      // gets an empty payload for a number Coretax has no row for, and a filtered
-      // bulk PDF run only returns the rows it downloaded. The Run withholds the
-      // notice for a PDF run, whose pre-download dialog already named them.
-      if (outcome.shortfall?.notice) updatePanelStatus(outcome.shortfall.notice);
-
-      // A batch has no server-side total to check against, so its
-      // per-period row counts are the completeness evidence and the panel
-      // reports them. Says it AFTER the completion line, which owns "selesai".
-      if (settled.periods) {
-        // The union's counts, not this half's: a resumed sweep reports the whole
-        // year it just completed, which is what the file holds.
-        updatePanelStatus(batchResultNotice(settled.periods));
-        debugLog("Batch selesai:", settled.periods);
-      }
-
-      // A short page is only the end of the data if the server agrees it is.
-      // When it does not, the panel says the export may be incomplete rather
-      // than leaving a partial file looking like a finished one.
-      if (complete.truncated) {
-        updatePanelStatus(truncatedResultNotice(complete.total, complete.expectedTotal ?? null));
-        debugWarn(
-          "Scrape terpotong: " +
-            complete.total +
-            " dari " +
-            (complete.expectedTotal ?? "tak diketahui") +
-            " baris terkumpul.",
-        );
-      }
-
-      // A bulk PDF run that named its failures says so here. updatePanelComplete
-      // owns the per-file list; this adds the one-line summary above it, and
-      // only when names actually arrived — the completion line already carries
-      // the bare count for a run that could not name them.
-      const failureNotice = failedItemsNotice(complete.failedItems);
-      if (failureNotice) updatePanelStatus(failureNotice);
-
-      // Desktop notification is opt-in and raised by the background worker;
-      // see completion-notice.ts for why the hand-off goes through storage.
-      if (getPreferences().notifyOnComplete) {
-        void publishCompletion(
-          complete.kind ?? "scrape",
-          describeCompletion({
-            total: settled.total || 0,
-            failureCount: complete.failureCount,
-            missing: outcome.shortfall?.count ?? 0,
-            // A batch run's own completeness evidence: the toast must not call a
-            // sweep with a failed or vanished month a clean success. The union's
-            // lists, so a resumed sweep cannot hide the half that failed first.
-            failedPeriods: settled.periods?.failedPeriods.length,
-            emptyPeriods: settled.periods?.emptyPeriods.length,
-            truncated: complete.truncated,
-          }),
-          Date.now(),
-          location.href,
-        );
-      }
-
-      // Whatever the Run still owed — a pending comparison, check or export,
-      // spent exactly once, in the order the panel has always run them. The
-      // export goes through the same decision tree the buttons use.
-      for (const step of outcome.followUp) {
-        if (step.kind === "compare") runPendingCompare();
-        else if (step.kind === "check") runPendingCheck();
-        else handleExportAction(step.format, actionDeps);
-      }
     },
 
     DOWNLOAD_PDF_ITEM: (msg) => {
@@ -550,13 +463,17 @@ const pageMessageDispatcher = createMessageDispatcher({
     },
 
     SCRAPE_ERROR: (msg) => {
-      const message = scrapeErrorMessage(typeof msg.message === "string" ? msg.message : undefined);
       // A failed scrape keeps nothing: there is no usable result, and the
       // requests it owed go with it (ADR-0022). No STOP_SCRAPE is posted — the
-      // page world is the one reporting the failure.
-      runLifecycle.stop({ keepRows: false });
-      updatePanelError(message);
-      publishIncomplete(message);
+      // page world is the one reporting the failure. The wording is the same
+      // module's as a rejected completion's, so a failure cannot be announced
+      // one way in the panel and another in the toast.
+      applyReport(
+        failedRun({
+          message: typeof msg.message === "string" ? msg.message : undefined,
+          run: runLifecycle,
+        }),
+      );
     },
 
     REFERENCE_SEARCH_NOT_FOUND: (msg) => {

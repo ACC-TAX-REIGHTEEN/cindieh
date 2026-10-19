@@ -34,3 +34,4 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0028 | [The panel's page facts are one row per grid, and every predicate is a read of it](0028-one-row-per-grid-for-the-panels-page-facts.md) | Accepted |
 | 0029 | [A tab's status line is one module, and its kind is the guard](0029-a-tabs-status-line-is-one-module.md) | Accepted |
 | 0030 | [The comparison's file columns are declared with its grid columns](0030-the-comparison-file-columns-are-declared-with-its-grid.md) | Accepted |
+| 0031 | [A completion is settled into a report before anything is painted](0031-a-completion-is-settled-into-a-report.md) | Accepted |

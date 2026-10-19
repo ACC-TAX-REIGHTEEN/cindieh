@@ -32,6 +32,20 @@ export function incompleteResultMessage(result: Pick<ScrapeComplete,
   return `${reason}${failures}${invoices} Data tidak disimpan sebagai hasil lengkap; ekspor dan pemeriksaan otomatis dibatalkan. Periksa sesi Coretax dan filter, lalu jalankan ulang. PDF yang sudah diunduh tetap tersimpan.`;
 }
 
+/**
+ * The panel line for a chunked transfer that lost a piece (ADR-0017).
+ *
+ * The count is of MISSING chunks, not rows: nothing reliable is known about how
+ * many rows a lost slice held, and a guessed row count would be the same silent
+ * short result this notice exists to rule out.
+ */
+export function incompleteTransferMessage(missingChunks: number): string {
+  return (
+    `Transfer hasil tidak lengkap: ${missingChunks} bagian data tidak diterima. ` +
+    "Coba ekspor kembali."
+  );
+}
+
 /** How many missing numbers the panel lists before summarizing the rest. */
 export const MAX_LISTED_MISSING_INVOICES = 5;
 
