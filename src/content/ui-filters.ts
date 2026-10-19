@@ -7,31 +7,9 @@
 // ============================================================
 
 import { hasReferenceFilter, isEfakturPage } from "./page-context";
+import { createInjectionLoop } from "./injection-readiness";
 
-// MAX_RETRIES mirrors the value in ui.ts; it is repeated here because ui.ts
-// imports from this module (a shared constant would be circular).
-// RETRY_DELAY_MS is local to scheduleRetry, which both
-// injectToolbarFilter and injectMultiInvoiceFilter rely on.
-const RETRY_DELAY_MS = 1000;
-const MAX_RETRIES = 8;
 const TOOLBAR_FILTER_WIDTH = "180px";
-
-// Track pending retry timers so they can be cancelled on navigation.
-const pendingTimers: ReturnType<typeof setTimeout>[] = [];
-
-export function scheduleRetry(fn: () => void): void {
-  const t = setTimeout(() => {
-    const idx = pendingTimers.indexOf(t);
-    if (idx > -1) pendingTimers.splice(idx, 1);
-    fn();
-  }, RETRY_DELAY_MS);
-  pendingTimers.push(t);
-}
-
-/** Cancel all pending injection retries (call on navigation). */
-export function clearFilterTimers(): void {
-  while (pendingTimers.length) clearTimeout(pendingTimers.pop());
-}
 
 /**
  * Finds column index by text.
@@ -109,11 +87,13 @@ export function injectGridFilters(): void {
 }
 
 /**
- * Inject filter input into the toolbar.
+ * One round of the toolbar search box: its guards, its anchor lookup, its
+ * paint. The answer it gives is the readiness question the loop owns — `false`
+ * means the portal has not rendered the anchor yet.
  */
-export function injectToolbarFilter(retries = MAX_RETRIES): void {
-  if (!hasReferenceFilter()) return;
-  if (document.getElementById("ch-toolbar-filter-reference")) return;
+function attemptToolbarFilter(): boolean {
+  if (!hasReferenceFilter()) return true;
+  if (document.getElementById("ch-toolbar-filter-reference")) return true;
 
   const buttons = Array.from(document.querySelectorAll("button"));
   let anchor =
@@ -125,10 +105,7 @@ export function injectToolbarFilter(retries = MAX_RETRIES): void {
         (b.querySelector(".pi-filter-slash") || b.querySelector(".pi-refresh")),
     );
 
-  if (!anchor) {
-    if (retries > 0) scheduleRetry(() => injectToolbarFilter(retries - 1));
-    return;
-  }
+  if (!anchor) return false;
 
   const container = document.createElement("div");
   container.id = "ch-toolbar-filter-container";
@@ -161,7 +138,11 @@ export function injectToolbarFilter(retries = MAX_RETRIES): void {
   container.appendChild(group);
 
   anchor.insertAdjacentElement("afterend", container);
+  return true;
 }
+
+/** Inject filter input into the toolbar. */
+export const injectToolbarFilter = createInjectionLoop(attemptToolbarFilter);
 
 // ── Multi-Invoice Filter State ────────────────────────
 
@@ -225,14 +206,18 @@ export function removeMultiInvoiceFilter(): void {
   multiInvoiceTextarea = null;
 }
 
-/** Inject multi-invoice filter toggle on efaktur pages only. */
-export function injectMultiInvoiceFilter(retries = MAX_RETRIES): void {
+/**
+ * One round of the No. Faktur toggle: its page guard, its stale-half teardown,
+ * its anchor lookup, its build. `false` means the portal has not rendered the
+ * anchor yet.
+ */
+function attemptMultiInvoiceFilter(): boolean {
   // The No. Faktur filter belongs to efaktur pages only (PPN Keluaran,
   // PPN Masukan, Retur). On any other supported page — e.g. withholding
   // slips — tear down any leftover UI/state from a previous efaktur visit.
   if (!isEfakturPage()) {
     removeMultiInvoiceFilter();
-    return;
+    return true;
   }
 
   // The panel lives in <body> and survives Angular re-renders, while the
@@ -244,7 +229,7 @@ export function injectMultiInvoiceFilter(retries = MAX_RETRIES): void {
   if (!hasToggle || !hasPanel) {
     removeMultiInvoiceFilter();
   }
-  if (hasToggle && hasPanel) return;
+  if (hasToggle && hasPanel) return true;
 
   const anchor =
     document.getElementById("ch-toolbar-filter-container") ||
@@ -252,10 +237,7 @@ export function injectMultiInvoiceFilter(retries = MAX_RETRIES): void {
       (b) => b.getAttribute("ptooltip") === "Setel Ulang Filter" || !!b.querySelector(".pi-filter-slash"),
     );
 
-  if (!anchor) {
-    if (retries > 0) scheduleRetry(() => injectMultiInvoiceFilter(retries - 1));
-    return;
-  }
+  if (!anchor) return false;
 
   const toggleBtn = document.createElement("button");
   toggleBtn.id = "ch-multi-invoice-toggle";
@@ -355,11 +337,15 @@ export function injectMultiInvoiceFilter(retries = MAX_RETRIES): void {
   window.addEventListener("resize", handleWinResize, { passive: true });
 
   const parent = anchor.parentElement;
-  if (!parent) return;
+  if (!parent) return true;
 
   // Insert the toggle button next to the anchor
   parent.insertBefore(toggleBtn, anchor.nextSibling);
 
   // Append the panel directly to body — no position mutation on Coretax elements
   document.body.appendChild(multiInvoicePanel);
+  return true;
 }
+
+/** Inject the No. Faktur (multi-invoice) toggle, retrying until the portal renders its anchor. */
+export const injectMultiInvoiceFilter = createInjectionLoop(attemptMultiInvoiceFilter);

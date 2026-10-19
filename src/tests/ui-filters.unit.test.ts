@@ -26,8 +26,8 @@ import {
   injectMultiInvoiceFilter,
   removeMultiInvoiceFilter,
   getMultiInvoiceNumbers,
-  clearFilterTimers,
 } from "../content/ui-filters";
+import { cancelInjectionLoops } from "../content/injection-readiness";
 import { hasReferenceFilter, isEfakturPage } from "../content/page-context";
 import { stubFakeDom, type FakeDoc, type FakeEl, type FakeWindow } from "./__mocks__/fake-dom";
 
@@ -126,7 +126,7 @@ describe("injectMultiInvoiceFilter / removeMultiInvoiceFilter (DOM)", () => {
   });
 
   afterEach(() => {
-    clearFilterTimers();
+    cancelInjectionLoops();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -200,7 +200,7 @@ describe("injectMultiInvoiceFilter / removeMultiInvoiceFilter (DOM)", () => {
     expect(getMultiInvoiceNumbers()).toEqual(["INV-001", "INV-002"]);
 
     vi.mocked(isEfakturPage).mockReturnValue(false);
-    injectMultiInvoiceFilter(0);
+    injectMultiInvoiceFilter();
 
     expect(doc.getElementById("ch-multi-invoice-toggle")).toBeNull();
     expect(doc.getElementById("ch-multi-invoice-filter")).toBeNull();
@@ -213,15 +213,15 @@ describe("injectMultiInvoiceFilter / removeMultiInvoiceFilter (DOM)", () => {
   it("skips injection entirely on non-efaktur pages when nothing was injected before", () => {
     vi.mocked(isEfakturPage).mockReturnValue(false);
     setupAnchor();
-    injectMultiInvoiceFilter(0);
+    injectMultiInvoiceFilter();
 
     expect(doc.getElementById("ch-multi-invoice-toggle")).toBeNull();
     expect(doc.getElementById("ch-multi-invoice-filter")).toBeNull();
     expect(doc.listenerCount("click")).toBe(0);
   });
 
-  it("does nothing when no anchor button is found (retries=0 avoids scheduling a timer)", () => {
-    injectMultiInvoiceFilter(0);
+  it("does nothing when no anchor button is found", () => {
+    injectMultiInvoiceFilter();
 
     expect(doc.getElementById("ch-multi-invoice-toggle")).toBeNull();
     expect(doc.getElementById("ch-multi-invoice-filter")).toBeNull();
@@ -312,7 +312,7 @@ describe("injectMultiInvoiceFilter / removeMultiInvoiceFilter (DOM)", () => {
 
   it("retries while the toolbar is still rendering, and injects when it lands", () => {
     vi.useFakeTimers();
-    injectMultiInvoiceFilter(1);
+    injectMultiInvoiceFilter();
     expect(doc.getElementById("ch-multi-invoice-toggle")).toBeNull();
 
     setupAnchor();
@@ -349,7 +349,7 @@ describe("injectMultiInvoiceFilter / removeMultiInvoiceFilter (DOM)", () => {
     orphan.setAttribute("ptooltip", "Setel Ulang Filter");
     doc.buttons = [orphan];
 
-    injectMultiInvoiceFilter(0);
+    injectMultiInvoiceFilter();
 
     expect(doc.getElementById("ch-multi-invoice-toggle")).toBeNull();
     expect(doc.getElementById("ch-multi-invoice-filter")).toBeNull();
@@ -478,7 +478,7 @@ describe("injectToolbarFilter (DOM)", () => {
     vi.mocked(hasReferenceFilter).mockReturnValue(true);
   });
   afterEach(() => {
-    clearFilterTimers();
+    cancelInjectionLoops();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -486,7 +486,7 @@ describe("injectToolbarFilter (DOM)", () => {
   it("lands the search box immediately after the portal's reset button", () => {
     const anchor = portalResetButton();
 
-    injectToolbarFilter(0);
+    injectToolbarFilter();
 
     const container = doc.getElementById("ch-toolbar-filter-container");
     expect(container).not.toBeNull();
@@ -506,7 +506,7 @@ describe("injectToolbarFilter (DOM)", () => {
     doc.body.appendChild(btn);
     doc.buttons = [btn];
 
-    injectToolbarFilter(0);
+    injectToolbarFilter();
 
     expect(doc.getElementById("ch-toolbar-filter-reference")).not.toBeNull();
   });
@@ -520,7 +520,7 @@ describe("injectToolbarFilter (DOM)", () => {
     doc.body.appendChild(btn);
     doc.buttons = [btn];
 
-    injectToolbarFilter(0);
+    injectToolbarFilter();
 
     expect(doc.getElementById("ch-toolbar-filter-reference")).not.toBeNull();
   });
@@ -529,17 +529,17 @@ describe("injectToolbarFilter (DOM)", () => {
     vi.mocked(hasReferenceFilter).mockReturnValue(false);
     portalResetButton();
 
-    injectToolbarFilter(0);
+    injectToolbarFilter();
 
     expect(doc.getElementById("ch-toolbar-filter-reference")).toBeNull();
   });
 
   it("is idempotent — a re-render does not stack a second search box", () => {
     portalResetButton();
-    injectToolbarFilter(0);
+    injectToolbarFilter();
     const first = doc.getElementById("ch-toolbar-filter-reference");
 
-    injectToolbarFilter(0);
+    injectToolbarFilter();
 
     expect(doc.getElementById("ch-toolbar-filter-reference")).toBe(first);
     expect(doc.getElementById("ch-toolbar-filter-container")!.children).toHaveLength(1);
@@ -548,7 +548,7 @@ describe("injectToolbarFilter (DOM)", () => {
   it("retries while the toolbar is still rendering, and lands when it appears", () => {
     vi.useFakeTimers();
 
-    injectToolbarFilter(1);
+    injectToolbarFilter();
     expect(doc.getElementById("ch-toolbar-filter-reference")).toBeNull();
     expect(vi.getTimerCount()).toBe(1);
 
@@ -561,19 +561,19 @@ describe("injectToolbarFilter (DOM)", () => {
   it("gives up after the last retry instead of polling forever", () => {
     vi.useFakeTimers();
 
-    injectToolbarFilter(1);
+    injectToolbarFilter();
     vi.advanceTimersByTime(10_000);
 
     expect(vi.getTimerCount()).toBe(0);
     expect(doc.getElementById("ch-toolbar-filter-reference")).toBeNull();
   });
 
-  it("clearFilterTimers cancels a pending retry (navigation teardown)", () => {
+  it("cancelInjectionLoops cancels a pending retry (navigation teardown)", () => {
     vi.useFakeTimers();
-    injectToolbarFilter(1);
+    injectToolbarFilter();
     expect(vi.getTimerCount()).toBe(1);
 
-    clearFilterTimers();
+    cancelInjectionLoops();
     expect(vi.getTimerCount()).toBe(0);
 
     portalResetButton();

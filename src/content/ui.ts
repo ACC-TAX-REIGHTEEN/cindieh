@@ -25,7 +25,8 @@ import {
   type StoredExportFormat,
 } from "../shared/extension-preferences";
 
-import { clearFilterTimers, removeMultiInvoiceFilter, scheduleRetry } from "./ui-filters";
+import { removeMultiInvoiceFilter } from "./ui-filters";
+import { cancelInjectionLoops, createInjectionLoop } from "./injection-readiness";
 import { injectComparerModal } from "./ui-comparer";
 
 import {
@@ -42,9 +43,7 @@ import {
   getPanelBtnEl,
 } from "./button-state";
 
-// ── Constants ─────────────────────────────────────────
-
-const MAX_RETRIES = 8;
+// ── Injection state ──────────────────────────────────
 
 let isInjected = false;
 
@@ -344,11 +343,12 @@ function clearInjectedToolbar(): void {
 }
 
 /**
- * Inject the export controls into the toolbar. Every supported page gets the
- * XLSX/CSV dropdown; withholding slips pair it with a bulk "Unduh PDF" button,
- * and e-faktur pages pair it with the PDF, scrape and panel-entry icon buttons.
+ * One round of the export toolbar: the rebuild-or-move decision, the page
+ * gates, the placement lookup and the build. The answer it gives is the
+ * readiness question the loop owns — `false` means the portal has not rendered
+ * the toolbar's anchor yet.
  */
-export function injectExportButton(retries = MAX_RETRIES): void {
+function attemptExportButton(): boolean {
   // True when this call has to rebuild a toolbar Angular took away, as opposed
   // to building the first one for this page. Only a rebuild hands the open menu
   // back to its replacement.
@@ -376,7 +376,7 @@ export function injectExportButton(retries = MAX_RETRIES): void {
       const placement = resolveToolbarPlacement();
       if (placement) {
         for (const node of injectedToolbarNodes()) placeInToolbar(node, placement);
-        return;
+        return true;
       }
       // No anchor to judge against: fall through, so the page-specific checks
       // below (the SPT "induk" tab) still get their turn and can clear the
@@ -393,7 +393,7 @@ export function injectExportButton(retries = MAX_RETRIES): void {
   const isSpt = isSptPage();
   const isWithholding = isWithholdingPage();
 
-  if (!isSupportedExportPage()) return;
+  if (!isSupportedExportPage()) return true;
 
   if (isSpt) {
     // The "induk" tab has no exportable grid of its own — the toolbar belongs
@@ -402,19 +402,16 @@ export function injectExportButton(retries = MAX_RETRIES): void {
     const tabText = activeTab?.textContent?.trim().toLowerCase() || "";
     if (tabText.includes("induk")) {
       removeExportButton();
-      return;
+      return true;
     }
   }
 
   const placement = resolveToolbarPlacement();
-  if (!placement) {
-    if (retries > 0) scheduleRetry(() => injectExportButton(retries - 1));
-    return;
-  }
+  if (!placement) return false;
 
   const { anchor: anchorEl, insertMode } = placement;
   const containerNode = insertMode === "append" ? anchorEl : anchorEl.parentElement;
-  if (!containerNode) return;
+  if (!containerNode) return true;
 
   // A toolbar built for the first time on this page always starts closed; only
   // a rebuild of a toolbar the user was mid-click on reopens its menu.
@@ -584,7 +581,17 @@ export function injectExportButton(retries = MAX_RETRIES): void {
       injectComparerModal();
     }
   }
+  return true;
 }
+
+/**
+ * Inject the export controls into the toolbar. Every supported page gets the
+ * XLSX/CSV dropdown; withholding slips pair it with a bulk "Unduh PDF" button,
+ * and e-faktur pages pair it with the PDF, scrape and panel-entry icon buttons.
+ * One call per injection — the loop behind it returns until the portal has
+ * rendered the toolbar's anchor.
+ */
+export const injectExportButton = createInjectionLoop(attemptExportButton);
 
 /**
  * Build the XLSX/CSV export dropdown and its menu, then insert it beside the
@@ -765,7 +772,7 @@ export function removeExportButton(): void {
   // A toolbar that is gone cannot have an open menu, and the next page's
   // injection must not inherit this page's state.
   menuOpen = false;
-  clearFilterTimers();
+  cancelInjectionLoops();
   // Tear down the No. Faktur filter too — leaving an export page (e.g. to the
   // dashboard) should not leave the panel orphaned in <body>.
   removeMultiInvoiceFilter();

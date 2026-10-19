@@ -14,9 +14,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../content/ui-comparer", () => ({ injectComparerModal: vi.fn() }));
 vi.mock("../content/ui-filters", () => ({
-  clearFilterTimers: vi.fn(),
   removeMultiInvoiceFilter: vi.fn(),
-  scheduleRetry: vi.fn(),
+}));
+// The readiness loop would otherwise schedule a real 1s timer whenever an
+// injection finds no anchor; these cases are about the menu markup, so one
+// synchronous attempt is all they need (the retry policy itself is pinned in
+// injection-readiness.unit.test.ts).
+vi.mock("../content/injection-readiness", () => ({
+  createInjectionLoop: (attempt: () => boolean) => () => void attempt(),
+  cancelInjectionLoops: vi.fn(),
 }));
 
 import {

@@ -39,12 +39,12 @@ import {
 import { dropPendingCheck, runPendingCheck } from "./ui-checker";
 import { openPanel } from "./ui-panel";
 import {
-  clearFilterTimers,
   injectGridFilters,
   injectMultiInvoiceFilter,
   injectToolbarFilter,
   splitInvoiceNumbers,
 } from "./ui-filters";
+import { cancelInjectionLoops } from "./injection-readiness";
 import {
   injectExportButton,
   removeExportButton,
@@ -718,7 +718,7 @@ function applyPageState(): void {
 function teardownInjectedUi(): void {
   stopShortcuts();
   removeExportButton();
-  clearFilterTimers();
+  cancelInjectionLoops();
   destroyBadge();
   for (const id of TEARDOWN_ELEMENT_IDS) {
     document.getElementById(id)?.remove();
