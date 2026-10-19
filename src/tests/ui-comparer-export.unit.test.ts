@@ -462,10 +462,11 @@ describe("comparison UI validation and exports", () => {
     expect(exporter.downloadXLSXFile).not.toHaveBeenCalled();
   }
 
-  it("takes the waiting line back when the comparison it queued is retired", () => {
+  it("replaces the waiting line with the reason it will not arrive", () => {
     // A stop, a failure, a lost chunk or a reset retires the comparison behind
-    // that line, so no completion will arrive to answer it. The badge already
-    // names the stop; the tab only stops promising (ADR-0022).
+    // that line, so no completion will arrive to answer it. The badge carries the
+    // stop's own account; the tab says, in one line, why nothing is coming
+    // (ADR-0026).
     seedRows(null);
     el("ch-comparer-textarea").value = "000123\t000456\t1.234,56789\t0";
     // Daily mode is on by default, so the day list is part of a valid check.
@@ -475,7 +476,10 @@ describe("comparison UI validation and exports", () => {
 
     ui.dropPendingCompare();
 
-    expect(el("ch-comparer-status").textContent).toBe("");
+    expect(el("ch-comparer-status").textContent).toContain("Permintaan dibatalkan");
+    expect(el("ch-comparer-status").textContent).not.toBe("");
+    // Quiet weight: the badge is the primary account, so the tab's line is not
+    // painted like an error.
     expect(el("ch-comparer-status").className).toBe("ch-comparer-status");
     // The rows the user pasted are what re-running needs, and nothing here
     // touches them: the same click works again.

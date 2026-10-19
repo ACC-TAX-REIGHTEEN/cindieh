@@ -269,7 +269,7 @@ describe("the tab Pengecekan, on its own", () => {
     expect(el("ch-checker-status").textContent).toContain("scraping data PPN Masukan");
   });
 
-  it("takes the waiting line back when the check it queued is retired", () => {
+  it("replaces the waiting line with the reason it will not arrive", () => {
     // A stop (or a failure, a lost chunk, a reset) retires the check behind that
     // line, so no completion will ever arrive to replace it — and a line that
     // keeps promising one is the same lie as an export that never lands.
@@ -278,7 +278,11 @@ describe("the tab Pengecekan, on its own", () => {
 
     h.view.dropPending();
 
-    expect(el("ch-checker-status").textContent).toBe("");
+    // A blank line read as "nothing was ever asked for"; one short sentence says
+    // what happened, while the badge keeps the stop's own account (ADR-0026).
+    expect(el("ch-checker-status").textContent).toContain("Permintaan dibatalkan");
+    expect(el("ch-checker-status").textContent).not.toBe("");
+    // Quiet weight: the line is the secondary half of the story.
     expect(el("ch-checker-status").className).toBe("ch-comparer-status");
   });
 
@@ -302,7 +306,7 @@ describe("the tab Pengecekan, on its own", () => {
 
     (await import("../content/ui-checker")).dropPendingCheck();
 
-    expect(el("ch-checker-status").textContent).toBe("");
+    expect(el("ch-checker-status").textContent).toContain("Permintaan dibatalkan");
   });
 
   it("renders the mismatched rows and leaves out the ones that add up", () => {

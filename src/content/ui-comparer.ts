@@ -26,6 +26,7 @@ import {
 } from "./comparer-export";
 import { comparerSheetColumns, comparisonColumns } from "./result-columns";
 import { runLifecycle } from "./run-lifecycle";
+import { createStatusLine } from "./status-line";
 import { getPreferences } from "./preferences";
 import {
   appendPagination,
@@ -41,6 +42,7 @@ import { checkerView } from "./ui-checker";
 import {
   closePanel,
   currentGridLabel,
+  RETIRED_REQUEST_NOTICE,
   scrapeForPanel,
   searchReference,
   switchTab,
@@ -64,6 +66,15 @@ const session: ComparerSession = createComparerSession();
 
 /** The tab's status line and result grid, for the messages that name them. */
 const STATUS_ID = "ch-comparer-status";
+
+/**
+ * This tab's status field.
+ *
+ * The promise, the summary, an error and the retirement notice all go through
+ * it, so the tab has one account of what it is doing and the promise lapses
+ * when anything else speaks (status-line.ts, ADR-0029).
+ */
+const status = createStatusLine(STATUS_ID);
 const RESULTS_ID = "ch-comparer-results";
 const FILTER_WRAP_ID = "ch-comparer-filter-wrap";
 
@@ -83,16 +94,6 @@ const FILTER_OPTIONS = [
  * stacking another one, and so teardown can hand the document back.
  */
 let menusOutsideClickHandler: ((e: MouseEvent) => void) | null = null;
-
-/**
- * The "waiting for the grid" line this tab last wrote, or null when it is not
- * showing one.
- *
- * Its TEXT rather than a flag, on purpose: every other writer of that line (a
- * summary, an error, "Hapus") replaces the text, so the promise lapses with it
- * and no writer has to remember to unset anything.
- */
-let waitingNotice: string | null = null;
 
 /**
  * Drop the panel's document-level click handler. Called by the master-switch
@@ -417,8 +418,7 @@ export function injectComparerModal(): void {
     if (icon) icon.className = "pi pi-chevron-up";
     results.classList.add("ch-hidden");
     results.innerHTML = "";
-    statusMsg.textContent = "";
-    statusMsg.className = "ch-comparer-status";
+    status.clear();
     const wrap = document.getElementById(FILTER_WRAP_ID);
     if (wrap) wrap.classList.add("ch-hidden");
   });
@@ -483,9 +483,6 @@ function applyStoredComparerDefaults(
 // ── Check handlers ────────────────────────────────────
 
 function handleCheck(): void {
-  const statusMsg = document.getElementById(STATUS_ID);
-  if (!statusMsg) return;
-
   const textarea = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
   const datesInput = document.getElementById("ch-comparer-daily-dates") as HTMLInputElement;
   const textareaValue = textarea ? textarea.value : "";
@@ -502,12 +499,14 @@ function handleCheck(): void {
 
   if (decision.action === "needScrape") {
     renderResults();
-    // Remembered as the promise this tab is making, so a retirement can take it
-    // back (dropPendingCompare).
-    waitingNotice =
-      `Belum ada data. Mohon tunggu, sedang melakukan scraping data ${currentGridLabel()} terlebih dahulu...`;
-    statusMsg.textContent = waitingNotice;
-    statusMsg.className = "ch-comparer-status ch-comparer-status-info";
+    // The line remembers this as the promise it is making, so a retirement can
+    // take it back (dropPendingCompare). A detached tab has nowhere to say any
+    // of this, so it does not start a scrape it could never report on.
+    const shown = status.set(
+      "waiting",
+      `Belum ada data. Mohon tunggu, sedang melakukan scraping data ${currentGridLabel()} terlebih dahulu...`,
+    );
+    if (!shown) return;
     runLifecycle.request({ kind: "compare" });
     scrapeForPanel();
     return;
@@ -539,28 +538,23 @@ export function runPendingCompare(): void {
 
 /**
  * The comparison this tab queued was retired — a stop, a failure, a lost chunk
- * or a reset — so the line promising it is taken back.
+ * or a reset — so the line promising it is replaced with the one line saying why
+ * the result will not arrive.
  *
- * Nothing else moves: the pasted rows stay, so running it again is one click,
- * and the badge already names the stop, which is why this clears the promise
- * instead of explaining it a second time (ADR-0022). The text comparison is what
- * keeps a real summary or error — the tab's own output — out of its reach.
+ * Nothing else moves: the pasted rows stay, so running it again is one click.
+ * The badge carries the stop's own account, and this says only what the tab can
+ * know — a blank line read as "nothing was asked for", while a second full
+ * explanation would have been two accounts of one event (ADR-0026). The line's
+ * own kind is the guard: it replaces a promise and nothing else, so a summary or
+ * an error written since — the tab's real output — is out of its reach.
  */
 export function dropPendingCompare(): void {
-  const statusMsg = document.getElementById(STATUS_ID);
-  if (!statusMsg || waitingNotice === null || statusMsg.textContent !== waitingNotice) return;
-  waitingNotice = null;
-  statusMsg.textContent = "";
-  statusMsg.className = "ch-comparer-status";
+  status.replace("waiting", { kind: "notice", text: RETIRED_REQUEST_NOTICE });
 }
 
 function renderComparisonError(message: string): void {
   renderResults();
-  const statusMsg = document.getElementById(STATUS_ID);
-  if (statusMsg) {
-    statusMsg.textContent = message;
-    statusMsg.className = "ch-comparer-status ch-comparer-status-error";
-  }
+  status.set("error", message);
   document.getElementById("ch-comparer-textarea")?.classList.remove("ch-hidden");
   const toggleIcon = document.getElementById("ch-comparer-toggle-icon");
   if (toggleIcon) toggleIcon.className = "pi pi-chevron-up";
@@ -570,12 +564,7 @@ function renderComparisonError(message: string): void {
 
 function renderAfterComparison(): void {
   renderResults();
-
-  const statusMsg = document.getElementById(STATUS_ID);
-  if (statusMsg) {
-    statusMsg.textContent = formatStatusSummary(buildStatusSummary(session.results));
-    statusMsg.className = "ch-comparer-status ch-comparer-status-info";
-  }
+  status.set("summary", formatStatusSummary(buildStatusSummary(session.results)));
 
   const textareaEl = document.getElementById("ch-comparer-textarea") as HTMLTextAreaElement;
   const toggleIcon = document.getElementById("ch-comparer-toggle-icon");

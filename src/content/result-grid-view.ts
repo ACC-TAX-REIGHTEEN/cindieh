@@ -16,6 +16,7 @@
 // ============================================================
 
 import type { ResultColumn } from "./result-columns";
+import type { StatusLine } from "./status-line";
 import { debugError } from "./debug";
 
 /** Rows per page on both result grids. */
@@ -261,14 +262,11 @@ export function buildStatusFilterMenu(config: {
  * rejection die silently — the click handler is fire-and-forget, and the most
  * likely cause is the SheetJS chunk failing to load.
  *
- * `statusId` is the failing tab's status line, so the message lands on the tab
- * whose button was pressed.
+ * The failing tab's `statusLine` is what it is reported on, so the message lands
+ * on the tab whose button was pressed, and the error is painted the way every
+ * other error on that line is (status-line.ts).
  */
-export function reportResultExportFailure(err: unknown, statusId: string): void {
+export function reportResultExportFailure(err: unknown, statusLine: StatusLine): void {
   debugError("Gagal mengekspor hasil ke Excel", err);
-  const statusMsg = document.getElementById(statusId);
-  if (statusMsg) {
-    statusMsg.textContent = "Gagal membuat berkas Excel. Coba ekspor kembali.";
-    statusMsg.className = "ch-comparer-status ch-comparer-status-error";
-  }
+  statusLine.set("error", "Gagal membuat berkas Excel. Coba ekspor kembali.");
 }

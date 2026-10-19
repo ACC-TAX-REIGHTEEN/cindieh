@@ -33,6 +33,7 @@ import {
   type Counterparty,
 } from "./result-columns";
 import { runLifecycle, type RunLifecycle } from "./run-lifecycle";
+import { createStatusLine } from "./status-line";
 import { getPreferences } from "./preferences";
 import {
   checkerRowIdentity,
@@ -50,7 +51,13 @@ import {
   PAGE_SIZE,
   type StatusFilterMenu,
 } from "./result-grid-view";
-import { currentGridLabel, openPanel, scrapeForPanel, searchReference } from "./ui-panel";
+import {
+  currentGridLabel,
+  openPanel,
+  RETIRED_REQUEST_NOTICE,
+  scrapeForPanel,
+  searchReference,
+} from "./ui-panel";
 import { computePagination } from "./comparer-logic";
 import {
   applyCheckerDefaults,
@@ -155,14 +162,14 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
   let injected = false;
 
   /**
-   * The "waiting for the grid" line this tab last wrote, or null when it is not
-   * showing one.
+   * The tab's status field.
    *
-   * Its TEXT rather than a flag, on purpose: every other writer of that line (a
-   * summary) replaces the text, so the promise lapses with it and no writer has
-   * to remember to unset anything.
+   * Every line this tab shows — the promise made while the grid is fetched, the
+   * summary of a finished check, an error, the retirement notice — is written
+   * through this one object, so no caller picks a class by hand and the promise
+   * lapses the moment anything else speaks (status-line.ts, ADR-0029).
    */
-  let waitingNotice: string | null = null;
+  const status = createStatusLine("ch-checker-status");
 
   // ── Stored defaults ────────────────────────────────
 
@@ -325,17 +332,16 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
   }
 
   function runCheck(): void {
-    const statusMsg = document.getElementById("ch-checker-status");
-    if (!statusMsg) return;
-
     const scrapedData = deps.run.result()?.data ?? null;
     if (!scrapedData || scrapedData.length === 0) {
-      // Remembered as the promise this tab is making, so a retirement can take
-      // it back (dropPending).
-      waitingNotice =
-        `Belum ada data. Mohon tunggu, sedang melakukan scraping data ${deps.gridLabel()} terlebih dahulu...`;
-      statusMsg.textContent = waitingNotice;
-      statusMsg.className = "ch-comparer-status ch-comparer-status-info";
+      // The line remembers this as the promise it is making, so a retirement can
+      // take it back (dropPending). A detached tab has nowhere to say any of
+      // this, so it does not start a scrape it could never report on.
+      const shown = status.set(
+        "waiting",
+        `Belum ada data. Mohon tunggu, sedang melakukan scraping data ${deps.gridLabel()} terlebih dahulu...`,
+      );
+      if (!shown) return;
       deps.run.request({ kind: "check" });
       deps.scrape();
       return;
@@ -362,12 +368,7 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
 
   function renderAfterCheck(): void {
     render();
-
-    const statusMsg = document.getElementById("ch-checker-status");
-    if (statusMsg) {
-      statusMsg.textContent = formatCheckSummary(session.results);
-      statusMsg.className = "ch-comparer-status ch-comparer-status-info";
-    }
+    status.set("summary", formatCheckSummary(session.results));
   }
 
   function render(): void {
@@ -467,26 +468,24 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
       numberFormats: resultNumberFormats(
         checkerSheetColumns(session.benchmark, deps.counterparty(), deps.identity()),
       ),
-    }).catch((err: unknown) => reportResultExportFailure(err, "ch-checker-status"));
+    }).catch((err: unknown) => reportResultExportFailure(err, status));
   }
 
   /**
    * The check this tab queued was retired — a stop, a failure, a lost chunk or a
-   * reset — so the line promising it is taken back. The badge already names the
-   * stop, which is why this clears the promise instead of explaining it a second
-   * time (ADR-0022); the text comparison is what keeps a real summary, the
-   * tab's own output, out of its reach.
+   * reset — so the line promising it is replaced with the one-line reason it will
+   * not arrive.
+   *
+   * The badge still carries the stop's own account; this says only what the tab
+   * can know, so a blank line cannot read as "nothing was ever asked for"
+   * (ADR-0026). The line's own kind is the guard: it replaces a promise and
+   * nothing else, so a summary or an error written since is out of its reach.
    */
   function dropPending(): void {
-    const statusMsg = document.getElementById("ch-checker-status");
-    if (!statusMsg || waitingNotice === null || statusMsg.textContent !== waitingNotice) return;
-    waitingNotice = null;
-    statusMsg.textContent = "";
-    statusMsg.className = "ch-comparer-status";
+    status.replace("waiting", { kind: "notice", text: RETIRED_REQUEST_NOTICE });
   }
 
   const view: CheckerView = {
-
     root,
     filterMenu: null,
     inject() {

@@ -254,6 +254,23 @@ export function searchReference(reference: string): void {
   );
 }
 
+// ── What a tab says when its request is retired ───────
+
+/**
+ * The one line a tab's status field shows once the request it was waiting on is
+ * gone.
+ *
+ * A retirement can be a stop, a failed scrape, a lost chunk or a reset, so this
+ * names the OUTCOME — the request was retired before its result arrived — and
+ * does not claim a cause it cannot know. The badge carries the cause
+ * (`SCRAPE_CANCELLED_MESSAGE` for a stop, the failure's own message otherwise),
+ * which is why this is deliberately the quieter half: a blank line left the tab
+ * looking like it had never asked for anything, and repeating the badge's
+ * sentence would have been two accounts of one event (ADR-0026).
+ */
+export const RETIRED_REQUEST_NOTICE =
+  "Permintaan dibatalkan sebelum hasilnya tiba. Jalankan lagi untuk mencoba.";
+
 // ── Which grid the panel is talking about ─────────────
 
 /**

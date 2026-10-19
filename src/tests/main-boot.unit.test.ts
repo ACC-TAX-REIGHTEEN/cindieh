@@ -1407,9 +1407,11 @@ describe("main boot — the in-page event seam", () => {
 
     env.fireDoc("ch:scrape-stop");
 
-    // The request the line was waiting on is gone, so the promise goes with it.
-    // The badge carries the stop itself — this only stops promising (ADR-0022).
-    expect(status?.textContent).toBe("");
+    // The request the line was waiting on is gone, so the promise is replaced by
+    // the one-line reason it will not arrive — while the badge keeps the stop's
+    // own account, which is the primary one (ADR-0026).
+    expect(status?.textContent).toContain("Permintaan dibatalkan");
+    expect(env.doc.getElementById("ch-f-status")?.textContent).toContain("Proses dihentikan");
     // And the paste survives, because running it again is one click.
     expect(textarea.value).not.toBe("");
   });
@@ -1426,7 +1428,9 @@ describe("main boot — the in-page event seam", () => {
 
     env.fireDoc("ch:scrape-stop");
 
-    expect(status?.textContent).toBe("");
+    expect(status?.textContent).toContain("Permintaan dibatalkan");
+    // The badge still owns the stop's account on this tab too.
+    expect(env.doc.getElementById("ch-f-status")?.textContent).toContain("Proses dihentikan");
   });
 
   it("ignores a search event that carries no reference", async () => {
