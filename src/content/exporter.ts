@@ -15,7 +15,7 @@ import type { ExportSource } from "./page-context";
 import type { WorkBook } from "xlsx";
 import { browserAPI } from "./browser-shim";
 import { debugError, debugWarn } from "./debug";
-import { extractYear, extractMonth, extractYMD, getCurrentYearMonthWIB } from "./tax-date";
+import { extractPeriods, extractYear, formatPeriod, getCurrentYearMonthWIB } from "./tax-date";
 import { CAPTURED_COLUMNS, getExportSourceSpec, mapColumns } from "./export-source";
 import { normalizeFilenamePrefix } from "../shared/extension-preferences";
 
@@ -297,44 +297,12 @@ function buildDynamicFilename(exportData: ExportData): string {
   // A retur file is named for the return YEAR; everything else for the period.
   const yearOnly = spec.filename.shape === "tahun";
 
-  const formatPeriod = (p: string) => {
-    // 1. Handle internal format YYYY_MM
-    if (p.includes("_")) {
-      const parts = p.split("_");
-      if (parts.length === 2 && parts[0].length === 4 && parts[1].length === 2) {
-        return `${parts[1]}${parts[0]}`; // MMYYYY
-      }
-    }
-
-    // 2. Clear non-digits to handle cases like TD007-2026-04 -> 007202604
-    const digits = p.replace(/\D/g, "");
-
-    // 3. Try to find YYYYMM (6 digits) at the end or as a standalone
-    const yyyymmMatch = digits.match(/(\d{4})(\d{2})$/);
-    if (yyyymmMatch) {
-      const y = parseInt(yyyymmMatch[1]);
-      const m = parseInt(yyyymmMatch[2]);
-      if (y > 1900 && y < 2100 && m >= 1 && m <= 12) {
-        return `${yyyymmMatch[2]}${yyyymmMatch[1]}`; // MMYYYY
-      }
-    }
-
-    // 4. Try to find MMYYYY (6 digits)
-    const mmyyyyMatch = digits.match(/(\d{2})(\d{4})$/);
-    if (mmyyyyMatch) {
-      const m = parseInt(mmyyyyMatch[1]);
-      const y = parseInt(mmyyyyMatch[2]);
-      if (y > 1900 && y < 2100 && m >= 1 && m <= 12) {
-        return digits.slice(-6);
-      }
-    }
-
-    return p.replace(/[^a-zA-Z0-9]/g, "");
-  };
-
+  // Every period VALUE is read by tax-date (the module that owns masa parsing);
+  // what lives here is only the precedence between the three places a name can
+  // come from: the hint the request carried, the masa the rows carry, today.
   if (filenameHint) {
     if (yearOnly) {
-      const year = filenameHint.replace(/\D/g, "").match(/(20\d{2}|19\d{2})/)?.[1];
+      const year = extractYear(filenameHint);
       if (year) return `${prefix}${year}`;
     }
 
@@ -351,55 +319,13 @@ function buildDynamicFilename(exportData: ExportData): string {
     }
   }
 
-  // Helper to get periods from data rows
-  const extractPeriodsFromData = () => {
-    const found = new Set<string>();
-    if (!originalData) return [];
-    for (const row of originalData) {
-      let y = "";
-      let m = "";
-
-      // Priority 1: Specific Tax Period fields (common names in Coretax JSON)
-      const rawY = row["TaxInvoiceYear"] || row["TaxPeriodYear"] || row["TaxYear"] || row["Year"];
-      const rawM = row["TaxInvoicePeriod"] || row["TaxPeriodMonth"] || row["TaxPeriod"] || row["Month"];
-
-      if (rawY && rawM) {
-        const sY = String(rawY);
-        const sM = String(rawM);
-        y = extractYear(sY);
-        m = extractMonth(sM).padStart(2, "0");
-      }
-      // Priority 2: Consolidated TaxPeriod (usually YYYYMM or TD007-YYYY-MM)
-      else if (row["TaxPeriod"]) {
-        const sP = String(row["TaxPeriod"]);
-        y = extractYear(sP);
-        m = extractMonth(sP).padStart(2, "0");
-      }
-      // Fallback: Date fields (Last Resort - only if no period fields found).
-      // Which date field is the source's own decision — Lampiran A2 carries no
-      // tax period at all, and a Bukti Potong row carries only a slip date.
-      else {
-        const dateField = spec.filename.periodDateFields
-          .map((field) => row[field])
-          .find((value) => Boolean(value));
-        const ymd = extractYMD(dateField);
-        if (ymd) {
-          y = ymd.year;
-          m = ymd.month;
-        }
-      }
-
-      if (y && m && y.length === 4 && m.length === 2) {
-        found.add(`${y}_${m}`); // YYYY_MM
-      }
-    }
-    return Array.from(found).sort();
-  };
-
-  const dataPeriods = extractPeriodsFromData();
-
   // PRIORITY 2 (after filenameHint): USE DATA ROWS. A retur's rows hold the
   // INVOICE's masa, not the return year, so they are never used for its name.
+  // Which date column a row falls back to is the source's own decision —
+  // Lampiran A2 carries no tax period at all, and a Bukti Potong row carries
+  // only a slip date — so the ladder takes the spec's fields as an argument.
+  const dataPeriods = extractPeriods(originalData, spec.filename.periodDateFields);
+
   if (dataPeriods.length > 0 && !yearOnly) {
     if (dataPeriods.length === 1) {
       return `${prefix}${formatPeriod(dataPeriods[0])}`;

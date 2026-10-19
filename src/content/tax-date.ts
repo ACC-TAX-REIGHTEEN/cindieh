@@ -61,6 +61,110 @@ export function extractMasaPajak(text: string): string {
   return match ? match[1] : "";
 }
 
+/**
+ * One masa value, in whatever shape it arrived, as the `MMYYYY` label a
+ * filename uses.
+ *
+ * The shapes are the portal's own: the internal `YYYY_MM`, a `YYYYMM` or
+ * `MMYYYY` suffix once non-digits are stripped (`TD007-2026-04`, `042026`),
+ * and — when the value is not a period at all — the value with its punctuation
+ * removed. That last one is a shape, not a promise: an article code on a PPh 21
+ * lampiran is not a period, and is still the best name the file has; the
+ * caller recognises it by length rather than trusting it to be a date.
+ *
+ * `extractMonth`/`extractYear` answer "which month/year is this?"; this
+ * answers "what does this period look like in a filename?", which is why both
+ * exist instead of one being rebuilt here.
+ */
+export function formatPeriod(raw: unknown): string {
+  const p = String(raw ?? "");
+
+  // 1. Internal format YYYY_MM — the shape extractPeriods below produces.
+  if (p.includes("_")) {
+    const parts = p.split("_");
+    if (parts.length === 2 && parts[0].length === 4 && parts[1].length === 2) {
+      return `${parts[1]}${parts[0]}`; // MMYYYY
+    }
+  }
+
+  // 2. Clear non-digits to handle cases like TD007-2026-04 -> 007202604
+  const digits = p.replace(/\D/g, "");
+
+  // 3. Try to find YYYYMM (6 digits) at the end or as a standalone
+  const yyyymmMatch = digits.match(/(\d{4})(\d{2})$/);
+  if (yyyymmMatch) {
+    const y = parseInt(yyyymmMatch[1]);
+    const m = parseInt(yyyymmMatch[2]);
+    if (y > 1900 && y < 2100 && m >= 1 && m <= 12) {
+      return `${yyyymmMatch[2]}${yyyymmMatch[1]}`; // MMYYYY
+    }
+  }
+
+  // 4. Try to find MMYYYY (6 digits)
+  const mmyyyyMatch = digits.match(/(\d{2})(\d{4})$/);
+  if (mmyyyyMatch) {
+    const y = parseInt(mmyyyyMatch[2]);
+    const m = parseInt(mmyyyyMatch[1]);
+    if (y > 1900 && y < 2100 && m >= 1 && m <= 12) {
+      return digits.slice(-6);
+    }
+  }
+
+  return p.replace(/[^a-zA-Z0-9]/g, "");
+}
+
+/**
+ * Every distinct masa a set of rows carries, sorted, as `YYYY_MM`.
+ *
+ * The row is read in the portal's own order: the dedicated year/month fields
+ * first, then a consolidated `TaxPeriod` (`YYYYMM` or `TD007-YYYY-MM`), then —
+ * last resort — the source's own date columns, named by the caller
+ * (`dateFields`). Which date a row falls back to is an EXPORT-SOURCE decision
+ * (`spec.filename.periodDateFields`), not a fact about dates, which is why the
+ * list is a parameter and the ladder lives here.
+ */
+export function extractPeriods(
+  rows: readonly Record<string, unknown>[] | undefined,
+  dateFields: readonly string[],
+): string[] {
+  const found = new Set<string>();
+  if (!rows) return [];
+
+  for (const row of rows) {
+    let y = "";
+    let m = "";
+
+    // Priority 1: Specific Tax Period fields (common names in Coretax JSON)
+    const rawY = row["TaxInvoiceYear"] || row["TaxPeriodYear"] || row["TaxYear"] || row["Year"];
+    const rawM = row["TaxInvoicePeriod"] || row["TaxPeriodMonth"] || row["TaxPeriod"] || row["Month"];
+
+    if (rawY && rawM) {
+      y = extractYear(rawY);
+      m = extractMonth(rawM).padStart(2, "0");
+    }
+    // Priority 2: Consolidated TaxPeriod (usually YYYYMM or TD007-YYYY-MM)
+    else if (row["TaxPeriod"]) {
+      const sP = String(row["TaxPeriod"]);
+      y = extractYear(sP);
+      m = extractMonth(sP).padStart(2, "0");
+    }
+    // Fallback: Date fields (last resort — only if no period fields found).
+    else {
+      const dateField = dateFields.map((field) => row[field]).find((value) => Boolean(value));
+      const ymd = extractYMD(dateField);
+      if (ymd) {
+        y = ymd.year;
+        m = ymd.month;
+      }
+    }
+
+    if (y && m && y.length === 4 && m.length === 2) {
+      found.add(`${y}_${m}`); // YYYY_MM
+    }
+  }
+  return Array.from(found).sort();
+}
+
 export interface YmdParts {
   year: string;
   month: string;

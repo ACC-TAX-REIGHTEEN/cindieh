@@ -2,7 +2,17 @@
 // Covers extractYear, extractMonth (including the TD. tax-domain form),
 // extractYMD, and the timezone-safe formatDate.
 import { describe, it, expect } from "vitest";
-import { extractYear, extractMonth, extractMasaPajak, extractYMD, formatDate, formatIsoDateTime, getCurrentYearMonthWIB } from "../content/tax-date";
+import {
+  extractPeriods,
+  extractYear,
+  extractMonth,
+  extractMasaPajak,
+  extractYMD,
+  formatPeriod,
+  formatDate,
+  formatIsoDateTime,
+  getCurrentYearMonthWIB,
+} from "../content/tax-date";
 
 // ── extractYear ───────────────────────────────────────────────────────────────
 
@@ -204,5 +214,75 @@ describe("getCurrentYearMonthWIB", () => {
     const res = getCurrentYearMonthWIB(nearMidnightUTC);
     expect(res.year).toBe("2026");
     expect(res.month).toBe("05");
+  });
+});
+
+// ── formatPeriod ────────────────────────────────────────────────────────────────────────────
+// The filename label. These shapes were pinned by the exporter's filename
+// suite before the ladder moved here; they are pinned again, against its own
+// interface, so a new portal period shape is taught once.
+
+describe("formatPeriod", () => {
+  it("renders the internal YYYY_MM as MMYYYY", () => {
+    expect(formatPeriod("2026_04")).toBe("042026");
+  });
+
+  it("renders a YYYYMM value — or anything ending in one — as MMYYYY", () => {
+    expect(formatPeriod("202604")).toBe("042026");
+    expect(formatPeriod("TD007-2026-04")).toBe("042026");
+    expect(formatPeriod("04/2026")).toBe("042026");
+  });
+
+  it("keeps a value that is already MMYYYY, and a bare year", () => {
+    expect(formatPeriod("042026")).toBe("042026");
+    expect(formatPeriod("2025")).toBe("2025");
+  });
+
+  it("keeps the alphanumeric value when it is not a period at all", () => {
+    // An article code on a PPh 21 lampiran is not a date: the filename rule
+    // recognises it by shape (looseHint), so it must survive with its
+    // punctuation dropped rather than being turned into a period.
+    expect(formatPeriod("L1A-ART21")).toBe("L1AART21");
+    expect(formatPeriod("TD.00704")).toBe("TD00704");
+    expect(formatPeriod(undefined)).toBe("");
+  });
+
+  it("falls through when the month is impossible", () => {
+    // 13 is not a month, so neither the YYYYMM nor the MMYYYY reading applies.
+    expect(formatPeriod("202613")).toBe("202613");
+  });
+});
+
+// ── extractPeriods ────────────────────────────────────────────────────────────────────────────
+
+describe("extractPeriods", () => {
+  it("reads the dedicated year and month fields first", () => {
+    const rows = [{ TaxInvoiceYear: "2026", TaxInvoicePeriod: "4" }];
+    expect(extractPeriods(rows, [])).toEqual(["2026_04"]);
+  });
+
+  it("falls back to a consolidated TaxPeriod", () => {
+    expect(extractPeriods([{ TaxPeriod: "TD007-2026-04" }], [])).toEqual(["2026_04"]);
+    expect(extractPeriods([{ TaxPeriod: "202607" }], [])).toEqual(["2026_07"]);
+  });
+
+  it("falls back to the caller's own date columns, in their order", () => {
+    const rows = [{ DocumentDate: "2026-03-05T00:00:00+07:00" }];
+    expect(extractPeriods(rows, ["TaxInvoiceDate", "DocumentDate"])).toEqual(["2026_03"]);
+  });
+
+  it("collects each masa once, sorted", () => {
+    const rows = [
+      { TaxInvoiceYear: "2026", TaxInvoicePeriod: "7" },
+      { TaxInvoiceYear: "2026", TaxInvoicePeriod: "4" },
+      { TaxInvoiceYear: "2026", TaxInvoicePeriod: "7" },
+    ];
+    expect(extractPeriods(rows, [])).toEqual(["2026_04", "2026_07"]);
+  });
+
+  it("ignores rows that carry no readable period, and no rows at all", () => {
+    expect(extractPeriods([{ TaxInvoiceNumber: "04012600023333322" }], [])).toEqual([]);
+    expect(extractPeriods(undefined, [])).toEqual([]);
+    expect(extractPeriods([], [])).toEqual([]);
   });
 });
