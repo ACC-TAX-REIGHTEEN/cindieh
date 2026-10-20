@@ -73,7 +73,11 @@ export default defineConfig({
       // 94.0/88.4/91.6/95.2 by the page's surfaces having one owner each
       // (ADR-0033) — a registry that is fully covered, and the two leaks it
       // closed (the toolbar filter's container, the panel's inert background).
-      // The measured numbers are 94.24/88.82/91.85/95.39.
+      // The measured numbers are 94.24/88.82/91.85/95.39, and now
+      // 94.47/89.11/92.25/95.47 with the per-item loop (ADR-0034): the MAIN
+      // world's four item-at-a-time flows now share one measured stop check,
+      // one breaker and one wait, and the module that holds them is covered
+      // on its own terms.
       //
       // The cushion is deliberately ~0.4 points, the same gap the floors have
       // always kept: enough that ordinary churn cannot redden the build, small
@@ -87,10 +91,10 @@ export default defineConfig({
       // is covered directly. Do not paper the gap over by lowering a floor; move
       // it by testing the seam underneath.
       thresholds: {
-        statements: 94.0,
-        branches: 88.4,
-        functions: 91.6,
-        lines: 95.2,
+        statements: 94.2,
+        branches: 88.8,
+        functions: 92.0,
+        lines: 95.3,
       },
     },
   },

@@ -20,6 +20,8 @@ import {
   xhrDownloadWithholdingPdf as xhrDownloadWithholdingPdfFn,
   xhrDownloadEfakturPdf as xhrDownloadEfakturPdfFn,
 } from "./scraper-xhr";
+import type { GridPage } from "./scraper-xhr";
+import { runItems, breakerTripped, type ItemFlow } from "./per-item";
 import type { CapturedRequest, ScrapeMessage } from "./scraper-types";
 import {
   batchScopeError,
@@ -127,13 +129,37 @@ function signalArgs(ctx: ScraperContext): [] | [AbortSignal] {
 
 /**
  * Circuit breaker shared by the per-item action loops: true once
- * `failures` consecutive item failures reach `ctx.maxErrors`. Callers
- * report the exhaustion themselves: scrapePaginated and the withholding
- * bulk loop throw (startScraping turns that into SCRAPE_ERROR), while the
- * efaktur PDF loop and the targeted-lookup loop send SCRAPE_ERROR and return.
+ * `failures` consecutive item failures reach `ctx.maxErrors`. The arithmetic
+ * lives in per-item.ts, so the limit is measured in one place; this is the
+ * binding of it to a run's own budget. Callers report the exhaustion
+ * themselves: scrapePaginated and the withholding bulk loop throw
+ * (startScraping turns that into SCRAPE_ERROR), while the efaktur PDF loop
+ * and the targeted-lookup loop send SCRAPE_ERROR and return.
  */
 export function consecutiveFailuresExhausted(ctx: ScraperContext, failures: number): boolean {
-  return failures >= ctx.maxErrors;
+  return breakerTripped(failures, ctx.maxErrors);
+}
+
+/**
+ * One row of a PDF run, with the name the panel and the report call it.
+ *
+ * The name is decided once per item: the progress line and the failure
+ * report must call the same row the same thing, and a slip number and a
+ * Referensi are not the same field.
+ */
+interface PdfItem {
+  row: Record<string, unknown>;
+  name: string;
+}
+
+/**
+ * The sentence both PDF loops give up with.
+ *
+ * It was written twice, verbatim, and the two copies were free to drift the
+ * moment one of them was edited. One wording, two flows.
+ */
+function pdfDownloadFailures(failures: number): string {
+  return `${failures} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`;
 }
 
 /** The DOMException the cancellation paths reject with. */
@@ -218,10 +244,6 @@ export async function scrapePaginated(
   accumulator: ScrapeAccumulator = { allData: [], seen: new Set<string>() },
 ): Promise<ScrapePaginatedResult> {
   const { allData, seen } = accumulator;
-  let page = 0;
-  let first = 0;
-  let keepGoing = true;
-  let errorCount = 0;
   const startTime = Date.now();
   const { delayMs } = getPaginateConfig(captured.source, pacingOf(ctx));
   // Set when the server's own count says more rows exist than we collected. It
@@ -230,36 +252,39 @@ export async function scrapePaginated(
   let truncated = false;
   // The largest matching-row count the server has claimed so far.
   let expectedTotal: number | null = null;
+  // The offset the next request asks for, and the counter the report carries.
+  // The offset only advances on a page that brought rows, so a page that
+  // FAILED is asked for again — the grid's own retry, and the reason the
+  // counter counts attempts rather than pages.
+  let offset = 0;
+  let page = 0;
+  // What the last page brought, for the progress line.
+  let lastRows = 0;
+  let lastNewRows = 0;
 
-  while (keepGoing && !ctx.isStopRequested()) {
-    page++;
-    try {
-      const { rows, total } = await xhrRequestFn(
-        captured,
-        first,
-        step,
-        ctx.timeout,
-        ctx.signal,
-        overrides,
+  const elapsed = (): string => `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
+
+  const flow: ItemFlow<number, GridPage> = {
+    next: () => {
+      page++;
+      return { value: offset, index: page, total: 0 };
+    },
+    reportWhen: "after",
+    status: () => `Page ${page}: ${lastRows} baris, ${lastNewRows} baru`,
+    attempt: async (item) =>
+      xhrRequestFn(captured, item.value, step, ctx.timeout, ctx.signal, overrides),
+    accept: (result) => {
+      const newRows = mergeRows(allData, seen, result.rows);
+      lastRows = result.rows.length;
+      lastNewRows = newRows.length;
+
+      debugLog(
+        `Page ${page}: ${result.rows.length} rows, ${newRows.length} new, total=${allData.length}, ${elapsed()}`,
       );
-      if (ctx.isStopRequested()) break;
-      const newRows = mergeRows(allData, seen, rows);
-
-      const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
-
-      debugLog(`Page ${page}: ${rows.length} rows, ${newRows.length} new, total=${allData.length}, ${elapsed}`);
-
-      ctx.sendToContent({
-        type: "SCRAPE_PROGRESS",
-        total: allData.length,
-        page,
-        elapsed,
-        status: `Page ${page}: ${rows.length} baris, ${newRows.length} baru`,
-      });
 
       // Trust the server's count over the page shape whenever it gives one.
-      if (total !== null && (expectedTotal === null || total > expectedTotal)) {
-        expectedTotal = total;
+      if (result.total !== null && (expectedTotal === null || result.total > expectedTotal)) {
+        expectedTotal = result.total;
       }
       if (expectedTotal !== null && allData.length < expectedTotal) {
         truncated = true;
@@ -268,33 +293,49 @@ export async function scrapePaginated(
         );
       }
 
-      if (rows.length < step) {
-        keepGoing = false;
-      } else if (newRows.length === 0) {
+      if (result.rows.length < step) return false;
+      if (newRows.length === 0) {
         // A FULL page that added nothing new, while First keeps advancing,
         // means the server is not honouring the offset -- every further page
         // will be the same rows. Without this the loop requests forever, which
         // is both a hang and a sustained load on the portal.
         debugLog(
-          `Halaman penuh tanpa baris baru di First=${first} -- server mengabaikan offset, scrape dihentikan.`,
+          `Halaman penuh tanpa baris baru di First=${offset} -- server mengabaikan offset, scrape dihentikan.`,
         );
-        keepGoing = false;
-      } else {
-        first += step;
-        errorCount = 0;
-        await ctx.delay(delayMs);
+        return false;
       }
-    } catch (err) {
-      if (ctx.isStopRequested()) break;
-      errorCount++;
-      const errMsg = err instanceof Error ? err.message : String(err);
-      if (consecutiveFailuresExhausted(ctx, errorCount)) {
-        throw new Error(`${errorCount} error berturut-turut: ${errMsg}`);
-      } else {
-        await ctx.delay(2000);
-      }
-    }
-  }
+      offset += step;
+      return true;
+    },
+    recordFailure: () => {
+      // A page has no name of its own: the error carries it, and the offset
+      // stays put, so the same page is asked for again.
+    },
+    exhausted: (failures, error) => {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(`${failures} error berturut-turut: ${errMsg}`);
+    },
+    delayMs,
+    // The backoff between a failed page and the next attempt at it. It is the
+    // one delay in the MAIN world that is NOT scaled by the pacing preset:
+    // the code's own floor for a request that just failed.
+    failureDelayMs: 2000,
+  };
+
+  await runItems(flow, {
+    isStopped: () => ctx.isStopRequested(),
+    progress: (state) => {
+      ctx.sendToContent({
+        type: "SCRAPE_PROGRESS",
+        total: allData.length,
+        page,
+        elapsed: elapsed(),
+        status: state.status,
+      });
+    },
+    breakerTripped: (failures) => consecutiveFailuresExhausted(ctx, failures),
+    delay: (ms) => ctx.delay(ms),
+  });
 
   return { allData, page, truncated, expectedTotal };
 }
@@ -317,51 +358,59 @@ export async function downloadBulkWithholdingPdf(
   totalElapsed: string,
   ctx: ScraperContext,
 ): Promise<{ failureCount: number; failedItems: string[] }> {
-  let failureCount = 0;
-  let consecutiveFailures = 0;
   // Every failure is named: the slip number is the only thing that ties a
   // failed download back to a row once the run is over.
   const failedItems: string[] = [];
   const total = allData.length;
+  let index = 0;
   debugLog(`Starting Bulk PDF download for ${total} items...`);
 
-  for (let i = 0; i < total; i++) {
-    if (ctx.isStopRequested()) break;
+  const flow: ItemFlow<PdfItem, string> = {
+    next: () => {
+      if (index >= total) return null;
+      const row = allData[index];
+      index++;
+      return { value: { row, name: describePdfItem(row, "WITHHOLDING_SLIPS") }, index, total };
+    },
+    reportWhen: "before",
+    status: (item) => `Mengunduh PDF ${item.index}/${total}: ${item.value.name}`,
+    attempt: async (item) =>
+      xhrDownloadWithholdingPdfFn(captured, item.value.row, ctx.timeout, ...signalArgs(ctx)),
+    accept: (base64, item) => {
+      ctx.emitPdfDownload(base64, item.value.row, "WITHHOLDING_SLIPS");
+      return true;
+    },
+    recordFailure: (item, error) => {
+      failedItems.push(item.value.name);
+      debugError(`Gagal unduh PDF idx ${item.index - 1} (${item.value.name}):`, error);
+    },
+    exhausted: (failures) => {
+      // This loop THROWS: the orchestrator turns the throw into SCRAPE_ERROR,
+      // so the run ends with one error and no completion.
+      throw new Error(pdfDownloadFailures(failures));
+    },
+    delayMs: scaleDelay(800, pacingOf(ctx)),
+  };
 
-    const row = allData[i];
-    const slip = describePdfItem(row, "WITHHOLDING_SLIPS");
-    const status = `Mengunduh PDF ${i + 1}/${total}: ${slip}`;
+  const result = await runItems(flow, {
+    isStopped: () => ctx.isStopRequested(),
+    progress: (state) => {
+      ctx.sendToContent({
+        type: "SCRAPE_PROGRESS",
+        total: state.index,
+        page,
+        elapsed: totalElapsed,
+        status: state.status,
+        currentIndex: state.index,
+        totalCount: total,
+        failureCount: state.failureCount,
+      });
+    },
+    breakerTripped: (failures) => consecutiveFailuresExhausted(ctx, failures),
+    delay: (ms) => ctx.delay(ms),
+  });
 
-    ctx.sendToContent({
-      type: "SCRAPE_PROGRESS",
-      total: i + 1,
-      page,
-      elapsed: totalElapsed,
-      status,
-      currentIndex: i + 1,
-      totalCount: total,
-      failureCount,
-    });
-
-    try {
-      const base64 = await xhrDownloadWithholdingPdfFn(captured, row, ctx.timeout, ...signalArgs(ctx));
-      if (ctx.isStopRequested()) break;
-      ctx.emitPdfDownload(base64, row, "WITHHOLDING_SLIPS");
-      consecutiveFailures = 0;
-    } catch (err) {
-      if (ctx.isStopRequested()) break;
-      failureCount++;
-      consecutiveFailures++;
-      failedItems.push(slip);
-      debugError(`Gagal unduh PDF idx ${i} (${slip}):`, err);
-      if (consecutiveFailuresExhausted(ctx, consecutiveFailures)) {
-        throw new Error(`${consecutiveFailures} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`);
-      }
-    }
-    await ctx.delay(scaleDelay(800, pacingOf(ctx)));
-  }
-
-  return { failureCount, failedItems };
+  return { failureCount: result.failures, failedItems };
 }
 
 // ── Main scraping orchestrator ────────────────────────
@@ -594,12 +643,11 @@ export async function startPdfDownload(
   if (ctx.isStopRequested()) return;
   const source = lastCaptured.source;
   const startTime = Date.now();
-  let failureCount = 0;
-  let consecutiveFailures = 0;
   // Named for the same reason as the withholding loop: the count alone cannot be
   // acted on once a 300-row run is over.
   const failedItems: string[] = [];
   const total = data.length;
+  let index = 0;
 
   debugLog(`▶ Starting Bulk PDF download for ${total} efaktur items (source: ${source})...`);
 
@@ -614,53 +662,58 @@ export async function startPdfDownload(
     failureCount: 0,
   });
 
-  for (let i = 0; i < total; i++) {
-    if (ctx.isStopRequested()) {
-      debugLog("⏹ PDF download stopped by user.");
-      break;
-    }
+  const flow: ItemFlow<PdfItem, string> = {
+    next: () => {
+      if (index >= total) return null;
+      const row = data[index];
+      index++;
+      return { value: { row, name: describePdfItem(row, source) }, index, total };
+    },
+    reportWhen: "before",
+    status: (item) => `Mengunduh PDF ${item.index}/${total}: ${item.value.name}`,
+    attempt: async (item) =>
+      xhrDownloadEfakturPdfFn(lastCaptured, item.value.row, source, ctx.timeout, ...signalArgs(ctx)),
+    accept: (base64, item) => {
+      ctx.emitPdfDownload(base64, item.value.row, source);
+      return true;
+    },
+    recordFailure: (item, error) => {
+      failedItems.push(item.value.name);
+      debugError(`Gagal unduh PDF efaktur idx ${item.index - 1} (${item.value.name}):`, error);
+    },
+    exhausted: (failures) => {
+      // This loop ANNOUNCES the end instead of throwing: it is the one PDF
+      // path the user starts on its own, so the error goes straight to the
+      // panel and no completion follows it.
+      ctx.sendToContent({ type: "SCRAPE_ERROR", message: pdfDownloadFailures(failures) });
+    },
+    delayMs: scaleDelay(800, pacingOf(ctx)),
+  };
 
-    const row = data[i];
-    const ref = describePdfItem(row, source);
-    const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
+  const result = await runItems(flow, {
+    isStopped: () => ctx.isStopRequested(),
+    progress: (state) => {
+      ctx.sendToContent({
+        type: "SCRAPE_PROGRESS",
+        total: state.index,
+        page: 0,
+        elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}s`,
+        status: state.status,
+        currentIndex: state.index,
+        totalCount: total,
+        failureCount: state.failureCount,
+      });
+    },
+    breakerTripped: (failures) => consecutiveFailuresExhausted(ctx, failures),
+    delay: (ms) => ctx.delay(ms),
+  });
 
-    ctx.sendToContent({
-      type: "SCRAPE_PROGRESS",
-      total: i + 1,
-      page: 0,
-      elapsed,
-      status: `Mengunduh PDF ${i + 1}/${total}: ${ref}`,
-      currentIndex: i + 1,
-      totalCount: total,
-      failureCount,
-    });
-
-    try {
-      const base64 = await xhrDownloadEfakturPdfFn(lastCaptured, row, source, ctx.timeout, ...signalArgs(ctx));
-      if (ctx.isStopRequested()) return;
-      ctx.emitPdfDownload(base64, row, source);
-      consecutiveFailures = 0;
-    } catch (err) {
-      if (ctx.isStopRequested()) return;
-      failureCount++;
-      consecutiveFailures++;
-      failedItems.push(ref);
-      debugError(`Gagal unduh PDF efaktur idx ${i} (${ref}):`, err);
-      if (consecutiveFailuresExhausted(ctx, consecutiveFailures)) {
-        ctx.sendToContent({
-          type: "SCRAPE_ERROR",
-          message: `${consecutiveFailures} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`,
-        });
-        return;
-      }
-    }
-    await ctx.delay(scaleDelay(800, pacingOf(ctx)));
-  }
+  if (result.exhausted) return;
   if (ctx.isStopRequested()) return;
 
   const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
   debugLog(
-    `✅ PDF download complete: ${total - failureCount}/${total} succeeded, ${failureCount} failed in ${totalElapsed}`,
+    `✅ PDF download complete: ${total - result.failures}/${total} succeeded, ${result.failures} failed in ${totalElapsed}`,
   );
 
   sendScrapeComplete(ctx.sendToContent, {
@@ -671,8 +724,8 @@ export async function startPdfDownload(
     pages: 0,
     elapsed: totalElapsed,
     source,
-    partial: failureCount > 0,
-    failureCount,
+    partial: result.failures > 0,
+    failureCount: result.failures,
     failedItems,
     kind: "pdf",
   });
@@ -702,74 +755,67 @@ export async function scrapeByInvoices(
   const allData: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   const failedInvoices: string[] = [];
-  let consecutiveFailures = 0;
+  let index = 0;
 
-  for (let i = 0; i < invoiceNumbers.length; i++) {
-    if (ctx.isStopRequested()) break;
-
-    const num = invoiceNumbers[i];
-    let success = false;
-
-    for (let attempt = 0; attempt <= MAX_INVOICE_RETRIES; attempt++) {
-      if (ctx.isStopRequested()) break;
-
-      if (attempt > 0) {
-        const backoffMs = BACKOFF_BASE_MS * attempt;
-        const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
-        ctx.sendToContent({
-          type: "SCRAPE_PROGRESS",
-          total: allData.length,
-          page: i + 1,
-          elapsed,
-          status: `Mencoba ulang: ${num} (percobaan ${attempt + 1}/${MAX_INVOICE_RETRIES + 1})`,
-        });
-        await ctx.delay(backoffMs);
-        if (ctx.isStopRequested()) return;
-      } else {
-        const elapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;
-        ctx.sendToContent({
-          type: "SCRAPE_PROGRESS",
-          total: allData.length,
-          page: i + 1,
-          elapsed,
-          status: `Mencari: ${num} (${i + 1}/${invoiceNumbers.length})`,
-        });
-      }
-
+  const flow: ItemFlow<string, Record<string, unknown>[]> = {
+    next: () => {
+      if (index >= invoiceNumbers.length) return null;
+      const num = invoiceNumbers[index];
+      index++;
+      return { value: num, index, total: invoiceNumbers.length };
+    },
+    reportWhen: "before",
+    status: (item, attempt) =>
+      attempt === 1
+        ? `Mencari: ${item.value} (${item.index}/${invoiceNumbers.length})`
+        : `Mencoba ulang: ${item.value} (percobaan ${attempt}/${MAX_INVOICE_RETRIES + 1})`,
+    attempt: async (item, attempt) => {
       try {
-        const rows = await xhrRequestByInvoiceFn(lastCaptured, num, ctx.timeout, ...signalArgs(ctx));
-        if (ctx.isStopRequested()) return;
-        mergeRows(allData, seen, rows);
-        consecutiveFailures = 0;
-        success = true;
-        await ctx.delay(scaleDelay(50, pacingOf(ctx)));
-        break;
+        return await xhrRequestByInvoiceFn(lastCaptured, item.value, ctx.timeout, ...signalArgs(ctx));
       } catch (err) {
-        if (ctx.isStopRequested()) return;
         const errMsg = err instanceof Error ? err.message : String(err);
-        if (attempt < MAX_INVOICE_RETRIES) {
-          debugLog(`Gagal mencari ${num} (percobaan ${attempt + 1}), akan dicoba ulang: ${errMsg}`);
+        if (attempt <= MAX_INVOICE_RETRIES) {
+          debugLog(`Gagal mencari ${item.value} (percobaan ${attempt}), akan dicoba ulang: ${errMsg}`);
         } else {
-          debugError(`Gagal mencari ${num} setelah ${MAX_INVOICE_RETRIES + 1} percobaan:`, err);
+          debugError(`Gagal mencari ${item.value} setelah ${MAX_INVOICE_RETRIES + 1} percobaan:`, err);
         }
+        throw err;
       }
-    }
+    },
+    accept: (rows) => {
+      mergeRows(allData, seen, rows);
+      return true;
+    },
+    recordFailure: (item) => {
+      failedInvoices.push(item.value);
+    },
+    exhausted: (failures) => {
+      ctx.sendToContent({
+        type: "SCRAPE_ERROR",
+        message: `${failures} kegagalan berturut-turut saat mencari faktur. Proses dihentikan.`,
+      });
+      debugError(`scrapeByInvoices: aborted after ${failures} consecutive failures`);
+    },
+    delayMs: scaleDelay(50, pacingOf(ctx)),
+    retry: { extraAttempts: MAX_INVOICE_RETRIES, backoffMs: BACKOFF_BASE_MS },
+  };
 
-    if (ctx.isStopRequested()) return;
-    if (!success) {
-      failedInvoices.push(num);
-      consecutiveFailures++;
-      if (consecutiveFailuresExhausted(ctx, consecutiveFailures)) {
-        ctx.sendToContent({
-          type: "SCRAPE_ERROR",
-          message: `${ctx.maxErrors} kegagalan berturut-turut saat mencari faktur. Proses dihentikan.`,
-        });
-        debugError(`scrapeByInvoices: aborted after ${ctx.maxErrors} consecutive failures`);
-        return;
-      }
-      await ctx.delay(scaleDelay(50, pacingOf(ctx)));
-    }
-  }
+  const result = await runItems(flow, {
+    isStopped: () => ctx.isStopRequested(),
+    progress: (state) => {
+      ctx.sendToContent({
+        type: "SCRAPE_PROGRESS",
+        total: allData.length,
+        page: state.index,
+        elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}s`,
+        status: state.status,
+      });
+    },
+    breakerTripped: (failures) => consecutiveFailuresExhausted(ctx, failures),
+    delay: (ms) => ctx.delay(ms),
+  });
+
+  if (result.exhausted) return;
   if (ctx.isStopRequested()) return;
 
   const totalElapsed = `${((Date.now() - startTime) / 1000).toFixed(1)}s`;

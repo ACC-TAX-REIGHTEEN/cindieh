@@ -186,3 +186,7 @@ _Avoid_: request template, captured request
 **Surface**:
 One thing Cindieh puts into the portal's DOM — the badge, the export toolbar, the panel overlay, the toolbar's Referensi box, the grid's Referensi column input, the No. Faktur filter. Each surface has ONE owner: the module that paints it also takes it away, so a teardown cannot leave half of it behind (ADR-0033). A surface says whether the portal's own re-render can take it away: the toolbar and the filters live inside the portal's markup and are put back after a re-render, while the panel and the badge live in `<body>` and are left alone (a rebuilt panel would throw away the pasted text). A surface is not a page fact and not a Run.
 _Avoid_: injected element, widget, overlay (the panel is one surface among six)
+
+**Item loop**:
+One unit of a run's work, taken one at a time: a page of grid rows, a Bukti Potong PDF, an e-Faktur PDF, an invoice number. The MAIN world's four item loops share ONE loop (`per-item.ts`), which owns the stop check, the progress line, the breaker, the retry and the wait; each flow supplies what one item MEANS (what it is called, what its work is, what its result does, what its failure is called) (ADR-0034). A STOP is not a FAILURE: a stop ends the run and records nothing, a failure is named and counted against the breaker, and a result that arrives after a stop is dropped rather than taken.
+_Avoid_: batch, page, iteration (a page is one kind of item)
