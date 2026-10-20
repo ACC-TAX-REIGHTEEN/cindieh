@@ -11,7 +11,7 @@
 
 ## Tujuan
 
-Memahami ADR Cindieh bukan soal menghafal 38 dokumen. Tujuannya adalah mampu **mengambil
+Memahami ADR Cindieh bukan soal menghafal 39 dokumen. Tujuannya adalah mampu **mengambil
 keputusan arsitektur dengan bahasa dan landasan yang sama**, tanpa mengulang persoalan yang
 sudah pernah diselesaikan. Saat sebuah PR atau permintaan fitur menyentuh modul tertentu, Anda
 diharapkan dapat menemukan ADR yang relevan dalam beberapa menit, memahami batas tanggung

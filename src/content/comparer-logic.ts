@@ -7,7 +7,7 @@
 // logic, and status summary generation.
 // ============================================================
 
-import type { ComparisonResult, ComparisonStatus, PastedRow } from "./comparer";
+import type { ComparisonResult, ComparisonStatus, CoretaxOnlyScope, PastedRow } from "./comparer";
 import { compareData, parsePastedData } from "./comparer";
 import { COMPARISON_STATUSES, type ComparerDefaults } from "../shared/extension-preferences";
 
@@ -194,6 +194,20 @@ export function getStatusLabel(status: ComparisonStatus): StatusLabel {
 // (results, page, highlights) and the view only renders the outcome.
 
 /**
+ * The reverse check's scope, read from the session: daily mode narrows the
+ * "hanya di coretax" candidates to the days the Wajib Pajak recorded, while
+ * monthly mode (the day box unticked) leaves EVERY row of the grid a
+ * candidate. A daily session with no day yet has no scope at all — the panel
+ * asks for the days before it runs, so this never silently narrows a check the
+ * Wajib Pajak asked for in full.
+ */
+export function coretaxOnlyScope(session: ComparerSession): CoretaxOnlyScope | null {
+  if (!session.dailyEnabled) return { kind: "all" };
+  if (session.dailyDates.length === 0) return null;
+  return { kind: "days", days: session.dailyDates };
+}
+
+/**
  * Run a comparison against already-parsed pasted rows and update the
  * session: fresh results, page reset, viewed highlights cleared.
  */
@@ -202,10 +216,12 @@ export function runComparison(
   pastedRows: PastedRow[],
   scrapedData: Record<string, unknown>[],
 ): ComparisonResult[] {
-  const dailyDatesArg = session.dailyEnabled && session.dailyDates.length > 0
-    ? session.dailyDates
-    : null;
-  session.results = compareData(pastedRows, scrapedData, session.tolerance, dailyDatesArg);
+  session.results = compareData(
+    pastedRows,
+    scrapedData,
+    session.tolerance,
+    coretaxOnlyScope(session),
+  );
   session.currentPage = 1;
   session.viewedRefs.clear();
   return session.results;

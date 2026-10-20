@@ -142,6 +142,10 @@ _Avoid_: tolerance value, delta
 A reverse check: only Coretax invoices dated on the given days of month (1–31) are candidates for "Hanya di Coretax", so internal records are only compared against the days the Wajib Pajak actually recorded.
 _Avoid_: day filter, daily date mode
 
+**Monthly mode**:
+The reverse check with the day box unticked: EVERY Coretax invoice the internal records do not carry is a candidate for "Hanya di Coretax" — the whole grid rather than a few days. The scope is one decision (ADR-0039): daily mode narrows the candidates to the days given, monthly mode does not narrow them at all.
+_Avoid_: full check, all-rows mode
+
 **Pengecekan (Checker)**:
 The value-accuracy tab of the panel (next to the Comparer): every scraped row's DPP, DPP Nilai Lain, and PPN are tested against the chosen **Acuan**; only rows that differ or carry incomplete data are ever listed. It runs on the four e-Faktur PPN grids — both invoice grids and both Retur grids — because it tests ONE row's arithmetic at a time, never a match between rows, and a retur nota carries the same three amounts (ADR-0024).
 _Avoid_: accuracy check, validation, audit

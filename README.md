@@ -82,11 +82,11 @@ Cara kerja: cukup **copy dari Excel, lalu paste** ke panel Komparator. Tidak per
 | **PPN Berbeda** | Hanya PPN yang tidak sesuai |
 | **Berbeda** | DPP dan PPN keduanya tidak sesuai |
 | **Tidak Ditemukan** | Referensi dari Excel tidak ditemukan di Coretax |
-| **Hanya di Coretax** | Ada di Coretax pada tanggal yang dipilih, tapi tidak ada di data Excel |
+| **Hanya di Coretax** | Ada di Coretax tapi tidak ada di data Excel (pada tanggal yang dipilih, atau di seluruh periode bila Mode Harian tidak dicentang) |
 
 **Opsi tambahan:**
 - **Toleransi** — batas selisih yang masih dianggap cocok, berguna untuk menangani pembulatan
-- **Mode Harian** — masukkan tanggal tertentu (1–31) untuk mendeteksi faktur di Coretax yang belum ada di catatan internal
+- **Mode Harian** — masukkan tanggal tertentu (1–31) untuk mendeteksi faktur di Coretax yang belum ada di catatan internal. Tanpa centang Mode Harian, pemeriksaan mencakup seluruh periode: setiap faktur di Coretax yang belum ada di catatan internal ikut ditampilkan
 - **Filter Status** — saring hasil berdasarkan satu atau lebih status sekaligus
 - **Export Excel / CSV** — ekspor seluruh hasil perbandingan, ke `perbandingan-faktur.xlsx` atau `perbandingan-faktur.csv`. CSV siap dibuka di editor teks atau dipakai untuk membandingkan dua hasil
 - **Klik baris hasil** — langsung menutup panel dan menjalankan pencarian referensi tersebut di tabel PPN Keluaran Coretax, untuk validasi cepat tanpa perlu copy-paste manual

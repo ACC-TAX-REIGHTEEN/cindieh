@@ -14,6 +14,7 @@ import {
   rerunComparison,
   prepareComparison,
   applyComparerDefaults,
+  coretaxOnlyScope,
 } from "../content/comparer-logic";
 import type { ComparisonResult, ComparisonStatus } from "../content/comparer";
 
@@ -319,6 +320,29 @@ describe("getStatusLabel", () => {
   });
 });
 
+// ── coretaxOnlyScope ──────────────────────────────────────────────────────────
+
+describe("coretaxOnlyScope", () => {
+  it("narrows the reverse check to the given days in daily mode", () => {
+    const session = createComparerSession();
+    session.dailyDates = [3, 5];
+    expect(coretaxOnlyScope(session)).toEqual({ kind: "days", days: [3, 5] });
+  });
+
+  it("covers the whole grid in monthly mode", () => {
+    const session = createComparerSession();
+    session.dailyEnabled = false;
+    session.dailyDates = [3, 5];
+    expect(coretaxOnlyScope(session)).toEqual({ kind: "all" });
+  });
+
+  it("has no scope while daily mode has no day yet", () => {
+    const session = createComparerSession();
+    session.dailyDates = [];
+    expect(coretaxOnlyScope(session)).toBeNull();
+  });
+});
+
 // ── runComparison ─────────────────────────────────────────────────────────────
 
 describe("runComparison", () => {
@@ -337,7 +361,7 @@ describe("runComparison", () => {
     expect(results[0].status).toBe("COCOK");
   });
 
-  it("passes dailyDates when daily mode is on and dates exist", () => {
+  it("narrows the reverse check to the given days in daily mode", () => {
     const session = createComparerSession();
     session.dailyDates = [3, 5];
     const results = runComparison(
@@ -349,7 +373,7 @@ describe("runComparison", () => {
     expect(results[0].status).toBe("TIDAK_DITEMUKAN");
   });
 
-  it("drops dailyDates when daily mode is disabled", () => {
+  it("covers the whole grid in monthly mode (the day box unticked)", () => {
     const session = createComparerSession();
     session.dailyEnabled = false;
     session.dailyDates = [3, 5];
@@ -359,6 +383,31 @@ describe("runComparison", () => {
       [],
     );
     expect(results).toHaveLength(1);
+  });
+
+  it("lists a coretax-only row in monthly mode", () => {
+    const session = createComparerSession();
+    session.dailyEnabled = false;
+    const results = runComparison(
+      session,
+      [{ reference: "REF-001", refLain: "", dpp: 100, ppn: 10 }],
+      [
+        { Reference: "REF-001", SellingPrice: 100, VAT: 10 },
+        { Reference: "REF-002", SellingPrice: 100, VAT: 10, TaxInvoiceDate: "2026-07-05" },
+      ],
+    );
+    expect(results.map((r) => r.status)).toEqual(["COCOK", "HANYA_CORETAX"]);
+  });
+
+  it("keeps the reverse check off when daily mode has no day yet", () => {
+    const session = createComparerSession();
+    session.dailyDates = [];
+    const results = runComparison(
+      session,
+      [{ reference: "REF-X", refLain: "", dpp: 0, ppn: 0 }],
+      [{ Reference: "REF-002", SellingPrice: 100, VAT: 10, TaxInvoiceDate: "2026-07-05" }],
+    );
+    expect(results.map((r) => r.status)).toEqual(["TIDAK_DITEMUKAN"]);
   });
 });
 
@@ -413,12 +462,14 @@ describe("rerunComparison", () => {
     expect(session.results).toEqual([]);
   });
 
-  it("only disables reverse checking when daily mode is explicitly disabled", () => {
+  it("checks the whole grid in monthly mode, whatever the day box holds", () => {
     const session = createComparerSession();
     session.dailyEnabled = false;
     const outcome = rerunComparison(session, paste, scraped, "invalid");
     expect(outcome.action).toBe("run");
-    expect(session.results.map((r) => r.status)).toEqual(["COCOK"]);
+    // The day box is unticked, so the day list is not the scope any more: every
+    // coretax row the internal records do not carry is listed.
+    expect(session.results.map((r) => r.status)).toEqual(["COCOK", "HANYA_CORETAX"]);
   });
 });
 

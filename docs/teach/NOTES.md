@@ -32,13 +32,19 @@
   `docs/adr/README.md` saat materi itu ditulis:
   - 34 ADR — versi pertama kursus (20 Oktober 2026, pagi);
   - 36 ADR — setelah ADR-0035 dan ADR-0036 masuk (versi yang sempat ditulis di pelajaran);
-  - 38 ADR — sekarang: 0001–0038, tanpa celah. Pelajaran 09 (ADR-0037), ADR-0036 di
+  - 38 ADR — versi sebelum ADR-0039: 0001–0038, tanpa celah. Pelajaran 09 (ADR-0037), ADR-0036 di
     pelajaran 05, dan ADR-0035 + ADR-0038 di pelajaran 07 adalah tambahan terbaru.
+  - 39 ADR — sekarang: 0001–0039, tanpa celah. ADR-0039 (satu scope untuk pemeriksaan terbalik
+    Komparator) masuk di pelajaran 07 dan di peta ADR; peta rujukan silang menambah baris
+    `0039 → 0003, 0006`.
   - Saat ditulis ulang, angka yang disebut pengguna adalah “36”, padahal indeks sudah 37 lalu 38.
     Kursus memakai angka yang terverifikasi dari indeks resmi, bukan angka yang diberikan lisan.
 - Pengguna sedang menggarap dunia MAIN: `src/content/scraper-install.ts` dan
   `src/content/ui-comparer-view.ts` (baru), dengan ADR-0036 dan ADR-0038 sebagai catatannya.
   Berkas-berkas itu milik pengguna — jangan disentuh.
+- **ADR-0039 sudah diverifikasi manual di portal Coretax** (20 Oktober 2026): mode bulanan
+  Komparator (kotak “Hari” tidak dicentang) kini menampilkan baris “Hanya di Coretax” seperti yang
+  diminta. Pelajaran 07 dan peta ADR sudah menyebutkannya.
 - Angka “1.283 → 1.121 baris” di ADR-0003 sudah usang karena pemecahan tab Komparator.
   Pelajaran 07 menyebutnya sebagai angka yang ADR itu catat, bukan kondisi sekarang.
 

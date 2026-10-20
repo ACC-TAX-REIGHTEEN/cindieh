@@ -318,7 +318,7 @@ describe("compareData", () => {
   it("includes coretax-only rows on given dates in daily mode", () => {
     const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
     // Only SZ is pasted; HH (day 2) and SP (day 3) are in coretax.
-    const results = compareData(pasted, scrapedData, 0, [2, 3]);
+    const results = compareData(pasted, scrapedData, 0, { kind: "days", days: [2, 3] });
     const statuses = results.map((r) => r.status);
     expect(statuses).toContain("HANYA_CORETAX");
     const onlyCoretax = results.filter((r) => r.status === "HANYA_CORETAX");
@@ -330,7 +330,36 @@ describe("compareData", () => {
     expect(onlyCoretax[0].ppnExcel).toBeNull();
   });
 
-  it("does not include coretax-only rows when daily mode is disabled", () => {
+  it("includes every coretax-only row in monthly mode (the whole grid is the scope)", () => {
+    const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
+    const results = compareData(pasted, scrapedData, 0, { kind: "all" });
+    const onlyCoretax = results.filter((r) => r.status === "HANYA_CORETAX");
+    expect(onlyCoretax.map((r) => r.reference)).toEqual(["HH-0357/07/26", "SP-0169/07/26"]);
+    // The pasted row keeps its own verdict — the reverse check adds rows, it
+    // never rewrites the ones the internal records already carry.
+    expect(results[0].status).toBe("COCOK");
+  });
+
+  it("includes a coretax-only row whose date cannot be read in monthly mode", () => {
+    const undated = [{ Reference: "XX-0001/07/26", SellingPrice: 1000, VAT: 110 }];
+    const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
+    const results = compareData(pasted, undated, 0, { kind: "all" });
+    // The scope is the whole grid, so a row without a readable date is still a
+    // candidate — the day filter is what needs a date, and monthly mode has none.
+    expect(results.map((r) => r.status)).toEqual(["TIDAK_DITEMUKAN", "HANYA_CORETAX"]);
+  });
+
+  it("reports a reference the grid carries twice only once", () => {
+    const duplicated = [
+      { Reference: "SZ-0447/07/26", SellingPrice: 568000, VAT: 62480, TaxInvoiceDate: "2026-07-01" },
+      { Reference: "SZ-0447/07/26", SellingPrice: 568000, VAT: 62480, TaxInvoiceDate: "2026-07-01" },
+    ];
+    const pasted = parsePastedData("XX-0001/07/26\t1\t1");
+    const results = compareData(pasted, duplicated, 0, { kind: "all" });
+    expect(results.filter((r) => r.status === "HANYA_CORETAX")).toHaveLength(1);
+  });
+
+  it("does not include coretax-only rows when the reverse check is off", () => {
     const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
     const results = compareData(pasted, scrapedData, 0, null);
     const statuses = results.map((r) => r.status);
@@ -341,16 +370,22 @@ describe("compareData", () => {
   it("does not include coretax-only rows outside the selected dates", () => {
     const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
     // Only day 1 selected; HH (day 2) and SP (day 3) excluded.
-    const results = compareData(pasted, scrapedData, 0, [1]);
+    const results = compareData(pasted, scrapedData, 0, { kind: "days", days: [1] });
     const statuses = results.map((r) => r.status);
     expect(statuses).not.toContain("HANYA_CORETAX");
   });
 
   it("does not duplicate pasted rows that also exist in coretax", () => {
     const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
-    const results = compareData(pasted, scrapedData, 0, [1, 2, 3]);
+    const results = compareData(pasted, scrapedData, 0, { kind: "days", days: [1, 2, 3] });
     const szCount = results.filter((r) => r.reference === "SZ-0447/07/26").length;
     expect(szCount).toBe(1);
+  });
+
+  it("does not report a pasted row as coretax-only in monthly mode", () => {
+    const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
+    const results = compareData(pasted, scrapedData, 0, { kind: "all" });
+    expect(results.filter((r) => r.reference === "SZ-0447/07/26")).toHaveLength(1);
   });
 
   it("preserves refLain in comparison results", () => {
@@ -367,7 +402,7 @@ describe("compareData", () => {
 
   it("has empty refLain for coretax-only rows", () => {
     const pasted = parsePastedData("SZ-0447/07/26\t568.000\t62.480");
-    const results = compareData(pasted, scrapedData, 0, [2]);
+    const results = compareData(pasted, scrapedData, 0, { kind: "days", days: [2] });
     const coretaxOnly = results.filter((r) => r.status === "HANYA_CORETAX");
     expect(coretaxOnly[0].refLain).toBe("");
   });

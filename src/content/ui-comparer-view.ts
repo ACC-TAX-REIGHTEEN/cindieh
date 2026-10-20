@@ -309,6 +309,9 @@ export function createComparerView(deps: ComparerViewDeps): ComparerView {
     daily.type = "checkbox";
     daily.checked = true;
     daily.className = "ch-comparer-daily-checkbox";
+    // The box says which SCOPE the reverse check has: ticked, only the days
+    // below are candidates for "Hanya di Coretax"; unticked, the whole grid is.
+    daily.title = "Centang untuk mengecek hanya tanggal (1-31) di bawah. Biarkan kosong untuk mengecek seluruh periode.";
     dailyCheckbox = daily;
 
     const dailyLabel = document.createElement("label");

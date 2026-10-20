@@ -22,6 +22,19 @@ export type ComparisonStatus =
   | "TIDAK_DITEMUKAN"
   | "HANYA_CORETAX";
 
+/**
+ * Which Coretax rows the reverse check may report as HANYA_CORETAX.
+ *
+ * - `{ kind: "days", days }` — daily mode: only the rows whose invoice date
+ *   falls on one of the given days of the month (1-31) are candidates, because
+ *   the internal records are compared against the days the Wajib Pajak wrote.
+ * - `{ kind: "all" }` — monthly mode: EVERY row of the grid is a candidate,
+ *   because the whole period is what the internal records are compared against.
+ */
+export type CoretaxOnlyScope =
+  | { kind: "days"; days: number[] }
+  | { kind: "all" };
+
 export interface ComparisonResult {
   reference: string;
   refLain: string;
@@ -134,21 +147,22 @@ export function extractDayFromDate(value: unknown): number | null {
  * - PPN_BERBEDA: only PPN differs, DPP matches
  * - BERBEDA: both DPP and PPN differ
  * - TIDAK_DITEMUKAN: reference not found in scraped data
- * - HANYA_CORETAX: (daily mode) exists in coretax on the given dates but
- *   was not pasted by the user
+ * - HANYA_CORETAX: exists in coretax but was not pasted by the user. The
+ *   SCOPE decides which rows may carry it: daily mode limits them to the given
+ *   days, monthly mode leaves the whole grid a candidate.
  *
  * @param pastedRows  - Data parsed from user's Excel paste
  * @param scrapedData - Data from the scraped API response
  * @param tolerance   - Allowed absolute difference (default 0)
- * @param dailyDates  - Day-of-month numbers (1-31) to also check in reverse
- *                      (coretax rows on these dates not in excel). Null disables.
+ * @param scope       - Which coretax rows the reverse check may report as
+ *                      HANYA_CORETAX. Null disables the reverse check.
  * @returns Array of comparison results
  */
 export function compareData(
   pastedRows: PastedRow[],
   scrapedData: Record<string, unknown>[],
   tolerance = 0,
-  dailyDates: number[] | null = null,
+  scope: CoretaxOnlyScope | null = null,
 ): ComparisonResult[] {
   const results: ComparisonResult[] = [];
   const pastedRefs = new Set(pastedRows.map((r) => r.reference.toLowerCase()));
@@ -229,31 +243,42 @@ export function compareData(
     });
   }
 
-  // Daily mode: include coretax rows on the given dates that were not pasted.
-  if (dailyDates && dailyDates.length > 0) {
-    const dateSet = new Set(dailyDates);
+  // Reverse check: the coretax rows the internal records do not carry. The
+  // scope decides WHICH rows are candidates — daily mode narrows them to the
+  // days the Wajib Pajak wrote, monthly mode leaves the whole grid a candidate.
+  if (scope) {
+    const dateSet = scope.kind === "days" ? new Set(scope.days) : null;
+    const reported = new Set<string>();
     for (const s of scrapedData) {
       const ref = String(s.Reference || "").trim();
       if (!ref) continue;
-      if (pastedRefs.has(ref.toLowerCase())) continue;
+      const key = ref.toLowerCase();
+      if (pastedRefs.has(key)) continue;
+      // One row per reference, like the forward lookup above: a reference the
+      // grid carries twice is ONE invoice, and listing it twice would inflate
+      // the "hanya di coretax" count with a row the Wajib Pajak never saw.
+      if (reported.has(key)) continue;
 
-      const day = extractDayFromDate(s.TaxInvoiceDate);
-      if (day !== null && dateSet.has(day)) {
-        results.push({
-          reference: ref,
-          refLain: "",
-          buyerName: String(s.BuyerName || ""),
-          invoiceDate: String(s.TaxInvoiceDate || ""),
-          buyerTIN: String(s.BuyerTIN || ""),
-          taxInvoiceNumber: String(s.TaxInvoiceNumber || ""),
-          dppSistem: parseNumericField(s.SellingPrice),
-          dppExcel: null,
-          ppnSistem: parseNumericField(s.VAT),
-          ppnExcel: null,
-          ppnSelisih: null,
-          status: "HANYA_CORETAX",
-        });
+      if (dateSet) {
+        const day = extractDayFromDate(s.TaxInvoiceDate);
+        if (day === null || !dateSet.has(day)) continue;
       }
+
+      reported.add(key);
+      results.push({
+        reference: ref,
+        refLain: "",
+        buyerName: String(s.BuyerName || ""),
+        invoiceDate: String(s.TaxInvoiceDate || ""),
+        buyerTIN: String(s.BuyerTIN || ""),
+        taxInvoiceNumber: String(s.TaxInvoiceNumber || ""),
+        dppSistem: parseNumericField(s.SellingPrice),
+        dppExcel: null,
+        ppnSistem: parseNumericField(s.VAT),
+        ppnExcel: null,
+        ppnSelisih: null,
+        status: "HANYA_CORETAX",
+      });
     }
   }
 

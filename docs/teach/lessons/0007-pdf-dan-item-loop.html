@@ -16,10 +16,10 @@
   yang mencegah masing-masing, menjelaskan kenapa satu loop dipakai untuk empat aliran item,
   memisahkan batas antara alur dan tampilan pada fitur Komparator, dan bagaimana dunia MAIN
   dirapikan sampai bisa diuji.</p>
-  <p class="meta">Pelajaran 07 dari 09 · waktu baca ± 18 menit · 8 soal uji ingatan</p>
+  <p class="meta">Pelajaran 07 dari 09 · waktu baca ± 20 menit · 9 soal uji ingatan</p>
   <nav class="lesson-nav">
     <a href="index.html">Peta pelajaran</a>
-    <a href="../reference/adr-peta.html">Peta 38 ADR</a>
+    <a href="../reference/adr-peta.html">Peta 39 ADR</a>
     <a href="../reference/glosarium.html">Glosarium</a>
     <span class="spacer"></span>
     <a href="0006-deklarasi-data.html">← 06</a>
@@ -542,8 +542,87 @@
   </aside>
 </section>
 
+<section>
+  <h2><span class="num">10</span>ADR-0039: satu scope untuk pemeriksaan terbalik</h2>
+
+  <p><a href="../../../docs/adr/0039-the-reverse-check-has-one-scope.md"><code>ADR-0039</code></a>
+  <span class="status-pill status-accepted">Accepted</span> menjawab keluhan yang kecil tapi nyata:
+  <strong>cek bulanan tidak pernah menampilkan baris “Hanya di Coretax”</strong>, padahal status itu
+  sudah ada di tabel hasil, di filter status, di ringkasan, dan di berkas ekspor.</p>
+
+  <p>Komparator berjalan dua arah. Maju: setiap baris tempelan dicari di grid hasil scrape. Terbalik:
+  baris-baris grid yang <strong>tidak</strong> dibawa catatan internal ditampilkan sebagai “Hanya di
+  Coretax” — faktur yang ada di Coretax tapi hilang dari catatan sendiri, dan itulah baris yang paling
+  layak dicari justru karena tidak terlihat di catatan manapun.</p>
+
+  <p>Scope pemeriksaan terbalik itu awalnya adalah <strong>daftar tanggalnya sendiri</strong>. Argumen
+  keempat <code>compareData</code> — <code>dailyDates: number[] | null</code> — mengerjakan dua
+  pekerjaan sekaligus: menyalakan pemeriksaan balik (daftar tidak <code>null</code>) dan menentukan
+  baris mana yang boleh jadi kandidat (baris bertanggal pada hari itu). Karena itu mencentang kotak
+  “Hari” tidak bisa <strong>memperlebar</strong> pemeriksaan, hanya <strong>mematikannya</strong>:
+  tanpa daftar tanggal, argumennya <code>null</code>, dan status “Hanya di Coretax” tak pernah bisa
+  lahir di mode bulanan.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Dari ADR-0039: satu pertanyaan, satu nilai.</caption>
+      <thead><tr><th>Pertanyaan</th><th>Bentuk lama</th><th>Bentuk baru</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Apakah pemeriksaan balik hidup?</td>
+          <td>daftar tanggalnya tidak <code>null</code></td>
+          <td>selalu hidup, kecuali sesi harian yang belum punya tanggal</td>
+        </tr>
+        <tr>
+          <td>Baris mana yang jadi kandidat?</td>
+          <td>baris bertanggal pada hari yang dipilih</td>
+          <td>mode harian: hari itu · mode bulanan: seluruh grid</td>
+        </tr>
+        <tr>
+          <td>Satu baris per referensi?</td>
+          <td>tidak dijamin — grid bisa memuat referensi yang sama dua kali</td>
+          <td>ya, sama seperti lookup maju</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Keputusannya: scope adalah <strong>satu nilai dengan dua bentuk</strong> —
+  <code>CoretaxOnlyScope</code> — dan pertemuan mode dengan scope tinggal satu baris di
+  <code>comparer-logic.ts</code>:</p>
+
+  <ul>
+    <li>kotak “Hari” <strong>dicentang</strong> → <code>{ kind: "days", days }</code>: kandidat hanya
+    baris pada hari-hari itu;</li>
+    <li>kotak “Hari” <strong>tidak dicentang</strong> → <code>{ kind: "all" }</code>: kandidat adalah
+    seluruh baris grid.</li>
+  </ul>
+
+  <p>Tiga alasannya. Pertama, <strong>mode adalah scope, dan mode itu keputusan pengguna</strong>:
+  mode harian ada karena Wajib Pajak hanya mencatat sebagian hari, jadi hanya hari itu yang menjadi
+  kandidat; mode bulanan adalah pertanyaan yang sama tentang seluruh periode. Kotak itu tidak pernah
+  mematikan pemeriksaan — hanya mempersempitnya. Kedua, <strong>satu argumen untuk satu
+  pertanyaan</strong>: “baris mana yang jadi kandidat ‘Hanya di Coretax’?” adalah satu pertanyaan, jadi
+  ia harus punya satu nilai; daftar tanggal yang sekaligus menyalakan pemeriksaan dan membatasi
+  kandidatnya tidak bisa menjawabnya, karena satu-satunya cara memperlebar scope adalah menghapus
+  daftar — dan menghapus daftar itu terbaca sebagai mematikan. Ketiga, <strong>daftar tanggal tetap
+  divalidasi di tempatnya</strong>: mode harian tetap meminta tanggal sebelum perbandingan berjalan
+  (pohon keputusan “Periksa” milik ADR-0003), jadi kotak yang dicentang dengan daftar kosong tidak
+  pernah sampai ke perbandingan.</p>
+
+  <aside class="pull">
+    <span class="label">Kenapa ini penting untuk Anda</span>
+    <p>Keluhan aslinya — “kenapa cek bulanan tidak menampilkan yang hanya ada di Coretax” — bukan fitur
+    yang belum selesai, melainkan <strong>scope yang tak bisa diperlebar</strong>. Satu argumen yang
+    mengerjakan dua pekerjaan membuat satu-satunya jalan untuk memperlebar pemeriksaan adalah
+    menghapus daftar hari, dan menghapus daftar hari itu terbaca sebagai mematikan pemeriksaan. Bug
+    yang|report sebagai fitur yang belum ada, dan status yang sudah siap di tabel tapi tak pernah bisa
+    lahir.</p>
+  </aside>
+</section>
+
 <section class="practice">
-  <h2><span class="num">10</span>Uji ingatan</h2>
+  <h2><span class="num">11</span>Uji ingatan</h2>
   <p>Jawab dulu, baru lihat koreksinya. Jawaban yang benar tidak selalu di posisi pertama.</p>
 
   <div class="quiz" data-quiz="l07-q1">
@@ -626,9 +705,19 @@
     <p class="feedback" role="status" aria-live="polite"></p>
   </div>
 
+  <div class="quiz" data-quiz="l07-q9">
+    <p class="q">Menurut ADR-0039, apa yang terjadi pada pemeriksaan terbalik ketika kotak “Hari” tidak dicentang?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Justru sebaliknya: tanpa daftar tanggal tidak ada kandidat harian, jadi pemeriksaannya justru berhenti.">Pemeriksaan terbalik dimatikan, sehingga hanya baris tempelan saja yang dibandingkan dengan grid itu.</button></li>
+      <li><button class="opt" data-correct data-why="Tepat. Kotak hari hanya mempersempit kandidat; tidak dicentang berarti seluruh grid jadi kandidat.">Cakupannya melebar ke seluruh grid, sehingga setiap baris Coretax yang tidak ditempel ikut.</button></li>
+      <li><button class="opt" data-why="Daftar tanggal tetap diminta di mode harian; tanpa itu, hanya baris tempelan yang punya pasangan.">Baris tanpa tanggal dianggap tidak ditemukan, seperti baris yang tidak ada di catatan.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
   <div class="quiz-score" data-score-for="l07">
     <strong>Skor pelajaran ini</strong>
-    <span data-score-text>0 dari 8 soal dijawab, 0 benar.</span>
+    <span data-score-text>0 dari 9 soal dijawab, 0 benar.</span>
     <button type="button" data-score-reset>Ulangi</button>
   </div>
 </section>
@@ -646,6 +735,8 @@
     tampilan, serta amandemen yang menjelaskan kenapa deskripsi "tampilan tipis" tak lagi berlaku.</li>
     <li><a href="../../../docs/adr/0006-comparer-reference-matching.md"><code>ADR-0006</code></a> — kenapa
     hanya <code>Reference</code> utama yang menjadi kunci pencarian.</li>
+    <li><a href="../../../docs/adr/0039-the-reverse-check-has-one-scope.md"><code>ADR-0039</code></a> — satu
+    scope untuk pemeriksaan terbalik, dan kenapa daftar tanggal tak bisa jadi sakelar sekaligus.</li>
     <li><a href="../../../src/content/per-item.ts"><code>src/content/per-item.ts</code></a> dan
     <a href="../../../src/content/scraper-pdf.ts"><code>src/content/scraper-pdf.ts</code></a> — dua modul
     tempat aturan-aturan itu dipindahkan.</li>

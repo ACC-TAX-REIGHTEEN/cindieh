@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Peta 38 ADR — Kursus ADR Cindieh</title>
+<title>Peta 39 ADR — Kursus ADR Cindieh</title>
 <link rel="stylesheet" href="../assets/course.css">
 </head>
 <body>
 
 <header class="course-head">
   <p class="eyebrow">Cindieh · Referensi</p>
-  <h1>Peta 38 ADR</h1>
+  <h1>Peta 39 ADR</h1>
   <p class="lede">Semua keputusan arsitektur Cindieh dalam satu halaman: nomor, judul aslinya,
   status, dan pelajaran mana yang mengajari ini. Ini dokumen yang akan paling sering Anda buka
   ulang — bukan pelajaran.</p>
-  <p class="meta">38 ADR · 7 klaster · 9 pelajaran</p>
+  <p class="meta">39 ADR · 7 klaster · 9 pelajaran</p>
   <nav class="lesson-nav">
     <a href="../lessons/index.html">Peta pelajaran</a>
     <a href="glosarium.html">Glosarium</a>
@@ -352,6 +352,13 @@
           <td><span class="status-pill status-accepted">Accepted</span></td>
           <td>07</td>
         </tr>
+        <tr>
+          <td><code>0039</code></td>
+          <td>Satu scope untuk pemeriksaan terbalik: hari yang dipilih, atau seluruh grid</td>
+          <td><a href="../../../docs/adr/0039-the-reverse-check-has-one-scope.md">The comparer's reverse check has one scope: the given days, or the whole grid</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>07</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -443,17 +450,20 @@
         <tr><td><code>0035</code></td><td><code>0038</code></td><td>Setelah graf impor bersih, ADR-0038 bisa memindahkan pemasangan ke modul sendiri tanpa risiko siklus baru.</td></tr>
         <tr><td><code>0028</code></td><td><code>0036</code></td><td>Gerbang tab membaca baris per grid yang sama seperti prediksi lainnya.</td></tr>
         <tr><td><code>0015</code>, <code>0028</code></td><td><code>0037</code></td><td>Pola yang sama: satu tempat untuk satu keputusan, supaya tidak ada daftar kedua yang bisa berbeda.</td></tr>
+        <tr><td><code>0039</code></td><td><code>0003</code>, <code>0006</code></td><td>Scope pemeriksaan terbalik diturunkan dari sesi Komparator (ADR-0003) dan tetap memakai satu kunci Referensi utama (ADR-0006).</td></tr>
       </tbody>
     </table>
   </div>
 
   <aside class="pull">
     <span class="label">Indeks kini lengkap</span>
-    <p>Deretan ADR menutup tanpa celah: 0001 sampai 0038, dan indeks resmi
+    <p>Deretan ADR menutup tanpa celah: 0001 sampai 0039, dan indeks resmi
     <a href="../../../docs/adr/README.md"><code>docs/adr/README.md</code></a> memuat semuanya. Empat
     keputusan terakhir menutup tiga hal yang sebelumnya tersebar: batas konteks dunia MAIN
     (ADR-0035), tampilan tiap tab panel (ADR-0036), daftar preferensi (ADR-0037), dan pemasangan
-    halaman (ADR-0038). Semuanya perlu dibaca bersama bagian kode yang mereka ubah, bukan sebagai
+    halaman (ADR-0038). Yang terbaru menutup masalah kecil tapi nyata di Komparator: satu argumen
+    yang dua kali kerja membuat pemeriksaan terbalik tak bisa diperlebar, hanya dimatikan
+    (ADR-0039). Semuanya perlu dibaca bersama bagian kode yang mereka ubah, bukan sebagai
     catatan tambahan yang terpisah.</p>
   </aside>
 </section>
