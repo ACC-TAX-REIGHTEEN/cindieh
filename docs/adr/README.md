@@ -36,3 +36,4 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0030 | [The comparison's file columns are declared with its grid columns](0030-the-comparison-file-columns-are-declared-with-its-grid.md) | Accepted |
 | 0031 | [A completion is settled into a report before anything is painted](0031-a-completion-is-settled-into-a-report.md) | Accepted |
 | 0032 | [The year-wide sweep is one module, and its page loop is a seam](0032-the-period-sweep-is-its-own-module.md) | Accepted |
+| 0033 | [Every injected surface has one owner](0033-every-injected-surface-has-one-owner.md) | Accepted |

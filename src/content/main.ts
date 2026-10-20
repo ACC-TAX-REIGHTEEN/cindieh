@@ -10,7 +10,7 @@
 
 import { browserAPI } from "./browser-shim";
 import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode, type StoredExportMode } from "../shared/export-preferences";
-import { getPageExportSource, hasReferenceFilter, isSupportedExportPage } from "./page-context";
+import { getPageExportSource, isSupportedExportPage } from "./page-context";
 import { createMessageDispatcher } from "./postmessage-guard";
 import { generateBridgeToken, getBridgeToken, getActiveRunId, isCurrentRunMessage, isStoppedRunMessage, postToScraper } from "./bridge";
 import { currentRunHandlers, restoredSweepMessage } from "./scrape-result";
@@ -20,8 +20,6 @@ import type { ScrapeComplete, ScrapeDataChunkMessage } from "./scraper-types";
 import { addResultChunk, createResultChunkBuffer } from "./result-chunks";
 import { failedRun, settleCompletion, type RunReport } from "./completion-intake";
 import {
-  destroyBadge,
-  injectBadge,
   showPanel,
   updatePanelComplete,
   updatePanelError,
@@ -30,27 +28,12 @@ import {
   updatePanelProgress,
   updatePanelStatus,
 } from "./ui-badge";
-import {
-  dropPendingCompare,
-  injectComparerModal,
-  removeMenusOutsideClickHandler,
-  runPendingCompare,
-} from "./ui-comparer";
+import { dropPendingCompare, runPendingCompare } from "./ui-comparer";
 import { dropPendingCheck, runPendingCheck } from "./ui-checker";
 import { openPanel } from "./ui-panel";
-import {
-  injectGridFilters,
-  injectMultiInvoiceFilter,
-  injectToolbarFilter,
-  splitInvoiceNumbers,
-} from "./ui-filters";
-import { cancelInjectionLoops } from "./injection-readiness";
-import {
-  injectExportButton,
-  removeExportButton,
-  setExportFormatDefault,
-  setOneClickExport,
-} from "./ui";
+import { splitInvoiceNumbers } from "./ui-filters";
+import { paintPageSurfaces, removePageSurfaces, repaintPageSurfaces } from "./page-surfaces";
+import { setExportFormatDefault, setOneClickExport } from "./ui";
 import { handlePdfDownload } from "./downloader";
 import { registerShortcuts } from "./shortcuts";
 
@@ -112,21 +95,6 @@ import {
 } from "./main-actions";
 
 const DEBOUNCE_DELAY_MS = 300;
-const GRID_FILTER_INJECT_DELAY_MS = 1500;
-
-/**
- * Elements other modules own but that a master-switch teardown must also
- * remove. Kept as an id list because each one is a top-level element with a
- * stable id; the grid filter is handled separately (its input sits inside a
- * container the portal's table owns).
- */
-const TEARDOWN_ELEMENT_IDS = [
-  "ch-comparer-overlay",
-  "ch-comparer-modal",
-  "ch-multi-invoice-toggle",
-  "ch-multi-invoice-filter",
-  "ch-toolbar-filter-reference",
-] as const;
 
 // ── Preferences (popup controls) ─────────────────────
 // `extensionEnabled` starts false so nothing is painted before the stored
@@ -256,15 +224,11 @@ const observer = new MutationObserver(() => {
   // Debounce injections to avoid fighting with SPA/Angular rendering
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
-    // Both surfaces of the Referensi filter — the toolbar box and the grid
-    // column — belong to the grids that HAVE a Referensi column, which is not
-    // the same question as whether a Referensi identifies a row there.
-    if (hasReferenceFilter()) {
-      injectToolbarFilter();
-      injectGridFilters();
-    }
-    injectExportButton();
-    injectMultiInvoiceFilter();
+    // A re-render can take a surface away — the toolbar and the filters live
+    // inside the portal's own markup — so they are put back. The panel and the
+    // badge live in <body> and are left alone: a rebuilt panel would throw
+    // away what the user pasted into it.
+    repaintPageSurfaces();
   }, DEBOUNCE_DELAY_MS);
 });
 
@@ -692,20 +656,11 @@ function applyPageState(): void {
 
   if (isSupportedExportPage()) {
     debugLog("Supported page detected, ensuring injection...");
-    injectBadge();
     void injectScraper();
-    injectExportButton();
-    injectMultiInvoiceFilter();
-    injectComparerModal();
-    if (hasReferenceFilter()) {
-      injectToolbarFilter();
-      setTimeout(() => {
-        injectGridFilters();
-      }, GRID_FILTER_INJECT_DELAY_MS);
-    }
+    paintPageSurfaces();
   } else {
     debugLog("Unrecognized page, removing tools if present.");
-    removeExportButton();
+    removePageSurfaces();
   }
 }
 
@@ -717,17 +672,10 @@ function applyPageState(): void {
  */
 function teardownInjectedUi(): void {
   stopShortcuts();
-  removeExportButton();
-  cancelInjectionLoops();
-  destroyBadge();
-  for (const id of TEARDOWN_ELEMENT_IDS) {
-    document.getElementById(id)?.remove();
-  }
-  // The panel's document-level click handler goes with it: the element removal
-  // above takes the overlay's own listeners, not the one on `document`.
-  removeMenusOutsideClickHandler();
-  const gridFilter = document.getElementById("ch-grid-filter-reference");
-  if (gridFilter) (gridFilter.closest(".ch-grid-filter-container") ?? gridFilter).remove();
+  // Every surface goes, and each one takes away what it brought: the toolbar's
+  // menu, the panel's overlay, the filters' boxes, the badge. The page's
+  // surface list is the one place that knows them all.
+  removePageSurfaces();
 
   // Drop the scraper's captured request too: with the extension off there is
   // nothing that could reuse it, and a re-enable should start clean.

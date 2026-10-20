@@ -5,10 +5,11 @@
 // displays scrape progress, stats, and completion status.
 // ============================================================
 
-import { isWithholdingPage } from "./page-context";
+import { isSupportedExportPage, isWithholdingPage } from "./page-context";
 import { getExportBtnEl, getExportDropdownBtnEl, getScrapeBtnEl } from "./button-state";
 import { debugLog } from "./debug";
 import { failedItemsDetail } from "./scrape-result";
+import type { PageSurface } from "./page-surfaces";
 
 // ── Floating Info State ──────────────────────────────
 
@@ -310,6 +311,26 @@ export function updatePanelIdle(): void {
     setScrapeButtonState(false);
   }
 }
+
+/**
+ * The badge as a PAGE SURFACE: the floating bar that shows the run's
+ * progress and the result.
+ *
+ * It lives in <body>, which Angular does not re-render, so the portal
+ * cannot take it away — a re-render must not rebuild it either, because
+ * a rebuild is what resets the panel's numbers. A PAGE change does reset
+ * it, and that is the badge's own business: it is built for the page it
+ * is on, and it lives on a page Cindieh serves.
+ */
+export const badgeSurface: PageSurface = {
+  name: "badge",
+  paint: () => {
+    if (!isSupportedExportPage()) return;
+    injectBadge();
+  },
+  remove: destroyBadge,
+  repaintedOnRender: false,
+};
 
 /**
  * Clean up badge DOM elements and nullify refs.

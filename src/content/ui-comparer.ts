@@ -47,6 +47,7 @@ import {
   searchReference,
   switchTab,
 } from "./ui-panel";
+import type { PageSurface } from "./page-surfaces";
 import {
   applyComparerDefaults,
   applyStatusFilter,
@@ -460,6 +461,37 @@ export function injectComparerModal(): void {
     }
   });
 }
+
+/**
+ * Take the panel off the page.
+ *
+ * The panel is CLOSED first, and that is not a detail: an open panel marks
+ * everything behind it inert, so removing the overlay without giving that
+ * back leaves a portal the user cannot click — a page that looks fine and
+ * answers to nothing. Closing it hands the background back and the focus
+ * returns to wherever it came from.
+ */
+export function removeComparerPanel(): void {
+  closePanel();
+  removeMenusOutsideClickHandler();
+  document.getElementById("ch-comparer-overlay")?.remove();
+  document.getElementById("ch-comparer-modal")?.remove();
+}
+
+/**
+ * The panel as a PAGE SURFACE: the overlay that hosts the Komparator and
+ * Pengecekan.
+ *
+ * It lives in <body>, which Angular does not re-render — so the portal cannot
+ * take it away, and repainting it would throw away the text the user pasted
+ * into it.
+ */
+export const panelSurface: PageSurface = {
+  name: "panel",
+  paint: injectComparerModal,
+  remove: removeComparerPanel,
+  repaintedOnRender: false,
+};
 
 // ── Stored defaults ───────────────────────────────────
 

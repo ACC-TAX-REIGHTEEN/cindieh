@@ -8,14 +8,12 @@
 // click exports the stored default and the caret opens the menu. Both are built
 // once and switched in place, so a preference change never re-injects.
 //
-// The heavy neighbours (filters, comparer modal) are mocked so the menu markup
-// and its handlers are exercised on their own.
+// The heavy neighbours (filters, comparer modal) are NOT mocked here any more:
+// the toolbar no longer reaches into them. The panel is a page surface of its
+// own (page-surfaces.ts), painted by the registry, so the toolbar's injection
+// has nothing left to bring up besides the toolbar.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../content/ui-comparer", () => ({ injectComparerModal: vi.fn() }));
-vi.mock("../content/ui-filters", () => ({
-  removeMultiInvoiceFilter: vi.fn(),
-}));
 // The readiness loop would otherwise schedule a real 1s timer whenever an
 // injection finds no anchor; these cases are about the menu markup, so one
 // synchronous attempt is all they need (the retry policy itself is pinned in
@@ -552,7 +550,7 @@ describe("the panel's entry point", () => {
 
   it.each(CASES)(
     "is injected on $grid, named for the tab that page can open",
-    async ({ href, anchorId, label }) => {
+    ({ href, anchorId, label }) => {
       vi.stubGlobal("location", { href });
       // Each e-faktur grid anchors on a button of its own (findEfakturAnchor
       // picks by page); the shared beforeEach anchor only covers Keluaran.
@@ -573,8 +571,6 @@ describe("the panel's entry point", () => {
       // own tab from the page facts, so the open-once/Escape semantics stay in
       // one place.
       expect(events).toEqual(["ch:compare-open"]);
-      // The modal that hosts Pengecekan comes with every one of them.
-      expect(vi.mocked(await import("../content/ui-comparer")).injectComparerModal).toHaveBeenCalled();
     },
   );
 

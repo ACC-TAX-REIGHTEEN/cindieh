@@ -69,8 +69,11 @@ export default defineConfig({
       // 93.6/87.6/91.1/94.9 by the result columns reaching their file through one
       // schema (ADR-0030) and by a resumable sweep surviving a reload in BOTH of
       // its states: a stop's kept half and a sweep that FINISHED with a masa the
-      // portal failed to deliver (ADR-0023 amendment).
-      // The measured numbers are 93.99/88.03/91.55/95.31.
+      // portal failed to deliver (ADR-0023 amendment), and now to
+      // 94.0/88.4/91.6/95.2 by the page's surfaces having one owner each
+      // (ADR-0033) — a registry that is fully covered, and the two leaks it
+      // closed (the toolbar filter's container, the panel's inert background).
+      // The measured numbers are 94.24/88.82/91.85/95.39.
       //
       // The cushion is deliberately ~0.4 points, the same gap the floors have
       // always kept: enough that ordinary churn cannot redden the build, small
@@ -84,10 +87,10 @@ export default defineConfig({
       // is covered directly. Do not paper the gap over by lowering a floor; move
       // it by testing the seam underneath.
       thresholds: {
-        statements: 93.9,
-        branches: 88.0,
-        functions: 91.4,
-        lines: 95.1,
+        statements: 94.0,
+        branches: 88.4,
+        functions: 91.6,
+        lines: 95.2,
       },
     },
   },

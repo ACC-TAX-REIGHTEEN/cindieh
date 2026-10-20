@@ -8,8 +8,26 @@
 
 import { hasReferenceFilter, isEfakturPage } from "./page-context";
 import { createInjectionLoop } from "./injection-readiness";
+import type { PageSurface } from "./page-surfaces";
 
 const TOOLBAR_FILTER_WIDTH = "180px";
+
+/**
+ * How long to wait before trying the grid's filter again.
+ *
+ * The table is Angular's, and it is often not rendered yet when the page
+ * state is applied — so the first attempt finds no header row to hang the
+ * filter on, and one more try later covers it. The portal's own re-render
+ * re-arms the same attempt.
+ */
+const GRID_FILTER_RETRY_DELAY_MS = 1500;
+
+/**
+ * What the grid's filter cell held before ours went in, and the timer of the
+ * one retry that covers a table Angular has not rendered yet.
+ */
+let gridFilterOriginalNodes: Element[] | null = null;
+let gridFilterRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Finds column index by text.
@@ -33,7 +51,6 @@ export function injectGridFilters(): void {
   if (!hasReferenceFilter()) return;
   const thead = document.querySelector("thead");
   if (!thead) return;
-
   const headerRows = Array.from(thead.querySelectorAll("tr"));
   if (headerRows.length < 2) return;
 
@@ -50,6 +67,7 @@ export function injectGridFilters(): void {
   if (!refCell) return;
 
   const container = document.createElement("div");
+  container.id = "ch-grid-filter-container";
   container.className = "ch-grid-filter-container";
 
   const filterWrapper = document.createElement("div");
@@ -82,9 +100,74 @@ export function injectGridFilters(): void {
   filterWrapper.appendChild(fluidWrapper);
   container.appendChild(filterWrapper);
 
+  // The portal's own filter for this column goes when ours goes in — so it is
+  // kept, and the surface's removal hands the cell back what it held. A cell
+  // left empty is a filter the user can no longer reach.
+  gridFilterOriginalNodes = Array.from(refCell.children);
+
   while (refCell.firstChild) refCell.removeChild(refCell.firstChild);
   refCell.appendChild(container);
 }
+
+/**
+ * Put the grid's Referensi filter in its column, and try once more if the
+ * table was not rendered yet.
+ */
+function paintGridFilter(): void {
+  if (!hasReferenceFilter()) return;
+  injectGridFilters();
+
+  if (document.getElementById("ch-grid-filter-reference")) {
+    // It is there. A pending retry has nothing left to do.
+    if (gridFilterRetryTimer !== null) {
+      clearTimeout(gridFilterRetryTimer);
+      gridFilterRetryTimer = null;
+    }
+    return;
+  }
+
+  if (gridFilterRetryTimer !== null) return;
+  gridFilterRetryTimer = setTimeout(() => {
+    gridFilterRetryTimer = null;
+    injectGridFilters();
+  }, GRID_FILTER_RETRY_DELAY_MS);
+}
+
+/**
+ * Take the grid's Referensi filter out of its column, and give the portal its
+ * own filter back.
+ */
+export function removeGridFilter(): void {
+  if (gridFilterRetryTimer !== null) {
+    clearTimeout(gridFilterRetryTimer);
+    gridFilterRetryTimer = null;
+  }
+
+  const container = document.getElementById("ch-grid-filter-container");
+  if (!container) {
+    gridFilterOriginalNodes = null;
+    return;
+  }
+
+  // The cell is handed back what it held — but only while it holds nothing but
+  // our container. If the portal re-rendered the cell, the nodes we kept are
+  // stale and the cell already has a fresh filter of its own.
+  const cell = container.parentElement;
+  if (cell && gridFilterOriginalNodes && cell.children.length === 1) {
+    for (const node of gridFilterOriginalNodes) cell.appendChild(node);
+  }
+
+  container.remove();
+  gridFilterOriginalNodes = null;
+}
+
+/** The grid's Referensi filter, as a page surface. */
+export const gridFilterSurface: PageSurface = {
+  name: "grid-filter",
+  paint: paintGridFilter,
+  remove: removeGridFilter,
+  repaintedOnRender: true,
+};
 
 /**
  * One round of the toolbar search box: its guards, its anchor lookup, its
@@ -143,6 +226,25 @@ function attemptToolbarFilter(): boolean {
 
 /** Inject filter input into the toolbar. */
 export const injectToolbarFilter = createInjectionLoop(attemptToolbarFilter);
+
+/**
+ * Take the toolbar's Referensi box off the page.
+ *
+ * The CONTAINER goes with the input: removing only the input left the
+ * container behind, which is how the teardown used to leak one — and how the
+ * next injection then put a second container next to the first.
+ */
+export function removeToolbarFilter(): void {
+  document.getElementById("ch-toolbar-filter-container")?.remove();
+}
+
+/** The toolbar's Referensi box, as a page surface. */
+export const toolbarFilterSurface: PageSurface = {
+  name: "toolbar-filter",
+  paint: injectToolbarFilter,
+  remove: removeToolbarFilter,
+  repaintedOnRender: true,
+};
 
 // ── Multi-Invoice Filter State ────────────────────────
 
@@ -349,3 +451,11 @@ function attemptMultiInvoiceFilter(): boolean {
 
 /** Inject the No. Faktur (multi-invoice) toggle, retrying until the portal renders its anchor. */
 export const injectMultiInvoiceFilter = createInjectionLoop(attemptMultiInvoiceFilter);
+
+/** The No. Faktur filter, as a page surface. */
+export const multiInvoiceSurface: PageSurface = {
+  name: "multi-invoice",
+  paint: injectMultiInvoiceFilter,
+  remove: removeMultiInvoiceFilter,
+  repaintedOnRender: true,
+};

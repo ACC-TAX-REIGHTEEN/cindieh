@@ -182,3 +182,7 @@ _Avoid_: supported page, export page (both are other lists)
 **Grid request**:
 The portal's own list request (URL + body with filters and paging) that the scraper captures once and replays with advancing `First`/`Rows` to scrape a grid.
 _Avoid_: request template, captured request
+
+**Surface**:
+One thing Cindieh puts into the portal's DOM — the badge, the export toolbar, the panel overlay, the toolbar's Referensi box, the grid's Referensi column input, the No. Faktur filter. Each surface has ONE owner: the module that paints it also takes it away, so a teardown cannot leave half of it behind (ADR-0033). A surface says whether the portal's own re-render can take it away: the toolbar and the filters live inside the portal's markup and are put back after a re-render, while the panel and the badge live in `<body>` and are left alone (a rebuilt panel would throw away the pasted text). A surface is not a page fact and not a Run.
+_Avoid_: injected element, widget, overlay (the panel is one surface among six)

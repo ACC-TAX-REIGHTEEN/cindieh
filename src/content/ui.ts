@@ -25,9 +25,8 @@ import {
   type StoredExportFormat,
 } from "../shared/extension-preferences";
 
-import { removeMultiInvoiceFilter } from "./ui-filters";
-import { cancelInjectionLoops, createInjectionLoop } from "./injection-readiness";
-import { injectComparerModal } from "./ui-comparer";
+import { createInjectionLoop } from "./injection-readiness";
+import type { PageSurface } from "./page-surfaces";
 
 import {
   setExportBtnEl,
@@ -574,11 +573,9 @@ function attemptExportButton(): boolean {
         });
       }
 
-      // Inject the comparer modal — for every e-Faktur page, because the modal
-      // also hosts Pengecekan, which runs on all four of them: PPN Masukan and
-      // both Retur grids have no Komparator tab but do have the check
-      // (isCheckerPage, ADR-0024).
-      injectComparerModal();
+      // The panel is NOT injected here: it is a page surface of its own
+      // (ui-comparer.ts), painted by the registry, so this toolbar does not
+      // have to reach across into the panel's module to bring it up.
     }
   }
   return true;
@@ -772,10 +769,6 @@ export function removeExportButton(): void {
   // A toolbar that is gone cannot have an open menu, and the next page's
   // injection must not inherit this page's state.
   menuOpen = false;
-  cancelInjectionLoops();
-  // Tear down the No. Faktur filter too — leaving an export page (e.g. to the
-  // dashboard) should not leave the panel orphaned in <body>.
-  removeMultiInvoiceFilter();
   if (outsideClickHandler) {
     document.removeEventListener("click", outsideClickHandler);
     outsideClickHandler = null;
@@ -793,3 +786,17 @@ export function removeExportButton(): void {
   resetAllButtonRefs();
   dropdownNodes = null;
 }
+
+/**
+ * The export toolbar as a PAGE SURFACE: the XLSX/CSV dropdown, the bulk PDF
+ * button, the scrape button and the panel's entry point.
+ *
+ * It lives in the portal's own header, so a re-render can take it away and it
+ * has to be put back — that is what `repaintedOnRender` says.
+ */
+export const toolbarSurface: PageSurface = {
+  name: "toolbar",
+  paint: injectExportButton,
+  remove: removeExportButton,
+  repaintedOnRender: true,
+};
