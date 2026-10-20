@@ -86,7 +86,10 @@ export default defineConfig({
       // the shell that hosts it has no tab left in it to test, and now
       // 94.91/89.89/93.21/95.88 once a preference was declared as ONE row
       // (ADR-0037): four copies of the key map became one table, and the popup'
-      // nineteen hand-written control blocks became nine rows behind a binder.
+      // nineteen hand-written control blocks became nine rows behind a binder,
+      // and now 95.20/90.10/93.54/96.21 with the MAIN world's install wiring
+      // taking the page as one injected env (ADR-0038): the adapter is 100%
+      // and the wiring it used to be mixed into can finally be driven.
       //
       // The cushion is deliberately ~0.4 points, the same gap the floors have
       // always kept: enough that ordinary churn cannot redden the build, small
@@ -100,10 +103,10 @@ export default defineConfig({
       // is covered directly. Do not paper the gap over by lowering a floor; move
       // it by testing the seam underneath.
       thresholds: {
-        statements: 94.5,
-        branches: 89.5,
-        functions: 92.8,
-        lines: 95.5,
+        statements: 94.8,
+        branches: 89.7,
+        functions: 93.1,
+        lines: 95.8,
       },
     },
   },
