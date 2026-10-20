@@ -52,11 +52,9 @@ function makeDeps(overrides: Partial<ActionDeps> = {}): ActionDeps {
     postToScraper: vi.fn(),
     showPanel: vi.fn(),
     updatePanelProgress: vi.fn(),
-    updatePanelIdle: vi.fn(),
     updatePanelError: vi.fn(),
     getMultiInvoiceNumbers: vi.fn(() => []),
     isEfakturPage: vi.fn(() => true),
-    isBatchPage: vi.fn(() => true),
     // The real predicate over the documented default threshold, so the cases
     // below exercise the shipped decision instead of a stub that always says yes.
     shouldConfirmBulkDownload: vi.fn((count: number) =>
@@ -65,7 +63,6 @@ function makeDeps(overrides: Partial<ActionDeps> = {}): ActionDeps {
     getExportMode: vi.fn<() => ExportMode>(() => "cleaned"),
     exportXLSX: vi.fn(),
     exportCSV: vi.fn(),
-    triggerSearch: vi.fn(),
     ...overrides,
   };
 }
@@ -179,7 +176,10 @@ describe("handleExportAction — already running", () => {
   it("reports the cancellation instead of rendering an idle panel", () => {
     handleExportAction("xlsx", deps);
     expect(deps.updatePanelError).toHaveBeenCalledWith(SCRAPE_CANCELLED_MESSAGE);
-    expect(deps.updatePanelIdle).not.toHaveBeenCalled();
+    // The idle panel is not a state this bag can even ask for any more: the
+    // stop path has ONE line to write, and it is the cancellation. The run
+    // itself is settled by the same call, so nothing is left in flight.
+    expect(runLifecycle.isRunning()).toBe(false);
   });
 
   it("takes a queued comparison down with the run, which no later completion revives", () => {

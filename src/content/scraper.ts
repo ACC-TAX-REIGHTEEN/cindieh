@@ -30,8 +30,8 @@ import {
   startScraping,
   startPdfDownload,
   scrapeByInvoices,
-  type ScraperContext,
 } from "./scraper-actions";
+import type { ScraperContext } from "./scraper-context";
 import { interceptRequest as makeInterceptRequest } from "./scraper-intercept";
 import {
   buildPdfDownloadMessage,

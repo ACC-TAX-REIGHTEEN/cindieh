@@ -32,8 +32,10 @@
 // binds it to `scrapePaginated` with the period's request overrides. That keeps
 // the module free of XHR and makes the rules above testable from a scripted
 // fetcher — the production adapter and a fake are the two adapters that justify
-// the seam. `ScraperContext` supplies the stop check, the progress channel, the
-// delay and the pacing preset, exactly as it does for the page loop.
+// the seam. `OrchestrationContext` (the MAIN world's one seam, scraper-context.ts)
+// supplies the stop check, the progress channel, the delay and the pacing
+// preset, exactly as it does for the page loop — and it is imported from BELOW
+// this module, so the sweep no longer reaches back into its own parent.
 // ============================================================
 
 import {
@@ -51,7 +53,7 @@ import {
 import { sendScrapeComplete } from "./scrape-result-transfer";
 import { collectFields } from "./scraper-helpers";
 import type { CapturedRequest } from "./scraper-types";
-import type { ScraperContext } from "./scraper-actions";
+import type { OrchestrationContext } from "./scraper-context";
 
 /**
  * Attempts per period: the first, plus at most one retry.
@@ -85,7 +87,7 @@ export interface PeriodSweepInput {
   periods: readonly string[];
   /** The Run's one accumulator: the sweep never starts a second dedupe set. */
   rows: SweepRows;
-  ctx: ScraperContext;
+  ctx: OrchestrationContext;
   /** When the Run started, for the progress line and the stop report's elapsed. */
   startedAt: number;
   /**
@@ -112,7 +114,7 @@ export interface PeriodSweepResult {
 }
 
 /** Read the pacing preset, falling back to the documented default. */
-function pacingOf(ctx: ScraperContext): DelayPreset {
+function pacingOf(ctx: OrchestrationContext): DelayPreset {
   return ctx.getPacing?.() ?? DEFAULT_DELAY_PRESET;
 }
 

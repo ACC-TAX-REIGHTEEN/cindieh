@@ -76,11 +76,3 @@ export const RESULT_EXPORT_LABELS: Record<ResultExportFormat, string> = {
   csv: "CSV",
 };
 
-export function formatResultNumber(value: number | null): string {
-  return value === null ? "-" : value.toLocaleString("id-ID");
-}
-
-export function formatResultDifference(value: number | null, tolerance: number): string {
-  if (value === null || Math.abs(value) <= tolerance) return "-";
-  return (value > 0 ? "+" : "") + formatResultNumber(value);
-}

@@ -38,3 +38,4 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0032 | [The year-wide sweep is one module, and its page loop is a seam](0032-the-period-sweep-is-its-own-module.md) | Accepted |
 | 0033 | [Every injected surface has one owner](0033-every-injected-surface-has-one-owner.md) | Accepted |
 | 0034 | [The MAIN world's item loops share one loop](0034-the-main-worlds-item-loops-share-one-loop.md) | Accepted |
+| 0035 | [One seam per world, and an import graph with no cycles](0035-one-seam-per-world.md) | Accepted |

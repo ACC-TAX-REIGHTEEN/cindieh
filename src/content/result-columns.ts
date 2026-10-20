@@ -27,7 +27,6 @@ import type { ComparisonResult } from "./comparer";
 import type { BenchmarkType, CheckResult } from "./checker-logic";
 import type { CheckerRowIdentity } from "./page-context";
 import { getStatusLabel } from "./comparer-logic";
-import { formatResultNumber, formatResultDifference } from "./comparer-export";
 
 export interface ResultColumn<T> {
   /** Header text for the `<th>`. */
@@ -62,6 +61,30 @@ function textColumn<T>(label: string, className: string, pick: (row: T) => strin
 
 function amountColumn<T>(label: string, className: string, pick: (row: T) => number | null): ResultColumn<T> {
   return { label, className, numeric: true, value: (row) => formatResultNumber(pick(row)) };
+}
+
+// ── How a number reaches the SCREEN ──────────────────
+// The table shows a number as text; the file writes the RAW value so a
+// spreadsheet can sum it (ADR-0030). These two are the table's side of that
+// pair, and they live HERE because the schema declares the two kinds they
+// render (`SheetCellFormat`: amount, difference) — the file's builders read
+// the schema, so a schema that reached back into the file's builders for its
+// own cells closed a cycle between the two modules.
+
+/** A number as the table shows it; a missing value reads as a dash. */
+export function formatResultNumber(value: number | null): string {
+  return value === null ? "-" : value.toLocaleString("id-ID");
+}
+
+/**
+ * A difference as the table shows it: a dash when there is none, a signed
+ * number when there is one, and a dash for a difference the row's tolerance
+ * suppresses — which is why the file still writes the raw value (a suppressed
+ * difference must stay visible in the sheet, ADR-0030).
+ */
+export function formatResultDifference(value: number | null, tolerance: number): string {
+  if (value === null || Math.abs(value) <= tolerance) return "-";
+  return (value > 0 ? "+" : "") + formatResultNumber(value);
 }
 
 // ── Comparer grid (tab 1) and its wider file ──────────

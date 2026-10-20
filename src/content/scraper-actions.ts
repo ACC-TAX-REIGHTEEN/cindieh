@@ -22,7 +22,8 @@ import {
 } from "./scraper-xhr";
 import type { GridPage } from "./scraper-xhr";
 import { runItems, breakerTripped, type ItemFlow } from "./per-item";
-import type { CapturedRequest, ScrapeMessage } from "./scraper-types";
+import type { OrchestrationContext } from "./scraper-context";
+import type { CapturedRequest } from "./scraper-types";
 import {
   batchScopeError,
   capturedPeriod,
@@ -39,91 +40,14 @@ import {
   type DelayPreset,
 } from "../shared/extension-preferences";
 
-// ── Context interface ─────────────────────────────────
-// All dependencies on mutable closure state in scraper.ts are
-// injected through this interface. Members cover both the
-// orchestration concerns (stopping, messaging, PDF emission, delay)
-// and the request-capture concerns (cache state, DOM triggers, timer
-// abstraction) — formerly split across ScraperContext and
-// InterceptContext. Merging them here lets scraper.ts build a single
-// ctx object for both action functions and interceptRequest.
+// ── Context ──────────────────────────────────────────
+// The run's dependencies on the page world arrive through
+// `OrchestrationContext` (scraper-context.ts), the MAIN world's one seam.
+// It used to be declared here, which made the modules extracted from this one
+// import their own parent's type back; the seam now sits below them, and this
+// module asks for the half it uses.
 
-export interface ScraperContext {
-  /** Abort in-flight requests and capture waits when this operation is cancelled. */
-  signal?: AbortSignal;
-  // ── Orchestration (used by scraper-actions) ────────
-
-  /** Returns true when a stop has been requested by the user. */
-  isStopRequested(): boolean;
-  /** Send a ScrapeMessage back to the content script. */
-  sendToContent(msg: ScrapeMessage): void;
-  /** Emit a DOWNLOAD_PDF_ITEM message for a bulk-downloaded PDF row. */
-  emitPdfDownload(base64: string, item: Record<string, unknown>, source: ExportSource): void;
-  /** Read DOM to get the masa pajak period string (PPh 21 pages). */
-  getMasaPajakFromDOM(): string;
-  /** Sleep for the given number of milliseconds (rate limiting). */
-  delay(ms: number): Promise<void>;
-  /** XHR timeout in ms. */
-  timeout: number;
-  /** Maximum consecutive XHR errors before aborting a paginated scrape. */
-  maxErrors: number;
-  /**
-   * The active inter-request pacing preset. Optional so test contexts need not
-   * declare it; omitting it means the documented default ("normal"). The
-   * production context reads it from the popup's mirrored preference on every
-   * run, so a change takes effect without reloading the page.
-   */
-  getPacing?(): DelayPreset;
-
-  // ── Request capture (used by scraper-intercept) ────
-
-  /** Return the most recently captured request, or null if none. */
-  getLastCaptured(): CapturedRequest | null;
-  /** Return the epoch-ms timestamp of the last captured request (0 if none). */
-  getLastCapturedTime(): number;
-  /**
-   * Return the ExportSource of the currently-visible grid component, or null
-   * when no grid is visible. Used to decide whether the cache is still valid.
-   */
-  getVisibleGridSource(): ExportSource | null;
-  /**
-   * Return the ExportSource of the current page URL, or null when the page
-   * is not a supported export page.
-   */
-  getCurrentPageSource(): ExportSource | null;
-  /**
-   * Return true when the current page URL is a withholding-slips page.
-   * Used in the cache-validity check.
-   */
-  isWithholdingPage(): boolean;
-  /**
-   * Register a one-shot subscriber that will be called with the next captured
-   * request. Returns an unsubscribe function that removes the subscriber
-   * without calling it.
-   */
-  subscribeCapture(fn: (req: CapturedRequest) => void): () => void;
-  /**
-   * Query a single DOM element by CSS selector.
-   * Returns null when no matching element is found.
-   */
-  queryElement(selector: string): Element | null;
-  /**
-   * Return all buttons on the page as an array.
-   */
-  queryAllButtons(): HTMLButtonElement[];
-  /** Trigger a click on the given element. */
-  clickElement(el: Element): void;
-  /**
-   * Schedule a callback after `ms` milliseconds. Returns a handle that can
-   * be passed to clearTimeout to cancel it.
-   * Defaults to window.setTimeout in production; can be stubbed in tests.
-   */
-  setTimeout(fn: () => void, ms: number): unknown;
-  /** Cancel a timeout scheduled by this context's setTimeout. */
-  clearTimeout(handle: unknown): void;
-}
-
-function signalArgs(ctx: ScraperContext): [] | [AbortSignal] {
+function signalArgs(ctx: OrchestrationContext): [] | [AbortSignal] {
   return ctx.signal ? [ctx.signal] : [];
 }
 
@@ -136,7 +60,7 @@ function signalArgs(ctx: ScraperContext): [] | [AbortSignal] {
  * (startScraping turns that into SCRAPE_ERROR), while the efaktur PDF loop
  * and the targeted-lookup loop send SCRAPE_ERROR and return.
  */
-export function consecutiveFailuresExhausted(ctx: ScraperContext, failures: number): boolean {
+export function consecutiveFailuresExhausted(ctx: OrchestrationContext, failures: number): boolean {
   return breakerTripped(failures, ctx.maxErrors);
 }
 
@@ -160,11 +84,6 @@ interface PdfItem {
  */
 function pdfDownloadFailures(failures: number): string {
   return `${failures} kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi.`;
-}
-
-/** The DOMException the cancellation paths reject with. */
-export function abortError(): DOMException {
-  return new DOMException("Permintaan dibatalkan.", "AbortError");
 }
 
 // ── Pagination config ─────────────────────────────────
@@ -192,7 +111,7 @@ export function getPaginateConfig(
 }
 
 /** Read the active preset, falling back to the default for contexts without one. */
-function pacingOf(ctx: ScraperContext): DelayPreset {
+function pacingOf(ctx: OrchestrationContext): DelayPreset {
   return ctx.getPacing?.() ?? DEFAULT_DELAY_PRESET;
 }
 
@@ -239,7 +158,7 @@ export interface ScrapePaginatedResult {
 export async function scrapePaginated(
   captured: CapturedRequest,
   step: number,
-  ctx: ScraperContext,
+  ctx: OrchestrationContext,
   overrides: Record<string, unknown> = {},
   accumulator: ScrapeAccumulator = { allData: [], seen: new Set<string>() },
 ): Promise<ScrapePaginatedResult> {
@@ -356,7 +275,7 @@ export async function downloadBulkWithholdingPdf(
   allData: Record<string, unknown>[],
   page: number,
   totalElapsed: string,
-  ctx: ScraperContext,
+  ctx: OrchestrationContext,
 ): Promise<{ failureCount: number; failedItems: string[] }> {
   // Every failure is named: the slip number is the only thing that ties a
   // failed download back to a row once the run is over.
@@ -430,7 +349,7 @@ export async function downloadBulkWithholdingPdf(
  */
 export async function startScraping(
   interceptRequest: () => Promise<CapturedRequest>,
-  ctx: ScraperContext,
+  ctx: OrchestrationContext,
   options: {
     skipPdf?: boolean;
     batchMonths?: number;
@@ -638,7 +557,7 @@ export async function startScraping(
 export async function startPdfDownload(
   data: Record<string, unknown>[],
   lastCaptured: CapturedRequest,
-  ctx: ScraperContext,
+  ctx: OrchestrationContext,
 ): Promise<void> {
   if (ctx.isStopRequested()) return;
   const source = lastCaptured.source;
@@ -746,7 +665,7 @@ export async function startPdfDownload(
 export async function scrapeByInvoices(
   invoiceNumbers: string[],
   lastCaptured: CapturedRequest,
-  ctx: ScraperContext,
+  ctx: OrchestrationContext,
 ): Promise<void> {
   const MAX_INVOICE_RETRIES = 2;
   const BACKOFF_BASE_MS = 1000;

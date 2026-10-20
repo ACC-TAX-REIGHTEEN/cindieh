@@ -1,6 +1,6 @@
 // Unit tests for scraper-actions.ts orchestration.
 // The XHR functions are module-level imports, so we mock scraper-xhr and
-// drive the loops through a stub ScraperContext with an injectable delay.
+// drive the loops through a stub orchestration context with an injectable delay.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../content/scraper-xhr", () => ({
@@ -19,7 +19,7 @@ import {
   downloadBulkWithholdingPdf,
   consecutiveFailuresExhausted,
 } from "../content/scraper-actions";
-import type { ScraperContext } from "../content/scraper-actions";
+import type { OrchestrationContext } from "../content/scraper-context";
 import { createScrapeRuns } from "../content/scraper-run";
 import { xhrRequest, xhrRequestByInvoice, xhrDownloadEfakturPdf, xhrDownloadWithholdingPdf } from "../content/scraper-xhr";
 import type { CapturedRequest } from "../content/scraper-types";
@@ -51,7 +51,7 @@ function makeCaptured(source: CapturedRequest["source"] = "OUTPUT_TAX"): Capture
   };
 }
 
-function makeCtx(overrides: Partial<ScraperContext> = {}): ScraperContext {
+function makeCtx(overrides: Partial<OrchestrationContext> = {}): OrchestrationContext {
   return {
     // ── Orchestration ──────────────────────────────────
     isStopRequested: () => false,
@@ -62,19 +62,8 @@ function makeCtx(overrides: Partial<ScraperContext> = {}): ScraperContext {
     timeout: 30000,
     maxErrors: 3,
 
-    // ── Request capture (stubs — not exercised by action tests) ──
-    getLastCaptured: () => null,
-    getLastCapturedTime: () => 0,
-    getVisibleGridSource: () => null,
-    getCurrentPageSource: () => null,
-    isWithholdingPage: () => false,
-    subscribeCapture: vi.fn(() => () => {}),
-    queryElement: vi.fn(() => null),
-    queryAllButtons: vi.fn(() => []),
-    clickElement: vi.fn(),
-    setTimeout: vi.fn(() => 0),
-    clearTimeout: vi.fn(),
-
+    // The capture half is NOT stubbed here: these tests drive the run's own
+    // seam, and the capture is a different seam (scraper-intercept.ts).
     ...overrides,
   };
 }

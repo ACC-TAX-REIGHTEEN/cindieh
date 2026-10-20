@@ -3,22 +3,21 @@
 // ============================================================
 // Extracted from the scraper.ts IIFE for testability.
 // Contains the interceptRequest factory and the cache-validity
-// and trigger helpers that operate on the unified ScraperContext
-// (defined in scraper-actions.ts).
+// and trigger helpers that operate on the capture half of the MAIN
+// world's context (scraper-context.ts).
 // ============================================================
 
 import type { CapturedRequest } from "./scraper-types";
 import { debugLog, debugWarn } from "./debug";
-import { abortError } from "./scraper-actions";
-import type { ScraperContext } from "./scraper-actions";
+import { abortError, type CaptureContext } from "./scraper-context";
 
 // ── Context
 // The request-capture members (getLastCaptured, getLastCapturedTime,
 // getVisibleGridSource, getCurrentPageSource, isWithholdingPage,
 // subscribeCapture, queryElement, queryAllButtons, clickElement,
-// setTimeout, clearTimeout) are part of the unified ScraperContext
-// defined in scraper-actions.ts. All functions below accept
-// ScraperContext directly.
+// setTimeout, clearTimeout) are the `CaptureContext` half of the MAIN
+// world's one context (scraper-context.ts). All functions below accept
+// that half directly, so a capture test stubs the capture and nothing else.
 
 // ── Cache validity ──────────────────────────────────────
 
@@ -33,7 +32,7 @@ const CACHE_TTL_MS = 300_000; // 5 minutes
  * - The capture is younger than CACHE_TTL_MS.
  * - The cached source matches either the visible grid or the current page.
  */
-export function isCacheValid(ctx: ScraperContext): boolean {
+export function isCacheValid(ctx: CaptureContext): boolean {
   const last = ctx.getLastCaptured();
   if (!last) return false;
   if (Date.now() - ctx.getLastCapturedTime() >= CACHE_TTL_MS) return false;
@@ -58,7 +57,7 @@ export function isCacheValid(ctx: ScraperContext): boolean {
  * Isolated behind `ctx` (queries + clicks go through the injected context)
  * so tests can verify which branch is taken without needing a real DOM.
  */
-export function triggerXhrCapture(ctx: ScraperContext): void {
+export function triggerXhrCapture(ctx: CaptureContext): void {
   const nextBtn = ctx.queryElement("button.p-paginator-next:not(.p-disabled)");
   if (nextBtn) {
     debugLog("Triggering Next Page...");
@@ -109,7 +108,7 @@ const TRIGGER_DELAY_MS = 500;
  * All browser interactions (setTimeout, DOM queries) go through `ctx` so this
  * function is fully testable without a real browser environment.
  */
-export function interceptRequest(ctx: ScraperContext): Promise<CapturedRequest> {
+export function interceptRequest(ctx: CaptureContext): Promise<CapturedRequest> {
   return new Promise<CapturedRequest>((resolve, reject) => {
     const signal = ctx.signal;
     if (signal?.aborted) {

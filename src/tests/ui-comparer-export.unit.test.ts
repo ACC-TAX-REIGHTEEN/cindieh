@@ -7,8 +7,6 @@ import {
   buildComparisonExportRows,
   CHECKER_EXPORT_BASENAME,
   COMPARISON_EXPORT_BASENAME,
-  formatResultDifference,
-  formatResultNumber,
   RESULT_EXPORT_LABELS,
   resultExportFilename,
 } from "../content/comparer-export";
@@ -16,6 +14,8 @@ import {
   checkerColumns,
   checkerSheetColumns,
   comparerSheetColumns,
+  formatResultDifference,
+  formatResultNumber,
 } from "../content/result-columns";
 import {
   buildAoaWorkbook,

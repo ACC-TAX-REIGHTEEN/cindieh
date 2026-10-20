@@ -12,7 +12,7 @@
 
 import { type ExportData, type ExportMode, exportXLSX, exportCSV } from "./exporter";
 import { isEfakturPage } from "./page-context";
-import { showPanel, updatePanelProgress, updatePanelError, updatePanelIdle } from "./ui-badge";
+import { showPanel, updatePanelProgress, updatePanelError } from "./ui-badge";
 import { getMultiInvoiceNumbers } from "./ui-filters";
 import { postToScraper } from "./bridge";
 import { debugError, debugLog, debugWarn } from "./debug";
@@ -34,11 +34,18 @@ export interface ActionDeps {
   postToScraper: (msg: Record<string, unknown>) => void;
   showPanel: () => void;
   updatePanelProgress: (total: number, page: number, elapsed: string, status: string) => void;
-  updatePanelIdle: () => void;
   /** Render the panel in its error state (used by the stop path to report cancellation). */
   updatePanelError: (message: string) => void;
   getMultiInvoiceNumbers: () => string[];
-  /** True on efaktur pages (PPN Keluaran/Masukan/Retur) — the only pages where the No. Faktur filter applies. */
+  /**
+   * True on the e-Faktur PPN grids (Keluaran, Masukan, both Retur).
+   *
+   * ONE predicate for both features that need it, because they need the SAME
+   * four grids: the No. Faktur filter, and the year-wide export. The old bag
+   * carried two names for one answer (`isEfakturPage` and `isBatchPage`), and a
+   * test double could then describe a page that cannot exist — a grid where the
+   * filter applies but the year-wide export does not.
+   */
   isEfakturPage: () => boolean;
   /**
    * Whether a bulk download of `count` files must be confirmed first. Injected
@@ -53,20 +60,12 @@ export interface ActionDeps {
    */
   getExportMode: () => ExportMode;
   /**
-   * Whether the year-wide batch export is available here. Injected for the same
-   * reason isEfakturPage is: the answer belongs to the page, not to this module,
-   * and a test double has to be able to say no.
-   */
-  isBatchPage: () => boolean;
-  /**
    * Both writers are typed as possibly-async: `exportXLSX` must load the
    * SheetJS chunk before it can write, while `exportCSV` is synchronous and
    * needs no library. The union also lets a test double return nothing.
    */
   exportXLSX: (data: ExportData) => void | Promise<void>;
   exportCSV: (data: ExportData) => void;
-  /** Find and click the Coretax search/refresh button. */
-  triggerSearch: () => void;
 }
 
 /**
@@ -98,22 +97,13 @@ export function createActionDeps(getExportMode: () => ExportMode): ActionDeps {
     showPanel,
     updatePanelProgress,
     updatePanelError,
-    updatePanelIdle,
     getMultiInvoiceNumbers,
     isEfakturPage: () => isEfakturPage(),
-    // The four e-Faktur VAT grids (Keluaran, Masukan, both Retur): every one of
-    // them is filed per masa, so a year is the natural export unit on all four.
-    // Only Keluaran's filter names were measured; on the others the sweep reads
-    // the captured request's own filter by name+format, and refuses with a
-    // message when that request carries no period filter it recognises — never
-    // a silent wrong year (see scrape-batch.ts).
-    isBatchPage: () => isEfakturPage(),
     shouldConfirmBulkDownload: (count) =>
       shouldConfirmBulkDownload(count, getPreferences().bulkConfirmThreshold),
     getExportMode,
     exportXLSX,
     exportCSV,
-    triggerSearch: () => triggerSearch(),
   };
 }
 
@@ -327,7 +317,7 @@ export function batchConfirmMessage(resume?: { pending: number; finished: number
  * it did before resuming existed.
  */
 export function startBatchExport(deps: ActionDeps): boolean {
-  if (!deps.isBatchPage()) {
+  if (!deps.isEfakturPage()) {
     globalThis.alert?.(
       "Ekspor satu tahun hanya tersedia di halaman e-Faktur: PPN Keluaran, PPN Masukan, atau Retur.",
     );

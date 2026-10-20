@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ScraperContext } from "../content/scraper-actions";
+import type { OrchestrationContext } from "../content/scraper-context";
 import {
   PERIOD_ATTEMPTS,
   PERIOD_RETRY_DELAY_MS,
@@ -32,7 +32,7 @@ function captured(): CapturedRequest {
   };
 }
 
-function makeCtx(overrides: Partial<ScraperContext> = {}): ScraperContext {
+function makeCtx(overrides: Partial<OrchestrationContext> = {}): OrchestrationContext {
   return {
     isStopRequested: () => false,
     sendToContent: vi.fn(),
@@ -41,26 +41,15 @@ function makeCtx(overrides: Partial<ScraperContext> = {}): ScraperContext {
     delay: vi.fn(() => Promise.resolve()),
     timeout: 30000,
     maxErrors: 3,
-    getLastCaptured: () => null,
-    getLastCapturedTime: () => 0,
-    getVisibleGridSource: () => null,
-    getCurrentPageSource: () => null,
-    isWithholdingPage: () => false,
-    subscribeCapture: vi.fn(() => () => {}),
-    queryElement: vi.fn(() => null),
-    queryAllButtons: vi.fn(() => []),
-    clickElement: vi.fn(),
-    setTimeout: vi.fn(() => 0),
-    clearTimeout: vi.fn(),
     ...overrides,
   };
 }
 
-function sent(ctx: ScraperContext): ScrapeMessage[] {
+function sent(ctx: OrchestrationContext): ScrapeMessage[] {
   return vi.mocked(ctx.sendToContent).mock.calls.map(([message]) => message);
 }
 
-function completionOf(ctx: ScraperContext): ScrapeComplete | undefined {
+function completionOf(ctx: OrchestrationContext): ScrapeComplete | undefined {
   return sent(ctx).find((message) => message.type === "SCRAPE_COMPLETE") as
     | ScrapeComplete
     | undefined;
@@ -75,7 +64,7 @@ function completionOf(ctx: ScraperContext): ScrapeComplete | undefined {
  */
 function sweep(
   fetchPeriod: PeriodSweepInput["fetchPeriod"],
-  ctx: ScraperContext = makeCtx(),
+  ctx: OrchestrationContext = makeCtx(),
   periods: string[] = PERIODS,
 ) {
   const rows = { allData: [] as Record<string, unknown>[] };

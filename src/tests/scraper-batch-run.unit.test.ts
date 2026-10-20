@@ -14,7 +14,8 @@ vi.mock("../content/scraper-xhr", () => ({
   xhrDownloadEfakturPdf: vi.fn(),
 }));
 
-import { startScraping, scrapePaginated, type ScraperContext } from "../content/scraper-actions";
+import { startScraping, scrapePaginated } from "../content/scraper-actions";
+import type { OrchestrationContext } from "../content/scraper-context";
 import { xhrRequest } from "../content/scraper-xhr";
 import type { CapturedRequest, ScrapeComplete, ScrapeMessage } from "../content/scraper-types";
 import type { GridPage } from "../content/scraper-xhr";
@@ -49,7 +50,7 @@ function capturedWithFilters(period: string, year = "2026"): CapturedRequest {
   };
 }
 
-function makeCtx(overrides: Partial<ScraperContext> = {}): ScraperContext {
+function makeCtx(overrides: Partial<OrchestrationContext> = {}): OrchestrationContext {
   return {
     isStopRequested: () => false,
     sendToContent: vi.fn(),
@@ -58,17 +59,6 @@ function makeCtx(overrides: Partial<ScraperContext> = {}): ScraperContext {
     delay: vi.fn(() => Promise.resolve()),
     timeout: 30000,
     maxErrors: 3,
-    getLastCaptured: () => null,
-    getLastCapturedTime: () => 0,
-    getVisibleGridSource: () => null,
-    getCurrentPageSource: () => null,
-    isWithholdingPage: () => false,
-    subscribeCapture: vi.fn(() => () => {}),
-    queryElement: vi.fn(() => null),
-    queryAllButtons: vi.fn(() => []),
-    clickElement: vi.fn(),
-    setTimeout: vi.fn(() => 0),
-    clearTimeout: vi.fn(),
     ...overrides,
   };
 }
@@ -82,11 +72,11 @@ function monthOf(period: unknown): number {
 }
 
 /** Every message the run sent, typed by discriminant. */
-function sent(ctx: ScraperContext): ScrapeMessage[] {
+function sent(ctx: OrchestrationContext): ScrapeMessage[] {
   return vi.mocked(ctx.sendToContent).mock.calls.map(([msg]) => msg);
 }
 
-function completionOf(ctx: ScraperContext): ScrapeComplete {
+function completionOf(ctx: OrchestrationContext): ScrapeComplete {
   const found = sent(ctx).find((msg) => msg.type === "SCRAPE_COMPLETE");
   expect(found, "expected a SCRAPE_COMPLETE").toBeDefined();
   return found as unknown as ScrapeComplete;

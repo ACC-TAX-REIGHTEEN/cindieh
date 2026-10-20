@@ -6,7 +6,7 @@
 // ============================================================
 
 import { buildEfakturDownloadUrl, buildEfakturPdfBody } from "./scraper-helpers";
-import { abortError } from "./scraper-actions";
+import { abortError } from "./scraper-context";
 import { unwrapPdfData, isSuccessfulPdfResponse } from "./scraper-pdf";
 import type { CapturedRequest } from "./scraper-types";
 

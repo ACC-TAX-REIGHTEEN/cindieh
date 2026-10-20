@@ -28,16 +28,13 @@ function makeDeps(overrides: Partial<ActionDeps> = {}): ActionDeps {
     postToScraper: vi.fn(),
     showPanel: vi.fn(),
     updatePanelProgress: vi.fn(),
-    updatePanelIdle: vi.fn(),
     updatePanelError: vi.fn(),
     getMultiInvoiceNumbers: vi.fn(() => []),
     isEfakturPage: vi.fn(() => true),
-    isBatchPage: vi.fn(() => true),
     shouldConfirmBulkDownload: vi.fn(() => false),
     getExportMode: vi.fn<() => ExportMode>(() => "cleaned"),
     exportXLSX: vi.fn(),
     exportCSV: vi.fn(),
-    triggerSearch: vi.fn(),
     ...overrides,
   };
 }
@@ -94,7 +91,7 @@ describe("startBatchExport", () => {
     vi.stubGlobal("alert", alertSpy);
     const confirmSpy = vi.fn(() => true);
     vi.stubGlobal("confirm", confirmSpy);
-    const deps = makeDeps({ isBatchPage: vi.fn(() => false) });
+    const deps = makeDeps({ isEfakturPage: vi.fn(() => false) });
 
     expect(startBatchExport(deps)).toBe(false);
     expect(deps.postToScraper).not.toHaveBeenCalled();

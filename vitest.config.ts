@@ -77,7 +77,10 @@ export default defineConfig({
       // 94.47/89.11/92.25/95.47 with the per-item loop (ADR-0034): the MAIN
       // world's four item-at-a-time flows now share one measured stop check,
       // one breaker and one wait, and the module that holds them is covered
-      // on its own terms.
+      // on its own terms, and now 94.51/89.18/92.35/95.49 with the one seam
+      // per world (ADR-0035): the context moved to scraper-context.ts, the
+      // graph lost its cycles, and the formatters the schema declares came
+      // back to the schema. The functions floor moves with it.
       //
       // The cushion is deliberately ~0.4 points, the same gap the floors have
       // always kept: enough that ordinary churn cannot redden the build, small
@@ -93,7 +96,7 @@ export default defineConfig({
       thresholds: {
         statements: 94.2,
         branches: 88.8,
-        functions: 92.0,
+        functions: 92.1,
         lines: 95.3,
       },
     },
