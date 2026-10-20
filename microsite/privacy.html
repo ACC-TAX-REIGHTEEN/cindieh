@@ -86,9 +86,9 @@
     <h1>Kebijakan Privasi</h1>
     <p class="lede">
       Ringkasnya: <strong>Cindieh tidak mengirim data apa pun ke mana pun.</strong>
-      Semua pekerjaan, mengambil data dari Coretax, mengubahnya menjadi Excel atau
-      CSV, menamai berkas PDF, berjalan di dalam browser Anda. Cindieh tidak punya
-      server, tidak mengirim telemetri, dan tidak memuat pustaka analitik.
+      Pengambilan data dari Coretax, pembuatan berkas Excel atau CSV, serta penamaan
+      berkas PDF semuanya berlangsung di browser Anda. Cindieh tidak memiliki server,
+      tidak mengirim telemetri, dan tidak memuat layanan analitik.
     </p>
 
     <h2>1. Data apa yang diproses</h2>
@@ -121,9 +121,9 @@
     </ul>
     <div class="callout">
       <p>
-        Ekstensi ini sepenuhnya <em>client-side</em>. Kalau perangkat Anda offline,
-        tidak ada satu pun proses Cindieh yang tetap berjalan, karena tidak ada
-        proses yang ada di server kami untuk jalankan.
+        Cindieh bekerja sepenuhnya di perangkat Anda. Saat perangkat tidak terhubung
+        ke internet, Cindieh tidak dapat mengambil data dari portal dan tidak ada
+        proses yang berjalan di server Cindieh.
       </p>
     </div>
 
@@ -137,8 +137,8 @@
 
     <h2>4. Izin browser yang diminta</h2>
     <p>
-      Cuma ada empat entri di bawah ini, tiga izin browser dan satu host, dan
-      semuanya bisa diperiksa langsung di <code>manifest.json</code> repositori:
+      Cuma ada empat entri di bawah ini: tiga izin browser dan satu alamat portal.
+      Semuanya dapat diperiksa langsung di <code>manifest.json</code> repositori:
     </p>
     <table class="perm-table">
       <thead>
@@ -188,8 +188,8 @@
       <li>saklar notifikasi saat selesai</li>
     </ul>
     <p>
-      Hasil scraping untuk sesi itu sendiri hanya hidup di memori tab, dan hilang
-      ketika tab ditutup atau pengguna menekan <strong>Bersihkan cache</strong>.
+      Hasil pengambilan data hanya tersimpan sementara di memori tab, lalu hilang
+      ketika tab ditutup atau Anda menekan <strong>Bersihkan cache</strong>.
       Menu <strong>Reset preferensi</strong> mengembalikan seluruh daftar di atas
       ke nilai bawaan.
     </p>

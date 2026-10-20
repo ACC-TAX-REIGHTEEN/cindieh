@@ -99,10 +99,10 @@
         },
         {
           "@type": "Question",
-          "name": "Permission apa saja yang diminta, dan kenapa?",
+          "name": "Izin apa saja yang diminta, dan untuk apa?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Tiga permission inti: activeTab, storage, dan akses host ke coretaxdjp.pajak.go.id. Satu permission opsional, notifications, hanya diminta saat Anda menyalakan saklar notifikasi di popup. Tidak ada permission ke domain lain, cookies, atau riwayat browser."
+            "text": "Cindieh memakai tiga izin inti: activeTab, storage, dan akses ke coretaxdjp.pajak.go.id. Izin tambahan notifications hanya diminta saat Anda menyalakan notifikasi di popup. Cindieh tidak meminta akses ke domain lain, kuki, atau riwayat penjelajahan."
           }
         },
         {
@@ -126,7 +126,7 @@
           "name": "Kok \"Cari Referensi\" tidak menemukan faktur saya?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Pencocokan dilakukan terhadap awalan nomor referensi, bukan sembarang posisi di dalamnya, mode itu terbukti jauh lebih cepat di server Coretax. Ketik sebagian awal referensi (bisa lebih pendek), lalu Enter. Jika tetap kosong, panel menyatakan \"tidak ditemukan\" dan berhenti, bukan mencoba mode lambat di belakang layar."
+            "text": "Cindieh mencari berdasarkan awalan nomor referensi. Ketik bagian awal nomor, lalu tekan Enter. Jika tidak ada hasil, panel menampilkan pesan \"tidak ditemukan\". Coba gunakan awalan yang lebih pendek."
           }
         },
         {
@@ -134,7 +134,7 @@
           "name": "Apa yang terjadi kalau DJP mengubah tampilan Coretax?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Tergantung jenis perubahan: jika ID tombol berubah, tombol Cindieh mungkin tidak muncul. Jika nama field API berubah, kolom terkait akan kosong di file ekspor dan muncul peringatan di console browser. Jika mekanisme autentikasi berubah, proses pengambilan data bisa gagal dengan timeout."
+            "text": "Dampaknya bergantung pada perubahan yang dilakukan DJP. Tombol Cindieh mungkin tidak muncul, beberapa kolom ekspor dapat kosong, atau pengambilan data dapat gagal. Jika itu terjadi, perbarui Cindieh ke versi terbaru dan laporkan masalahnya lewat GitHub."
           }
         },
         {
@@ -409,7 +409,7 @@
                 <tr><td>Bukti Potong</td><td class="filechip" style="margin:0;font-size:11px;">07‑2026‑BP‑001‑PT MITRA.pdf</td></tr>
               </table>
               <h3 style="margin-top:18px;">Penanganan otomatis</h3>
-              <p style="font-size:13px;color:var(--ink-soft);">Faktur lama yang PDF‑nya sudah tidak tersedia akan dilewati, bukan menghentikan proses, ringkasan akhir menampilkan berapa yang berhasil dan berapa yang dilewati.</p>
+              <p style="font-size:13px;color:var(--ink-soft);">Faktur lama yang PDF-nya sudah tidak tersedia akan dilewati. Proses tetap berjalan, lalu ringkasan akhir menunjukkan jumlah berkas yang berhasil diunduh dan yang dilewati.</p>
             </div>
           </div>
         </div>
@@ -430,8 +430,8 @@
               <span class="filechip">satu per baris</span>
               <span class="filechip">dipisah koma</span>
               <span class="filechip">dipisah titik‑koma</span>
-              <p style="font-size:13px;color:var(--ink-soft);margin-top:14px;">Textarea kosong = tidak ada filter, semua faktur diproses seperti biasa.</p>
-              <p style="font-size:13px;color:var(--ink-soft);margin-top:10px;">Sebelum unduhan dimulai, daftar nomor Anda dicek dulu: nomor yang tidak punya baris disebutkan namanya di dialog konfirmasi, dan setelah selesai, panel melaporkan nomor yang tidak ditemukan di Coretax.</p>
+              <p style="font-size:13px;color:var(--ink-soft);margin-top:14px;">Kosongkan kotak ini jika Anda ingin memproses semua faktur seperti biasa.</p>
+              <p style="font-size:13px;color:var(--ink-soft);margin-top:10px;">Sebelum unduhan dimulai, Cindieh memeriksa daftar nomor Anda. Nomor yang tidak ditemukan ditampilkan dalam konfirmasi dan dilaporkan lagi setelah proses selesai.</p>
             </div>
           </div>
         </div>
@@ -449,8 +449,8 @@
             </div>
             <div class="feat-side">
               <h3>Detail pencocokan</h3>
-              <p style="font-size:13px;color:var(--ink-soft);">Pencocokan bersifat <strong>awalan</strong> (<em>startswith</em>): ketik sebagian awal nomor referensi. Mode ini dipilih karena jauh lebih cepat daripada pencocokan <em>contains</em>, selisihnya bisa dari 0,15 detik jadi lebih dari 1 menit untuk nilai yang sama.</p>
-              <p style="font-size:13px;color:var(--ink-soft);margin-top:10px;">Nilai otomatis diubah ke huruf besar, karena filter Referensi di server Coretax bersifat <em>case-sensitive</em>. Bila awalan tidak menemukan apa pun, panel melaporkan <strong>tidak ditemukan</strong> dan pencarian berhenti, Cindieh tidak mengulang dengan mode <em>contains</em> yang lambat. Coba ketik awalan yang lebih pendek.</p>
+              <p style="font-size:13px;color:var(--ink-soft);">Pencarian memakai <strong>awalan</strong> nomor referensi. Cukup ketik bagian awal nomor yang Anda cari. Cara ini jauh lebih cepat daripada mencari kata yang muncul di bagian mana pun dari nomor referensi.</p>
+              <p style="font-size:13px;color:var(--ink-soft);margin-top:10px;">Huruf akan diubah menjadi huruf besar secara otomatis. Jika tidak ada hasil, Cindieh menampilkan pesan <strong>tidak ditemukan</strong> dan tidak menjalankan pencarian yang lebih lambat. Coba gunakan awalan yang lebih pendek.</p>
               <p style="font-size:13px;color:var(--ink-soft);margin-top:10px;">Di PPN Masukan kolom Referensi berisi referensi milik penjual, jadi satu pencarian bisa menampilkan beberapa faktur dari penjual berbeda. Ini tetap berguna untuk menemukan faktur; yang tidak dilakukan Cindieh di sana adalah mencocokkan baris ke catatan internal, dan karena itu tab Komparator hanya ada di PPN Keluaran.</p>
             </div>
           </div>
@@ -643,8 +643,8 @@
         <tbody>
         <tr class="pref-group"><th scope="rowgroup" colspan="2">Tampilan dan nama file</th></tr>
         <tr><td>Aktifkan Cindieh</td><td>Saklar utama. Saat dimatikan, seluruh tombol dan panel Cindieh dibersihkan dari halaman portal; menyalakannya kembali menyuntik ulang tanpa reload.</td></tr>
-        <tr><td>Format export</td><td><em>Dirapikan</em> (header Indonesia + kolom pilihan) atau <em>Asli</em> (semua field Coretax apa adanya).</td></tr>
-        <tr><td>Format file default</td><td>XLSX atau CSV, ditandai centang di menu ekspor, jadi format langganan Anda langsung terlihat.</td></tr>
+        <tr><td>Format export</td><td><em>Dirapikan</em> (judul kolom berbahasa Indonesia dan kolom pilihan) atau <em>Asli</em> (semua kolom Coretax apa adanya).</td></tr>
+        <tr><td>Format file default</td><td>Pilih XLSX atau CSV. Pilihan Anda ditandai di menu ekspor agar mudah dikenali.</td></tr>
         <tr><td>Ekspor sekali klik</td><td>Opsional (bawaan mati). Satu klik tombol Ekspor langsung mengunduh format default; panah di sebelahnya membuka pilihan lain.</td></tr>
         <tr><td>Nama file</td><td>Awalan kustom di depan nama file. Mis. <span class="filechip">PTABC-</span> → <span class="filechip">PTABC-FPK-072026.xlsx</span>. Berguna mengelompokkan berkas per klien; nama PDF tidak diubah.</td></tr>
         </tbody>
@@ -657,7 +657,7 @@
         </tbody>
         <tbody>
         <tr class="pref-group"><th scope="rowgroup" colspan="2">Diagnostik</th></tr>
-        <tr><td>Log debug</td><td>Log <code>[Cindieh]</code> di console halaman, background, dan popup.</td></tr>
+        <tr><td>Log debug</td><td>Catatan teknis <code>[Cindieh]</code> di konsol halaman, latar belakang, dan popup.</td></tr>
         <tr><td>Notifikasi saat selesai</td><td>Notifikasi desktop setelah ekspor/unduhan massal, termasuk saat gagal atau hanya sebagian: jumlah nomor faktur yang tidak ditemukan, masa pajak yang gagal diambil atau kosong pada ekspor setahun, dan hasil yang belum lengkap. Izin <code>notifications</code> diminta saat saklar dinyalakan (izin opsional, bukan saat pemasangan). Klik notifikasi untuk kembali ke tab prosesnya.</td></tr>
         </tbody>
         <tbody>
@@ -711,11 +711,11 @@
       <div class="comply-grid">
         <div class="comply-cell">
           <p class="cc-title">Berurutan, satu per satu</p>
-          <p class="cc-text">Permintaan dikirim serial dengan jeda antar request. Tidak ada banjir permintaan paralel yang memicu alarm WAF DJP.</p>
+          <p class="cc-text">Cindieh memproses data satu per satu dengan jeda. Tidak ada banyak permintaan yang dikirim bersamaan.</p>
         </div>
         <div class="comply-cell">
           <p class="cc-title">Batas halaman resmi</p>
-          <p class="cc-text">Cindieh memakai ukuran halaman yang memang disediakan portal: 500 baris per request untuk e‑Faktur, 1.000 baris per request untuk SPT.</p>
+          <p class="cc-text">Cindieh memakai ukuran halaman yang memang disediakan portal: 500 baris untuk e-Faktur dan 1.000 baris untuk SPT.</p>
         </div>
         <div class="comply-cell">
           <p class="cc-title">Pacing hanya memperlambat</p>
@@ -799,8 +799,8 @@ pnpm run build</pre>
         <p class="faq-a">Tidak. Semua pemrosesan terjadi lokal di browser. Ekstensi hanya berkomunikasi dengan <code>coretaxdjp.pajak.go.id</code>, domain yang sama dengan yang sudah Anda buka. Tidak ada server backend Cindieh yang menerima data faktur Anda.</p>
       </details>
       <details class="faq-item">
-        <summary>Permission apa saja yang diminta, dan kenapa?</summary>
-        <p class="faq-a">Tiga permission inti: <code>activeTab</code>, <code>storage</code>, dan akses host ke <code>coretaxdjp.pajak.go.id</code>. Satu permission opsional, <code>notifications</code>, hanya diminta saat Anda menyalakan saklar notifikasi di popup. Tidak ada permission ke domain lain, cookies, atau riwayat browser.</p>
+        <summary>Izin apa saja yang diminta, dan untuk apa?</summary>
+        <p class="faq-a">Cindieh memakai tiga izin inti: <code>activeTab</code>, <code>storage</code>, dan akses ke <code>coretaxdjp.pajak.go.id</code>. Izin tambahan <code>notifications</code> hanya diminta saat Anda menyalakan notifikasi di popup. Cindieh tidak meminta akses ke domain lain, kuki, atau riwayat penjelajahan.</p>
       </details>
       <details class="faq-item">
         <summary>Apakah Cindieh bisa memodifikasi data di Coretax?</summary>
@@ -812,11 +812,11 @@ pnpm run build</pre>
       </details>
       <details class="faq-item">
         <summary>Kok "Cari Referensi" tidak menemukan faktur saya?</summary>
-        <p class="faq-a">Pencocokan dilakukan terhadap <strong>awalan</strong> nomor referensi, bukan sembarang posisi di dalamnya, mode itu terbukti jauh lebih cepat di server Coretax. Ketik sebagian awal referensi (bisa lebih pendek), lalu Enter. Jika tetap kosong, panel menyatakan "tidak ditemukan" dan berhenti, bukan mencoba mode lambat di belakang layar.</p>
+        <p class="faq-a">Cindieh mencari berdasarkan <strong>awalan</strong> nomor referensi. Ketik bagian awal nomor, lalu tekan Enter. Jika tidak ada hasil, panel menampilkan pesan "tidak ditemukan". Coba gunakan awalan yang lebih pendek.</p>
       </details>
       <details class="faq-item">
         <summary>Apa yang terjadi kalau DJP mengubah tampilan Coretax?</summary>
-        <p class="faq-a">Tergantung jenis perubahan: jika ID tombol berubah, tombol Cindieh mungkin tidak muncul. Jika nama field API berubah, kolom terkait akan kosong di file ekspor dan muncul peringatan di console browser. Jika mekanisme autentikasi berubah, proses pengambilan data bisa gagal dengan timeout.</p>
+        <p class="faq-a">Dampaknya bergantung pada perubahan yang dilakukan DJP. Tombol Cindieh mungkin tidak muncul, beberapa kolom ekspor dapat kosong, atau pengambilan data dapat gagal. Jika itu terjadi, perbarui Cindieh ke versi terbaru dan laporkan masalahnya lewat GitHub.</p>
       </details>
       <details class="faq-item">
         <summary>Apakah Cindieh memerlukan akun atau registrasi?</summary>
