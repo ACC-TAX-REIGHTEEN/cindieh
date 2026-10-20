@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pelajaran 08 · Membatalkan keputusan sendiri — Kursus ADR Cindieh</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="course-head">
+  <p class="eyebrow">Cindieh · Membaca Architecture Decision Records</p>
+  <h1>Pelajaran 08 — Membatalkan keputusan sendiri</h1>
+  <p class="lede">Satu ADR di repo ini sudah dicabut sebagian aturannya oleh ADR lain, satu lagi sudah
+  “selesai”, dan dua lainnya mengatur perkakas build. Pelajaran ini melengkapi rangkaian tersebut:
+  jika Anda hanya membaca ADR yang berstatus <em>Accepted</em>, Anda akan melewatkan bagian penting dari
+  <code>docs/adr/</code>.</p>
+  <p class="meta">Pelajaran 08 dari 09 · waktu baca ± 13 menit · 5 soal uji ingatan</p>
+  <nav class="lesson-nav">
+    <a href="index.html">Peta pelajaran</a>
+    <a href="../reference/adr-peta.html">Peta 38 ADR</a>
+    <a href="../reference/glosarium.html">Glosarium</a>
+    <span class="spacer"></span>
+    <a href="0007-pdf-dan-item-loop.html">← 07</a>
+    <span>08 dari 09</span>
+    <a href="0009-preferensi.html">09 →</a>
+  </nav>
+</header>
+
+<main>
+
+<section>
+  <h2><span class="num">1</span>Kasus ADR-0011 → ADR-0012</h2>
+
+  <p>Pada 24 September 2026 ada dua ADR yang lahir pada hari yang sama, dari pengukuran yang sama.
+  <a href="../../../docs/adr/0011-reference-search-prefix-first.md"><code>ADR-0011</code></a> menetapkan satu
+ hal yang pasti: portal memperlakukan filter Referensi
+  <strong>menurut mode pencocokan</strong>, bukan menurut panjang nilainya. Di grid yang sama:
+  mode <code>contains</code> butuh sampai <strong>96,9 detik</strong> untuk nilai yang
+  <code>startswith</code> jawab dalam <strong>0,149 detik</strong>. Yang lebih aneh, nilai yang
+  <em>lebih pendek</em> bisa yang lebih lambat — 5 karakter dengan <code>contains</code> memakan
+  24,8 detik, sementara 6 karakter hanya 0,21 detik di run yang sama. Gejala “nilai pendek instan,
+  nilai panjang lambat” yang dilaporkan pengguna sebenarnya adalah <code>contains</code>, bukan
+  panjang nilai.</p>
+
+  <p>Mode <code>equals</code> memang cepat, tapi mengembalikan nol baris — karena nomor referensi
+  yang diketik orang biasanya <em>prefix</em> dari yang tersimpan (<code>EE-0300</code> dari
+  <code>EE-0300/09/26</code>). Jadi <a href="../../../docs/adr/0011-reference-search-prefix-first.md"><code>ADR-0011</code></a>
+  memutuskan: kirim <code>startswith</code> lebih dulu, dan <strong>kalau kosong, lebarkan
+  sekali</strong> ke <code>contains</code> lalu jalankan lagi.</p>
+
+  <aside class="pull">
+    <span class="label">Keputusan yang dicabut</span>
+    <p>Pelebaran ke <code>contains</code> dicabut pada hari yang sama, 24 September 2026,
+    oleh <a href="../../../docs/adr/0012-reference-search-stops-on-empty-prefix.md"><code>ADR-0012</code></a>.
+    Alasannya satu kalimat: pelebaran itu menemukan referensi yang hanya <em>memuat</em> nilai yang
+    yang diketik — tetapi waktu tunggu yang ditimbulkan persis waktu tunggu yang diukur ADR-0011 untuk
+    dihilangkan, dan pengguna memperlakukannya sebagai <em>macet</em>, bukan sebagai perluasan
+    yang berguna.</p>
+  </aside>
+
+  <p>Konsekuensinya setelah <a href="../../../docs/adr/0012-reference-search-stops-on-empty-prefix.md"><code>ADR-0012</code></a>:
+  pencarian Referensi selalu satu permintaan grid, dijawab dalam hitungan pecahan detik. Referensi
+  yang ada tetapi bukan awalan dari nilai yang diketik kini dilaporkan “tidak ditemukan” — mengetik awalan
+  yang lebih pendek memulihkannya. Sejumlah bagian dihapus seluruhnya: <code>shouldWidenReferenceSearch</code>,
+  <code>bodyRequestsFilter</code>, <code>REFERENCE_WIDE_MATCH_MODE</code>, dan pesan
+  <code>REFERENCE_FILTER_FALLBACK</code> tidak ada lagi; anggaran permintaan di
+  <code>RATE_LIMITING.md</code> turun dari “+1 permintaan saat kosong” menjadi “1 permintaan per
+  pencarian”.</p>
+
+  <h3>Yang paling penting dari kasus ini</h3>
+
+  <p>Perhatikan kalimat pembuka <a href="../../../docs/adr/0011-reference-search-prefix-first.md"><code>ADR-0011</code></a>:
+  <em>“The measurements below are the evidence both decisions rest on.”</em> Berkas yang dicabut
+  sebagian <strong>tidak menghapus bukti pengukurannya</strong>. Pengukuran 96,9 detik itu tetap
+  tegak; yang dicabut adalah keputusan yang dibangun di atasnya. Persis begini seharusnya ADR
+  bekerja: bukti terpisah dari keputusan, supaya keputusan bisa diganti tanpa mengulang
+  pengukuran.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Arti status ADR yang dipakai di repo ini.</caption>
+      <thead>
+        <tr><th>Status</th><th>Arti</th><th>Contoh</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>Keputusan berlaku; berkasnya adalah instruksi.</td>
+          <td>0028, 0034</td>
+        </tr>
+        <tr>
+          <td><span class="status-pill status-amended">Amended</span></td>
+          <td>Inti keputusan tetap; rinciannya, nama, atau cakupannya diubah oleh ADR lain.</td>
+          <td>0018 (scope), 0022 (nama), 0023 (dua amandemen)</td>
+        </tr>
+        <tr>
+          <td><span class="status-pill status-superseded">Superseded</span></td>
+          <td>Keputusan lama tidak berlaku lagi; ADR baru yang menggantikannya.</td>
+          <td>0011 → 0012</td>
+        </tr>
+        <tr>
+          <td><span class="status-pill status-accepted">All completed</span></td>
+          <td>Rencana yang sudah dijalankan; berkasnya catatan sejarah.</td>
+          <td>0005</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">2</span>ADR yang “sudah selesai”: ADR-0005</h2>
+
+  <p><a href="../../../docs/adr/0005-deferred-refactors.md"><code>ADR-0005</code></a> lahir sebagai daftar
+  tiga refactor yang ditunda: menyatukan <code>ScraperContext</code> dan
+  <code>InterceptContext</code>, mengganti fasad getter/setter <code>ContentState</code> dengan
+  API objek, dan menghapus fasad re-ekspor <code>ui.ts</code>. Statusnya sekarang
+  <em>“accepted; fully completed”</em>, dan ketiganya sudah dikerjakan.</p>
+
+  <p>Pelajarannya bukan pada isi refactor-nya, melainkan pada <strong>jenis dokumen</strong>:
+  ADR adalah keputusan, bukan daftar tugas. Begitu keputusan sudah diterapkan, berkasnya berubah
+  jadi rekaman — berguna sebagai penjelasan kenapa kodenya begitu, tapi tidak lagi sebagai
+  instruksi. Membaca ADR-0005 hari ini tidak memberi tahu apa pun yang perlu Anda lakukan.</p>
+
+  <aside class="pull">
+    <span class="label">Indeks perlu selalu diperiksa</span>
+    <p>ADR-0035, ADR-0036, ADR-0037, dan ADR-0038 kini sudah tercatat. ADR-0035 menetapkan batas
+    konteks dunia MAIN di <code>scraper-context.ts</code>; ADR-0036 memisahkan tampilan tab Komparator
+    dan Pengecekan; ADR-0037 menyatukan daftar preferensi; ADR-0038 menjadikan halaman satu
+    lingkungan yang diinjeksi ke <code>scraper-install.ts</code>. Pelajarannya sederhana: gunakan
+    indeks ADR sebagai sumber status terbaru, bukan catatan lama yang mungkin masih beredar di
+    dokumen lain.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Keputusan level perkakas: ADR-0013 dan ADR-0009</h2>
+
+  <p>Dua ADR terakhir ini tidak mengatur perilaku fitur; mereka mengatur <em>biaya</em> dan
+  <em>alat</em>. Bentuknya berbeda, tapi lima pertanyaan yang sama tetap berlaku.</p>
+
+  <h3>ADR-0013 — SheetJS sebagai chunk terpisah</h3>
+
+  <p>SheetJS berukuran sekitar 330 KB — <strong>81% dari muatan content script</strong>. Dan
+  content script diinjeksi ke <em>setiap</em> halaman <code>coretaxdjp.pajak.go.id</code> pada
+  <code>document_idle</code>. Jadi mem-inline berarti mem-parse 330 KB di halaman yang penggunanya
+  mungkin tidak akan pernah mengekspor spreadsheet. Jalur CSV pun tidak butuhnya — <code>buildCSV</code>
+  ditulis tangan. Hasilnya terukur:</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Ukuran bundel sebelum dan sesudah, dari ADR-0013.</caption>
+      <thead><tr><th>Bundel</th><th>Sebelum</th><th>Sesudah</th></tr></thead>
+      <tbody>
+        <tr><td><code>content/main.js</code> (dengan xlsx)</td><td>407,9 KB</td><td>78,5 KB</td></tr>
+        <tr><td>Porsi SheetJS</td><td>329,4 KB (80,8%)</td><td>0</td></tr>
+        <tr><td><code>content/xlsx.js</code></td><td>—</td><td>dimuat saat ekspor XLSX pertama</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Mengapa bukan <code>splitting</code> bawaan esbuild? <em>Code splitting</em> menuntut
+  <code>format: "esm"</code>, sedangkan MV3 tidak mendeklarasikan tipe modul untuk content script —
+  bundelnya harus tetap IIFE klasik. Jadilah dua lintasan build, dan lintasan silangnya memakai
+  <strong>specifier non-literal</strong> (<code>browserAPI.runtime.getURL(XLSX_CHUNK_PATH)</code>)
+  supaya esbuild <em>meninggalkan</em> panggilan <code>import()</code> itu apa adanya alih-alih
+  meng-inline pustakanya. Service worker sebagai alternatif ditolak karena butuh kanal
+  content→background (yang ADR-0022 memang sengaja menutup) dan akan menyalin tiap baris hasil
+  scrape ke worker.</p>
+
+  <p>Dua aturan yang lahir dari situ dan harus dihafal: <strong>tidak ada yang boleh mengimpor
+  <code>xlsx-runtime.ts</code></strong> (satu impor mengembalikan pustaka ke bundel pemuatan
+  halaman), dan builder workbook harus menerima <code>xlsx</code> sebagai <em>parameter</em>,
+  bukan menutupinya.</p>
+
+  <h3>ADR-0009 — TypeScript 7 sebagai kompilator, TypeScript 6 lewat alias</h3>
+
+  <p>Menurut <a href="../../../docs/adr/0009-typescript-7-native-with-typescript6-api-alias.md"><code>ADR-0009</code></a>,
+  TypeScript 7 adalah port native (Go) dari kompilator, jauh lebih cepat, tetapi — berbeda dari
+  semua rilis sebelumnya — <strong>tidak menyertakan API kompilator JavaScript</strong>. Tooling yang
+  consume API itu (<code>typescript-eslint</code>) tidak bisa memakai paket TypeScript 7. Solusinya
+  dua alias npm:</p>
+
+<pre><code>"@typescript/native": "npm:typescript@^7.0.2",      // bin tsc (native, 8-12x lebih cepat)
+"typescript": "npm:@typescript/typescript6@^6.0.2"   // API kompilator + tsc6, untuk typescript-eslint</code></pre>
+
+  <p>Dampaknya ke <code>tsconfig.json</code>: <code>moduleResolution: "node"</code> dihapus (dipakai
+  <code>"bundler"</code>), <code>baseUrl</code> dan <code>paths</code> dibuang (mapping-nya memang
+  tak pernah dipakai), lalu <code>noEmit</code>, <code>verbatimModuleSyntax</code>, dan
+  <code>erasableSyntaxOnly</code> ditambahkan untuk memastikan setiap konstruk di sumber aman
+  dihapus oleh bundler.</p>
+
+  <aside class="warn">
+    <span class="label">Aturan yang tidak boleh dilanggar</span>
+    <p>Jangan pernah menaikkan dependensi <code>typescript</code> ke <code>^7</code> langsung.
+    Paket TypeScript 7 tidak punya API, dan eslint akan gagal dengan galat resolusi
+    “Cannot find module 'typescript'”. Saat menaikkan versi, majukan <strong>kedua alias
+    bersamaan</strong>.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Tiga bentuk ADR dan daftar periksa untuk menulis yang baru</h2>
+
+  <p>Setelah membaca seluruh ADR, pola besarnya jelas: repo ini punya beberapa <em>jenis</em> ADR yang
+  berbeda, dan tiap jenis punya bentuk konsekuensi yang berbeda.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Empat jenis ADR yang ada di repo ini, dengan contoh dan konsekuensi khasnya.</caption>
+      <thead>
+        <tr><th>Jenis</th><th>Contoh</th><th>Konsekuensinya</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Memindahkan seam</strong></td>
+          <td>0028, 0033, 0034, 0032, 0035, 0036, 0038</td>
+          <td>Tempat satu-satunya berubah; semua pengikutnya menyesuaikan; graf impor dijaga tes.</td>
+        </tr>
+        <tr>
+          <td><strong>Mengubah perilaku yang dilihat pengguna</strong></td>
+          <td>0020, 0023, 0012</td>
+          <td>Wording, nama berkas, atau urutan baris berubah — jadi perlu pemeriksaan manual di portal.</td>
+        </tr>
+        <tr>
+          <td><strong>Membatasi ruang lingkup</strong></td>
+          <td>0019, 0021, 0024</td>
+          <td>Sesuatu yang <em>ditolak</em> dengan alasan; sering butuh pengukuran, bukan penalaran.</td>
+        </tr>
+        <tr>
+          <td><strong>Mengatur alat</strong></td>
+          <td>0009, 0013</td>
+          <td>Konsekuensinya ke toolchain dan ukuran bundel, bukan ke perilaku runtime.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Jika Anda menulis ADR baru, gunakan daftar periksa berikut. Polanya diambil dari bentuk yang
+  konsisten pada ADR yang sudah ada:</p>
+
+  <ol>
+    <li><strong>Judul = kalimat keputusan.</strong> “Satu stop door…”, bukan “Tentang stop”.</li>
+    <li><strong>Konteks = masalah + bukti.</strong> Kalau bisa, angka dari portal sungguhan
+    (seperti 96,9 detik di ADR-0011, atau 44.237 baris di ADR-0018).</li>
+    <li><strong>Keputusan = aturan yang bisa dibuktikan salah.</strong> Kalau tidak bisa salah,
+    itu bukan keputusan.</li>
+    <li><strong>Alternatif yang ditolak + alasannya.</strong> Bagian paling berharga; sering
+    dipecah sebagai tabel.</li>
+    <li><strong>Tandai yang load-bearing.</strong> Kalimat “jangan dirapikan”, “jangan dipindahkan”,
+    “tidak boleh” menandai bagian yang kalau dirapikan merusak sistem.</li>
+    <li><strong>Konsekuensi = berkas, tes, dan verifikasi.</strong> Unit test mana yang wajib hijau;
+    adakah perlu verifikasi manual di portal (dan bukti apa yang dianggap cukup: jaringan +
+    daftar unduhan, bukan log konsol)?</li>
+    <li><strong>Sebut apa yang sengaja TIDAK diubah.</strong> ADR-0015 dan ADR-0019 keduanya
+    menyebut eksplisit file mana yang sengaja tidak disentuh, dan alasannya (menghemat anggaran
+    verifikasi portal).</li>
+    <li><strong>Status + rujukan silang.</strong> “Supersedes …”, “Amended by …”, dan tanggal.</li>
+    <li><strong>Perbarui <code>docs/adr/README.md</code> di commit yang sama.</strong> Indeks itu
+    sudah menjadi tabel yang dipakai orang; baris yang tertinggal adalah keputusan yang hilang.</li>
+    <li><strong>Periksa halaman microsite.</strong> Kalau keputusan mengubah daftar halaman, nama
+    berkas, status, atau preferensi, suite <code>microsite-sync.unit.test.ts</code> akan
+    mered — itu memang tujuannya.</li>
+  </ol>
+</section>
+
+<section class="practice">
+  <h2><span class="num">5</span>Uji ingatan</h2>
+  <p>Jawab dulu, baru lihat koreksinya. Jawaban yang benar tidak selalu di posisi pertama.</p>
+
+  <div class="quiz" data-quiz="l08-q1">
+    <p class="q">ADR-0012 membatalkan separuh aturan ADR-0011. Yang tetap dipertahankan adalah…</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Pengukurannya memang dipakai ADR-0012 sebagai dasar keputusan baru.">Pengukuran kecepatan yang menjadi buktinya</button></li>
+      <li><button class="opt" data-correct data-why="Prefix-first tetap berlaku; yang dicabut hanya pelebaran ke contains.">Aturan prefix-first pada mode pencarian</button></li>
+      <li><button class="opt" data-why="Bukan itu yang dicabut; yang dicabut adalah pelebaran ke contains.">Berhenti dengan pesan tidak ditemukan</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l08-q2">
+    <p class="q">Mengapa ADR-0011 tidak menghapus bukti pengukurannya…</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Bukti bisa menopang beberapa keputusan; keputusan boleh diganti, buktinya tidak.">Pengukuran itu menopang keputusan ADR berikutnya</button></li>
+      <li><button class="opt" data-why="ADR memang tidak pernah diubah isinya, tapi itu bukan alasan utama di sini.">Dokumen lama tidak boleh diubah isinya</button></li>
+      <li><button class="opt" data-why="Justru sebaliknya: pengukuran tetap berlaku untuk keputusan berikutnya.">Pengukuran hanya berlaku pada satu tanggal</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l08-q3">
+    <p class="q">Status “accepted — all completed” pada ADR-0005 berarti…</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Keputusan sudah dijalankan; berkasnya sekarang menjelaskan masa lalu.">Berkas itu kini menjadi catatan sejarah</button></li>
+      <li><button class="opt" data-why="Status itu justru Kebalikan: ketiganya sudah dikerjakan.">Keputusannya belum pernah dikerjakan sama sekali</button></li>
+      <li><button class="opt" data-why="Status completed justru menyatakan semua rencana sudah dijalankan.">Semua rencana refaktor di dalamnya dijalankan</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l08-q4">
+    <p class="q">SheetJS dimuat lewat <code>import()</code> dengan specifier non-literal karena…</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Specifier literal akan di-inline esbuild; non-literal membuatnya membiarkan panggilan itu utuh.">Agar esbuild tidak meng-inline library ke bundel</button></li>
+      <li><button class="opt" data-why="Tidak ada modul lain yang boleh mengimpor SheetJS; semua lewat loader.">Agar modul lain bisa mengimpor SheetJS langsung</button></li>
+      <li><button class="opt" data-why="Bukan soal build time; alasan sebenarnya adalah ukuran bundel saat page load.">Agar library tidak dibangun ulang tiap bundling</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l08-q5">
+    <p class="q">ADR-0009 melarang menaikkan dependensi <code>typescript</code> ke versi 7 langsung karena…</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Tanpa API, typescript-eslint gagal; itu sebabnya alias ke TypeScript 6 dibuat.">TypeScript 7 tidak lagi menyediakan API kompilator JavaScript</button></li>
+      <li><button class="opt" data-why="TypeScript 7 tidak punya API; itu sebabnya alias ke TypeScript 6 dibuat.">TypeScript 7 belum mendukung sintaks yang dipakai repo</button></li>
+      <li><button class="opt" data-why="Bukan itu sebabnya; yang menentukan adalah kalimat package manager.">TypeScript 7 mengubah cara esbuild membaca berkas tsconfig</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz-score" data-score-for="l08">
+    <strong>Skor pelajaran ini</strong>
+    <span data-score-text>0 dari 5 soal dijawab, 0 benar.</span>
+    <button type="button" data-score-reset>Ulangi</button>
+  </div>
+</section>
+
+<aside class="source">
+  <h3>Sumber utama</h3>
+  <ul>
+    <li><a href="../../../docs/adr/0011-reference-search-prefix-first.md"><code>docs/adr/0011-reference-search-prefix-first.md</code></a>
+    dan <a href="../../../docs/adr/0012-reference-search-stops-on-empty-prefix.md"><code>docs/adr/0012-reference-search-stops-on-empty-prefix.md</code></a>
+    — pasangan supersede, beserta pengukuran 96,9 detik yang keduanya bersandar.</li>
+    <li><a href="../../../docs/adr/0013-sheetjs-as-a-lazy-chunk.md"><code>docs/adr/0013-sheetjs-as-a-lazy-chunk.md</code></a>
+    — angka ukuran bundel dan alasannya memilih chunk, bukan service worker.</li>
+    <li><a href="../../../docs/adr/0009-typescript-7-native-with-typescript6-api-alias.md"><code>docs/adr/0009-typescript-7-native-with-typescript6-api-alias.md</code></a>
+    — pemisahan compiler CLI dan consumer API lewat dua alias npm.</li>
+    <li><a href="../../../docs/adr/0005-deferred-refactors.md"><code>docs/adr/0005-deferred-refactors.md</code></a>
+    — contoh ADR berstatus selesai, dan tiga refactor yang dicatat di dalamnya.</li>
+    <li><a href="https://esbuild.github.io/content-types/#code-splitting">esbuild — code splitting</a>
+    — syarat <code>format: "esm"</code> yang membuat MV3 content script perlu dua lintasan build.</li>
+    <li><a href="https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts">Chrome — content scripts</a>
+    —Injection content script dan batasan MV3 soal tipe modul.</li>
+  </ul>
+</aside>
+
+<div class="ask">
+  <strong>Catatan:</strong> pelajaran ini menutup pelajaran terakhir. Kalau ada bagian yang masih
+  terasa abstrak — misalnya kapan sebuah perubahan layak mendapat ADR baru — tanyakan. Itu bahan
+  yang baik untuk pelajaran berikutnya: menulis ADR berdasarkan keputusan nyata di repo.
+</div>
+
+<footer class="course-foot">
+  <p>Pelajaran 08 · <a href="index.html">Peta pelajaran</a> · sebelumnya:
+  <a href="0007-pdf-dan-item-loop.html">07 · PDF dan loop item</a> · berikutnya:
+  <a href="0009-preferensi.html">09 · Preferensi: satu baris, satu pengikat</a></p>
+</footer>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

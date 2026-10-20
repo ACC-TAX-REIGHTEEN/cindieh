@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pelajaran 04 · Sweep setahun — Kursus ADR Cindieh</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="course-head">
+  <p class="eyebrow">Cindieh · Sweep setahun</p>
+  <h1>Pelajaran 04 — Sweep setahun</h1>
+  <p class="lede">Satu klik untuk mengambil dua belas masa pajak menjadi satu berkas. Pelajaran ini
+  menjawab tiga hal: mengapa ekspor setahun itu <strong>satu Run</strong> dan bukan dua belas,
+  kenapa hitungan baris per masa adalah satu-satunya bukti kelengkapan yang bisa dipercaya, dan
+  apa yang terjadi pada data ketika sweep dihentikan lalu dilanjutkan.</p>
+  <p class="meta">Pelajaran 04 dari 09 · waktu baca ± 15 menit · 5 soal uji ingatan</p>
+  <nav class="lesson-nav">
+    <a href="index.html">Peta pelajaran</a>
+    <a href="../reference/adr-peta.html">Peta 38 ADR</a>
+    <a href="../reference/glosarium.html">Glosarium</a>
+    <span class="spacer"></span>
+    <a href="0003-kehidupan-run.html">← 03</a>
+    <span>04 dari 09</span>
+    <a href="0005-fakta-halaman-dan-panel.html">05 →</a>
+  </nav>
+</header>
+
+<main>
+
+<section>
+  <h2><span class="num">1</span>Satu klik, satu Run, satu berkas</h2>
+
+  <p>Portal Coretax tidak punya tampilan tahunan. Wajib Pajak yang mengerjakan PPN Keluaran harus
+  membuka grid itu dua belas kali, satu kali per masa pajak, lalu mengekspor tiap hasilnya
+  terpisah. Ekstensi Cindieh menawarkan satu item menu sebagai gantinya: <strong>"Ekspor 1 Tahun
+  (12 Masa)"</strong>.</p>
+
+  <p>Keputusan di <a href="../../../docs/adr/0018-year-wide-batch-export-is-one-run.md">ADR-0018</a> adalah
+  bahwa ekspor setahun adalah <strong>satu Run yang mengambil setiap masa secara berurutan ke dalam
+  satu akumulator</strong>. Bukan dua belas Run yang dijahit setelahnya. Alasannya bukan tatapan,
+  melainkan dua hal teknis:</p>
+
+  <ul>
+    <li><code>scrapePaginated</code> menerima baris yang sudah terkumpul dan himpunan dedupe sebagai
+    <em>parameter</em>, bukan membuatnya sendiri. Masa yang berurutan berbagi keduanya, jadi satu
+    faktur yang muncul di dua masa terkumpul sekali.</li>
+    <li>Pengukurannya mendukung hal itu: <strong>44.237 baris</strong> di tiga masa berurutan
+    menghasilkan <strong>nol duplikat</strong>, dan setiap baris membawa <code>RecordId</code>. Ini
+    justru kasus yang tidak perlu di-engineer berlebihan, dan sekaligus kasus yang akan menghitung
+    ganda satu faktur secara diam-diam seandainya batch itu dijalankan sebagai dua belas Run.</li>
+  </ul>
+
+  <aside class="pull">
+    <span class="label">Rumus yang harus melekat</span>
+    <p>Satu klik, satu Run, satu berkas, satu completion, satu himpunan dedupe. <strong>Ekspor dua
+    belas berkas bukan fitur ini.</strong></p>
+  </aside>
+
+  <p>Yang belum diuji adalah batas tahun: pengukuran nol duplikat itu hanya mencakup Januari sampai
+  Maret. Sisi <em>Desember ke Januari</em> belum pernah diukur, dan itu justru sisi yang paling
+  mungkin dipakai untuk penyesuaian akhir tahun. Himpunan dedupe bersama yang membuatnya aman
+  <em>kalau</em> itu terjadi; itu bukan bukti bahwa hal itu tak akan terjadi.</p>
+
+  <ul class="adr-list">
+    <li><span class="adr-ref">ADR-0018</span> <a href="../../../docs/adr/0018-year-wide-batch-export-is-one-run.md">A year-wide export is ONE Run over every tax period</a></li>
+    <li><span class="adr-ref">ADR-0019</span> <a href="../../../docs/adr/0019-year-wide-export-covers-the-vat-grids.md">The year-wide export runs only on grids whose sweep filters were measured</a></li>
+    <li><span class="adr-ref">ADR-0020</span> <a href="../../../docs/adr/0020-a-stopped-sweep-reports-what-it-finished.md">A stopped year-wide sweep reports what it finished, and keeps the rows</a></li>
+    <li><span class="adr-ref">ADR-0023</span> <a href="../../../docs/adr/0023-a-stopped-sweep-can-be-resumed.md">A stopped sweep is resumable</a></li>
+    <li><span class="adr-ref">ADR-0032</span> <a href="../../../docs/adr/0032-the-period-sweep-is-its-own-module.md">The year-wide sweep is one module, and its page loop is a seam</a></li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Kode masa diturunkan, bukan disintesis</h2>
+
+  <p>Ada satu hal yang tidak boleh dikarang: <strong>kode masa</strong>. Filter masa milik portal
+  bernama <code>TaxInvoicePeriod</code>, ada di <code>body.Filters</code>, memakai
+  <code>MatchMode: "equals"</code>, dan nilainya berbentuk <code>TD.007MM</code>: awalan tiga digit
+  tetap plus dua digit bulan. Filter tahun, <code>TaxInvoiceYear</code>, terpisah dari itu.</p>
+
+  <p>Aturan ADR-0018: kode masa <strong>diturunkan dari request yang portal kirim sendiri</strong>,
+  tidak pernah disintesis. Request menyeberang dari dunia isolated ke dunia MAIN, dan kode-kode
+  masanya ikut di sana. Jadi dunia isolated meminta sebuah <em>jumlah bulan</em>, dan dunia MAIN yang
+  menurunkan kode-kodenya dari apa yang portal kirim.</p>
+
+  <aside class="warn">
+    <span class="label">Kalau tidak ada filternya, gagal keras</span>
+    <p>Request yang body-nya tidak membawa filter <code>TaxInvoicePeriod</code> <strong>gagal dengan
+    keras</strong>. Bukan menyapu satu masa dua belas kali lalu melaporkan isi satu bulan
+    seolah-olah itu isi setahun. Kegagalan yang kedengaran jauh lebih murah daripada berkas yang
+    isinya tidak bisa diperiksa siapa pun.</p>
+  </aside>
+
+  <p>Dua aturan kecil lain yang menyertai:</p>
+
+  <ul>
+    <li><strong>Berkas bernama tahun</strong>, bukan bulan yang kebetulan sedang difilter di grid.
+    Ekspor yang berisi dua belas masa tidak boleh bernama satu masa.</li>
+    <li><strong>Jeda antar-masa adalah jeda ber-paced biasa</strong>, bukan jeda khusus yang bisa
+    dipercepat. Jeda hanya boleh membuat proses lebih lambat, tidak pernah lebih cepat. Ini bagian
+    dari klaim kepatuhan proyek terhadap batas laju portal.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Bukti kelengkapan hanya bisa datang dari hitungan per masa</h2>
+
+  <p>Inilah bagian yang paling sering disalahpahami, dan bagian yang menentukan mutu laporan sweep.
+  Portal punya <code>Payload.TotalRecords</code>, dan orang biasanya mengira itu jumlah
+  baris. Di endpoint ini, <strong>ia bukan jumlah baris</strong>: ia menjawab setiap ukuran halaman
+  dengan <code>Rows + 1</code>. Diukur pada ukuran 10, 100, 500, 1000, 2000, dan 5000, hasilnya
+  selalu <code>Rows + 1</code> (lihat <code>readGridTotal</code>).</p>
+
+  <p>Artinya: <strong>tidak ada total sisi server yang bisa dipercaya</strong> untuk mengecek
+  sweep, baik untuk satu masa maupun untuk dua belas masa.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Dua sumber angka, dan hanya satu yang dipakai sebagai bukti.</caption>
+      <thead>
+        <tr><th>Sumber</th><th>Apa yang dikembalikannya</th><th>Dipakai sebagai bukti?</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>Payload.TotalRecords</code></td>
+          <td>Selalu <code>Rows + 1</code>, berapa pun ukuran halamannya. Angkanya mengikuti
+          permintaan, bukan isi grid.</td>
+          <td><strong>Tidak.</strong> Dibuang, bukan dibandingkan dengan jumlah baris yang dikumpulkan.</td>
+        </tr>
+        <tr>
+          <td><strong>Hitungan baris per masa</strong></td>
+          <td>Jumlah baris yang benar-benar terkumpul untuk satu masa, dihitung di sekitar
+          pengambilan, bukan dari jawaban server.</td>
+          <td><strong>Ya.</strong> Ini bukti kelengkapan satu-satunya yang ada.</td>
+        </tr>
+        <tr>
+          <td><code>planned</code></td>
+          <td>Berapa banyak masa yang diminta. Ikut dibawa bersama hitungan.</td>
+          <td><strong>Ya.</strong> Tanpa ini, celah tak bisa dibaca: panel bisa menyebut "10 dari 12".</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Konsekuensinya: sebuah masa yang mengembalikan <strong>nol baris</strong> sementara
+  tetangganya mengembalikan sesuatu adalah satu-satunya anomali yang bisa terdeteksi. Dan anomali itu
+  <strong>dinyatakan</strong>, bukan dikirim sebagai tahun pendek yang sunyi. Jaminan ini lebih lemah
+  daripada sebuah jumlah yang bisa dicek, dan panel mengatakannya begitu daripada mengklaim
+  keberhasilan bersih.</p>
+
+  <aside class="warn">
+    <span class="label">Celah yang masih terbuka</span>
+    <p>Ada bahaya lain yang diukur di <code>readGridTotal</code> dan <strong>belum</strong> dideteksi
+    di dalam satu masa: portal yang menghormati <code>Rows</code> lebih kecil dari yang diminta, sehingga
+    halaman pertama tampak seperti akhir data. Jalur ini masih berdiri sebagai celah yang diketahui
+    untuk fitur ini.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Gerbang pengukuran: hanya grid yang sudah diukur</h2>
+
+  <p>ADR-0018 hanya mengukur filter masa PPN Keluaran. Mekanismenya sendiri tidak terikat grid:
+  kode dua belas masa diturunkan dari request yang baru saja dibuat portal, dan
+  <code>overridesForPeriod</code> mengganti satu nilai filter sambil membawa filter lain apa adanya.
+  Tapi <a href="../../../docs/adr/0019-year-wide-export-covers-the-vat-grids.md">ADR-0019</a> memutuskan
+  bahwa <strong>sebuah grid boleh menyapu hanya kalau ia punya baris di
+  <code>MEASURED_SWEEP_FILTERS</code></strong>:</p>
+
+  <pre><code>export const MEASURED_SWEEP_FILTERS: Partial&lt;Record&lt;ExportSource, SweepFilterMeasurement&gt;&gt; = {
+  OUTPUT_TAX: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
+};</code></pre>
+
+  <p>Versi pertama ADR-0019 menutup celah itu dengan <strong>pintu "petunjuk nama"</strong>: di grid
+  mana pun yang belum punya baris, sebuah filter diterima kalau namanya berbau periode (atau tahun)
+  <em>dan</em> nilainya berbentuk seperti yang sudah diukur. Amandemen 17 Oktober 2026
+  <strong>menghapus pintu itu</strong>, dengan alasan yang tepat: itu "<em>tebakan yang memakai dua
+  sinyal</em>". Filter yang namanya mirip periode <em>bukti</em> bahwa filter itu kelihatan seperti
+  milik PPN Keluaran; itu <em>bukan</em> bukti bahwa endpoint ini membacanya, bahwa
+  <code>TaxInvoiceYear</code> yang mengikat tahun, atau bahwa periode pada request Retur berarti bulan
+  yang sama. Menerima yang keliru di sana berarti dua belas request untuk bulan yang tak pernah
+  ditanyakan ke portal.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Empat grid e-Faktur PPN dan keputusan penjaga sweep untuk masing-masing. Sumber: tabel per grid di <code>tools/README.md</code>.</caption>
+      <thead>
+        <tr><th>Halaman</th><th>Filter masa</th><th>Filter tahun</th><th>Penjaga</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>e-Faktur PPN Keluaran</td>
+          <td><code>TaxInvoicePeriod=TD.00708</code></td>
+          <td><code>TaxInvoiceYear=2026</code></td>
+          <td><strong>DITERIMA</strong>, menyapu <code>TD.00701</code> sampai <code>TD.00712</code></td>
+        </tr>
+        <tr>
+          <td>e-Faktur PPN Masukan</td>
+          <td>—</td><td>—</td>
+          <td><strong>DITOLAK</strong>, belum terukur</td>
+        </tr>
+        <tr>
+          <td>Retur PPN Keluaran</td>
+          <td>—</td><td>—</td>
+          <td><strong>DITOLAK</strong>, belum terukur</td>
+        </tr>
+        <tr>
+          <td>Retur PPN Masukan</td>
+          <td>—</td><td>—</td>
+          <td><strong>DITOLAK</strong>, belum terukur</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Perhatikan bahwa <strong>penolakan itu sendiri adalah pengukuran</strong>. <code>readSweepFilters</code>
+  adalah faktanya: baris terukur grid itu (atau ketiadaannya) plus setiap filter yang dibawa request.
+  <code>describeSweepFilters</code> adalah bahasanya. Dan <code>scraper-actions</code> mencatat
+  baris log <code>Sweep filters on &lt;sumber&gt;: …</code> sebelum penjaga sempat menolak, sehingga
+  run yang ditolak tetap menyerahkan ejaan nama filter yang dibutuhkan baris baru.</p>
+
+  <p>Cara mengukurnya sudah jadi prosedur, bukan tebakan: jalankan
+  <code>tools/masa-batch-diagnostic.js</code> di Console lalu <code>__cindiehMasaDiag.jalankan([1])</code>
+  (atau <code>verdictFilter()</code> kalau template-nya sudah tertangkap). Fase 1b mencetak baris
+  terukur grid itu, kedua filter, semua filter di body, keputusan penjaga, dan dua belas kode yang akan
+  disapu. Baris itu lalu dicatat di <code>tools/README.md</code>, di <code>MEASURED_SWEEP_FILTERS</code>,
+  di ADR-0019, dan satu test untuk grid itu. Sampai baris itu ada, keputusan untuk grid tersebut tetap
+  <code>DITOLAK — grid ini BELUM TERUKUR</code>.</p>
+
+  <aside class="pull">
+    <span class="label">Kenapa tabel, bukan heuristik yang lebih pintar</span>
+    <p>Soal yang harus dijawab adalah: <em>apakah endpoint ini menghormati filter itu untuk tahun
+    ini?</em> Heuristik apa pun hanya bisa menebak bahwa sebuah nilai <em>mirip</em> periode.
+    Jawabannya hanya bisa didapat dengan bertanya ke endpoint. Tabel menyimpan jawaban itu di tempat
+    yang bisa dilihat peninjau, memberinya tanggal, dan membuat grid yang belum terukur menjadi
+    <strong>penolakan yang disengaja</strong>, bukan asumsi yang belum diuji.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Dihentikan: yang selesai dilaporkan, yang terpotong tidak</h2>
+
+  <p>ADR-0018 sebenarnya pernah memutuskan bahwa Run yang dibatalkan <strong>tidak
+  memancarkan completion apa pun</strong>, dan itu menimbulkan kerugian terbesar di aplikasi: sweep
+  adalah menit-menit lalu lintas portal, dan berhenti di masa ke-11 membuang sepuluh bulan baris
+  yang sudah diambil dan sudah dideduplikasi. <a
+  href="../../../docs/adr/0020-a-stopped-sweep-reports-what-it-finished.md">ADR-0020</a> membalik aturan
+  itu, dan aturannya presisi:</p>
+
+  <ul>
+    <li><strong>Yang disimpan.</strong> Baris yang sudah masuk akumulator bersama, ditambah field,
+    sumber, dan petunjuk nama tahun. Laporannya bepergian sebagai <code>SCRAPE_COMPLETE</code> biasa
+    dengan <code>cancelled: true</code>, jadi pemecahan chunk dan pemeriksaan transfer tak lengkap
+    (<a href="../../../docs/adr/0017-chunked-scrape-result-transfer.md">ADR-0017</a>) berlaku tanpa
+    perubahan: salvage 150 ribu baris dipecah jadi beberapa <code>SCRAPE_DATA_CHUNK</code>, dan
+    chunk yang hilang tetap dilaporkan, bukan dianggap selesai.</li>
+    <li><strong>Yang tidak disimpan.</strong> Masa yang terpotong stop <strong>tidak direkam sama
+    sekali</strong>: bukan dengan baris, bukan kosong, bukan gagal. Hanya masa yang <em>selesai</em>
+    yang dihitung, sebab "masa tanpa baris" adalah temuan tentang data Wajib Pajak, dan rentang yang
+    terpotong bukan itu. <code>planned</code> ikut bepergian supaya panel bisa menyebut "10 dari 12"
+    alih-alih membiarkan celah disimpulkan dari jumlah baris.</li>
+    <li><strong>Cara tibanya.</strong> Stop mencabut run id, jadi laporannya pasti datang di bawah id
+    yang sudah dicabut. <code>bridge.isStoppedRunMessage</code> mengingat id yang dicabut
+    STOP_SCRAPE terakhir, dan <code>main.ts</code> mengizinkan tepat <strong>satu laporan</strong>
+    lewat jendela itu: aliran chunk-nya plus <code>SCRAPE_COMPLETE</code> yang menyebutkan berapa
+    chunk yang harus datang. Lebar jendela ini bukan murah hati: salvage milik Wajib Pajak besar
+    berisi puluhan ribu baris dan karena itu dipecah, jadi menerima completion saja akan membuat
+    rakitannya kosong dan sweep yang disimpan dilaporkan sebagai transfer tak lengkap. Sebuah
+    teardown (<code>RESET_SCRAPER</code>) sengaja tidak membuka jendela itu: tugasnya meninggalkan tak
+    ada apa pun.</li>
+    <li><strong>Artinya.</strong> <code>run-lifecycle.complete</code> mendapat hasil ketiga di samping
+    accepted dan rejected: <strong><code>salvaged</code></strong>. Baris disimpan dan ditandai
+    <code>partialSweep</code>; semua yang masih dipinjam Run dibatalkan, sehingga <em>tidak ada yang
+    berjalan otomatis</em>. Perbandingan yang masih antre dan hanya memakai sebelas dari dua belas bulan
+    akan menghasilkan hasil yang tampak lengkap, dan itulah satu hal yang tahun sebagian tak boleh
+    pernah lakukan. Completion yang dibatalkan tanpa baris tetap memakai arti lama dan tetap
+    ditolak.</li>
+    <li><strong>Nama berkasnya.</strong> <code>generateDynamicFilename</code> menambahkan
+    <code>-sebagian</code> ketika data ekspor membawa <code>partialSweep</code>, di satu tempat
+    saja, sehingga setiap jalur ekspor dari setiap sumber mewarisi penamaan itu. Barisnya tetap
+    boleh diekspor; <em>nama</em>-nya yang mencegah berkas sepuluh bulan lolos sebagai setahun utuh.</li>
+    <li><strong>Yang diumumkan.</strong> Tidak ada. Baris panel berubah untuk menyebut berapa yang
+    selamat; <strong>tidak ada notifikasi desktop</strong> untuk sebuah salvage, karena yang menekan
+    stop sedang melihat.</li>
+  </ul>
+
+  <aside class="warn">
+    <span class="label">Hanya untuk batch</span>
+    <p>Aturan ini milik sweep setahun saja. <strong>Scrape biasa yang dihentikan tetap tidak memancarkan
+    apa pun</strong>: barisnya adalah sebagian halaman dari satu bulan, dan nama berkasnya sudah
+    menyebut bulan itu.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Dilanjutkan: hanya masa yang belum selesai</h2>
+
+  <p>ADR-0020 menyelamatkan <strong>data</strong>, tapi belum menyelamatkan <strong>kerja</strong>.
+  Satu-satunya cara menyelesaikan tahun adalah memulai sweep dari awal, dan jalur kedua itu
+  mengambil ulang bulan-bulan yang sudah ada di tangan. <a
+  href="../../../docs/adr/0023-a-stopped-sweep-can-be-resumed.md">ADR-0023</a> memperbaikinya, dan
+ menjawabnya dengan satu pertanyaan: <strong>masa mana yang belum pernah selesai?</strong></p>
+
+  <p>Jawabannya dihitung, bukan diingat. <code>pendingPeriods(summary)</code> membangun ulang rencana
+  tahun dari hitungan yang ada, lalu mengurangi setiap periode yang tercatat <strong>tanpa error</strong>.
+  Karena itu <em>kedua</em> keadaan yang ditinggalkan stop ikut di-resume: masa yang <strong>gagal</strong>
+  (barisnya mungkin ada, bulan itu belum lengkap) dan masa yang <strong>terpotong stop</strong> (tidak
+  tercatat sama sekali). Hitungan itulah seluruh memorinya.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Tiga keadaan sweep, satu pertanyaan yang sama: masih ada masa yang belum?</caption>
+      <thead>
+        <tr><th>Keadaan</th><th><code>pendingPeriods</code></th><th>Yang ditawarkan</th><th>Nama berkas</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Sweep berhenti di masa ke-3</td>
+          <td>9</td>
+          <td>Melanjutkan 9 masa yang belum selesai</td>
+          <td><code>-sebagian</code></td>
+        </tr>
+        <tr>
+          <td>Sweep selesai, satu masa gagal di portal</td>
+          <td>1</td>
+          <td>Mengambil ulang satu masa yang gagal</td>
+          <td>Nama biasa</td>
+        </tr>
+        <tr>
+          <td>Sweep selesai utuh</td>
+          <td>0</td>
+          <td>Tidak ditawarkan apa pun</td>
+          <td>Nama biasa</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Empat aturan lain yang menentukan:</p>
+
+  <ul>
+    <li><strong>Item menu yang sama, konfirmasi yang berbeda.</strong> Labelnya tetap "Ekspor 1 Tahun
+    (12 Masa)", karena ini sweep yang sama menyelesaikan tahun yang sama. Yang berubah adalah
+    konfirmasinya, yang menyebut berapa masa yang sudah tersimpan dan berapa yang akan diambil
+    sekarang. Resume yang diam-diam akan terlihat seperti sweep baru yang selesai terlalu cepat.</li>
+    <li><strong>Request menyebut masanya dan tahunnya; MAIN menyaring keduanya.</strong> Pesannya
+    membawa <code>sweepPeriods</code> (kode-kodenya) dan <code>sweepYear</code> (tahun asal baris yang
+    disimpan). <code>resumePeriodCodes</code> hanyalah pemeriksaan <em>bentuk</em>, karena nilainya
+    menyeberang batas dua dunia. Penyaringan yang sesungguhnya ada di <code>scraper-actions</code>:
+    kode-kode disaring terhadap rencana yang dihasilkan request <strong>portal itu sendiri</strong>,
+    dan sweep menolak dengan tenang bila tidak ada yang tersisa. Bila filter tahun grid sudah
+    bergeser sejak stop, resume membandingkan <code>sweepYear</code> dengan tahun yang tertangkap dan
+    berhenti dengan pesan, bukan mencampur dua tahun dalam satu berkas.</li>
+    <li><strong>Union adalah pekerjaan dunia isolated</strong>, karena baris yang disimpan tinggal di
+    sana. <code>unionRows</code> mendeduplikasi menurut identitas baris portal (baris lama lebih
+    dulu, supaya urutan ekspor tetap stabil) dan <code>mergePeriodSummaries</code> membiarkan
+    hitungan yang masuk menang untuk masa yang mereka cakup lagi, sementara <code>planned</code>
+    mempertahankan nilai yang lebih besar. Karena itu <strong>jumlah baris yang tampil di panel adalah
+    jumlah baris di berkas</strong>: <code>totalRows</code> diambil dari baris union yang sebenarnya,
+    bukan dari penjumlahan dua akumulator yang bisa saling tumpang tindih.</li>
+    <li><strong>Resume hanya boleh menambah.</strong> <code>begin("sweep-resume")</code> memasang
+    penanda, dan <code>stop()</code> memeriksanya: resume yang berakhir buruk, baik karena stop,
+    error, maupun hasil yang ditolak, <strong>mempertahankan union yang sedang ditambahnya</strong>.
+    Resume yang gagal tak boleh lebih buruk daripada tidak sama sekali.</li>
+  </ul>
+
+  <h3>Dua amandemen yang menambah jangkauan</h3>
+
+  <p><strong>17 Oktober 2026: separuh yang disimpan bertahan melewati reload.</strong> Baris dan
+  hitungan per masanya ditulis ke storage ekstensi, dan tab yang dimuat ulang membacanya kembali lalu
+  menawarkan resume yang sama. Yang disimpan <strong>hanya separuh itu sendiri</strong>: tidak ada
+  permintaan yang masih menggantung ikut dibawa, sebab stop sudah membatalkannya, sehingga refresh tak bisa
+  menghidupkan kembali perbandingan yang tak pernah diminta ulang. Snapshot dijaga di jalan masuk dan
+  tak pernah dipercaya buta: versi, bentuk, dan <strong>jendela 24 jam</strong> diperiksa sebelum
+  barisnya boleh jadi milik Run; blob yang gagal salah satu pemeriksaan <strong>dibuang</strong>,
+  bukan diperbaiki. Jendela itu ada karena resume adalah jeda, bukan arsip: masa yang diambil minggu
+  lalu bisa sudah mendapat satu faktur baru, dan tak ada penggabungan yang bisa melihat itu. Snapshot
+  yang terlalu besar untuk storage (<strong>sekitar 4 MB</strong>) <strong>tidak disimpan
+  terpotong</strong>: write-nya dilewati dan reload-nya просто tidak punya resume, karena snapshot
+  terpotong akan membuat berkas hasil resume pendek persis di cara yang ditolak oleh hitungannya
+  sendiri. <code>reset()</code> tetap menghapus semuanya, jadi tab yang sudah pindah halaman tak
+  bisa menawarkan baris dari halaman yang ditinggalkannya.</p>
+
+  <p><strong>Perubahan 19 Oktober 2026: sweep yang selesai dengan satu masa gagal juga dapat dilanjutkan.</strong>
+  Snapshot tidak lagi dibatasi pada <code>partialSweep</code>. Yang membuat baris bisa di-resume
+  adalah <strong>masanya masih ada yang kurang</strong>, dan kedua keadaan itu punya itu: stop punya
+  masa yang tak pernah dicapainya, sweep yang selesai punya masa yang gagal di portal. Jadi
+  <code>sweepContentOf</code>, <code>readSnapshot</code>, dan <code>restore()</code> semuanya
+  bertanya satu hal yang sama, sehingga keadaan kedua bukan kasus khusus di mana pun. Flag-nya tetap
+  dibawa, karena ia menyangkut <strong>berkas</strong>, bukan tawaran: separuh yang berasal dari stop
+  tetap diekspor sebagai <code>-sebagian</code>, sedangkan sweep yang selesai tidak pernah dihentikan
+  dan tetap memakai nama tahun biasa meski satu bulan hilang.</p>
+
+  <aside class="pull">
+    <span class="label">Yang paling mudah dilupakan</span>
+    <p>Hitungan per masa <strong>ikut bepergian dengan baris yang mereka gambarkan</strong>. Completion
+    yang mengganti baris tanpa membawa hitungan akan membersihkannya. Sebuah lookup No. Faktur
+    mengembalikan subset yang tersaring dan sebuah run unduhan PDF mengambil grid untuk dirinya
+    sendiri; keduanya bukan setahun, dan menyimpan hitungan sweep lama bisa membuat ekspor tahun
+    berikutnya menawarkan untuk melanjutkan tahun yang masa-nya sudah tidak dipegang dunia isolated.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">7</span>Loop-nya sendiri: satu modul, satu seam</h2>
+
+  <p>Sebelum ADR-0032, <code>startScraping</code> sekitar <strong>285 baris</strong> dan melayani
+  empat bentuk Run sekaligus: scrape biasa, run unduhan PDF bulk, sweep setahun, dan resume. Aturan
+  sweep-nya duduk di tengah-tengahnya, antara penjaga request, aturan nama berkas, dan pembangunan
+  completion. Semuanya nyata, tapi setiap aturan <strong>hanya bisa diamati dengan menjalankan
+  seluruh scrape melawan XHR tiruan</strong>, karena loop itu membawa akumulator, hitungan, laporan
+  stop, dan pembangunan completion dalam satu badan fungsi.</p>
+
+  <p><a href="../../../docs/adr/0032-the-period-sweep-is-its-own-module.md">ADR-0032</a> memindahkannya ke
+  <code>src/content/period-sweep.ts</code>:</p>
+
+  <pre><code>runPeriodSweep({
+  captured,          // untuk petunjuk nama berkas dan sumber
+  periods,           // kode-kode masa yang diambil, berurutan
+  rows,              // SATU akumulator Run
+  ctx,               // pemeriksaan stop, kanal progres, jeda, pacing
+  startedAt,         // waktu berjalan di baris progres dan laporan stop
+  fetchPeriod,       // satu masa utuh, ke dalam `rows`
+}): Promise&lt;{ summary: PeriodSummary; pages: number; truncated: boolean; stopped: boolean }&gt;</code></pre>
+
+  <p>Aturannya menjadi antarmuka modul, bukan komentar di antara urusan yang tidak berkaitan:</p>
+
+  <ul>
+    <li><strong>Satu percobaan ulang, pada kode masa yang sama</strong>, setelah jeda ber-paced.
+    <code>PERIOD_ATTEMPTS</code> bernilai 2: yang pertama, lalu paling banyak satu lagi. Kegagalan
+    sesaat akan menghilangkan semua bulan yang masih di depan kalau tak diulang, dan itu yang dibayar
+    pengguna dengan dua belas request tambahan.</li>
+    <li><strong>Percobaan ulang ditinggalkan begitu Run dihentikan.</strong> Syarat loop dibaca ulang
+    di antara percobaan, jadi sweep yang dihentikan tidak pernah memulai request kedua yang sudah
+    dijadwalkan.</li>
+    <li><strong>Masa yang gagal dua kali dicatat, lalu sweep lanjut.</strong> Sebelas bulan dari
+    setahun lebih berharga daripada nol, dan ringkasan menyebut bulan yang gagal itu alih-alih
+    diam-diam datang kurang.</li>
+    <li><strong>Masa yang terpotong stop tidak dihitung sama sekali.</strong> Ia bukan bulan berisi
+    baris dan bukan bulan kosong, dan melaporkannya sebagai "masa tanpa baris" akan mengarahkan
+    pembaca ke portal untuk mencari data yang sweep-nya tak pernah selesai meminta.</li>
+    <li><strong>Stop memancarkan SATU completion <code>cancelled</code></strong> yang dibangun dari
+    masa yang selesai, dan tak sama sekali bila tak ada baris yang datang.</li>
+  </ul>
+
+  <aside class="pull">
+    <span class="label"><code>fetchPeriod</code> adalah seam</span>
+    <p>Produksi mengikatnya ke <code>scrapePaginated</code> dengan override request per masa; test
+    memasang fetcher skrip. Itulah yang membuat aturan retry dan stop <strong>terukur tanpa satu pun
+    request portal</strong>, dan menjaga XHR keluar dari modul yang selain itu murni orkestrasi.
+    Konsekuensi lain: laporan stop tidak bisa berbeda dengan hitungan, karena keduanya dibangun dari
+    nilai <code>counts</code> yang sama di dalam modul.</p>
+  </aside>
+</section>
+
+<section class="practice">
+  <h2><span class="num">8</span>Uji ingatan</h2>
+  <p>Jawab dulu, baru lihat koreksinya. Jawaban yang benar tidak selalu di posisi pertama.</p>
+
+  <div class="quiz" data-quiz="l04-q1">
+    <p class="q">Kenapa eksplorasi setahun dijalankan sebagai satu Run, bukan dua belas Run?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Dua belas Run akan menulis dua belas berkas, bukan satu berkas tahunan.">Dua belas Run menulis dua belas berkas, bukan satu berkas tahunan.</button></li>
+      <li><button class="opt" data-correct data-why="Himpunan dedupe dipakai bersama, jadi satu faktur yang muncul di dua masa terkumpul sekali.">Satu himpunan dedupe dipakai bersama, jadi satu faktur terhitung satu kali.</button></li>
+      <li><button class="opt" data-why="Portal memang tidak punya tampilan tahunan, tapi itu bukan alasan teknis untuk menggabungkan Run.">Portal tidak menyediakan tampilan tahunan, jadi ekstensi harus dua belas kali.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l04-q2">
+    <p class="q">Apa yang sebenarnya dijawab <code>Payload.TotalRecords</code> di endpoint ini?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Di endpoint ini field itu menjawab Rows + 1 di semua ukuran halaman, jadi tidak bisa dipakai.">Jumlah baris di grid, jadi bisa jadi bukti kelengkapan.</button></li>
+      <li><button class="opt" data-why="Tidak ada total server yang bisa dipercaya; hitungan per masa yang dipakai sebagai bukti.">Jumlah seluruh masa, jadi bisa dibandingkan dengan jumlah baris.</button></li>
+      <li><button class="opt" data-correct data-why="Jumlah baris ditambah satu, jadi tak pernah jadi bukti.">Jumlah baris ditambah satu, jadi tak pernah jadi bukti.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l04-q3">
+    <p class="q">Menurut ADR-0019, syarat sebuah grid boleh menyapu setahun adalah…</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Nama yang mirip pernah jadi pintu, tapi pintu itu dihapus pada 17 Oktober 2026.">Grid itu punya nama filter yang menyerupai filter PPN Keluaran.</button></li>
+      <li><button class="opt" data-correct data-why="Hanya grid dengan baris terukur yang boleh menyapu; tiga grid lain menolak.">Grid itu punya baris di tabel filter yang sudah terukur.</button></li>
+      <li><button class="opt" data-why="Nilai yang berbentuk kode bukan bukti; endpoint hanya bisa dijawab dengan mengukurnya.">Grid itu punya nilai masa berbentuk kode bulan dua digit.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l04-q4">
+    <p class="q">Apa yang terjadi pada masa yang terpotong oleh stop di tengah sweep?</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Masa terpotong bukan temuan tentang data, jadi tidak boleh direkam sama sekali.">Masa itu tidak direkam, bukan kosong dan bukan gagal.</button></li>
+      <li><button class="opt" data-why="Masa terpotong tidak boleh dihitung sebagai kosong, karena itu bukan temuan tentang data.">Masa itu direkam sebagai kosong supaya panel bisa menghitung.</button></li>
+      <li><button class="opt" data-why="Masa yang gagal tetap bisa di-resume lewat pendingPeriods; masa terpotong tidak direkam.">Masa itu direkam sebagai gagal supaya bisa diulang lagi.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l04-q5">
+    <p class="q">Ketika sweep dilanjutkan, masa mana yang benar-benar diambil ulang?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Yang tercatat dengan error justru pending, bukan yang tercatat tanpa error.">Hanya masa yang tercatat dengan error, jadi masa kosong ikut diambil.</button></li>
+      <li><button class="opt" data-correct data-why="pendingPeriods mengurangi rencana tahun dengan setiap periode yang tercatat tanpa error.">Hanya masa yang belum tercatat tanpa error, masa gagal ikut diambil.</button></li>
+      <li><button class="opt" data-why="Masa kosong tetap dihitung selesai; yang diulang hanya masa yang gagal.">Hanya masa yang belum tercatat dengan error, masa kosong ikut diambil.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz-score" data-score-for="l04">
+    <strong>Skor pelajaran ini</strong>
+    <span data-score-text>0 dari 5 soal dijawab, 0 benar.</span>
+    <button type="button" data-score-reset>Ulangi</button>
+  </div>
+</section>
+
+<aside class="source">
+  <h3>Sumber utama</h3>
+  <ul>
+    <li><a href="../../../docs/adr/0018-year-wide-batch-export-is-one-run.md"><code>ADR-0018</code></a> —
+    keputusan dasarnya: satu Run, kode masa turunan, kelengkapan dari hitungan per masa, berkas
+    bernama tahun.</li>
+    <li><a href="../../../docs/adr/0019-year-wide-export-covers-the-vat-grids.md"><code>ADR-0019</code></a> —
+    gerbang pengukuran, penghapusan pintu "petunjuk nama", dan prosedur pengukuran per grid.</li>
+    <li><a href="../../../docs/adr/0020-a-stopped-sweep-reports-what-it-finished.md"><code>ADR-0020</code></a> —
+    salvage: apa yang dilaporkan, apa yang dibatalkan, dan kenapa nama berkasnya ditandai
+    <code>-sebagian</code>.</li>
+    <li><a href="../../../docs/adr/0023-a-stopped-sweep-can-be-resumed.md"><code>ADR-0023</code></a> —
+    <code>pendingPeriods</code>, union di dunia isolated, dan dua amandemen soal bertahan melewati
+    reload.</li>
+    <li><a href="../../../docs/adr/0032-the-period-sweep-is-its-own-module.md"><code>ADR-0032</code></a> —
+    <code>period-sweep.ts</code> dan seam <code>fetchPeriod</code>.</li>
+    <li><a href="../../../tools/README.md"><code>tools/README.md</code></a> — tabel pengukuran filter per
+    grid dan skrip <code>masa-batch-diagnostic.js</code> yang mengisinya.</li>
+  </ul>
+</aside>
+
+<div class="ask">
+  <strong>Catatan:</strong> tidak ada yang perlu Anda kirim balik. Tapi kalau ada satu bagian dari
+  pelajaran ini yang masih terasa abstrak — misalnya kenapa jumlah baris per masa dianggap lebih
+  dipercaya daripada total dari server, atau kenapa masa yang terpotong stop tidak boleh direkam
+  sebagai kosong — tanyakan saja. Saya akan jawab dengan contoh dari ADR dan kode yang menanganinya.
+</div>
+
+<footer class="course-foot">
+  <p>Pelajaran 04 · <a href="index.html">Peta pelajaran</a> · sebelumnya:
+  <a href="0003-kehidupan-run.html">03 · Kehidupan Run</a> · berikutnya:
+  <a href="0005-fakta-halaman-dan-panel.html">05 · Fakta halaman dan panel</a></p>
+</footer>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

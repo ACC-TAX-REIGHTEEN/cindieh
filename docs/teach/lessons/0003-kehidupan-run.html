@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pelajaran 03 · Kehidupan Run — Kursus ADR Cindieh</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="course-head">
+  <p class="eyebrow">Cindieh · Membaca Architecture Decision Records</p>
+  <h1>Pelajaran 03 — Kehidupan Run</h1>
+  <p class="lede">Satu klik di panel, satu operasi, satu <code>runId</code> yang melintasi dua
+  dunia. Pelajaran ini mengikuti satu Run dari awal sampai akhir, dan menunjukkan siapa memegang
+  keadaannya di setiap tahap.</p>
+  <p class="meta">Pelajaran 03 dari 09 · waktu baca ± 14 menit · 5 soal uji ingatan</p>
+  <nav class="lesson-nav">
+    <a href="index.html">Peta pelajaran</a>
+    <a href="../reference/adr-peta.html">Peta 38 ADR</a>
+    <a href="../reference/glosarium.html">Glosarium</a>
+    <span class="spacer"></span>
+    <a href="0002-dua-dunia-dan-jembatan.html">← 02</a>
+    <span>03 dari 09</span>
+    <a href="0004-sweep-setahun.html">04 →</a>
+  </nav>
+</header>
+
+<main>
+
+<section>
+  <h2><span class="num">1</span>Satu Run, dua pemilik keadaan</h2>
+
+  <p>Dalam ADR Cindieh, <strong>Run</strong> berarti satu operasi: satu export, satu komparasi, satu
+  pengecekan, satu unduhan PDF. Bukan satu tab, bukan satu sesi, bukan satu klik. Run punya satu
+  identitas, yaitu <code>runId</code>, dan identitas itu melintasi kedua dunia. Yang berbeda adalah
+  <em>isi</em> Run: separuhnya hidup di dunia MAIN, separuhnya di dunia isolated, dan kedua
+  separuh itu <strong>tidak berbagi satu baris kode pun</strong>. Yang mengaitkannya hanyalah
+  nomor itu.</p>
+
+  <p>Pemisahan itu disengaja, dan batasannya jelas:</p>
+
+  <ul>
+    <li><strong>Dunia MAIN memegang identitas dan pembatalan.</strong> <code>scraper-run.ts</code>
+    menjadi pemilik <code>AbortController</code> dan nomor operasinya
+    (<a href="../../../docs/adr/0010-scrape-run-isolation.md"><code>ADR-0010</code></a>).</li>
+    <li><strong>Dunia isolated memegang hasil dan utang.</strong> <code>run-lifecycle.ts</code>
+    menjadi pemilik apakah ada Run yang sedang berjalan, apa saja yang masih harus dipenuhi, dan
+    apa terakhir yang dihasilkan
+    (<a href="../../../docs/adr/0014-run-lifecycle-owns-run-state.md"><code>ADR-0014</code></a>).</li>
+  </ul>
+
+  <p>Kalau Anda hanya mengingat satu kalimat dari pelajaran ini, inilah dia: <strong>dunia MAIN
+  boleh membatalkan, dunia isolated boleh membakukan hasil dan utangnya.</strong> Tak seorang pun
+  dari keduanya boleh memegang keduanya, dan tidak boleh ada modul yang dituliskan seolah-olah ia
+  memegang keduanya.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Garis waktu satu Run dan pemilik keadaannya di setiap tahap.</caption>
+      <thead>
+        <tr><th>Tahap</th><th>Yang terjadi</th><th>Pemilik state</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1. Mulai</strong></td>
+          <td><code>begin(start)</code> menandai Run sebagai sedang berjalan; jembatan memberi <code>runId</code> baru; scraper membuat <code>AbortController</code> sendiri</td>
+          <td><code>run-lifecycle</code> dan <code>scraper-run</code></td>
+        </tr>
+        <tr>
+          <td><strong>2. Permintaan</strong></td>
+          <td><code>request(intent)</code> mencatat komparasi, pengecekan, atau ekspor yang harus dipenuhi saat Run selesai</td>
+          <td><code>run-lifecycle</code></td>
+        </tr>
+        <tr>
+          <td><strong>3. Pengerjaan</strong></td>
+          <td>Dunia MAIN menyadap, memaginasi, dan mengirim progres; pembatalan dicek lagi setelah setiap <code>await</code></td>
+          <td><code>scraper-run</code></td>
+        </tr>
+        <tr>
+          <td><strong>4. Berhenti</strong></td>
+          <td><code>stop({ keepRows })</code> mengakhiri Run, membatalkan seluruh permintaan yang masih tercatat, lalu menutup Run</td>
+          <td><code>run-lifecycle</code></td>
+        </tr>
+        <tr>
+          <td><strong>5. Laporan</strong></td>
+          <td><code>settleCompletion</code> mengubah completion menjadi <code>RunReport</code>; <code>applyReport</code> melukisnya ke panel</td>
+          <td><code>completion-intake</code>, lalu <code>main.ts</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <aside class="pull">
+    <span class="label">Rumus Run</span>
+    <p>MAIN memegang <strong>pembatalan</strong>, isolated memegang <strong>kewajiban</strong>.
+    Tidak ada satu pun yang memegang keduanya, dan tidak boleh ada yang dituliskan seperti
+    memegang keduanya.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">2</span><code>run-lifecycle.ts</code>, pemilik keadaan di dunia isolated</h2>
+
+  <p>ADR-0014 meletakkannya begini: <code>run-lifecycle.ts</code> memegang <em>semua</em> yang diketahui
+  tentang Run di dunia isolated, dan tidak ada modul lain yang boleh membaca atau menulis keadaan itu
+  dari luar. Antarmukanya bukan data, melainkan kumpulan perintah yang tidak bisa ditulis dari
+  luar modul. ADR-0014 menghitung sebelas perintah; ADR-0027 menurunkannya menjadi sepuluh, dengan
+  menggabungkan dua perintah yang sama-sama mengakhiri Run lebih awal.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Antarmuka <code>run-lifecycle.ts</code>, menurut ADR-0014 dan ADR-0027.</caption>
+      <thead>
+        <tr><th>Perintah</th><th>Perannya</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>isRunning()</code> / <code>begin(start)</code></td>
+          <td>Apakah ada Run yang sedang berjalan. <code>begin("scrape")</code> mengganti hasil lama; <code>begin("targeted")</code> dan <code>begin("bulk-pdf")</code> mempertahankannya karena keduanya membaca grid yang sudah tertangkap.</td>
+        </tr>
+        <tr>
+          <td><code>request(intent)</code> / <code>cancelPending(kind)</code> / <code>pendingExport()</code></td>
+          <td>Apa saja yang masih menjadi utang Run. Panel bisa membatalkan satu niat tanpa mengganggu ekspor lain dari grid yang sama.</td>
+        </tr>
+        <tr>
+          <td><code>noteRequestedInvoices(numbers)</code></td>
+          <td>Nomor No. Faktur yang akan dibandingkan saat completion, dicatat hanya setelah Run benar-benar mulai.</td>
+        </tr>
+        <tr>
+          <td><code>result()</code></td>
+          <td>Baris, kolom, dan petunjuk nama berkas terakhir yang diterima.</td>
+        </tr>
+        <tr>
+          <td><code>complete(result)</code></td>
+          <td>Menyelesaikan Run: menerima atau menolak, menghabiskan seluruh utangnya, dan melaporkan apa yang terjadi selanjutnya.</td>
+        </tr>
+        <tr>
+          <td><code>stop({ keepRows })</code> / <code>reset()</code></td>
+          <td>Mengakhiri Run lebih awal: satu pintu dengan keputusan baris dinyatakan oleh pemanggil (ADR-0027), dan satu jalan melupakan tanpa suara.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Perubahan yang paling penting di ADR-0014 bukan jumlah perintahnya, melainkan <strong>apa yang
+  dihapus</strong>. <code>ContentState</code> yang lama adalah sepuluh field yang bisa diubah dan
+  tanpa perilaku sama sekali. Aturan yang paling penting, yaitu <em>permintaan dipakai tepat sekali
+  dan ditinggalkan bersama Run-nya</em>, harus diingat di <strong>enam tempat di empat modul</strong>
+  dan tidak ditegakkan di mana pun. Komentarnya sendiri adalah buktinya: “dicatat hanya setelah Run
+  benar-benar mulai, supaya konfirmasi yang ditolak tidak meninggalkan apa pun”, “Run berikutnya
+  tidak boleh dibandingkan dengan daftar basi”, “Run yang dibatalkan tidak memancarkan completion,
+  jadi permintaannya dibuang di sini”. Tiga aturan, tiga komentar, tiga tempat berbeda.</p>
+
+  <p><code>complete(result)</code> mengembalikan satu nilai yang menjelaskan dua hal sekaligus: apa
+  yang terjadi, dan apa yang harus dilakukan pemanggil berikutnya.</p>
+
+<pre><code>| { kind: "accepted"; followUp: FollowUp[]; shortfall: Shortfall | null }
+| { kind: "salvaged" }
+| { kind: "rejected"; message: string }</code></pre>
+
+  <p>Bentuk <code>salvaged</code> ditambahkan kemudian oleh ADR-0020, untuk Run yang dihentikan
+  tetapi hasil yang sudah terkumpul masih disimpan. <code>followUp</code> membawa komparasi,
+  pengecekan, atau ekspor yang masih perlu dijalankan, <strong>dalam urutan mereka dijalankan</strong>;
+  pemanggil yang mengeksekusinya. <code>shortfall</code> bernilai null kalau semua nomor yang
+  diminta kembali; kalau tidak, <code>count</code>-nya selalu ada karena itulah yang dilaporkan
+  notifikasi, sementara <code>notice</code>-nya null untuk Run PDF, karena dialog pra-unduhan sudah
+  menyebut nomor-nomor itu dan panel sudah beralih ke progres per berkas.</p>
+
+  <p>Dua hal yang <strong>tidak</strong> masuk ke modul ini, dan keduanya penting. Pertama,
+  <code>exportMode</code> bukan keadaan Run: ia disimpan di bawah
+  <code>EXPORT_MODE_STORAGE_KEY</code> dan ditulis oleh pendengar storage, bukan oleh Run mana pun.
+  ADR-0014 menyebutnya “preferensi yang memakai pakaian state”, dan menyingkirkan
+  <code>resetContentState(state, { preserveExportMode: true })</code> seluruhnya, karena begitu
+  <code>exportMode</code> hilang, tidak ada lagi yang perlu dipertahankan. Kedua, gerbang
+  <code>runId</code> tetap milik jembatan: <code>isCurrentRunMessage</code> di
+  <code>bridge.ts</code> dan <code>currentRunHandlers</code> di <code>scrape-result.ts</code>.
+  ADR-0010 menaruh gerbang itu <strong>setelah</strong> guard token dan <strong>sebelum</strong>
+  penerimaan, dan itu memang tugas jembatan: pesan dari Run yang sudah mati harus ditolak
+  <em>sebelum</em> ia bisa mengubah apa pun, dan pemeriksaan di dalam metode tidak bisa menjamin
+  itu.</p>
+
+  <aside class="warn">
+    <span class="label">Kenapa modul ini mudah diuji</span>
+    <p><code>run-lifecycle.ts</code> tidak punya ketergantungan browser maupun DOM. Seluruh
+    modulnya bisa diuji tanpa halaman, dan itulah yang membuat aturan-aturannya bisa diuji
+    langsung, bukan hanya lewat harness yang menyalakan content script.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Permintaan dipakai tepat sekali</h2>
+
+  <p>Inilah aturan yang paling sering dilanggar tanpa disadari, dan ADR
+  <a href="../../../docs/adr/0022-a-run-owns-the-requests-it-records.md"><code>ADR-0022</code></a>
+  menulisnya dalam satu kalimat: <strong>sebuah permintaan dibuang tepat sekali, oleh Run yang
+  mencatatnya.</strong> Karena stop mengakhiri Run itu, seluruh permintaan yang dibawa Run itu mati
+  bersamanya: komparasi dan pengecekan ikut mati, bukan hanya ekspor yang kebetulan disebut di
+  tombolnya.</p>
+
+  <p>Dan baris <strong>bukan</strong> permintaan. Baris menggambarkan grid, jadi dua jalur yang
+  mempertahankan baris melakukannya karena ekspor berikutnya masih bisa memakainya, bukan karena
+  ada permintaan yang menunggu baris itu.</p>
+
+  <p>ADR-0022 tidak sampai pada kesimpulan ini dari teori; ia punya bukti. Bukti paling tajam adalah
+  yang pertama, dan ia berakar pada hal yang sangat konkret. <code>begin("targeted")</code> mempertahankan
+  baris sebelumnya, sementara completion-nya hanya membawa baris yang cocok dengan filter No.
+  Faktur; <code>complete()</code> lalu menjadikan baris yang tersaring itu sebagai hasil yang bisa
+  dipakai lagi. Kalau ada komparasi yang masih menunggu, komparasi itu akan menjawab
+  <strong>“Tidak ditemukan”</strong> untuk setiap baris tempel yang tertinggal di luar filter, dan
+  pengecekan akan melaporkan grid yang diam-diam lebih kecil. Itu jenis <em>false negative</em> yang
+  status komparator dan aturan “satu tahun utuh” dari ADR-0020 justru ada untuk mencegahnya.</p>
+
+  <p>Bukti kedua: itu stop yang tetap melakukan sesuatu kemudian. ADR-0020 sudah menerima “tidak
+  boleh ada yang berjalan otomatis pada permintaan yang terputus”; permintaan yang dipertahankan
+  justru berjalan otomatis pada permintaan yang diputus pengguna. Bukti ketiga: proyeknya sudah
+  mengatakannya sendiri, di header <code>run-lifecycle.ts</code> dan di
+  <code>CONTEXT.md</code> bagian <strong>Pending export</strong>. Jalur klik ekspor adalah satu-satunya
+  tempat yang kodenya bertentangan dengan kedua dokumen itu, jadi kodenya yang bergerak.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Tiga jalur yang mengakhiri Run lebih awal, menurut ADR-0022.</caption>
+      <thead>
+        <tr><th>Jalur stop</th><th>Baris</th><th>Ekspor menunggu</th><th>Komparasi / pengecekan</th><th>No. Faktur diminta</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Tombol stop atau <code>Ctrl+Shift+S</code></td>
+          <td>dibuang</td>
+          <td>dibuang</td>
+          <td>dibuang</td>
+          <td>dibuang</td>
+        </tr>
+        <tr>
+          <td>Sweep setahun yang dihentikan (ADR-0020)</td>
+          <td><strong>dipertahankan</strong></td>
+          <td>dibuang</td>
+          <td>dibuang</td>
+          <td>dibuang</td>
+        </tr>
+        <tr>
+          <td>Klik ekspor yang sekaligus menjadi stop</td>
+          <td><strong>dipertahankan</strong></td>
+          <td>dibuang</td>
+          <td>dibuang</td>
+          <td>dibuang</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Kolom kedua adalah satu-satunya yang berbeda, dan sejak ADR-0027 keputusan itu menjadi
+  argumen yang dinyatakan setiap kontrol stop, bukan lagi nama fungsi yang kebetulan dipanggil.
+  Yang hilang bagi pengguna dijelaskan juga: baris yang ditempel tetap ada, jadi mengulang hanya
+  satu klik.</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Satu pintu stop</h2>
+
+  <p>Sebelum ADR
+  <a href="../../../docs/adr/0027-one-stop-door-with-an-explicit-row-decision.md"><code>ADR-0027</code></a>,
+  ada <strong>tiga</strong> akhir untuk sebuah Run, masing-masing dengan badannya sendiri:
+  <code>abort()</code>, <code>stopKeepingRows()</code>, dan <code>salvage()</code>. Ketiganya
+  sudah menjatuhkan permintaan, jadi aturan ADR-0022 sudah berlaku. Yang belum berlaku adalah
+  hal yang lebih halus: keputusan “baris disimpan atau tidak” tersembunyi di <em>nama</em> fungsi
+  yang dipanggil, dan urutan “kirim <code>STOP_SCRAPE</code>, lalu selesaikan Run, lalu laporkan
+  pembatalan” ditulis ulang dua kali, di <code>main.ts</code> dan di
+  <code>main-actions.ts</code>, dengan flag yang berbeda. Kontrol stop keempat punya dua jalur lama
+  untuk disalin dan tidak punya satu pertanyaan yang dikompilasi untuk dijawab.</p>
+
+  <p>Keputusannya: <strong>satu fungsi stop per dunia, dan keputusan baris menjadi argumen.</strong>
+  <code>run-lifecycle</code> mengekspos <code>stop({ keepRows })</code> dan tidak ada perintah lain
+  yang mengakhiri Run lebih awal. <code>abort()</code> dan <code>stopKeepingRows()</code> dihapus,
+  bukan disimpan sebagai alias, supaya tidak ada pintu kedua untuk dijangkau. <code>salvage()</code>
+  mengadopsi baris dari laporannya lalu memanggil <code>stop({ keepRows: true })</code>;
+  <code>reset()</code> memanggil <code>stop({ keepRows: false })</code> sebelum membersihkan state;
+  penolakan di dalam <code>complete()</code> juga memanggil <code>stop({ keepRows: false })</code>.</p>
+
+  <p>Yang <strong>bukan</strong> parameter adalah pengakhiran permintaan. Stop mengakhiri Run tempat
+  permintaan itu tercatat, sehingga setiap stop membatalkan semuanya. Aturan ini sengaja tidak
+  dijadikan pilihan pemanggil agar jalur stop baru tidak dapat lupa membatalkan permintaan tersebut.</p>
+
+  <aside class="warn">
+    <span class="label">Kenapa <code>keepRows</code> wajib, bukan punya nilai bawaan</span>
+    <p>Nilai bawaan menjawab pertanyaan dengan cara terbalik. <code>keepRows: false</code> sebagai
+    bawaan akan diam-diam membuang baris yang dibutuhkan klik ekspor: klik yang bermaksud mengekspor
+    akan menghancurkan inputnya sendiri. <code>keepRows: true</code> sebagai bawaan akan diam-diam
+    mempertahankan baris yang seharusnya dibuang tombol stop, dan kegagalannya tak terlihat: tidak
+    ada yang tampak salah sampai ekspor berikutnya menulis berkas yang tidak diminta. <strong>Tidak
+    ada nilai bawaan yang aman</strong> — dan itulah tanda bahwa keputusan ini milik pemanggil.</p>
+  </aside>
+
+  <p>Di sisi dunia isolated, <code>main-actions</code> mengekspor
+  <code>stopRun(deps, { keepRows })</code>: kirim <code>STOP_SCRAPE</code>, panggil
+  <code>runLifecycle.stop(...)</code>, lalu tulis <code>SCRAPE_CANCELLED_MESSAGE</code>.
+  <code>main.ts</code> memanggilnya untuk tombol stop dan tombol pintasan
+  <code>Ctrl+Shift+S</code>;
+  <code>handleExportAction</code> memanggilnya untuk klik ekspor. Ada satu pengecualian yang
+  didokumentasikan: sebuah <code>sweep-resume</code> mempertahankan gabungan baris yang sedang
+  ia tambahkan bahkan dengan <code>keepRows: false</code>, karena gabungan itu milik Run yang lebih
+  awal dan tidak pernah gagal. Karena pengecualian itu dibaca di dalam <code>stop</code>, kedua keputusan baris
+  mewarisinya, bukan hanya satu.</p>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Pengakhiran yang diumumkan</h2>
+
+  <p>Ada satu masalah yang tersisa setelah semua aturan di atas berlaku. Tab komparator menulis
+  baris “Belum ada data. Mohon tunggu, sedang melakukan scraping data … terlebih dahulu…” ketika
+  ia mengantre permintaannya. Completion yang seharusnya mengganti baris itu justru adalah hal
+  yang diundurkan oleh stop, oleh kegagalan scraping, oleh transfer yang ditolak, atau oleh
+  reset. Hasilnya, baris itu bertahan dan <strong>menjanjikan pekerjaan yang tidak akan pernah
+  datang</strong>.</p>
+
+  <p>ADR
+  <a href="../../../docs/adr/0026-a-retirement-announces-the-requests-it-takes.md"><code>ADR-0026</code></a>
+  menjawabnya dengan satu pengumuman, dan pengumuman itu diletakkan di tempat yang tepat: di
+  life-cycle, bukan di tombol stop.</p>
+
+<pre><code>runLifecycle.onRetired((kinds) =&gt; { … });   // kinds: "compare" | "check" | "export"</code></pre>
+
+  <p>Aturannya empat, dan semuanya pendek. Pertama, pengumuman ini naik dari <code>stop()</code>,
+  dan <code>stop()</code> sudah dilewati oleh setiap kontrol stop, scraping yang gagal, penolakan di
+  dalam <code>complete()</code>, dan <code>reset()</code>. Meletakkannya di life-cycle membuat jalur
+  stop baru tidak mungkin lupa mengatakannya; meletakkannya di tiga titik pemanggilan memberi
+  tiga kesempatan untuk lupa. Kedua, pengumuman membawa jenis-jenis yang diambil dalam urutan panel
+  menjalankannya, dan <strong>diam</strong> kalau memang tidak ada yang diambil. Ketiga,
+  <code>cancelPending(kind)</code> <strong>tidak</strong> menaikkan pengumuman: tab yang membuang
+  permintaannya sendiri bukan pengakhiran oleh Run, dan tidak ada yang diambil dari tab yang masih menunggu
+  sesuatu yang lain. Keempat, <code>main.ts</code> mendaftarkan satu pendengar dan meneruskan
+  setiap jenis ke tab yang mengantre: <code>dropPendingCompare()</code> di
+  <code>ui-comparer.ts</code> dan <code>dropPendingCheck()</code> di <code>ui-checker.ts</code>.</p>
+
+  <p>Lalu ada dua batasan yang membuat pengumuman ini tidak merusak apa pun. <strong>Tab yang
+  menyebut sebab, badge yang bertanggung jawab atas akun.</strong> <code>SCRAPE_CANCELLED_MESSAGE</code>
+  di badge sudah menyebut stop-nya, jadi tab tidak mengulangnya. Tapi baris yang <em>kosong</em> juga
+  adalah kegagalan: ia terbaca seperti “tidak pernah ada yang diminta”, dan itu juga tidak benar.
+  Karena itu setiap tab menulis satu kalimat tentang satu-satunya hal yang bisa diketahuinya, yaitu
+  bahwa permintaannya dibatalkan sebelum hasilnya tiba, dan menyisakan sebabnya ke badge. Pengakhiran
+  bisa berupa stop, scraping yang gagal, chunk yang hilang, atau reset, jadi kalimatnya menyebut
+  akibatnya, bukan menebak mana.</p>
+
+  <p><strong>Dan status baris itu sendiri yang menjadi penjaga.</strong> Setiap tab hanya mengganti
+  baris itu selama baris itu masih memegang promise <code>waiting</code> yang dipasang tab itu
+  sendiri. Ringkasan, error, atau keluaran perbandingan yang belakangan adalah hasil asli tab itu,
+  dan harus selamat dari stop yang datang kemudian. Dimulai sebagai perbandingan terhadap teks yang
+  diingat tab, lalu ADR-0029 menjadikannya jenis milik modul status line: keadaan yang
+  sesungguhnya, tanpa string untuk dibandingkan dan tanpa flag yang harus dilepas oleh penulis lain.</p>
+
+  <p>Perhatikan bahwa <code>run-lifecycle.ts</code> tetap tanpa ketergantungan DOM atau browser:
+  ia hanya memanggil callback. Dan kalimat yang dipakai kedua tab tinggal di satu tempat,
+  <code>RETIRED_REQUEST_NOTICE</code> di <code>ui-panel.ts</code>, jadi dua tab tidak mungkin
+  dijelaskan dengan dua kalimat berbeda untuk peristiwa yang sama.</p>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Completion yang diselesaikan jadi laporan</h2>
+
+  <p>Penanganan <code>SCRAPE_COMPLETE</code> di <code>main.ts</code> pernah sekitar 140 baris. Isinya:
+  selesaikan transfer chunk, reset transfer itu, gabungkan separuh sweep yang dilanjutkan, panggil
+  <code>runLifecycle.complete</code>, percabangkan menurut hasil, tulis badge enam kali dalam
+  urutan tetap, susun angka notifikasi, lalu jalankan apa pun yang masih menjadi utang Run.</p>
+
+  <p>Setiap aturan di dalamnya nyata: transfer itu sekali pakai (ADR-0017), gabungan itulah yang
+  mengesahkan (ADR-0023), stop bukanlah completion (ADR-0020). Dan setiap aturan itu
+  hanya bisa diamati dengan menyalakan content script lalu mendorong pesan-pesan melaluinya.
+  <strong>Urutannya adalah komentar, bukan nilai.</strong></p>
+
+  <p>ADR
+  <a href="../../../docs/adr/0031-a-completion-is-settled-into-a-report.md"><code>ADR-0031</code></a>
+  memindahkan handler itu menjadi satu modul, <code>completion-intake.ts</code>. Completion masuk,
+  <code>RunReport</code> keluar:</p>
+
+<pre><code>interface RunReport {
+  ending: "accepted" | "salvaged" | "rejected" | "incomplete" | "failed";
+  completion: ScrapeComplete | null;   // gabungan yang sudah dirangkai, untuk ending yang punya baris
+  updates: SurfaceUpdate[];            // dalam urutan panel menampilkannya
+  notification: { kind; detail } | null;  // null untuk toast yang harus diam
+  followUp: FollowUp[];
+}
+
+settleCompletion({ completion, transfer, run }): RunReport
+failedRun({ message, run }): RunReport</code></pre>
+
+  <p>Empat alasan yang membuat pemindahan ini layak. Pertama, <strong>laporan menyebut akibat, bukan
+  pemanggilan DOM</strong>. Yang bisa dikatakan pada panel adalah <code>complete</code>, sebuah
+  topik <code>status</code>, dan <code>error</code>; fungsi badge mana yang melukisnya, dan dengan
+  argumen apa, tetap milik <code>applyReport</code> di <code>main.ts</code>. Aturan urutan
+  sekarang bertahan tanpa dokumen, dan permukaannya tetap satu-satunya yang butuh dokumen.
+  Kedua, <strong>penggunaan tunggal transfer adalah aturan modul ini</strong>:
+  <code>settleCompletion</code> mengosongkan buffer di setiap jalur keluar, termasuk jalur yang
+  ditolak dan yang diselamatkan, sehingga “satu transfer pada satu waktu” berhenti menjadi hal
+  yang harus diingat <code>main.ts</code> di dua dari empat cabangnya.</p>
+
+  <p>Ketiga, penggabungan resume tidak boleh dipisahkan dari penyelesaiannya: gabungan baris,
+  jumlah per masa yang sudah digabung, dan <code>totalRows</code> yang dihitung ulang semuanya
+  ada untuk memberi makan <code>runLifecycle.complete</code>, jadi life-cycle masuk sebagai
+  parameter dan sebuah tes bisa membangun life-cycle yang sungguhan. Keempat, <strong>setiap
+  ending adalah pertanyaan yang sama</strong>: <code>failedRun</code> mengembalikan bentuk yang
+  sama, dari modul kata yang sama, sehingga kegagalan tidak bisa diumumkan satu cara di panel dan
+  cara lain di toast.</p>
+
+  <p>Dan satu kalimat yang layak dihafal: <strong>penyelamatan tetap diam</strong>. Laporan
+  mengembalikan <code>notification: null</code> untuk sweep yang dihentikan, karena panel sudah
+  memberi tahu berapa bagian tahun yang selamat, dan toast yang menyatakan Run selesai persis
+  apa yang ADR-0020 larang.</p>
+
+  <aside class="pull">
+    <span class="label">Akibat yang paling penting</span>
+    <p>Modul ini membaca nol DOM dan memanggil nol API peramban, jadi ia bisa diuji langsung di
+    <code>src/tests/completion-intake.unit.test.ts</code>: urutan panel, transfer yang kedaluwarsa,
+    gabungan sweep yang dilanjutkan, resume yang dihentikan dua kali, hasil yang ditolak, urutan
+    follow-up, dan dua cara berbeda merumuskan kalimat bagi Run yang gagal.</p>
+  </aside>
+</section>
+
+<section class="practice">
+  <h2><span class="num">7</span>Uji ingatan</h2>
+  <p>Jawab dulu, baru lihat koreksinya. Jawaban yang benar tidak selalu di posisi pertama.</p>
+
+  <ul class="adr-list">
+    <li><span class="adr-ref">ADR-0014</span> <a href="../../../docs/adr/0014-run-lifecycle-owns-run-state.md">State Run hidup di <code>run-lifecycle</code></a> <span class="status-pill status-accepted">Accepted</span></li>
+    <li><span class="adr-ref">ADR-0022</span> <a href="../../../docs/adr/0022-a-run-owns-the-requests-it-records.md">Run memiliki permintaan yang dicatatnya</a> <span class="status-pill status-amended">Amended</span></li>
+    <li><span class="adr-ref">ADR-0026</span> <a href="../../../docs/adr/0026-a-retirement-announces-the-requests-it-takes.md">Pensiunan mengumumkan dirinya sendiri</a> <span class="status-pill status-accepted">Accepted</span></li>
+    <li><span class="adr-ref">ADR-0027</span> <a href="../../../docs/adr/0027-one-stop-door-with-an-explicit-row-decision.md">Satu pintu stop, keputusan baris eksplisit</a> <span class="status-pill status-accepted">Accepted</span></li>
+    <li><span class="adr-ref">ADR-0031</span> <a href="../../../docs/adr/0031-a-completion-is-settled-into-a-report.md">Completion diselesaikan jadi laporan</a> <span class="status-pill status-accepted">Accepted</span></li>
+  </ul>
+
+  <div class="quiz" data-quiz="l03-q1">
+    <p class="q">Siapa pemilik state Run di dunia isolated?</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Benar: run-lifecycle memegang apa yang sedang berjalan, apa yang masih menjadi utang, dan apa yang terakhir dihasilkan. Tidak ada modul lain yang boleh menyentuh state itu."><code>run-lifecycle.ts</code> memegang permintaan, hasil, dan utang Run yang ada.</button></li>
+      <li><button class="opt" data-why="main.ts adalah lapisan sambung: ia menerima pesan dan melukisnya, tetapi tidak menyimpan state Run."><code>main.ts</code> menulis laporan ke panel, tak memegang state Run.</button></li>
+      <li><button class="opt" data-why="scraper-run.ts memegang identitas dan pembatalan di dunia MAIN, bukan hasil dan utang di dunia isolated."><code>scraper-run.ts</code> memegang identitas Run dan pembatalannya di dunia MAIN.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l03-q2">
+    <p class="q">Kenapa <code>keepRows</code> wajib diisi dan tidak boleh punya nilai bawaan?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Perbedaannya memang nyata, tetapi bukan itu alasannya. Yang menentukan adalah tidak adanya nilai bawaan yang aman bagi kedua arah.">Karena dua jalur stop punya arti berbeda, jadi pemanggil harus menyatakannya.</button></li>
+      <li><button class="opt" data-correct data-why="Tepat: tidak ada nilai bawaan yang aman, sehingga keputusan baris harus dinyatakan oleh pemanggil di setiap call site.">Karena tidak ada nilai bawaan yang aman, sehingga kekeliruan selalu terlihat.</button></li>
+      <li><button class="opt" data-why="Itu memang isi keputusan, tapi pertanyaan ini menanyakan alasan bentuk antarmukanya, bukan isi aturannya.">Karena baris ikut atau tidak ikut berhenti, dan itu harus dinyatakan.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l03-q3">
+    <p class="q">Apa yang terjadi pada permintaan komparasi atau pengecekan saat Run dihentikan?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Kalau permintaan tetap menunggu, completion berikutnya yang lebih sempit akan menjadikannya salah baca, dan completion lama itu sudah dibatalkan.">Permintaan itu tetap menunggu, agar completion berikutnya bisa dilayani tanpa gagal.</button></li>
+      <li><button class="opt" data-why="Permintaan tidak pernah pindah ke Run berikutnya: ia dibuang bersama Run yang mencatatnya.">Permintaan dipindah ke Run berikutnya, agar tak hilang dengan begitu saja.</button></li>
+      <li><button class="opt" data-correct data-why="Benar: setiap stop membatalkan seluruh permintaan yang dibawa Run, termasuk komparasi dan pengecekan, karena permintaan tersebut hanya boleh dipakai sekali.">Permintaan ikut dibatalkan, karena hanya boleh dipakai sekali oleh Run tersebut.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l03-q4">
+    <p class="q">Kapan sebuah tab boleh mengganti baris menunggu dengan pemberitahuan pembatalan?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Kalau tanpa syarat, ringkasan atau hasil perbandingan yang sudah tampil akan ikut tertimpa oleh pemberitahuan pembatalan.">Setiap kali sebuah Run dihentikan, apa pun isi baris itu sebelumnya.</button></li>
+      <li><button class="opt" data-correct data-why="Tepat: baris hanya diganti selama masih memegang promise waiting milik tab itu. Ringkasan, error, atau hasil yang sudah tampil harus selamat.">Hanya selama baris itu masih memegang promise <code>waiting</code> milik tab itu.</button></li>
+      <li><button class="opt" data-why="Ringkasan adalah hasil asli tab itu, dan harus selamat dari stop yang datang belakangan.">Setelah ada laporan ringkasan, karena ringkasan dianggap lebih penting daripada lain.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l03-q5">
+    <p class="q">Apa yang dikembalikan <code>settleCompletion</code> kepada pemanggilnya?</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Benar: RunReport menyebut akhir Run, baris panel dalam urutan, notifikasi, dan follow-up. Urutannya adalah nilai, bukan urutan pemanggilan.">Sebuah <code>RunReport</code> berisi akhir Run, baris panel berurutan, dan follow-up tersisa.</button></li>
+      <li><button class="opt" data-why="Laporan menyebut akibat, bukan pemanggilan DOM. Melukisnya tetap tugas applyReport di main.ts.">Objek DOM yang siap ditempel, sehingga panel bisa langsung memakainya sendiri.</button></li>
+      <li><button class="opt" data-why="Laporan juga memuat urutan baris panel, notifikasi, dan follow-up, jadi bukan hanya status akhirnya.">Status akhir Run saja, sebab seluruh bagian lain adalah urusan panel.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz-score" data-score-for="l03">
+    <strong>Skor pelajaran ini</strong>
+    <span data-score-text>0 dari 5 soal dijawab, 0 benar.</span>
+    <button type="button" data-score-reset>Ulangi</button>
+  </div>
+</section>
+
+<aside class="source">
+  <h3>Sumber utama</h3>
+  <ul>
+    <li><a href="../../../docs/adr/0014-run-lifecycle-owns-run-state.md"><code>docs/adr/0014-run-lifecycle-owns-run-state.md</code></a> —
+    pemilik state dunia isolated, antarmuka berbasis perintah, dan penghapusan
+    <code>ContentState</code>.</li>
+    <li><a href="../../../docs/adr/0022-a-run-owns-the-requests-it-records.md"><code>docs/adr/0022-a-run-owns-the-requests-it-records.md</code></a> —
+    aturan "permintaan dipakai tepat sekali", tiga buktinya, dan tabel jalur stop.</li>
+    <li><a href="../../../docs/adr/0026-a-retirement-announces-the-requests-it-takes.md"><code>docs/adr/0026-a-retirement-announces-the-requests-it-takes.md</code></a> —
+    <code>onRetired</code>, routing ke tab, dan syarat <code>waiting</code>.</li>
+    <li><a href="../../../docs/adr/0027-one-stop-door-with-an-explicit-row-decision.md"><code>docs/adr/0027-one-stop-door-with-an-explicit-row-decision.md</code></a> —
+    <code>stop({ keepRows })</code>, alasan nilai bawaan tidak aman, dan pengecualian resume.</li>
+    <li><a href="../../../docs/adr/0031-a-completion-is-settled-into-a-report.md"><code>docs/adr/0031-a-completion-is-settled-into-a-report.md</code></a> —
+    bentuk <code>RunReport</code>, transfer sekali pakai, dan penyelamatan yang tetap diam.</li>
+    <li><a href="../../../CONTEXT.md"><code>CONTEXT.md</code></a> — kamus istilah Run, termasuk bagian
+    <strong>Pending export</strong> yang dirujuk ADR-0022.</li>
+  </ul>
+</aside>
+
+<div class="ask">
+  <strong>Catatan:</strong> tidak ada yang perlu Anda kirim balik. Tapi kalau satu bagian dari
+  pelajaran ini masih terasa abstrak, misalnya kenapa satu baris yang sudah diganti tidak boleh
+  ditimpa lagi, atau kenapa permintaan yang dipertahankan justru lebih berbahaya daripada yang
+  dibuang, tanyakan saja. Saya akan jawab dengan contoh jalur stop yang konkret.
+</div>
+
+<footer class="course-foot">
+  <p>Pelajaran 03 · <a href="index.html">Peta pelajaran</a> · sebelumnya:
+  <a href="0002-dua-dunia-dan-jembatan.html">02 · Dua dunia dan jembatan</a> · berikutnya:
+  <a href="0004-sweep-setahun.html">04 · Sweep setahun</a></p>
+</footer>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

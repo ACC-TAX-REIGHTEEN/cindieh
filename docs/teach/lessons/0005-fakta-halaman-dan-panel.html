@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pelajaran 05 · Fakta halaman dan panel — Kursus ADR Cindieh</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="course-head">
+  <p class="eyebrow">Cindieh · Membaca Architecture Decision Records</p>
+  <h1>Pelajaran 05 — Fakta halaman dan panel</h1>
+  <p class="lede">Empat grid PPN, empat jawaban berbeda untuk pertanyaan yang mirip sekali.
+  Pelajaran ini menjelaskan kenapa Cindieh berhenti memakai satu predikat untuk beberapa
+  pertanyaan sekaligus, dan di mana jawaban-jawaban itu sekarang tinggal: satu baris per grid.</p>
+  <p class="meta">Pelajaran 05 dari 09 · waktu baca ± 16 menit · 8 soal uji ingatan</p>
+  <nav class="lesson-nav">
+    <a href="index.html">Peta pelajaran</a>
+    <a href="../reference/adr-peta.html">Peta 38 ADR</a>
+    <a href="../reference/glosarium.html">Glosarium</a>
+    <span class="spacer"></span>
+    <span>05 dari 09</span>
+    <a href="0004-sweep-setahun.html">04 ←</a>
+    <a href="0006-deklarasi-data.html">06 →</a>
+  </nav>
+</header>
+
+<main>
+
+<section>
+  <h2><span class="num">1</span>Satu predikat, beberapa pertanyaan</h2>
+
+  <p>Panel <em>Bandingkan / Pengecekan</em> hidup di empat grid e-Faktur PPN: PPN Keluaran,
+  PPN Masukan, Retur PPN Keluaran, dan Retur PPN Masukan. Gridnya mirip, dan pertanyaannya juga
+  mirip: boleh tidak grid ini diberi filter Referensi, boleh tidak Referensi menamai satu baris,
+  boleh tidak Pengecekan berjalan di sini, dan siapa yang namanya muncul sebagai kolom.</p>
+
+  <p>Dulu <code>page-context.ts</code> menjawab tiap pertanyaan dengan predikat sendiri, dan
+  tiap predikat membawa <strong>daftar grid-nya sendiri</strong>. Daftar-daftar itu pelan-pelan
+  berbeda. Setiap jawaban benar di grid yang kebetulan punya dua jawaban sama, dan salah di grid
+  yang lain.</p>
+
+  <aside class="warn">
+    <span class="label">Yang rusak</span>
+    <p>Di PPN Masukan, filter Referensi ditahan padahal fiturnya bekerja: satu predikat menjawab
+    “apakah Referensi menamai satu baris di sini” untuk pertanyaan yang sebenarnya “apakah grid
+    ini bisa dicari dengan Referensi”. Dan kolom yang menyorot siapa yang dibawa baris akan
+    membaca “Nama Penjual” pada nota retur yang justru membawa pembeli. Dua kesalahan, satu sebab.</p>
+  </aside>
+
+  <p>Tujuh ADR menyelesaikannya, semuanya berstatus
+  <span class="status-pill status-accepted">Accepted</span>:
+  <a href="../../../docs/adr/0021-referensi-filter-and-identity-are-two-page-facts.md">ADR-0021</a>,
+  <a href="../../../docs/adr/0024-checker-covers-the-retur-grids.md">ADR-0024</a>,
+  <a href="../../../docs/adr/0025-the-panel-entry-point-is-the-panels-own-fact.md">ADR-0025</a>,
+  <a href="../../../docs/adr/0028-one-row-per-grid-for-the-panels-page-facts.md">ADR-0028</a>,
+  <a href="../../../docs/adr/0029-a-tabs-status-line-is-one-module.md">ADR-0029</a>,
+  <a href="../../../docs/adr/0033-every-injected-surface-has-one-owner.md">ADR-0033</a>, dan
+  <a href="../../../docs/adr/0036-each-panel-tab-is-its-own-view.md">ADR-0036</a>.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>ADR-0021: dua fakta, bukan satu</h2>
+
+  <p>Pertanyaan pertama: <strong>boleh tidak grid ini diberi filter Referensi</strong>? Jawabannya
+  dua grid PPN, Keluaran dan Masukan. Di Masukan, Referensi milik penjual: ia berulang antar
+  pembelian dan sering kosong. Tapi filter itu <strong>pencarian</strong>, bukan pencocokan. Ketik
+  sebuah awalan, dapat baris yang diawali itu. “Tiga pembelian berbagi referensi” adalah jawaban
+  yang sah untuk sebuah pencarian, bukan kegagalan.</p>
+
+  <p>Pertanyaan kedua: <strong>boleh tidak Referensi dipakai sebagai identitas</strong>? Jawabannya
+  hanya PPN Keluaran, karena hanya di sana Referensi milik Wajib Pajak sendiri. Untuk pencocokan,
+  Referensi harus menunjuk <em>satu</em> catatan; Masukan tidak bisa memberi itu.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Dua fakta, dua tugas yang berbeda.</caption>
+      <thead>
+        <tr><th>Fakta</th><th>Benar di</th><th>Salah di</th><th>Tugas yang dijaganya</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>hasReferenceFilter()</code></td>
+          <td>PPN Keluaran, PPN Masukan</td>
+          <td>kedua grid Retur</td>
+          <td>Kotak Referensi di toolbar, input kolom di header grid, hand-back klik ganda Pengecekan</td>
+        </tr>
+        <tr>
+          <td><code>referenceIsIdentity()</code></td>
+          <td>PPN Keluaran</td>
+          <td>PPN Masukan dan kedua grid Retur</td>
+          <td>Tab Komparator: boleh tidak satu baris dicocokkan lewat Referensi</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Tab Komparator tidak berubah: ia tetap digerakkan <code>referenceIsIdentity()</code>. Yang
+  berubah adalah hand-back Pengecekannya. Klik ganda pada baris hasil mencari referensi itu di
+  grid, dan itu digerakkan <code>hasReferenceFilter()</code>, karena memang ada filter untuk
+  dicari. Di Masukan, hand-back itu sekarang bekerja; sebelumnya ia diam-diam tidak melakukan
+  apa-apa.</p>
+
+  <aside class="pull">
+    <span class="label">Pola yang berulang</span>
+    <p>Kalau satu predikat menjawab dua pertanyaan, yang salahnya tidak kelihatan: ia benar untuk
+    grid tempat kedua pertanyaan kebetulan sama, dan diam-diam menyalahi grid yang lain.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">3</span>ADR-0024: Pengecekan menutup kedua grid Retur</h2>
+
+  <p>Pengecekan memeriksa satu baris: apakah DPP, DPP Nilai Lain, dan PPN-nya satu sama lain. Nota
+  retur membawa tiga nominal yang sama (<code>SellingPrice</code>, <code>OtherTaxBase</code>,
+  <code>VAT</code>), jadi pemeriksaan itu berlaku di sana juga. Gate yang dipakai sebelumnya,
+  <code>isVatInvoicePage()</code>, bernama untuk isi baris grid PPN, bukan untuk tempat pemeriksaan
+  berjalan. Empat fakta menggantikannya:</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Empat pertanyaan, empat fakta, empat jawaban yang memang berbeda.</caption>
+      <thead>
+        <tr><th>Fakta</th><th>Pertanyaan</th><th>Jawabannya</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>isCheckerPage()</code></td>
+          <td>Apakah Pengecekan berjalan di sini?</td>
+          <td>Keempat grid PPN</td>
+        </tr>
+        <tr>
+          <td><code>checkerRowIdentity()</code></td>
+          <td>Apa yang menamai satu baris hasil di sini?</td>
+          <td><code>referensi</code> di dua grid PPN, <code>no-retur</code> di dua grid Retur</td>
+        </tr>
+        <tr>
+          <td><code>counterpartyIsBuyer()</code></td>
+          <td>Siapa yang dibawa baris halaman ini?</td>
+          <td>Pembeli di PPN Keluaran <em>dan</em> Retur PPN Keluaran; penjual di dua grid lain</td>
+        </tr>
+        <tr>
+          <td><code>isPanelPage()</code></td>
+          <td>Apakah overlay punya tab untuk ditawarkan?</td>
+          <td>Keempat grid PPN</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Perhatikan baris ketiga: Retur PPN Keluaran <strong>bukan</strong> grid output-tax, tapi
+  barisnya membawa pembeli persis seperti faktur yang dikembalikannya. Karena itu kolom
+  “Nama Pembeli” benar di kedua grid itu, dan “Nama Penjual” akan salah di salah satunya.</p>
+
+  <p>Lalu ada satu tabel yang mengubah identitas baris jadi kata: <code>CHECKER_IDENTITIES</code> di
+  <code>result-columns.ts</code>. Panel dan berkas ekspor membacanya, jadi satu baris tidak mungkin
+  bernama “No Retur” di layar dan “Referensi” di file.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption><code>CHECKER_IDENTITIES</code>, dibaca panel dan berkas ekspor.</caption>
+      <thead>
+        <tr><th>Identitas</th><th>Judul kolom</th><th>Judul kolom tanggal</th><th>Nilai sel</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>referensi</code></td>
+          <td>Referensi</td>
+          <td>Tanggal</td>
+          <td><code>Reference</code>, dengan cadangan <code>TaxInvoiceNumber</code></td>
+        </tr>
+        <tr>
+          <td><code>no-retur</code></td>
+          <td>No Retur</td>
+          <td>Tanggal Retur</td>
+          <td><code>ReturnNumber</code>, dengan cadangan <code>TaxInvoiceNumber</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Cadangan itu bukan rantai semboyan. Baris retur membawa <strong>dua</strong> tanggal: tanggal
+  faktur yang dikembalikannya dan tanggal retur itu sendiri. Karena itu <code>ReturnDate</code>
+  berdiri sebagai field tersendiri — rantai hanya bisa menghasilkan satu dari dua, dan tabel
+  identitas yang memilih pasangan mana yang dipakai untuk setiap baris.</p>
+
+  <p>Ada satu pemisahan yang sering terbalik: kolom identitas memakai fakta identitas, tetapi klik
+  ganda memakai fakta <em>filter</em>. Di grid Retur tidak ada filter Referensi yang disuntik, jadi
+  tawaran untuk mencari referensi ditolak di sana; kolomnya tetap menamai baris dengan jujur.</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>ADR-0028: satu baris per grid</h2>
+
+  <p>Setelah ADR-0021 dan ADR-0024, ada lima tempat yang mendeskripsikan grid yang sama: gate
+  Pengecekan, baris progres, status popup, label tombol, dan daftar grid di
+  <code>isCheckerPage()</code>. Menambah grid berarti lima suntingan, dan dua di antaranya bisa
+  berbeda pendapat. Sekarang semua itu jadi satu tabel:</p>
+
+<pre><code>PANEL_GRIDS: Record&lt;PanelGridId, GridFacts&gt;   // satu baris per grid</code></pre>
+
+  <p>Setiap baris menyimpan <code>label</code> (nama grid di panel), <code>statusLabel</code>
+  (ejaan penuh di popup), <code>counterpartyIsBuyer</code>, <code>rowIdentity</code>,
+  <code>comparerTab</code>, <code>checkerTab</code>, dan <code>referenceFilter</code>.
+  <code>panelGridFacts(url)</code> menemukan barisnya lewat <code>getPageExportSource</code>, jadi
+  sebuah grid dikenali oleh predikat yang sama dengan yang menamainya di tempat lain.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Empat baris <code>PANEL_GRIDS</code>, dibaca apa adanya.</caption>
+      <thead>
+        <tr><th>Grid</th><th>Pembawa</th><th>Identitas baris</th><th>Komparator</th><th>Pengecekan</th><th>Filter Referensi</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>PPN Keluaran</td>
+          <td>pembeli</td>
+          <td>Referensi</td>
+          <td>ya</td>
+          <td>ya</td>
+          <td>ya</td>
+        </tr>
+        <tr>
+          <td>PPN Masukan</td>
+          <td>penjual</td>
+          <td>Referensi</td>
+          <td>tidak</td>
+          <td>ya</td>
+          <td>ya</td>
+        </tr>
+        <tr>
+          <td>Retur PPN Keluaran</td>
+          <td>pembeli</td>
+          <td>No Retur</td>
+          <td>tidak</td>
+          <td>ya</td>
+          <td>tidak</td>
+        </tr>
+        <tr>
+          <td>Retur PPN Masukan</td>
+          <td>penjual</td>
+          <td>No Retur</td>
+          <td>tidak</td>
+          <td>ya</td>
+          <td>tidak</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Yang kolaps adalah <strong>di mana jawaban tinggal</strong>, bukan pertanyaannya. Proyeksi
+  tetap ada sebagai pertanyaan yang bisa dibaca: <code>hasReferenceFilter</code>,
+  <code>referenceIsIdentity</code>, <code>isCheckerPage</code>, <code>checkerRowIdentity</code>,
+  <code>counterpartyIsBuyer</code>, <code>isPanelPage</code>, <code>panelEntryLabel</code>, dan
+  <code>currentGridLabel</code>. Masing-masing satu baris baca dari baris grid yang sama. PPN
+  Masukan memang mengambil filter Referensi yang tidak mengidentifikasi apa pun, dan Retur PPN
+  Keluaran memang membawa pembeli tanpa menjadi grid output-tax.</p>
+
+  <p>Dua gerbang <strong>sengaja bukan</strong> proyeksi. <code>isEfakturPage()</code> adalah gate
+  ekspor setahun: melebar panel tidak boleh diam-diam melebar sweep, yang butuh baris filter
+  terukur sendiri sebelum bisa jalan. <code>isVatInvoicePage()</code> tetap berarti “baris ini
+  faktur milik Wajib Pajak sendiri”; kebetulan sama dengan <code>hasReferenceFilter</code> hari ini,
+  dan sebuah tes yang mengikat keduanya, bukan sebuah komentar. <code>statusLabel</code>
+  <strong>dibawa</strong>, bukan diturunkan: di grid retur, “Retur PPN Keluaran” memang berbeda
+  dari “e-Faktur PPN Keluaran”.</p>
+</section>
+
+<section>
+  <h2><span class="num">5</span>ADR-0025: tombol panel menanyakan fakta panel</h2>
+
+  <p>Toolbar menyuntik <strong>satu</strong> tombol panel, <code>ch-panel-btn</code>. Tiga hal
+  tentangnya berasal dari fakta halaman, bukan dari tab mana pun:</p>
+
+  <ul>
+    <li><strong>Di mana</strong> — di setiap halaman yang punya tab untuk ditawarkan, yaitu
+    <code>isPanelPage()</code>: keempat grid PPN. Dulu hanya PPN Keluaran.</li>
+    <li><strong>Apa bunyinya</strong> — nama dan ikon mengikuti tab yang bisa dilayani halaman itu.
+    <code>referenceIsIdentity()</code> benar di PPN Keluaran, jadi di sana namanya
+    <em>Bandingkan data penjualan</em> dengan ikon daftar. Di PPN Masukan dan kedua grid Retur,
+    namanya <em>Pengecekan keakuratan nilai</em> dengan ikon centang.</li>
+    <li><strong>Apa yang dilakukan</strong> — mengirim event yang sama dengan pintasan
+    <code>Ctrl+Shift+B</code>, yaitu <code>ch:compare-open</code>, sehingga <code>ui-panel.ts</code>
+    yang memilih tab.</li>
+  </ul>
+
+  <p>Tombol itu tidak menyebut tab. Menghitung tab di toolbar juga berarti tempat kedua di mana
+  keduanya bisa berbeda. Kedua nama itu hidup sebagai konstanta, <code>COMPARER_ENTRY_LABEL</code>
+  dan <code>CHECKER_ENTRY_LABEL</code>, lalu diturunkan per baris lewat
+  <code>panelEntryLabelFor(facts)</code> — dipisah dari pembacaan URL supaya tempat penyuntikan,
+  yang sudah memegang barisnya, tidak perlu membaca URL lagi.</p>
+
+  <aside class="pull">
+    <span class="label">Aturan yang bisa diuji</span>
+    <p>“Apakah grid ini punya tab?” adalah fakta <strong>overlay</strong>. Pintasan keyboard dan
+    tombol toolbar sama-sama membuka overlay, jadi keduanya tidak boleh bertanya satu tab lalu
+    menyatakan halaman yang lain tidak berguna. Sebaliknya, “apakah Referensi menamai satu baris”
+    adalah fakta <strong>pencocokan</strong>, dan itu tetap mengunci tab Komparator di Masukan.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">6</span>ADR-0029: baris status jadi satu modul</h2>
+
+  <p>Setiap tab punya <strong>satu</strong> field status, dan empat hal bicara lewat field itu:
+  janji saat grid diambil, ringkasan run yang selesai, kesalahan, dan pemberitahuan undur. Sebelum
+  ADR ini, setiap penulis mencari elemennya sendiri, mengisi <code>textContent</code>, dan memilih
+  kelas CSS dengan tangan; bobot <code>error</code> ada di <strong>tiga</strong> tempat terpisah,
+  dan penggantian saat undur dijaga dengan membandingkan teks yang diingat tab.</p>
+
+<pre><code>const line = createStatusLine("ch-checker-status");
+line.set("waiting", notice);                              // janji
+line.set("summary", formatCheckSummary(results));         // ringkasan
+line.set("error", message);                               // gagal
+line.clear();                                             // tak ada yang dikatakan
+line.replace("waiting", { kind: "notice", text: "..." });  // undur</code></pre>
+
+  <p>Modul ini memiliki id elemen, kelas tiap <em>kind</em>, dan ingatannya sendiri. Pemanggil
+  menyebut <strong>niat</strong>, tidak pernah kelas CSS. Ada empat kind:
+  <code>waiting</code>, <code>summary</code>, <code>error</code>, dan <code>notice</code>.</p>
+
+  <aside class="warn">
+    <span class="label">Kind adalah penjaganya</span>
+    <p>Aturan ADR-0026 adalah “ganti baris ini hanya selama masih menjadi janji”. Dulu itu dijaga
+    dengan membandingkan teks, karena keadaan tidak dilacak; string hanya proksinya. Sekarang kind
+    <em>adalah</em> keadaannya: <code>replace("waiting", …)</code> berlaku hanya selama baris
+    masih memegang <code>waiting</code> yang dipasang modul ini. Ringkasan atau galat yang ditulis
+    sesudahnya sudah di luar jangkauan, bukan karena string-nya kebetulan berbeda.</p>
+  </aside>
+
+  <p>Modul ini juga mencari elemennya <strong>setiap kali dipanggil</strong>, karena panel disuntik
+  ulang saat Angular merender ulang header. <code>set()</code> yang mengembalikan
+  <code>false</code> berarti tab sudah terlepas — dan itu satu-satunya kondisi yang boleh
+  diperlakukan pemanggil: tab yang terlepas tidak punya tempat untuk menjanjikan apa pun, jadi ia
+  tidak memulai scrape yang tak akan pernah dilaporkan.</p>
+</section>
+
+<section>
+  <h2><span class="num">7</span>ADR-0033: enam permukaan, satu pemilik</h2>
+
+  <p>Cindieh menaruh enam benda di DOM portal: badge melayang, toolbar ekspor, overlay panel, kotak
+  Referensi di toolbar, input Referensi di header grid, dan filter No. Faktur. Semuanya dicat dari
+  empat modul, lalu dicabut dari tempat kelima: daftar id yang ditulis tangan di
+  <code>main.ts</code>. Daftar itu deskripsi kedua dari DOM, tanpa pemilik, dan sudah bocor dua
+  kali: daftar itu menyebut <em>input</em> filter toolbar tapi tidak menyebut
+  <em>container</em>-nya, sehingga teardown meninggalkan container dan penyuntikan berikutnya
+  menumpuk container kedua; dan overlay dihapus tanpa ditutup, sehingga latar tetap
+  <code>inert</code> dan portal tampak normal tapi tidak menjawab apa pun.</p>
+
+  <p>Sekarang setiap permukaan adalah satu rekaman kecil di
+  <code>src/content/page-surfaces.ts</code>:</p>
+
+<pre><code>export interface PageSurface {
+  readonly name: string;
+  paint(): void;                            // taruh di halaman
+  remove(): void;                           // ambil dari halaman
+  readonly repaintedOnRender: boolean;      // bisa hilang saat portal render ulang?
+}</code></pre>
+
+  <p>Dan daftarnya punya <strong>tiga pintu</strong>: <code>paintPageSurfaces()</code> (keadaan
+  halaman berubah), <code>repaintPageSurfaces()</code> (portal merender ulang dan mungkin
+  mengambil satu permukaan), dan <code>removePageSurfaces()</code> (halaman ditinggalkan).
+  Permukaan yang dihapus dicabut oleh modul yang membangunnya, jadi permukaan baru tidak bisa
+  bocor: tidak ada daftar kedua yang harus diingat untuk diperbarui.</p>
+
+  <p><code>repaintedOnRender</code> adalah fakta tentang DOM, bukan tebakan. Toolbar dan tiga
+  filter hidup di dalam markup portal, jadi render ulang bisa mengambil mereka dan mereka harus
+  dipasang lagi. Panel dan badge hidup di <code>&lt;body&gt;</code>, yang tidak dirender ulang
+  Angular — dan membangun ulang panel akan membuang teks yang ditempel Wajib Pajak ke dalamnya.</p>
+
+  <p>Detail terakhir: menghapus panel adalah <strong>menutup</strong>, bukan menghapus elemen.
+  <code>removeComparerPanel()</code> memanggil <code>closePanel()</code> lebih dulu, karena itu
+  yang mengembalikan latar dari <code>inert</code>. Menghapus elemen bukanlah hal yang sama dengan
+  membatalkan apa yang membukanya.</p>
+
+  <aside class="pull">
+    <span class="label">Yang perlu Anda ingat</span>
+    <p>Penghapusan harus hidup di tempat yang sama dengan pembuatan. Kalau keduanya terpisah,
+    keduanya pasti berbeda — dan perbedaannya muncul sebagai kebocoran: container tertinggal,
+    halaman menjadi <code>inert</code>, teks yang diketik hilang.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">8</span>ADR-0036: setiap tab punya modul tampilan sendiri</h2>
+
+  <p><a href="../../../docs/adr/0036-each-panel-tab-is-its-own-view.md"><code>ADR-0036</code></a>
+  <span class="status-pill status-accepted">Accepted</span> menyelesaikan masalah yang mirip dengan
+  ADR-0003, tapi di sisi panel: <code>ui-comparer.ts</code> tumbuh jadi ± 700 baris dan mengerjakan
+  empat hal sekaligus — perilaku overlay, tampilan tab Bandingkan, komposisi markupnya, dan
+  pengkabelan antar tab.</p>
+
+  <p>Masalahnya lebih halus daripada “filer terlalu panjang”. Tiga pertanyaan yang wajib diketahui
+  tentang sebuah tab dijawab oleh <em>cangkang</em> panel, padahal semuanya fakta tab itu sendiri:</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Dari ADR-0036: pertanyaan yang dijawab cangkang, padahal itu fakta tab.</caption>
+      <thead><tr><th>Pertanyaan</th><th>Di mana jawabannya tinggal</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>elemen mana yang jadi tampilan tab</td>
+          <td><code>getElementById("ch-comparer-view-compare")</code> di dalam cangkang</td>
+        </tr>
+        <tr>
+          <td>elemen mana yang jadi tombol tab</td>
+          <td><code>getElementById("ch-tab-compare")</code></td>
+        </tr>
+        <tr>
+          <td>apakah halaman ini boleh menampilkan tab</td>
+          <td><code>referenceIsIdentity()</code> dan <code>isCheckerPage()</code> yang diimpor cangkang</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Keputusannya: setiap tab adalah satu modul tampilan dengan factory dan singleton —
+  <code>createComparerView(deps)</code> + <code>comparerView</code>, dan
+  <code>createCheckerView(deps)</code> + <code>checkerView</code>. Cangkang <strong>diteri tahu</strong>,
+  bukan bertanya: ia menyimpan daftar <code>PanelTabBinding { button, view, available, onOpen? }</code>,
+  dan <code>switchTab</code> hanya menyalakan unsur yang terikat, tanpa membaca id sama sekali.
+  Gerbang <code>available</code> ikut pindah ke tab, karena tablah yang jawabannya tentang; dan
+  <code>onOpen</code> juga milik tab, sebab “panel dibuka di tab ini berarti apa” adalah pekerjaan
+  tab itu sendiri — Komparator menaruh kursor di area tempelnya dan menawarkan clipboard.</p>
+
+  <aside class="pull">
+    <span class="label">Akibat yang paling terasa</span>
+    <p>Sebelumnya tab Komparator hanya bisa diuji lewat <code>injectComparerModal()</code>, jadi
+    setiap kasus “apakah tab ini memulai scrape yang tak akan pernah dilaporkan” ikut menguji markup
+    overlay-nya. Sekarang suite-nya memasang <code>createComparerView</code> di atas Run pribadi dan
+    DOM tiruan, tanpa pernah membangun panel. <code>ui-comparer.ts</code> turun dari ± 700 baris
+    jadi ± 230 baris: sekarang ia hanya composition root.</p>
+  </aside>
+</section>
+
+<section class="practice">
+  <h2><span class="num">9</span>Uji ingatan</h2>
+  <p>Jawab dulu, baru lihat koreksinya. Jawaban yang benar tidak selalu di posisi pertama.</p>
+
+  <div class="quiz" data-quiz="l05-q1">
+    <p class="q">Di PPN Masukan, Referensi milik penjual. Apa yang Cindieh lakukan di grid itu?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Filter adalah pencarian, dan beberapa pembelian berbagi referensi tetap jawaban yang sah. Yang hilang di Masukan justru tab Komparator.">Menyembunyikan filter Referensi karena referensinya tidak unik</button></li>
+      <li><button class="opt" data-correct data-why="Tepat. Kedua grid PPN mendapat filter Referensi, hanya PPN Keluaran yang mendapat tab Komparator, karena referensi di Masukan milik penjual dan berulang.">Menampilkan filter Referensi, tetapi menyembunyikan tab Komparator</button></li>
+      <li><button class="opt" data-why="Terbalik dua kali: filter tetap ditawarkan di kedua grid PPN, sedangkan tab Komparator hanya di PPN Keluaran.">Menyembunyikan filter Referensi dan menampilkan tab Komparator</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l05-q2">
+    <p class="q">Pengecekan berjalan juga di grid Retur PPN Keluaran. Kolom identitasnya dibaca…</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Grid retur tidak punya kolom Referensi sama sekali; barisnya bernama No Retur, dengan nomor faktur hanya sebagai cadangan.">Referensi, sama seperti dua grid PPN yang lain</button></li>
+      <li><button class="opt" data-why="Nomor faktur hanya cadangan ketika baris retur tidak punya No Retur. Kolom identitasnya tetap No Retur.">Nomor Faktur Pajak, sebab baris retur tak bernama</button></li>
+      <li><button class="opt" data-correct data-why="Tepat. Di kedua grid retur, identitas barisnya adalah No Retur, tanggal retur dicatat terpisah, dan nomor faktur hanya dipakai sebagai cadangan.">No Retur, sebab grid retur tidak punya Referensi</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l05-q3">
+    <p class="q">Dari mana predikat seperti isCheckerPage() dan referenceIsIdentity() membaca jawabannya?</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Tepat. Tiap proyeksi adalah satu baris baca dari baris grid yang sama, jadi keduanya tidak bisa berbeda jawaban.">Dari baris grid terkait di dalam tabel PANEL_GRIDS</button></li>
+      <li><button class="opt" data-why="Itulah pola lama: setiap pertanyaan membawa daftarnya sendiri, dan daftar-daftar itu pelan-pelan berbeda.">Dari daftar URL manual yang ditulis tiap modul</button></li>
+      <li><button class="opt" data-why="isOutputTaxPage masih ada, tapi hanya menjawab grid mana ini, bukan empat pertanyaan panel yang lain.">Dari fungsi isOutputTaxPage yang menjadi dasar semua itu</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l05-q4">
+    <p class="q">Tombol panel di toolbar PPN Masukan memakai nama…</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Nama itu mengikuti tab yang bisa dilayani halaman itu, dan PPN Masukan tidak punya tab Komparator.">Bandingkan data penjualan, seperti di grid PPN Keluaran</button></li>
+      <li><button class="opt" data-correct data-why="Tepat. Halaman itu hanya bisa menyajikan Pengecekan, jadi tombolnya untuk Pengecekan dan ikonnya juga ikon centang.">Pengecekan keakuratan nilai, seperti di dua grid retur</button></li>
+      <li><button class="opt" data-why="Tombolnya dinamai untuk tab yang bisa dilayani, dan tab itu ditentukan ui-panel.ts saat panel dibuka.">Tanpa nama, karena tab baru diputuskan saat diklik</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l05-q5">
+    <p class="q">Saat sebuah run diundurkan, status line sebuah tab diganti. Kapan penggantian itu berlaku?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Dulu penjagaannya membandingkan teks, dan teks adalah proksi dari keadaan yang sebenarnya dilacak.">Selama teks baris belum berubah dari tulisan lama</button></li>
+      <li><button class="opt" data-why="Kalau selalu berlaku, ringkasan atau galat yang sudah tampil akan tertimpa garis undur.">Selalu, karena status line itu milik tab tersebut</button></li>
+      <li><button class="opt" data-correct data-why="Tepat. Kind-nya penjaganya, jadi penggantian hanya terjadi selama baris masih memegang status waiting.">Selama baris itu masih memegang status waiting itu</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l05-q6">
+    <p class="q">Saat portal merender ulang, permukaan mana yang TIDAK dibangun ulang?</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Tepat. Panel hidup di body yang tidak dirender ulang Angular, dan membangunnya lagi akan membuang teks yang ditempel pengguna.">Panel overlay, karena teks tempelan pengguna bisa hilang</button></li>
+      <li><button class="opt" data-why="Toolbar ada di dalam markup portal, jadi render ulang bisa mengambilnya dan toolbar harus dipasang lagi.">Toolbar ekspor, karena berada di dalam markup portal</button></li>
+      <li><button class="opt" data-why="Filter di header grid juga ikut hilang saat render ulang, jadi harus dipasang lagi.">Grid filter Referensi, karena sel kolom ikut hilang</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l05-q7">
+    <p class="q">Menurut ADR-0036, pertanyaan “elemen mana yang jadi tampilan sebuah tab” dijawab…</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Justru cangkang yang harus tahu; ADR-0036 memindahkannya ke tab itu sendiri.">dari shell panel, lewat pencarian id</button></li>
+      <li><button class="opt" data-correct data-why="Tepat. Id elemen sebuah tab adalah urusan tab itu; cangkang hanya toggling unsur yang terikat.">dari tab itu sendiri, lewat binding</button></li>
+      <li><button class="opt" data-why="Factory membuat tab bisa diuji sendiri, tapi jawabannya tetap milik tab itu sendiri.">dari setiap modul, lewat factories sendiri</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l05-q8">
+    <p class="q">Apa yang membuat factory <code>createComparerView(deps)</code> berguna untuk pengujian?</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Tepat. Tab bisa diuji di atas Run pribadi dan DOM tiruan, tanpa membangun overlay sama sekali.">Tab bisa diuji tanpa membangun overlay panelnya</button></li>
+      <li><button class="opt" data-why="Shell tidak bisa diuji tanpa tab; justru tabnya yang bisa diuji tanpa shell.">Shell panel bisa diuji tanpa tab nyata</button></li>
+      <li><button class="opt" data-why="Kodenya tetap butuh DOM portal; yang dihindari adalah membangun overlay panel.">Kode bisa jalan tanpa DOM portal nyata</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz-score" data-score-for="l05">
+    <strong>Skor pelajaran ini</strong>
+    <span data-score-text>0 dari 8 soal dijawab, 0 benar.</span>
+    <button type="button" data-score-reset>Ulangi</button>
+  </div>
+</section>
+
+<aside class="source">
+  <h3>Sumber utama</h3>
+  <ul>
+    <li><a href="../../../docs/adr/0021-referensi-filter-and-identity-are-two-page-facts.md"><code>ADR-0021</code></a>
+    — dua fakta Referensi, dan kenapa satu predikat menahan fitur yang bekerja di PPN Masukan.</li>
+    <li><a href="../../../docs/adr/0024-checker-covers-the-retur-grids.md"><code>ADR-0024</code></a>
+    — empat fakta menggantikan satu, dan <code>CHECKER_IDENTITIES</code> yang dibaca panel dan berkas.</li>
+    <li><a href="../../../docs/adr/0025-the-panel-entry-point-is-the-panels-own-fact.md"><code>ADR-0025</code></a>
+    — tombol panel, namanya, ikonnya, dan event yang ia angkat.</li>
+    <li><a href="../../../docs/adr/0028-one-row-per-grid-for-the-panels-page-facts.md"><code>ADR-0028</code></a>
+    — <code>PANEL_GRIDS</code>, proyeksi yang tetap hidup, dan dua gerbang yang sengaja di luar tabel.</li>
+    <li><a href="../../../docs/adr/0029-a-tabs-status-line-is-one-module.md"><code>ADR-0029</code></a>
+    — empat kind status, dan kenapa kind adalah penjaganya.</li>
+    <li><a href="../../../docs/adr/0033-every-injected-surface-has-one-owner.md"><code>ADR-0033</code></a>
+    — enam permukaan, satu pemilik masing-masing, dan tiga pintu lifecycle halaman.</li>
+  </ul>
+</aside>
+
+<div class="ask">
+  <strong>Catatan:</strong> tidak ada yang perlu Anda kirim balik. Tapi kalau ada satu bagian dari
+  pelajaran ini yang masih terasa abstrak — misalnya kenapa “satu baris per grid” lebih aman
+  daripada “satu fungsi besar”, atau kenapa <code>isEfakturPage</code> justru harus di luar tabel —
+  tanyakan saja. Saya akan jawab dengan contoh konkret dari kodenya.
+</div>
+
+<footer class="course-foot">
+  <p>Pelajaran 05 · <a href="index.html">Peta pelajaran</a> · sebelumnya:
+  <a href="0004-sweep-setahun.html">04 · Sweep setahun</a> · berikutnya:
+  <a href="0006-deklarasi-data.html">06 · Deklarasi data</a></p>
+</footer>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

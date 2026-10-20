@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pelajaran 02 · Dua dunia dan jembatan — Kursus ADR Cindieh</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="course-head">
+  <p class="eyebrow">Cindieh · Membaca Architecture Decision Records</p>
+  <h1>Pelajaran 02 — Dua dunia dan jembatan</h1>
+  <p class="lede">Cindieh berjalan di dua dunia JavaScript pada satu halaman portal. Pelajaran ini
+  membedah kenapa arsitekturnya begitu, dan kenapa token jembatan yang kelihatan seperti rahasia
+  ternyata bukan rahasia sama sekali.</p>
+  <p class="meta">Pelajaran 02 dari 09 · waktu baca ± 14 menit · 5 soal uji ingatan</p>
+  <nav class="lesson-nav">
+    <a href="index.html">Peta pelajaran</a>
+    <a href="../reference/adr-peta.html">Peta 38 ADR</a>
+    <a href="../reference/glosarium.html">Glosarium</a>
+    <span class="spacer"></span>
+    <a href="0001-membaca-adr.html">← 01</a>
+    <span>02 dari 09</span>
+    <a href="0003-kehidupan-run.html">03 →</a>
+  </nav>
+</header>
+
+<main>
+
+<section>
+  <h2><span class="num">1</span>Dua dunia dalam satu halaman</h2>
+
+  <p>Portal DJP Coretax adalah aplikasi Angular yang berjalan di halaman web biasa. Ekstensi
+  Cindieh punya kebutuhan yang bertolak belakang dengan halaman itu: ia harus membaca request yang
+  dikirim portal, membaca isi responsnya, lalu memproses data itu di panel milik sendiri. Semua itu
+  dari satu konteks JavaScript saja mustahil, dan alasannya yang paling menentukan secara teknis:
+  <strong>content script tidak berbagi tumpukan JavaScript dengan halaman</strong>. Keduanya melihat
+  DOM yang sama, tetapi tidak melihat objek yang sama.</p>
+
+  <p>Karena itu Cindieh memakai dua dunia. Pemisahan itu bukan pilihan gaya, melainkan konsekuensi
+  dari apa yang masing-masing dunia <em>bisa</em> lakukan:</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Dua dunia, dua kemampuan yang tidak bisa ditukar.</caption>
+      <thead>
+        <tr><th>Aspek</th><th>Dunia isolated</th><th>Dunia MAIN</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Berkas</strong></td>
+          <td><code>src/content/main.ts</code></td>
+          <td><code>src/content/scraper.ts</code></td>
+        </tr>
+        <tr>
+          <td><strong>Cara masuk</strong></td>
+          <td>Dideklarasikan sebagai content script Manifest V3</td>
+          <td>Disisipkan lewat tag <code>&lt;script&gt;</code> yang menunjuk <code>content/scraper.js</code></td>
+        </tr>
+        <tr>
+          <td><strong>API peramban</strong></td>
+          <td>Punya <code>browser.runtime</code>: bisa menyimpan, bisa memicu unduhan</td>
+          <td>Tidak punya satu pun API peramban</td>
+        </tr>
+        <tr>
+          <td><strong>Yang bisa dilihat</strong></td>
+          <td>Hanya DOM, dan itu pun lewat peramban</td>
+          <td>Tumpukan JavaScript yang sama dengan portal: bisa menyadap <code>fetch</code> dan XHR, membaca badan request, menangkap respons API</td>
+        </tr>
+        <tr>
+          <td><strong>Pemilik UI</strong></td>
+          <td>Ya: menyuntik tombol, badge, dan panel, serta memicu unduhan</td>
+          <td>Tidak: ia tidak boleh menyentuh DOM</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Dunia MAIN ada karena satu kebutuhan yang tidak bisa dipenuhi dari luar: menyadap request
+  milik portal. Portal memanggil API-nya sendiri dengan filter tertentu, dan hanya request itu
+  yang membawa tahu filter masa dan tahun yang sedang dicari. Content script biasa tidak pernah
+  melihat request tersebut, karena request itu lahir di tumpukan JavaScript halaman, bukan di dunia
+  isolated.</p>
+
+  <p>Maka satu-satunya kanal yang tersisa adalah <code>postMessage</code>: jendela yang sama, pesan
+  yang sama, dua interpretasi yang berbeda. Dan karena keduanya hidup di halaman yang sama, halaman
+  itu bisa ikut menyimak. Itulah akar seluruh pelajaran ini.</p>
+
+  <aside class="pull">
+    <span class="label">Rumus dua dunia</span>
+  <p>Dunia isolated <strong>memiliki</strong> API peramban; dunia MAIN <strong>memiliki</strong>
+    akses ke request portal. Tidak ada satu pun yang punya keduanya, dan tidak boleh ada yang
+    mengira bisa.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Satu dispatcher per dunia</h2>
+
+  <p>Kalau dua dunia bicara lewat <code>postMessage</code>, siapa yang memutuskan pesan mana yang
+  boleh dipercaya? Jawabannya ada di
+  <a href="../../../docs/adr/0002-message-dispatch-seam.md"><code>ADR-0002</code></a>: satu
+  batas tanggung jawab berupa guard lalu dispatch di setiap dunia, yang diimplementasikan di
+  <code>postmessage-guard.ts</code>. <code>main.ts</code> menjalankan satu dispatcher, dan
+  <code>scraper.ts</code> menjalankan satu dispatcher juga. Bentuknya kira-kira begini:</p>
+
+<pre><code>const dispatcher = createMessageDispatcher({
+  direction: "FROM_PAGE",
+  token: () =&gt; bridge.getBridgeToken(),
+  handlers: {
+    START_SCRAPE: (m) =&gt; { /* … */ },
+    SCRAPE_PROGRESS: (m) =&gt; { /* … */ },
+    SCRAPE_COMPLETE: (m) =&gt; { /* … */ },
+  },
+});
+window.addEventListener("message", (e) =&gt; dispatcher.handle(e));</code></pre>
+
+  <p>Urutannya penting dan tidak boleh dibalik. <strong>Pertama</strong>, guard. Dari
+  <code>postmessage-guard.ts</code>, sebuah pesan hanya lolos bila empat syarat ini terpenuhi
+  sekaligus:</p>
+
+<pre><code>event.source === selfWindow &amp;&amp;
+event.origin === selfWindow.location.origin &amp;&amp;
+data.direction === direction &amp;&amp;
+data.token === expectedToken</code></pre>
+
+  <p><strong>Kedua</strong>, dispatch. Pesan yang lolos guard diteruskan ke tabel handler yang
+  dikunci <code>type</code>-nya; tipe yang tidak terdaftar di-drop tanpa suara. Field
+  <code>direction</code> dan <code>token</code> dilepas sebelum handler dipanggil, jadi handler
+  tidak pernah perlu memeriksa token sendiri. Ada satu detail yang mudah terlewat: token yang
+  <strong>kosong tidak pernah cocok</strong>, sehingga penjaga memblokir semua pesan, bukan
+  meloloskan semua.</p>
+
+  <p>ADR-0002 juga mencatat dua pembersihan yang membuat keputusan ini murah. Dua listener
+  <code>FROM_CONTENT</code> yang ditulis tangan di sisi scraper dihapus, dan kanal
+  <code>runtime.onMessage</code> yang mati dihapus juga: tidak pernah ada pengirimnya, dan kanal
+  yang sebenarnya milik popup adalah <code>storage.local</code>. Satu jejaknya untuk kita semua:
+  jangan pernah menulis listener <code>window.addEventListener("message", …)</code> ad-hoc dengan
+  pemeriksaan guard seadanya di dalam badan listener. Pintu keamanan diuji sekali, di satu tempat, dan
+  berlaku untuk kedua arah.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Daftar pesan yang hidup di antara kedua dunia.</caption>
+      <thead>
+        <tr><th>Arah</th><th>Tipe pesan</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>isolated → MAIN</strong></td>
+          <td><code>START_SCRAPE</code>, <code>STOP_SCRAPE</code>, <code>SCRAPE_BY_INVOICES</code>, <code>SET_SERVER_FILTER</code>, <code>RESET_SCRAPER</code>, <code>START_PDF_DOWNLOAD</code></td>
+        </tr>
+        <tr>
+          <td><strong>MAIN → isolated</strong></td>
+          <td><code>INJECTED_READY</code>, <code>SCRAPE_PROGRESS</code>, <code>SCRAPE_COMPLETE</code>, <code>SCRAPE_ERROR</code>, <code>DOWNLOAD_PDF_ITEM</code>, <code>SCRAPE_DATA_CHUNK</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <aside class="warn">
+    <span class="label">Yang jadi patokan</span>
+    <p>Tambah tipe pesan baru berarti menambah <strong>satu entri di tabel handler dunia yang
+    menerimanya</strong>, bukan menambah listener. Kalau sebuah tipe baru terasa perlu ditangani di
+    dua tempat sekaligus, itu bukan satu pesan: itu dua protokol yang belum dipisah.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Token jembatan: korelasi, bukan rahasia</h2>
+
+  <p>Sekarang bagian yang paling sering disalahpahami, dan paling sering jadi bahan perdebatan di
+  tim. Token jembatan dibuat dengan <code>crypto.randomUUID</code>, dikirim di setiap pesan, dan
+  diperiksa di setiap pesan. Apakah token itu rahasia? <strong>Tidak.</strong> ADR
+  <a href="../../../docs/adr/0007-bridge-token-exposure-accepted-risks.md"><code>ADR-0007</code></a>
+  mencatat dua paparan, dan keduanya <strong>diterima</strong>, bukan bug yang menunggu
+  diperbaiki.</p>
+
+  <ol>
+    <li><strong>Di dalam payload pesan.</strong> <code>postToScraper</code> di
+    <code>bridge.ts</code> menempelkan field <code>token</code> sebagai teks biasa pada setiap
+    pesan yang dikirim ke halaman; <code>sendToContent</code> dan <code>emitPdfDownload</code> di
+    <code>scraper.ts</code> melakukan hal sama saat arahnya dibalik. Skrip MAIN mana pun yang
+    memasang <code>window.addEventListener("message", …)</code> bisa membaca
+    <code>event.data.token</code>. Bukan bisa menduga: bisa membacanya.</li>
+    <li><strong>Di URL skrip.</strong> <code>injectScraper</code> di <code>main.ts</code>
+    meneruskan token ke sisi MAIN lewat <code>?token=</code> pada <code>&lt;script src&gt;</code>.
+    URL itu bisa dibaca di DOM yang dipakai bersama, sampai inisialisasi scraper melepas
+    <code>src</code>-nya.</li>
+  </ol>
+
+  <p>Kenapa dua paparan itu tidak bisa dihilangkan? Karena dua hal yang memang tidak bisa
+  ditawar: skrip MAIN tidak punya API ekstensi, jadi <code>postMessage</code> tetap satu-satunya
+  kanal; dan token harus sampai ke scraper dengan cara apa pun. Cara yang justru menjaga token tetap
+  di luar <code>window</code> adalah URL skrip. Jadi dua kali, dan itu konsekuensi arsitektur, bukan
+  kelalaian.</p>
+
+  <aside class="warn">
+    <span class="label">Kalimat untuk tim</span>
+    <p>“Token jembatan itu alat korelasi, bukan kunci. Skrip di halaman yang sama sudah bisa
+    membacanya, jadi jangan menyebutnya sebagai lapisan keamanan. Yang dilindungi adalah
+    <em>kesalahan konfigurasi</em>: pesan tanpa token, atau dengan token yang salah, tidak
+    diterima.”</p>
+  </aside>
+
+  <p>Lalu apa yang <strong>tetap dijamin</strong> oleh pemeriksaan token? Ringkasnya begini:</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Empat pemeriksaan guard, dan batas masing-masing.</caption>
+      <thead>
+        <tr><th>Yang diperiksa</th><th>Yang dijamin</th><th>Yang tidak dijamin</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>source</code></td>
+          <td>Pesan datang dari jendela yang sama</td>
+          <td>Bahwa pengirimnya skrip Cindieh, bukan skrip lain di halaman itu</td>
+        </tr>
+        <tr>
+          <td><code>origin</code></td>
+          <td>Asalnya <code>location.origin</code> portal yang sama</td>
+          <td>Bahwa isi pesan dikirim oleh portal</td>
+        </tr>
+        <tr>
+          <td><code>direction</code></td>
+          <td>Pesan bertipe <code>FROM_PAGE</code>, bukan <code>FROM_CONTENT</code></td>
+          <td>Bukti identitas pengirim; ini field protokol, bukan pernyataan siapa yang bicara</td>
+        </tr>
+        <tr>
+          <td><code>token</code></td>
+          <td>Pesan cocok dengan jembatan yang sedang hidup, sehingga pesan basi ditolak</td>
+          <td>Kerahasiaan token terhadap skrip yang berbagi halaman</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Fakta bahwa <code>source</code> dan <code>origin</code> mengikat jendela dan asal, bukan dunia
+  JavaScript, itu penting dan sering dilupakan. Keduanya membuktikan <em>dari mana</em> pesan datang
+  secara fisik, bukan <em>siapa</em> yang mengirimnya. Dan ADR-0007 menambahkan satu peringatan
+  yang jarang dibaca: akses yang sudah ada ke data halaman tidak berarti memanggil handler sisi
+  ekstensi tidak menambah kemampuan apa pun. Jembatan ini <strong>tidak boleh digambarkan</strong>
+  sebagai sesuatu yang memberi tambahan di luar akses halaman. Yang tepat adalah sebaliknya: token
+  menolak pesan yang salah dan pesan basi, dan tidak menahan apa pun terhadap kode same-page yang
+  berniat buruk.</p>
+
+  <p>Tiga aturan higiene yang wajib dijaga, semuanya berasal dari ADR yang sama: jangan menyimpan
+  token di <code>window</code>; jangan menulis, menyimpan, atau membocorkan token lewat hook debug
+  mana pun; dan jangan melemahkan <code>shouldProcessPageMessage</code>. Jangan juga kembalikan
+  listener ad-hoc seperti pada bagian sebelumnya.</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Satu scraper per halaman</h2>
+
+  <p>ADR
+  <a href="../../../docs/adr/0008-scraper-injection-one-time-per-page.md"><code>ADR-0008</code></a>
+  lahir dari kegagalan yang nyata, dan mekanismenya enak diceritakan ke rekan tim. Dulu,
+  <code>injectScraper</code> menghapus elemen
+  <code>&lt;script id="__ch_scraper_injected__"&gt;</code> begitu skrip selesai dimuat. Masalahnya:
+  Coretax adalah SPA, dan navigasi SPA memanggil <code>injectScraper</code> lagi <strong>tanpa
+  reload halaman</strong>. Setiap navigasi membuat instance scraper baru, sementara instance lama
+  tetap menggantung di halaman.</p>
+
+  <p>Instance lama itu tidak langsung berbahaya: token jembatunya sudah tidak berlaku, jadi
+  <code>shouldProcessPageMessage</code> menolak pesan-pesannya. Tapi interceptor-nya tetap
+  terpasang: <code>fetch</code>, XHR, dan <code>URL.createObjectURL</code> yang sudah ditambal
+  masih membungkus yang milik instance yang lebih baru. Lapisannya menumpuk di setiap navigasi.
+  Itulah yang disebut instance zombie: tidak lagi memegang kendali, tapi masih memegang
+  pancingan.</p>
+
+  <p>Perbaikannya justru terlihat sepele: <strong>elemennya sengaja dipertahankan</strong>.
+  <code>scraper.ts</code> melepas <code>src</code> sebagai tindakan pertamanya, sehingga token ikut
+  hilang dari DOM, tapi elemennya — id utuh, <code>src</code> hilang — tetap tinggal di DOM. Guard
+  <code>getElementById("__ch_scraper_injected__")</code> di <code>injectScraper</code> lalu berlaku
+  sepanjang umur halaman: tepat satu instance scraper per halaman. Instance tunggal itu di-reset
+  pada setiap navigasi lewat <code>RESET_SCRAPER</code>, dan token jembatan pun dibuat sekali per
+  halaman, bukan sekali per navigasi.</p>
+
+  <p>Kalau pemuatan skrip gagal, <code>onerror</code> di <code>main.ts</code> menghapus elemennya,
+  sehingga injeksi bisa dicoba ulang, sekaligus melepaskan <code>src</code> pembawa token lebih
+  awal.</p>
+
+  <aside class="pull">
+    <span class="label">Pelajaran dari pembaruan ADR-0008</span>
+    <p>ADR-0008 punya catatan pembaruan bertanggal 2026-09-18: <code>URL.createObjectURL</code>
+    sudah tidak di-patch sama sekali, karena dihapus saat audit pemblokiran unduhan (ADR-0001).
+    Jadi satu klaim di dalam ADR itu, namely ancaman zombie dari <code>createObjectURL</code>,
+    sudah tidak menggambarkan kode sekarang. Keputusan intinya tetap berdiri, dan masih dipikul
+    oleh patch yang tersisa: <code>fetch</code>, tiga metode prototipe
+    <code>XMLHttpRequest</code>, <code>HTMLAnchorElement.click</code>, dan
+    <code>window.open</code>.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Identitas dan pembatalan di dunia MAIN</h2>
+
+  <p>Sekarang masuk ke isi yang menentukan: siapa yang memegang "Run" itu. ADR
+  <a href="../../../docs/adr/0010-scrape-run-isolation.md"><code>ADR-0010</code></a> meletakkannya di
+  dunia MAIN, di <code>scraper-run.ts</code>. Setiap operasi scraping atau unduhan PDF memiliki
+  <code>AbortController</code> dan identitas sendiri. Berhenti dan reset SPA membatalkan pemilik itu
+  <strong>sebelum</strong> operasi berikutnya mulai, sehingga pembersihan milik operasi lama tidak
+  pernah bisa membersihkan pemilik yang lebih baru.</p>
+
+  <p>Pembatalan itu jauh lebih dalam dari sekadar membatalkan Promise: ia menjangkau XHR milik
+  ekstensi, timer dan langganan tangkapan request, dan loop aksi yang memeriksa pembatalan
+  <em>setelah</em> setiap <code>await</code> sebelum memublikasikan data atau memulai kerja
+  berikutnya. Pemeriksaan setelah <code>await</code>-lah yang mencegah data dari operasi yang
+  sudah dibatalkan ikut masuk ke hasil.</p>
+
+  <p>Identitasnya bekerja lewat arah lain. Jembatan di dunia isolated memberi nomor
+  <code>runId</code> yang bertambah monotonik pada setiap mulai, dan membatalkan nomor aktif saat
+  berhenti atau reset. Pesan progres, completion, error, dan unduhan PDF yang terlingkupi mengulang
+  nomor itu. Di sisi penerima, <code>isCurrentRunMessage</code> memeriksa nomor itu dan URL halaman
+  awal, <strong>setelah</strong> guard source/origin/token, dan <strong>sebelum</strong> pesan
+  diterima. Urutan itu yang membuat pesan yang sudah antre sebelum navigasi atau reset tetap
+  ditolak.</p>
+
+  <p>Beberapa pesan sengaja di luar lingkup ini: unduhan PDF tunggal bawaan dan pesan kesiapan
+  (<code>INJECTED_READY</code>) tidak memakai nomor. Dan nomor itu, seperti token, adalah alat
+  korelasi, bukan autentikasi; ADR-0007 tetap berlaku.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Empat akhir sebuah operasi, dan bentuk pesan yang dihasilkan.</caption>
+      <thead>
+        <tr><th>Kejadian</th><th>Akibat</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Kegagalan paginasi</strong></td>
+          <td>Error saja, tidak pernah completion biasa. Run yang gagal tidak boleh terlihat seperti yang berhasil.</td>
+        </tr>
+        <tr>
+          <td><strong>Lookup No. Faktur dan unduhan PDF dengan hasil campuran</strong></td>
+          <td>Secara eksplisit <em>partial</em>: isi yang berhasil dan yang gagal dibedakan, bukan diratakan.</td>
+        </tr>
+        <tr>
+          <td><strong>Operasi yang dibatalkan</strong></td>
+          <td>Tidak memancarkan completion sama sekali. PDF yang sudah terunduh tidak ikut dihapus.</td>
+        </tr>
+        <tr>
+          <td><strong>Operasi yang selesai</strong></td>
+          <td>Completion biasa, dengan nomor <code>runId</code> yang masih berlaku.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Hasil besar dipecah jadi chunk</h2>
+
+  <p>ADR
+  <a href="../../../docs/adr/0017-chunked-scrape-result-transfer.md"><code>ADR-0017</code></a> menyelesaikan
+  masalah yang menambah beban, bukan masalah yang menambah fitur. <code>SCRAPE_COMPLETE</code>
+  dulu membawa seluruh baris dalam satu pesan, dan <code>postMessage</code> menyalin payload-nya
+  secara <strong>sinkron di thread pengirim</strong>, yaitu thread utama halaman: thread tempat
+  aplikasi Angular portal sedang merender, tepat di tengah ekspor yang sedang ditonton pengguna.
+  Setahun data dari grid yang ramai adalah puluhan ribu baris, dan menyalinnya adalah satu blok
+  panjang tanpa satu pun kesempatan untuk melepas napas.</p>
+
+  <p>Solusinya ambang, bukan selalu. <code>SCRAPE_CHUNK_ROWS</code> di
+  <code>scrape-result-transfer.ts</code> bernilai 2.000 baris. Di bawah ambang, perilakunya persis
+  seperti dulu: satu pesan, baris inline, tanpa flag baru. Itu pilihan yang disengaja. Jalur chunk
+  adalah kode baru di seam paling rapuh di proyek ini, dan kalau setiap run biasa bergantung
+  padanya, kasus yang paling sering terjadi hanya akan pernah diuji oleh tes milik jalur itu
+  sendiri. Flag <code>dataChunks</code> yang membedakan keduanya: ketika <code>dataChunks</code>
+  tidak ada, artinya barisnya ada di <code>data</code>, termasuk untuk semua pesan lama.</p>
+
+  <p>Ketika transfer dipecah, <code>data</code> dikirim sebagai array kosong. Itu juga disengaja:
+  penerima yang kehilangan satu chunk harus melihat hasil yang jelas kosong, bukan hasil parsial yang
+  tampak masuk akal. Sisi penerima ada di <code>result-chunks.ts</code>, dan aturannya satu:
+  <strong>transfer yang tidak lengkap ditolak, bukan diselesaikan.</strong>
+  <code>assembleRows</code> mengembalikan <code>null</code> ketika ada chunk yang hilang, dan
+  <code>main.ts</code> melaporkan Run sebagai gagal, bukan menetapkannya dengan apa pun yang sempat
+  tiba.</p>
+
+  <p>Mengapa keras-headedness itu perlu? Karena chunk yang hilang dan grid yang memang pendek
+  menghasilkan berkas yang identik: sedikit lebih kecil dari yang diharapkan, dan setelah ditulis
+  tidak ada bedanya lagi dengan akhir data yang sah. Mengekspor sisa-sisanya akan memanggil
+  kembali kegagalan yang justru harus terlihat, lewat pintu yang berbeda. Jadi chunk yang hilang
+  harus ribut: panel mengatakannya, notifikasi completion diterbitkan sebagai error, dan Run tidak
+  menyimpan apa pun.</p>
+
+  <p>Hasil kosong bukan hasil hilang. <code>assembleRows(buffer, 0)</code> adalah array kosong, dan
+  scraping yang sah-saja tidak menemukan apa pun selesai sebagai keberhasilan kosong yang biasa.
+  Urutan pengiriman juga bukan kontrak: <code>postMessage</code> antara satu pengirim dan satu
+  penerima memang mempertahankan urutan, jadi chunk praktisnya tidak akan datang terbalik. Tapi
+  penerima mengindeks menurut <code>index</code> tetap saja, karena urutan kedatangan bukan
+  jaminan. Setiap chunk menyebut jumlah total yang sama, dan indeks yang berulang
+  <strong>menimpa</strong>, bukan menambah: pengiriman ganda adalah bug yang harus dibuat tidak
+  berbahaya, bukan alasan menggandakan baris.</p>
+
+  <aside class="warn">
+    <span class="label">Yang sengaja tidak dipecah</span>
+    <p><code>START_PDF_DOWNLOAD</code> membawa daftar baris ke arah sebaliknya dan dibiarkan apa
+    adanya. Payload-nya jauh lebih kecil, yaitu baris satu grid yang memang sudah dipegang
+    scraper, dan mengpecahnya berarti membangun protokol kedua di arah berlawanan tanpa keuntungan
+    yang pernah diukur.</p>
+  </aside>
+</section>
+
+<section class="practice">
+  <h2><span class="num">7</span>Uji ingatan</h2>
+  <p>Jawab dulu, baru lihat koreksinya. Jawaban yang benar tidak selalu di posisi pertama.</p>
+
+  <ul class="adr-list">
+    <li><span class="adr-ref">ADR-0002</span> <a href="../../../docs/adr/0002-message-dispatch-seam.md">Satu dispatcher per dunia</a> <span class="status-pill status-accepted">Accepted</span></li>
+    <li><span class="adr-ref">ADR-0007</span> <a href="../../../docs/adr/0007-bridge-token-exposure-accepted-risks.md">Token adalah risiko yang diterima</a> <span class="status-pill status-accepted">Accepted</span></li>
+    <li><span class="adr-ref">ADR-0008</span> <a href="../../../docs/adr/0008-scraper-injection-one-time-per-page.md">Satu scraper per halaman</a> <span class="status-pill status-accepted">Accepted</span></li>
+    <li><span class="adr-ref">ADR-0010</span> <a href="../../../docs/adr/0010-scrape-run-isolation.md">Operasi memiliki identitas dan pembatalan</a> <span class="status-pill status-accepted">Accepted</span></li>
+    <li><span class="adr-ref">ADR-0017</span> <a href="../../../docs/adr/0017-chunked-scrape-result-transfer.md">Transfer hasil besar dipecah</a> <span class="status-pill status-accepted">Accepted</span></li>
+  </ul>
+
+  <div class="quiz" data-quiz="l02-q1">
+    <p class="q">Apa saja yang diperiksa <code>shouldProcessPageMessage</code> sebelum meneruskan pesan ke handler?</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Empat syarat itu diperiksa sekaligus: asal jendela, asal origin, arah protokol, dan kecocokan token. Itulah yang membuat satu seam bisa diuji sekali untuk kedua arah.">Source, origin, arah protokol, dan token harus cocok dengan jembatan.</button></li>
+      <li><button class="opt" data-why="Tipe pesan menentukan handler mana yang dipanggil, tetapi tidak menentukan apakah pesan itu boleh diproses sama sekali.">Jenis pesan, jumlah baris, dan isi data diperiksa sebelum diteruskan.</button></li>
+      <li><button class="opt" data-why="Asal jendela memang diperiksa, tetapi origin dan arah protokol juga diperiksa, dan token kosong justru memblokir semua pesan.">Token harus cocok, asalkan sumber pesan berasal dari halaman ini.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l02-q2">
+    <p class="q">Kenapa token jembatan disebut alat korelasi, bukan alat autentikasi?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Acaknya token memang membuat tebakan sulit, tetapi yang menentukan adalah token itu bisa dibaca skrip lain di halaman, bukan kebetulan tebakan.">Karena token dibuat acak, sehingga tidak bisa ditebak oleh skrip lain.</button></li>
+      <li><button class="opt" data-correct data-why="Benar: token terbaca di payload pesan dan di URL skrip, jadi ia alat korelasi. Yang dilindungi adalah penolakan pesan yang salah atau basi.">Karena MAIN bisa melihatnya di payload pesan dan di URL skrip.</button></li>
+      <li><button class="opt" data-why="Token dipakai dua arah: pesan ke halaman dan pesan balik membawa token yang sama.">Karena token hanya berlaku di satu arah, dari halaman menuju skrip.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l02-q3">
+    <p class="q">Elemen <code>&lt;script id="__ch_scraper_injected__"&gt;</code> sengaja dipertahankan setelah skrip termuat karena…</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Justru sebaliknya: src dilepas sebagai tindakan pertama scraper, dan token pun ikut hilang dari DOM bersamanya.">Elemen itu menyimpan token agar skrip berikutnya tidak membutuhkannya lagi.</button></li>
+      <li><button class="opt" data-why="Yang dijaga adalah instance scraper, bukan perilaku portal saat memuat ulang skrip yang sama.">Elemen itu mencegah portal memuat ulang skrip yang sama lagi.</button></li>
+      <li><button class="opt" data-correct data-why="Tepat: elemen yang tetap ada membuat guard getElementById berlaku sepanjang umur halaman, sehingga navigasi SPA tidak pernah membuat instance scraper kedua.">Elemen itu penanda, supaya hanya satu scraper ada per halaman.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l02-q4">
+    <p class="q">Ketika satu chunk hilang di tengah transfer hasil, sisi penerima harus…</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Hasil parsial yang tampak masuk akal akan identik dengan grid yang memang pendek, dan setelah ditulis tidak ada bedanya lagi.">Melanjutkan transfer dengan baris yang sudah terkumpul agar file tetap terbentuk.</button></li>
+      <li><button class="opt" data-why="Tidak ada jalur pengiriman ulang di sini; yang dijaga justru laporan bahwa ada yang hilang, bukan mengulangi permintaan.">Mengulang permintaan ke portal sampai seluruh chunk itu terkirim lagi utuh.</button></li>
+      <li><button class="opt" data-correct data-why="Benar: assembleRows mengembalikan null saat ada chunk yang hilang, dan Run dilaporkan gagal tanpa menyimpan apa pun.">Menolak menyelesaikan transfer itu, karena hasil yang hilang tak bisa dibedakan.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l02-q5">
+    <p class="q">Kegagalan paginasi pada sebuah scraping harus berakhir sebagai…</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Benar: kegagalan paginasi menghasilkan error saja, tidak pernah completion biasa, supaya Run yang gagal tidak pernah terlihat berhasil.">Error, bukan completion biasa, supaya Run itu tidak pernah dianggap selesai.</button></li>
+      <li><button class="opt" data-why="Menyimpan baris yang terkumpul dari scraping yang gagal justru menyembunyikan kegagalan di balik berkas yang terlihat normal.">Completion biasa dengan penanda gagal, supaya baris yang terkumpul tetap tersimpan.</button></li>
+      <li><button class="opt" data-why="Status partial memang ada, tapi dipakai untuk lookup No. Faktur dan unduhan PDF dengan hasil campuran, bukan untuk kegagalan paginasi.">Hasil sebagian, sebab baris yang sudah terkumpul masih layak dipakai pengguna.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz-score" data-score-for="l02">
+    <strong>Skor pelajaran ini</strong>
+    <span data-score-text>0 dari 5 soal dijawab, 0 benar.</span>
+    <button type="button" data-score-reset>Ulangi</button>
+  </div>
+</section>
+
+<aside class="source">
+  <h3>Sumber utama</h3>
+  <ul>
+    <li><a href="../../../docs/adr/0002-message-dispatch-seam.md"><code>docs/adr/0002-message-dispatch-seam.md</code></a> —
+    satu dispatcher per dunia, dan larangan listener ad-hoc.</li>
+    <li><a href="../../../docs/adr/0007-bridge-token-exposure-accepted-risks.md"><code>docs/adr/0007-bridge-token-exposure-accepted-risks.md</code></a> —
+    dua paparan token yang diterima, model ancaman, dan aturan higiene.</li>
+    <li><a href="../../../docs/adr/0008-scraper-injection-one-time-per-page.md"><code>docs/adr/0008-scraper-injection-one-time-per-page.md</code></a> —
+    instance zombie, elemen penanda, dan catatan pembaruan 2026-09-18.</li>
+    <li><a href="../../../docs/adr/0010-scrape-run-isolation.md"><code>docs/adr/0010-scrape-run-isolation.md</code></a> —
+    <code>AbortController</code> per operasi, <code>runId</code> monotonik, dan batas gerbang
+    <code>isCurrentRunMessage</code>.</li>
+    <li><a href="../../../docs/adr/0017-chunked-scrape-result-transfer.md"><code>docs/adr/0017-chunked-scrape-result-transfer.md</code></a> —
+    ambang 2.000 baris, aturan menolak transfer tak lengkap, dan indeks yang menimpa.</li>
+    <li><a href="../../../src/content/postmessage-guard.ts"><code>src/content/postmessage-guard.ts</code></a> —
+    implementasi guard dan dispatcher yang diringkas di atas.</li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage">MDN,
+    <code>Window.postMessage()</code></a> — perilaku dasar menelusuri pesan antar jendela; berguna
+    kalau Anda perlu memahami perilaku structured clone yang jadi alasan pemecahan hasil.</li>
+  </ul>
+</aside>
+
+<div class="ask">
+  <strong>Catatan:</strong> tidak ada yang perlu Anda kirim balik. Tapi kalau satu bagian dari
+  pelajaran ini masih terasa abstrak, misalnya kenapa <code>source</code> dan
+  <code>origin</code> tidak bisa membuktikan siapa pengirimnya, atau kenapa transfer yang tidak
+  lengkap lebih baik gagal daripada menghasilkan berkas yang sedikit lebih kecil, tanyakan saja.
+  Saya akan jawab dengan potongan kode yang membatalkannya.
+</div>
+
+<footer class="course-foot">
+  <p>Pelajaran 02 · <a href="index.html">Peta pelajaran</a> · sebelumnya:
+  <a href="0001-membaca-adr.html">01 · Cara membaca ADR</a> · berikutnya:
+  <a href="0003-kehidupan-run.html">03 · Kehidupan Run</a></p>
+</footer>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

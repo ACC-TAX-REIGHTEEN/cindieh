@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pelajaran 09 · Preferensi: satu baris, satu pengikat — Kursus ADR Cindieh</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="course-head">
+  <p class="eyebrow">Cindieh · Membaca Architecture Decision Records</p>
+  <h1>Pelajaran 09 — Preferensi: satu baris, satu pengikat</h1>
+  <p class="lede">Ekstensi ini punya sembilan preferensi tersimpan. Semula setiap preferensi
+  dideklarasikan di empat daftar yang dijaga tangan secara paralel, lalu disambungkan sekali lagi di
+  popup — lima tempat yang harus menulis hal yang sama. ADR-0037 memangkas semuanya jadi satu tabel
+  dan satu pengikat. Pelajaran ini membedah potongan repo yang paling mudah rusak diam-diam:
+  kontrol yang terlihat “tersimpan” padahal tidak melakukan apa pun.</p>
+  <p class="meta">Pelajaran 09 dari 09 · waktu baca ± 12 menit · 5 soal uji ingatan</p>
+  <nav class="lesson-nav">
+    <a href="index.html">Peta pelajaran</a>
+    <a href="../reference/adr-peta.html">Peta 37 ADR</a>
+    <a href="../reference/glosarium.html">Glosarium</a>
+    <span class="spacer"></span>
+    <a href="0008-membatalkan-keputusan-sendiri.html">← 08</a>
+    <span>09 dari 09</span>
+  </nav>
+</header>
+
+<main>
+
+<section>
+  <h2><span class="num">1</span>Empat daftar yang dijaga tangan</h2>
+
+  <p>Masing-masing dari sembilan preferensi itu semula dideklarasikan di <strong>empat daftar yang
+  dijaga tangan secara paralel</strong>, lalu disambungkan sekali lagi di popup:</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Lima tempat yang dulu harus menyebut preferensi yang sama, dari ADR-0037.</caption>
+      <thead>
+        <tr><th>Tempat</th><th>Apa yang dikatakannya</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>shared/extension-preferences.ts</code></td>
+          <td>satu blok konstanta per kunci: kunci, default, normalizer</td>
+        </tr>
+        <tr>
+          <td><code>content/preferences.ts</code></td>
+          <td><code>STORAGE_KEY_BY_FIELD</code> — peta field ke kunci</td>
+        </tr>
+        <tr>
+          <td><code>content/preferences.ts</code></td>
+          <td><code>normalizePreferences</code> — peta kunci ke normalizer</td>
+        </tr>
+        <tr>
+          <td><code>content/preferences.ts</code></td>
+          <td><code>preferencesFromChanges</code> — peta kunci ke normalizer lagi, untuk perubahan langsung</td>
+        </tr>
+        <tr>
+          <td><code>popup/popup.ts</code></td>
+          <td>satu blok per kontrol: cari elemen, lukis, pasang listener, baca nilai, normalkan, tulis, katakan</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Masalahnya bukan pada satu baris yang salah. Masalahnya adalah <strong>tidak ada satu pun
+  langkah build yang gagal</strong> kalau kelimanya berbeda. Kunci yang dieja benar di tiga tempat
+  bisa menyimpan nilai yang dicari tempat keempat dengan nama lain. Hasilnya: kontrolnya terlihat
+  “tersimpan” dan tidak melakukan apa pun — persis kegagalan yang
+  <code>preferences.unit.test.ts</code> ditulis untuk cegah, satu nilai demi satu nilai.</p>
+
+  <p>Popup membawa branch coverage terendah di repo (61,7%), karena tiap blok menguji
+  <code>if (element)</code> sendiri-sendiri dan tiap pilihan normalizer diuji manual. Komentarnya di
+  <code>src/popup/preference-controls.ts</code> menyebutnya apa adanya: sembilan belas blok berarti
+  sembilan belas kesempatan untuk lupa melakukan lookup defensif, melewatkan normalizer, atau
+  lupa menulis.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Keputusan 1 dan 2: satu baris per preferensi</h2>
+
+  <p><a href="../../../docs/adr/0037-one-row-per-preference.md"><code>ADR-0037</code></a>
+  <span class="status-pill status-accepted">Accepted</span> memutuskan bahwa
+  <code>shared/extension-preferences.ts</code> mendeklarasikan <code>PREFERENCE_FIELDS</code>:
+  <strong>satu baris per preferensi</strong>, berkunci pada field yang dibaca kode, memuat storage
+  key-nya, <code>defaultValue()</code>, dan normalizernya. Kuncinya, field-nya, default-nya, dan
+  penjaganya sekarang tinggal di satu tempat, jadi tidak mungkin lagi berbeda satu sama lain.</p>
+
+  <pre><code>export const PREFERENCE_FIELDS = {
+  enabled: {
+    key: ENABLED_STORAGE_KEY,
+    defaultValue: () =&gt; DEFAULT_ENABLED,
+    normalize: normalizeEnabled,
+  },
+  // …dan seterusnya, satu baris untuk setiap preferensi
+} as const satisfies Record&lt;string, PreferenceFieldSpec&gt;;</code></pre>
+
+  <p><code>PREFERENCE_STORAGE_KEYS</code> <strong>diturunkan</strong> dari tabel itu, sehingga jalur
+  reset menghapus tepat apa yang tabel nyatakan — bukan daftar kunci yang harus dicatat ulang di
+  tempat lain.</p>
+
+  <p>Lalu satu detail yang sepele tapi menentukan: <code>defaultValue</code> adalah <strong>fungsi</strong>,
+  bukan nilai. Dua default itu — <code>comparerDefaults</code> dan <code>checkerDefaults</code> —
+  memuat array, dan literal bersama akan memberi satu array yang sama ke semua pembaca.
+  <code>defaultPreferences()</code> membangun salinan baru tiap kali dibaca; sekaligus ini
+  menghilangkan dua klon <code>{ ...DEFAULT, statusFilter: [] }</code> yang sebelumnya ditulis
+  tangan di dua tempat berbeda.</p>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Keputusan 3: tiga map yang diturunkan dari tabel</h2>
+
+  <p><code>content/preferences.ts</code> menurunkan ketiga map-nya dari tabel yang sama:
+  <code>normalizePreferences</code> dan <code>preferencesFromChanges</code> masing-masing satu loop,
+  dan <code>STORAGE_KEY_BY_FIELD</code> sebuah proyeksi. Tidak ada lagi daftar yang harus dijaga
+  beriringan.</p>
+
+  <p>Aturan yang berlaku tetap seperti tertulis di <code>AGENTS.md</code>:
+  <code>Partial&lt;ExtensionPreferences&gt;</code> <strong>tidak pernah</strong> diteruskan langsung ke
+  <code>storage.local.set</code>. Field-nya camelCase, key-nya berawalan <code>cindieh*</code>, jadi
+  patch mentah akan menulis key yang tidak dibaca siapa pun — dan kontrolnya terlihat “tersimpan”
+  tanpa efek. <code>writePreferences</code> tetap satu-satunya penulis, dan ia menerjemahkan field
+  ke key lewat proyeksi itu.</p>
+
+  <aside class="warn">
+    <span class="label">Pengecualian yang membuktikan aturannya</span>
+    <p>Pola “preferensi mengalir satu arah: dari skema, lewat penjaga, ke cache” punya satu
+    pengecualian, dan pengecualian itulah yang membuktikan aturannya. <strong>PACING</strong> diterapkan di
+    dunia MAIN, yang tidak bisa menyentuh extension storage; jadi <code>page-pacing.ts</code>
+    mencerminkan preset ke page storage, dan <code>ScraperContext.getPacing()</code>
+    menyelesaikannya per RUN. Efeknya: perubahan preset berlaku untuk ekspor berikutnya di tab yang
+    terbuka tanpa reload — berbeda dari flag debug, yang nilainya sudah ditetapkan sejak modul
+    scraper dimuat.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Keputusan 4 dan 5: satu pengikat untuk kontrol popup</h2>
+
+  <p><code>popup/preference-controls.ts</code> adalah <strong>satu pengikat</strong>. Sebuah kontrol
+  adalah satu baris, dan baris itu punya beberapa bagian:</p>
+
+  <ul>
+    <li><strong>Elemennya</strong> — id yang dipakai di <code>popup.html</code>.</li>
+    <li><strong>Event yang berarti “berubah”</strong> — biasanya <code>change</code>.</li>
+    <li><strong>Cara ia melukis dirinya</strong> dari snapshot preferensi.</li>
+    <li><strong>Patch yang dihasilkan perubahan</strong> — <code>null</code> saat kontrol tidak
+    menyimpan apa pun, seperti separuh kalah dari pasangan radio.</li>
+    <li><strong>Untuk sedikit kontrol yang butuh:</strong> gate async sebelum menulis, rollback, dan
+    baris yang harus dikatakan status.</li>
+  </ul>
+
+  <p><code>paintPreferenceControls</code> dan <code>bindPreferenceControls</code> memiliki lookup,
+  listener, tulis, dan <strong>urutannya</strong>: baris status diucapkan <strong>sesudah</strong>
+  menulis, tidak pernah sebelumnya. Kalau urutannya dibalik, popup bisa mengucapkan “tersimpan”
+  padahal penyimpanan ditolak.</p>
+
+  <p>Baris-barisnya tinggal di <code>popup.ts</code>; mekanismenya di pengikat. Baris itu menyebut
+  element id dari <code>popup.html</code> dan <strong>field</strong> yang di-set — tidak pernah
+  storage key. Markup dan kontrol tetap berdekatan, sementara kunci penyimpanan tetap tinggal di
+  skema.</p>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Keputusan 6: dua kontrol yang sengaja di luar pola</h2>
+
+  <p>Tidak semua kontrol popup menjadi baris. Dua di antaranya <strong>sengaja</strong> ditulis
+  tangan:</p>
+
+  <ul>
+    <li><strong>Mode export</strong> (<code>cleaned</code> / <code>raw</code>) punya key sendiri,
+    penulis sendiri, dan siklus hidup sendiri di luar set terkelola. Reset tidak boleh mengubah
+    cara data diekspor.</li>
+    <li><strong>Debug switch</strong> punya key sendiri, tidak pernah dihapus reset, dan berlaku
+    untuk logger popup itu sendiri.</li>
+  </ul>
+
+  <p>Jangan tertukar dengan <code>exportFormat</code> (XLSX atau CSV): itu salah satu dari sembilan
+  preferensi terkelola, dan ia tetap baris biasa. Yang dikeluarkan dari pola adalah <em>bentuk</em>
+  kolom hasil ekspor. Dua kontrol itu tetap ditulis tangan di <code>popup.ts</code>, yang sekarang
+  hampir hanya berisi keduanya plus perawatan dan baris status portal.</p>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Konsekuensi: satu baris, empat jalur</h2>
+
+  <p>Menambah preferensi kini berarti: <strong>satu baris tabel</strong>, <strong>satu elemen
+  markup</strong>, dan <strong>satu baris kontrol</strong>. Jalur baca, jalur tulis, jalur
+  perubahan langsung, dan jalur reset semuanya turun dari baris yang pertama — tidak ada daftar
+  kedua yang bisa terlupa dan tidak bisa berbeda.</p>
+
+  <p>Yang paling memuaskan: branch coverage popup naik dari <strong>61,7%</strong> ke
+  <strong>77,4%</strong> tanpa satu pun perilaku baru, dan total coverage mencapai
+  94,91/89,89/93,21/95,88 pada 2018 tes. Popup juga tetap boleh terbuka saat halamannya tidak punya
+  kontrol sama sekali — kontrak defensif yang sebelumnya hanya tertulis di prosa, kini diikat satu
+  kasus tes.</p>
+
+  <aside class="pull">
+    <span class="label">Pola yang sama di tiga tempat</span>
+    <p>ADR-0037 memakai pola yang sama seperti
+    <a href="../../../docs/adr/0015-one-declaration-per-export-source.md"><code>ADR-0015</code></a>
+    (satu deklarasi per sumber ekspor) dan
+    <a href="../../../docs/adr/0028-one-row-per-grid-for-the-panels-page-facts.md"><code>ADR-0028</code></a>
+    (satu baris per grid). Prinsipnya satu kalimat: <strong>satu tempat untuk satu keputusan, supaya
+    tidak ada daftar kedua yang bisa berbeda</strong>.</p>
+    <ul class="adr-list">
+      <li><span class="adr-ref">0037</span> <a href="../../../docs/adr/0037-one-row-per-preference.md">Satu baris per preferensi</a> <span class="status-pill status-accepted">Accepted</span></li>
+      <li><span class="adr-ref">0015</span> <a href="../../../docs/adr/0015-one-declaration-per-export-source.md">Satu deklarasi per sumber ekspor</a> <span class="status-pill status-accepted">Accepted</span></li>
+      <li><span class="adr-ref">0028</span> <a href="../../../docs/adr/0028-one-row-per-grid-for-the-panels-page-facts.md">Satu baris per grid</a> <span class="status-pill status-accepted">Accepted</span></li>
+    </ul>
+    <p><a href="0006-deklarasi-data.html">Pelajaran 06</a> dan
+    <a href="0005-fakta-halaman-dan-panel.html">Pelajaran 05</a> membahas kedua pola itu dari sisi
+    masing-masing, dan ketiganya menjawab pertanyaan yang sama — “dari mana ini datang?”</p>
+  </aside>
+</section>
+
+<section class="practice">
+  <h2><span class="num">7</span>Uji ingatan</h2>
+  <p>Jawab dulu, baru lihat koreksinya. Jawaban yang benar tidak selalu di posisi pertama.</p>
+
+  <div class="quiz" data-quiz="l09-q1">
+    <p class="q">Setelah ADR-0037, di mana satu-satunya tempat preferensi dideklarasikan?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Tabelnya ada di shared/extension-preferences.ts; content/preferences.ts hanya menarik turun peta dari tabel itu."><code>PREFERENCE_FIELDS</code> di <code>content</code>, satu baris per preferensi</button></li>
+      <li><button class="opt" data-correct data-why="Betul: PREFERENCE_FIELDS dideklarasikan di shared/extension-preferences.ts, satu baris per preferensi."><code>PREFERENCE_FIELDS</code> di <code>shared</code>, satu baris per preferensi</button></li>
+      <li><button class="opt" data-why="Popup hanya memuat baris kontrol; kunci penyimpanan dan normalizer tetap tinggal di skema bersama."><code>PREFERENCE_FIELDS</code> di <code>popup</code>, satu baris per preferensi</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l09-q2">
+    <p class="q">Apa yang terjadi kalau kelimanya daftar preferensi itu berbeda satu sama lain?</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Betul: tidak ada langkah build yang memeriksa lima daftar itu, jadi ketidakcocokan lolos dan kontrolnya hanya tampak tersimpan.">Build tetap hijau, tetapi kontrol popup terlihat tersimpan tanpa efek</button></li>
+      <li><button class="opt" data-why="Tidak ada langkah build yang membandingkan daftar itu; yang gagal bukan build-nya, tapi perilakunya di portal.">Build gagal karena daftar preferensi yang berbeda tidak saling cocok</button></li>
+      <li><button class="opt" data-why="Reset memang menghapus kunci terkelola, tapi itu bukan akibat daftar yang berbeda satu sama lain.">Reset preferensi menghapus semua kunci yang tersimpan di dalam storage</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l09-q3">
+    <p class="q">Kenapa <code>defaultValue</code> di tabel preferensi berbentuk fungsi, bukan nilai?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Bukan itu sebabnya; yang menentukan adalah default-nya harus dibangun ulang tiap kali dibaca.">karena fungsi default ini bisa mengembalikan nilai berbeda tiap dipanggil</button></li>
+      <li><button class="opt" data-why="Array di dalam default memang harus baru setiap dibaca, tapi itu akibat literal yang dibagi bersama.">karena dua nilai default memuat array yang tidak boleh dibagikan</button></li>
+      <li><button class="opt" data-correct data-why="Betul: dua default memuat array, jadi defaultValue() harus mengembalikan salinan baru setiap kali dibaca.">karena setiap nilai default harus dibangun ulang setiap kali dibaca</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l09-q4">
+    <p class="q">Menurut ADR-0037, pada saat baris status kontrol popup diucapkan?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Melukis kontrol bukan bagian dari urutan itu; penulisan yang menentukan.">tepat setelah kontrol dilukis, sebelum penulisan ke storage</button></li>
+      <li><button class="opt" data-correct data-why="Betul: baris status diucapkan setelah penulisan selesai, tidak pernah sebelumnya.">setelah penulisan ke storage selesai, tidak pernah sebelumnya</button></li>
+      <li><button class="opt" data-why="Urutan dibalik justru akan menampilkan “tersimpan” saat penyimpanan ditolak.">sebelum penulisan ke storage, supaya umpan balik terasa</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l09-q5">
+    <p class="q">Kontrol mana yang SENGAJA tidak menjadi baris di tabel preferensi?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Tombol bersihkan cache bukan preferensi; yang sengaja di luar pola adalah mode export dan sakelar log debug.">sakelar log debug dan tombol bersihkan cache</button></li>
+      <li><button class="opt" data-why="Mode export memang di luar pola, tetapi tombol bersihkan cache bukan kontrol preferensi sama sekali.">mode export dan tombol bersihkan cache popup</button></li>
+      <li><button class="opt" data-correct data-why="Betul: mode export dan sakelar log debug masing-masing punya kunci dan siklus hidup sendiri di luar set terkelola.">mode export dan sakelar log debug popup</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz-score" data-score-for="l09">
+    <strong>Skor pelajaran ini</strong>
+    <span data-score-text>0 dari 5 soal dijawab, 0 benar.</span>
+    <button type="button" data-score-reset>Ulangi</button>
+  </div>
+</section>
+
+<aside class="source">
+  <h3>Sumber utama</h3>
+  <ul>
+    <li><a href="../../../docs/adr/0037-one-row-per-preference.md"><code>docs/adr/0037-one-row-per-preference.md</code></a>
+    — sumber utama pelajaran ini: konteks lima daftar, enam keputusan, dan angka cakupannya.</li>
+    <li><a href="../../../src/shared/extension-preferences.ts"><code>src/shared/extension-preferences.ts</code></a>
+    — tabel <code>PREFERENCE_FIELDS</code>, <code>defaultValue()</code> sebagai fungsi, dan
+    <code>PREFERENCE_STORAGE_KEYS</code> sebagai turunannya.</li>
+    <li><a href="../../../src/content/preferences.ts"><code>src/content/preferences.ts</code></a>
+    — tiga map yang diturunkan dari tabel, <code>writePreferences</code> sebagai satu-satunya penulis,
+    dan aturan bahwa patch mentah tidak pernah masuk ke <code>storage.local.set</code>.</li>
+    <li><a href="../../../src/popup/preference-controls.ts"><code>src/popup/preference-controls.ts</code></a>
+    — satu pengikat: baris kontrol, gate sebelum tulis, rollback, dan urutan tulis dulu lalu bicara.</li>
+    <li><a href="../../../src/popup/popup.ts"><code>src/popup/popup.ts</code></a>
+    — baris kontrol yang tinggal di sini, plus dua kontrol yang sengaja di luar pola.</li>
+    <li><a href="../../../AGENTS.md"><code>AGENTS.md</code></a>
+    — aturan “preferensi mengalir satu arah: dari skema, lewat penjaga, ke cache”, dan pengecualian
+    pacing yang menjelaskannya.</li>
+  </ul>
+</aside>
+
+<div class="ask">
+  <strong>Catatan:</strong> pelajaran ini menutup rangkaian sembilan pelajaran. Kalau ada bagian yang
+  masih terasa abstrak — misalnya kapan sebuah preferensi layak menjadi baris tabel dan kapan
+  sebaiknya tetap ditulis tangan, seperti mode export — tanyakan bagian itu. Penjelasan dari
+  ADR tertentu jauh lebih berguna daripada definisi ulang.
+</div>
+
+<footer class="course-foot">
+  <p>Pelajaran 09 · <a href="index.html">Peta pelajaran</a> · sebelumnya:
+  <a href="0008-membatalkan-keputusan-sendiri.html">08 · Membatalkan keputusan sendiri</a></p>
+</footer>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

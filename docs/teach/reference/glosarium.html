@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glosarium Cindieh — Kursus ADR Cindieh</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="course-head">
+  <p class="eyebrow">Cindieh · Referensi</p>
+  <h1>Glosarium</h1>
+  <p class="lede">Istilah-istilah yang dipakai ADR, kode, dan dokumen proyek Cindieh. Versi ringkas
+  dari <a href="../../../CONTEXT.md"><code>CONTEXT.md</code></a>, disusun untuk dibaca cepat saat ADR
+  memakai istilah yang belum Anda kenal.</p>
+  <p class="meta">Istilah portal dan pajak · Istilah fitur · Istilah arsitektur · Istilah ADR terbaru</p>
+  <nav class="lesson-nav">
+    <a href="../lessons/index.html">Peta pelajaran</a>
+    <a href="adr-peta.html">Peta 38 ADR</a>
+    <span class="spacer"></span>
+    <a href="../../../CONTEXT.md">CONTEXT.md (asli)</a>
+  </nav>
+</header>
+
+<main>
+
+<section>
+  <h2><span class="num">1</span>Portal dan data pajak</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Istilah</th><th>Arti</th><th>Hindari</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Coretax</strong></td>
+          <td>Portal pajak DJP Indonesia (<code>coretaxdjp.pajak.go.id</code>) yang jadi tempat kerja ekstensi ini.</td>
+          <td>the portal, DJP Coretax</td>
+        </tr>
+        <tr>
+          <td><strong>Wajib Pajak</strong></td>
+          <td>Wajib pajak yang memakai portal di browsernya sendiri; satu-satunya pengguna ekstensi. Tidak pernah bertindak tanpa sesi login aktif.</td>
+          <td>user, account</td>
+        </tr>
+        <tr>
+          <td><strong>Grid</strong></td>
+          <td>Tabel data Coretax yang menampilkan hasil filter saat ini. Unit yang di-scrape, difilter, dicari, dan diekspor.</td>
+          <td>table, datagrid, grid data</td>
+        </tr>
+        <tr>
+          <td><strong>Masa pajak</strong></td>
+          <td>Periode pajak — tahun plus bulan (mis. <code>2026-07</code>) — yang memfilter grid, menjadi nama berkas, dan dipecah jadi kolom bulan/tahun saat ekspor.</td>
+          <td>period, masa, tax period</td>
+        </tr>
+        <tr>
+          <td><strong>E-faktur</strong></td>
+          <td>Faktur pajak elektronik; mencakup empat grid e-invoice: PPN Keluaran, PPN Masukan, dan retur-nya.</td>
+          <td>e-invoice, invoice (kalau yang dimaksud sejenis faktur)</td>
+        </tr>
+        <tr>
+          <td><strong>PPN Keluaran</strong></td>
+          <td>PPN output — grid e-faktur penjual. Di sinilah pencarian Referensi dan Komparator bekerja. Kode: <code>OUTPUT_TAX</code>.</td>
+          <td>output tax, output invoice</td>
+        </tr>
+        <tr>
+          <td><strong>PPN Masukan</strong></td>
+          <td>PPN input — grid e-faktur pembeli. Kode: <code>INPUT_TAX</code>.</td>
+          <td>input tax</td>
+        </tr>
+        <tr>
+          <td><strong>Retur PPN Keluaran / Masukan</strong></td>
+          <td>Grid nota kredit untuk e-faktur output/input. Kode: <code>OUTPUT_RETURN</code>, <code>INPUT_RETURN</code>.</td>
+          <td>output return, input return</td>
+        </tr>
+        <tr>
+          <td><strong>SPT</strong></td>
+          <td>Surat practicable Tahunan. Portal SPT (<code>returnsheets-portal</code>) memuat lembar PPN (Lampiran A2 dan B2) dan lembar Pasal 21/26 (L1A, L1B, L2, L3).</td>
+          <td>return, tax return form</td>
+        </tr>
+        <tr>
+          <td><strong>Bukti Potong</strong></td>
+          <td>Slip pemotongan (PPh 21) — grid slip withholding yang bisa diekspor ke XLSX/CSV <em>dan</em> punya PDF massal sendiri. Kode: <code>WITHHOLDING_SLIPS</code>.</td>
+          <td>withholding slip document</td>
+        </tr>
+        <tr>
+          <td><strong>Referensi</strong></td>
+          <td>Nomor referensi internal pada e-faktur (mis. <code>SZ-0447/07/26</code>) yang menamai baris dan mencocokkan catatan internal dengan Coretax. Ada bentuk kedua, <strong>Referensi Lain</strong> (<code>refLain</code>).</td>
+          <td>reference number, ref</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Fitur ekstensi</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Istilah</th><th>Arti</th><th>Hindari</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Scrape</strong></td>
+          <td>Mengambil semua baris sebuah grid dengan memutar ulang permintaan grid milik portal halaman demi halaman, dengan jeda ber-paced, sampai semua baris terkumpul.</td>
+          <td>capture data, crawl, fetch data</td>
+        </tr>
+        <tr>
+          <td><strong>Export</strong></td>
+          <td>Membuat berkas Excel (<code>.xlsx</code>) atau CSV dari baris hasil scrape.</td>
+          <td>download data, export file</td>
+        </tr>
+        <tr>
+          <td><strong>Export source</strong></td>
+          <td>Halaman/grid asal scrape atau ekspor — menentukan pemetaan kolom dan prefiks nama berkas (<code>FPK-</code>, <code>FPM-</code>, <code>RET-FPK-</code>, <code>A2-</code>, <code>B2-</code>, <code>PPH21-L1A-</code>, <code>BP-</code>, …).</td>
+          <td>source type, page type</td>
+        </tr>
+        <tr>
+          <td><strong>Export source spec</strong></td>
+          <td>Deklarasi tunggal yang menyatakan seperti apa hasil ekspor satu sumber: kolomnya, prefiks nama berkasnya, peringatan schema-drift, dan aturan penamaan. Bukan predikat halaman, bukan aturan nama PDF.</td>
+          <td>source config, export config, column map, prefix map</td>
+        </tr>
+        <tr>
+          <td><strong>Export mode</strong></td>
+          <td>Bagaimana ekspor membentuk data: <strong>raw</strong> mempertahankan kolom portal (hanya tanggal yang diformat ulang); <strong>cleaned</strong> memetakan field ke label Indonesia yang stabil dan memecah masa pajak jadi kolom bulan/tahun.</td>
+          <td>format mode, output style</td>
+        </tr>
+        <tr>
+          <td><strong>Filename hint</strong></td>
+          <td>Fragmen yang diambil dari filter permintaan grid (masa pajak, tahun) dan menjadi benih nama berkas ekspor dan PDF.</td>
+          <td>filename, name hint</td>
+        </tr>
+        <tr>
+          <td><strong>Deduplication key</strong></td>
+          <td>Yang membedakan satu baris hasil scrape dari baris lain, supaya baris yang muncul di dua halaman terkumpul sekali. Id milik portal sendiri: <code>RecordId</code>, lalu <code>AggregateIdentifier</code> — dinamai menurut field asalnya. Nomor faktur bukan identitas (ADR-0016).</td>
+          <td>row id, unique key, hash</td>
+        </tr>
+        <tr>
+          <td><strong>Period sweep</strong> (batch masa)</td>
+          <td>Mengambil setiap masa pajak satu tahun dari grid PPN e-faktur sebagai SATU Run, sehingga barisnya berbagi satu himpunan dedupe dan tiba sebagai satu berkas. Hanya grid yang filter periode dan taunnya sudah terukur boleh menyapu (ADR-0019).</td>
+          <td>batch export, year export, multi-month scrape</td>
+        </tr>
+        <tr>
+          <td><strong>PDF download</strong></td>
+          <td>Menghasilkan PDF (e-faktur atau bukti potong) dari Coretax ke browser dengan nama milik ekstensi. Ada dua mode yang berbeda hanya di asal permintaan PDF dan asal metadata faktur.</td>
+          <td>bulk PDF, PDF export</td>
+        </tr>
+        <tr>
+          <td><strong>Native download</strong></td>
+          <td>Tombol unduh PDF milik portal sendiri, yang dicegat, diberi nama ulang, dan file aslinya ditekan. Responsnya hanya biner PDF, jadi metadata faktur harus dipulihkan dari tangkapan grid.</td>
+          <td>portal download, one-click download</td>
+        </tr>
+        <tr>
+          <td><strong>Bulk download</strong></td>
+          <td>Ekstensi yang menembakkan permintaan unduhan untuk sekumpulan baris grid. Barisnya sudah dipegang, jadi penamaan memakai data baris itu langsung.</td>
+          <td>bulk PDF, batch download</td>
+        </tr>
+        <tr>
+          <td><strong>Data-only scrape</strong></td>
+          <td>Scrape halaman bukti potong yang mengumpulkan baris grid tanpa PDF massal biasanya (<code>START_SCRAPE</code> membawa <code>skipPdf</code>), supaya ekspor XLSX/CSV bisa dibuat tanpa satu PDF per slip.</td>
+          <td>rows-only scrape, PDF-less scrape</td>
+        </tr>
+        <tr>
+          <td><strong>No. Faktur filter</strong></td>
+          <td>Filter khusus e-faktur (tombol “No. Faktur” di toolbar empat grid e-invoice) yang mengambil daftar nomor faktur dan membatasi baris mana yang diunduh PDF-nya, atau nomor mana yang dicari targeted.</td>
+          <td>invoice filter, multi-invoice filter</td>
+        </tr>
+        <tr>
+          <td><strong>Run</strong></td>
+          <td>Satu operasi pada sebuah grid — scrape, unduhan massal, pencarian No. Faktur terarah, atau melanjutkan sweep yang terhenti — sejak diminta Wajib Pajak hingga berakhir. Satu halaman hanya menjalankan satu Run; memulai Run baru membatalkan Run sebelumnya.</td>
+          <td>scrape operation, job, task, export request</td>
+        </tr>
+        <tr>
+          <td><strong>Partial sweep</strong></td>
+          <td>Yang tersisa dari sweep setahun yang dihentikan: baris setiap masa yang SELESAI, disimpan untuk ekspor yang disengaja, dengan semua utang Run yang tersisa dibatalkan. Berkas dari baris ini bernama <code>-sebagian</code> (ADR-0020).</td>
+          <td>cancelled result, interrupted export, partial year file</td>
+        </tr>
+        <tr>
+          <td><strong>Resume</strong></td>
+          <td>Melanjutkan partial sweep dengan mengambil hanya masa yang belum selesai, lalu menggabungkannya dengan baris yang sudah disimpan (ADR-0023). Titik masuknya sama dengan sweep awal.</td>
+          <td>retry, continue scrape, partial export</td>
+        </tr>
+        <tr>
+          <td><strong>Pending export</strong></td>
+          <td>Ekspor, perbandingan, atau pengecekan yang diminta sebelum data grid ada. Dipakai tepat sekali, lalu ditinggalkan bersama Run-nya (ADR-0022).</td>
+          <td>queued export, deferred export</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Komparator dan Pengecekan</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Istilah</th><th>Arti</th><th>Hindari</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Comparer</strong></td>
+          <td>Fitur tempel-dan-bandingkan: catatan faktur internal yang ditempel dari Excel dicocokkan dengan baris PPN Keluaran hasil scrape.</td>
+          <td>comparator, comparison tool</td>
+        </tr>
+        <tr>
+          <td><strong>Internal records</strong></td>
+          <td>Baris faktur milik Wajib Pajak sendiri, ditempel sebagai teks terpisah tab (Referensi, DPP, PPN — opsional Referensi Lain).</td>
+          <td>pasted data, source data, Excel data</td>
+        </tr>
+        <tr>
+          <td><strong>Comparison status</strong></td>
+          <td>Vonis per baris yang cocok: <strong>Cocok</strong>, <strong>DPP Berbeda</strong>, <strong>PPN Berbeda</strong>, <strong>Berbeda</strong>, <strong>Tidak Ditemukan</strong>, <strong>Hanya di Coretax</strong>.</td>
+          <td>match state, result type</td>
+        </tr>
+        <tr>
+          <td><strong>Tolerance</strong></td>
+          <td>Beda nominal (dalam rupiah) yang masih dianggap Cocok, untuk menyerap pembulatan.</td>
+          <td>tolerance value, delta</td>
+        </tr>
+        <tr>
+          <td><strong>Daily mode</strong></td>
+          <td>Pemeriksaan terbalik: hanya faktur Coretax bertanggal pada hari-hari tertentu (1–31) yang jadi kandidat “Hanya di Coretax”.</td>
+          <td>day filter, daily date mode</td>
+        </tr>
+        <tr>
+          <td><strong>Pengecekan (Checker)</strong></td>
+          <td>Tab akurasi nilai di panel: DPP, DPP Nilai Lain, dan PPN tiap baris diuji terhadap <strong>Acuan</strong> yang dipilih; hanya baris yang berbeda atau datanya tidak lengkap yang pernah ditampilkan. Berjalan di empat grid PPN e-faktur (ADR-0024).</td>
+          <td>accuracy check, validation, audit</td>
+        </tr>
+        <tr>
+          <td><strong>Row identity</strong></td>
+          <td>Yang menamai satu baris hasil: <strong>Referensi</strong> (atau No. Faktur bila kosong) di dua grid invoice, <strong>NO RETUR</strong> (atau No. Faktur bila kosong) di dua grid retur. Satu fakta halaman tersendiri, dipakai bersama oleh panel dan berkas ekspor.</td>
+          <td>row key, unique id, primary key</td>
+        </tr>
+        <tr>
+          <td><strong>Counterparty</strong></td>
+          <td>Pihak lain pada baris yang dicatat Pengecekan: <strong>Pembeli</strong> di PPN Keluaran dan Retur PPN Keluaran, <strong>Penjual</strong> di PPN Masukan dan Retur PPN Masukan. Tidak mengubah aritmetika — hanya kata-katanya.</td>
+          <td>menyebut counterparty PPN Masukan sebagai “pembeli”</td>
+        </tr>
+        <tr>
+          <td><strong>Acuan (Benchmark)</strong></td>
+          <td>Nilai yang dianggap kebenaran-ground untuk run Pengecekan: <strong>DPP</strong>, <strong>DPP NL</strong>, atau <strong>PPN</strong> — yang menentukan dua nilai turunan dan dua kolom yang dibandingkan.</td>
+          <td>reference, baseline</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Arsitektur</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Istilah</th><th>Arti</th><th>Hindari</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Scraper</strong></td>
+          <td>Modul dunia MAIN yang mencegat permintaan grid dan unduhan portal, memutar ulang permintaan grid untuk scrape, dan menyelesaikan baris faktur untuk penamaan PDF. Tidak punya API browser sendiri.</td>
+          <td>injector, agent</td>
+        </tr>
+        <tr>
+          <td><strong>Isolated world / MAIN world</strong></td>
+          <td>Dua dunia JavaScript tempat ekstensi berjalan: content script (isolated, punya <code>browser.runtime</code>, pemilik UI) dan scraper di konteks halaman (MAIN, duduk di samping kode portal). Keduanya bicara hanya lewat bridge.</td>
+          <td>content script side, page side</td>
+        </tr>
+        <tr>
+          <td><strong>Bridge token</strong></td>
+          <td>Nilai acak yang dibuat di dunia isolated dan diteruskan ke scraper lewat URL skrip. Setiap pesan lintas dunia wajib membawanya. <strong>Bukan</strong> autentikasi rahasia terhadap skrip halaman yang menyerang (ADR-0007).</td>
+          <td>secret, token, security key</td>
+        </tr>
+        <tr>
+          <td><strong>Page fact</strong></td>
+          <td>Pertanyaan ya/tidak tentang halaman di depan pengguna, dijawab predikat di <code>page-context.ts</code>. Satu fakta menjawab SATU pertanyaan; fitur yang berbeda pendapat soal halaman mendapat dua fakta (ADR-0021).</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><strong>Panel grid</strong> (<code>PanelGridId</code>)</td>
+          <td>Salah satu dari empat grid PPN e-faktur yang bisa dibuka panelnya, sebagai baris di <code>PANEL_GRIDS</code>: namanya di panel, namanya di popup, invoice siapa yang dibawa barisnya, apa yang menamai satu baris, tab apa yang didapat, dan apakah ia menerima filter Referensi.</td>
+          <td>supported page, export page</td>
+        </tr>
+        <tr>
+          <td><strong>Grid request</strong></td>
+          <td>Permintaan daftar milik portal (URL + body berisi filter dan halaman) yang ditangkap sekali lalu diputar ulang dengan <code>First</code>/<code>Rows</code> maju untuk scrape sebuah grid.</td>
+          <td>request template, captured request</td>
+        </tr>
+        <tr>
+          <td><strong>Surface</strong></td>
+          <td>Satu hal yang Cindieh sumpangkan ke DOM portal — badge, toolbar ekspor, panel, kotak Referensi, input kolom Referensi, filter No. Faktur. Masing-masing punya SATU pemilik: modul yang membangunnya juga yang mencabutnya (ADR-0033).</td>
+          <td>injected element, widget, overlay</td>
+        </tr>
+        <tr>
+          <td><strong>Item loop</strong></td>
+          <td>Satu unit kerja dalam Run, yang diproses satu per satu: satu halaman baris, satu PDF Bukti Potong, satu PDF e-Faktur, atau satu nomor faktur. Empat alur item di dunia MAIN memakai satu loop bersama, <code>per-item.ts</code> (ADR-0034). Stop bukan kegagalan.</td>
+          <td>batch, page, iteration</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Istilah dari ADR terbaru</h2>
+  <p>Istilah di bawah <strong>bukan</strong> bagian dari <code>CONTEXT.md</code> — mereka muncul di
+  ADR-0035 sampai ADR-0038, dan dipakai di pelajaran 05, 07, dan 09.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Istilah</th><th>Arti</th><th>Hindari</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Seam</strong></td>
+          <td>Tempat yang bisa diuji dan diganti tanpa mengubah yang lain. Repo ini punya satu seam
+          per dunia: <code>run-lifecycle.ts</code> di dunia isolated, <code>scraper-context.ts</code>
+          di dunia MAIN (ADR-0035). Aturannya: seam berada <strong>di bawah</strong> pemakainya.</td>
+          <td>boundary, interface</td>
+        </tr>
+        <tr>
+          <td><strong>View</strong> (tab)</td>
+          <td>Modul tampilan satu tab panel, dengan factory dan singleton:
+          <code>createComparerView(deps)</code> + <code>comparerView</code>, dan
+          <code>createCheckerView(deps)</code> + <code>checkerView</code>. Cangkang panel tidak tahu
+          isi tab (ADR-0036).</td>
+          <td>tab, halaman</td>
+        </tr>
+        <tr>
+          <td><strong>Composition root</strong></td>
+          <td>Tempat yang merakit bagian-bagian jadi satu kesatuan: <code>ui-comparer.ts</code>
+          membangun overlay, memasang dua akar tab, dan mengikat keduanya (ADR-0036).</td>
+          <td>container, wrapper</td>
+        </tr>
+        <tr>
+          <td><strong>ScraperEnv</strong></td>
+          <td>Halaman sebagai satu objek yang diinjeksi ke <code>installScraper(env)</code>:
+          dokumen, window, satu <code>setFetch</code>, dua prototype, dan <code>isDevelopment</code>
+          (ADR-0038). Window-nya handle, bukan salinan.</td>
+          <td>page object, context</td>
+        </tr>
+        <tr>
+          <td><strong>Preferensi</strong></td>
+          <td>Nilai tersimpan yang dikendalikan dari popup; sembilan di repo ini, masing-masing satu
+          baris di <code>PREFERENCE_FIELDS</code> dengan kunci, <code>defaultValue()</code>, dan
+          normalizer-nya (ADR-0037).</td>
+          <td>setting, option, config</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<aside class="source">
+  <h3>Sumber utama</h3>
+  <ul>
+    <li><a href="../../../CONTEXT.md"><code>CONTEXT.md</code></a> — sumber kamus domain proyek; versi ini
+    diringkas dan dikelompokkan ulang untuk dibaca cepat. Bagian 5 diambil dari ADR-0035–0038, yang
+    belum masuk <code>CONTEXT.md</code>.</li>
+    <li><a href="../../../docs/adr/README.md"><code>docs/adr/README.md</code></a> — indeks ADR, untuk
+    menemukan keputusan yang memakai istilah-istilah di atas.</li>
+  </ul>
+</aside>
+
+<footer class="course-foot">
+  <p><a href="../lessons/index.html">Peta pelajaran</a> · <a href="adr-peta.html">Peta 38 ADR</a></p>
+</footer>
+
+</main>
+</body>
+</html>

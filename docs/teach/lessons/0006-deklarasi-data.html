@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pelajaran 06 · Deklarasi data — Kursus ADR Cindieh</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="course-head">
+  <p class="eyebrow">Cindieh · Membaca Architecture Decision Records</p>
+  <h1>Pelajaran 06 — Deklarasi data</h1>
+  <p class="lede">“Dari mana kolom ini berasal?” adalah pertanyaan yang harus bisa dijawab dengan
+  menunjuk satu berkas. Pelajaran ini membahas empat penjelasan: kolom ekspor, kolom file hasil,
+  identitas satu baris, nama berkas, dan parsing masa — semuanya punya satu rumah.</p>
+  <p class="meta">Pelajaran 06 dari 09 · waktu baca ± 13 menit · 6 soal uji ingatan</p>
+  <nav class="lesson-nav">
+    <a href="index.html">Peta pelajaran</a>
+    <a href="../reference/adr-peta.html">Peta 38 ADR</a>
+    <a href="../reference/glosarium.html">Glosarium</a>
+    <span class="spacer"></span>
+    <span>06 dari 09</span>
+    <a href="0005-fakta-halaman-dan-panel.html">05 ←</a>
+    <a href="0007-pdf-dan-item-loop.html">07 →</a>
+  </nav>
+</header>
+
+<main>
+
+<section>
+  <h2><span class="num">1</span>Dari mana kolom ini berasal?</h2>
+
+  <p>Sebelum pelajaran ini, kolom ekspor Cindieh punya lima salinan mapper yang sama di dalam
+  <code>exporter.ts</code>. Kelimanya bukan lima sumber, melainkan lima <em>bentuk</em> mapper, dan
+  setiap sumber yang berbagi bentuk punya salinan sendiri:</p>
+
+  <p>Empat ADR di pelajaran ini semuanya berstatus
+  <span class="status-pill status-accepted">Accepted</span>:
+  <a href="../../../docs/adr/0004-export-tree-and-tax-date.md">ADR-0004</a>,
+  <a href="../../../docs/adr/0015-one-declaration-per-export-source.md">ADR-0015</a>,
+  <a href="../../../docs/adr/0016-stable-row-identity-for-deduplication.md">ADR-0016</a>, dan
+  <a href="../../../docs/adr/0030-the-comparison-file-columns-are-declared-with-its-grid.md">ADR-0030</a>.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Lima salinan mapper yang diganti satu deklarasi per sumber.</caption>
+      <thead>
+        <tr><th>Bentuk</th><th>Sumber</th><th>Salinan yang dulu ada</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>kolom pajak dipetakan</td>
+          <td>PPN Keluaran, PPN Masukan, dua grid retur</td>
+          <td>satu helper dari empat cabang, plus satu salinan tambahan di lengan bawaan</td>
+        </tr>
+        <tr>
+          <td>kolom multi-ejaan</td>
+          <td>Bukti Potong</td>
+          <td>kode khusus sekitar 80 baris, dengan pemilih, gabungan format, dan pemeriksaan sendiri</td>
+        </tr>
+        <tr>
+          <td>tembus tetap</td>
+          <td>Lampiran A2</td>
+          <td>kode khusus, dengan penanganan tanggal dan pemeriksaan sendiri</td>
+        </tr>
+        <tr>
+          <td>tembus tangkapan</td>
+          <td>Lampiran B2, empat lampiran PPh 21</td>
+          <td>kode khusus, tanpa pemeriksaan apa pun</td>
+        </tr>
+        <tr>
+          <td>mode asli</td>
+          <td>sebelas sumber</td>
+          <td>salinan keempat dari pola pencocokan waktu ISO</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Di sampingnya ada tiga lintasan lain di atas sebelas nilai yang sama: <code>PREFIX_MAP</code>,
+  tangga periode di dalam <code>generateDynamicFilename</code> (dengan kasus khusus untuk grid
+  retur, lembar PPh 21, dan Lampiran A2), dan sakelar nama berkas PDF di <code>downloader.ts</code>.
+  Grid kedua belas berarti mengedit semuanya. Dan cara gagalnya senyap: lengan bawaan yang lama
+  mengekspor kolom PPN Keluaran dan prefiks <code>FPK-</code> untuk sumber mana pun yang tidak
+  dikenal.</p>
+
+  <aside class="warn">
+    <span class="label">Yang sengaja dibiarkan terpisah</span>
+    <p>Empat ADR ini tidak menyatukan segalanya. <code>downloader.ts</code> tetap punya sakelar nama
+    PDF-nya: berkas itu ada di jalur unduhan PDF, jadi mengubahnya membuat satu putaran verifikasi
+    portal menjadi wajib, dan itu tidak memberi apa pun untuk pemetaan kolom. Predikat URL di
+    <code>page-context.ts</code> juga tetap sendiri: itu menjawab “halaman atau permintaan mana
+    ini” saat penangkapan, sementara deklarasi menjawab “bentuk ekspor sumber ini” saat ekspor.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">2</span>ADR-0004: satu pohon keputusan ekspor</h2>
+
+  <p>Sebelum ADR ini, ekspor punya serangkaian serah-terima tersirat. <code>handleExportAction</code>
+  mengembalikan <code>false</code> dengan artian “pemanggil harus memanggil
+  <code>handlePdfExport</code> sendiri”, dan tidak ada fungsi itu. Sekarang satu fungsi
+  <code>handleExportAction(format, deps)</code> di <code>main-actions.ts</code> menyelesaikan
+  <strong>semua</strong> format di dalamnya, termasuk PDF: penyaringan, konfirmasi, lalu unduhan.
+  Jalur ekspor otomatis setelah <code>SCRAPE_COMPLETE</code> memanggil antarmuka yang sama,
+  bukan menyusun datanya sendiri.</p>
+
+  <p>Nilai balik pun berubah sifatnya. Dulu selalu <code>true</code>, dan cabang PDF membuang
+  penolakan dari <code>startPdfDownload</code>, sehingga tipe <code>boolean</code> menjanjikan
+  keputusan yang tidak pernah dibawa. Sekarang <code>false</code> berarti <strong>alur tidak
+  dimulai</strong>: tidak ada faktur yang cocok dengan filter, atau konfirmasi dibatalkan.
+  Pemanggil tidak boleh melakukan apa-apa lagi soal itu, karena penyaringan, peringatan, dan
+  pembaruan panel sudah terjadi di dalam. Tipe itu dulu berbohong; sekarang tidak.</p>
+
+  <p>Bagian kedua ADR ini tentang <code>tax-date.ts</code> sebagai rumah tunggal parsing masa
+  pajak dan tanggal: <code>extractYear</code>, <code>extractMonth</code>, <code>extractYMD</code>,
+  <code>formatDate</code>, plus <code>formatPeriod</code> dan <code>extractPeriods</code> yang dibaca
+  tangga nama berkas. Aturan zonanya tegas: <strong>digit yang ditangkap diformat ulang, tidak
+  pernah melewati <code>Date</code></strong>. Putaran lewat <code>Date</code> menggeser tanggal
+  yang jatuh di ambang tengah malam menurut zona waktu pembaca. Aturan ini diuji di offset
+  <code>+07</code>, <code>+08</code>, <code>+09</code>, dan <code>Z</code>.</p>
+
+  <p>Dan satu pembeda yang sering terlewat: <code>formatIsoDateTime</code> sengaja lebih sempit
+  daripada <code>formatDate</code>. Kolom yang tugasnya menangkap waktu ISO yang tidak
+  dideklarasikan harus membiarkan tanggal kalender polos apa adanya, sementara
+  <code>formatDate("2026-03-04")</code> akan menulis ulang itu. Pola pencocokan waktu ISO
+  muncul tiga kali di luar <code>tax-date.ts</code>, dan ADR-0004 melarang pola seperti itu
+  ditulis tangan di tempat lain.</p>
+</section>
+
+<section>
+  <h2><span class="num">3</span>ADR-0015: satu deklarasi per sumber ekspor</h2>
+
+  <p><code>export-source.ts</code> memiliki satu <code>ExportSourceSpec</code> per
+  <code>ExportSource</code>: kolom ekspor bersihnya, prefiks nama berkasnya, peringatan bahwa
+  skema bergeser, dan aturan penamaan berkasnya. <code>mapColumns</code> mengubah deklarasi itu
+  menjadi sel. <code>exporter.ts</code> tetap memegang mekanisme unduhan, tangga periode, dan satu
+  panggilan <code>debugWarn</code>.</p>
+
+  <p>Kolomnya sendiri cuma tiga bagian: judul, daftar nama field kandidat, dan pembaca opsional.
+  Empat hal yang dulu tampak berbeda sudah masuk ke bentuk itu:</p>
+
+  <ul>
+    <li><strong>Rantai <code>||</code> sudah apa adanya daftar kandidat.</strong>
+    <code>row[TaxInvoicePeriod] || row[TaxPeriodMonth] || row[TaxPeriod]</code> adalah daftar
+    kandidat, dan <code>PeriodCredit</code> / <code>YearCredit</code> ternyata rantai dengan
+    <em>kepala</em> berbeda di atas dua fallback yang sama.</li>
+    <li><strong>Ejaan kandidat bukan pengulangan.</strong> Baris Bukti Potong menulis nomor slip
+    sebagai <code>WithholdingSlipsNumber</code> di jalur nama berkas PDF dan
+    <code>WithholdingSlipNumber</code> di jalur unduhan massal.</li>
+    <li><strong>Satu tanggal bisa mengisi beberapa kolom.</strong> Baris slip tidak punya field
+    masa pajak sama sekali, jadi <code>TANGGAL</code>, <code>MASA</code>, dan <code>TAHUN</code>
+    membaca <code>WithholdingSlipsDate</code> lewat tiga pembaca berbeda.</li>
+    <li><strong>“Portal yang memutuskan” adalah rencana lain, bukan kolom lain.</strong>
+    <code>ColumnPlan</code> punya varian <code>captured</code> yang kolomnya adalah field yang
+    tertangkap. Mode asli juga varian itu, dan itu sebabnya salinan keempat pola waktu ISO
+    menghilang.</li>
+  </ul>
+
+  <p>Varian <code>captured</code> itu juga alasan kenapa sumber-sumber itu tidak punya
+  peringatan skema bergeser: kolom mereka memang <em>isi</em> respons API, jadi “tidak ada yang
+  cocok” adalah keadaan normal, bukan sinyal.</p>
+
+  <aside class="pull">
+    <span class="label">Yang membuat ini tidak bisa basi</span>
+    <p><code>SPECS</code> bertipe <code>Record&lt;ExportSource, ExportSourceSpec&gt;</code>, jadi
+    menambah sumber baru tanpa mendeklarasinya adalah <strong>galat kompilasi</strong>.
+    Sebelumnya grid baru mengekspor spreadsheet yang salah sampai ada orang yang menyadari.
+    Penghapusan duplikasi memang berharga, tapi mekanisme yang tidak bisa basi lebih berharga
+    lagi. Dan <code>PREFIX_MAP</code> dihapus, bukan diturunkan: ia punya kunci <code>default</code>,
+    dan prefiks bawaanlah cara kegagalan diam-diam itu dimulai. <code>getExportSourceSpec</code>
+    kini menyelesaikan sumber yang tidak dikenal ke <em>deklarasi utuh</em> PPN Keluaran —
+    fallback yang sama seperti sebelumnya, tapi membawa kolomnya juga.</p>
+  </aside>
+
+  <p>Buktinya bukan klaim, tapi matriks karakterisasi. <code>export-source.matrix.unit.test.ts</code>
+  ditulis dan dijalankan hijau terhadap implementasi <strong>yang lama</strong> sebelum satu baris
+  kode produksi disentuh, dan tetap hijau tanpa perubahan terhadap yang baru. Matriks itu mengikat
+  set kolom dan bentuk nama berkas sebelas sumber lewat antarmuka eksportir yang publik saja.
+  Ia langsung mendapat tempatnya: dijalankan pertama setelah pemisahan, matriks itu gagal, karena
+  <code>firstSource</code> memakai operator OR, yang melewatkan nilai <code>0</code> dan
+  mengubah setiap <code>0</code> di baris Coretax menjadi <code>undefined</code>. Nominal nol
+  adalah hal yang biasa di grid-grid ini.</p>
+
+  <p>Tiga perubahan perilaku terjadi, semuanya sengaja, dan semuanya terbatas di log debug: baris
+  yang cocok hanya lewat ejaan cadangan tidak lagi memperingatkan skema bergeser; baris Bukti
+  Potong yang satu-satunya sinyal masanya adalah tanggal slip kosong tidak lagi memperingatkan;
+  dan muatan peringatan itu kini mencantumkan <strong>setiap</strong> ejaan kandidat.</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>ADR-0016: identitas baris adalah id portal</h2>
+
+  <p><code>getRowDedupeKey</code> mengambil satu id per baris dari daftar berurutan yang
+  dideklarasikan — <code>RecordId</code>, lalu <code>AggregateIdentifier</code> — lalu memberi
+  nilainya <em>namespace</em> dengan nama field asalnya. Dua masalah lama, keduanya senyap:</p>
+
+  <ul>
+    <li><strong><code>||</code> menguji kebenaran, bukan keberadaan.</strong> <code>0</code> adalah
+    <code>RecordId</code> yang sah, sedangkan <code>""</code> dan <code>null</code> adalah dua
+    ejaan “tidak ada” yang dipadukan portal. Baris dengan <code>RecordId: 0</code> melewatkan
+    pemeriksaan pertama dan yang kedua, lalu jatuh ke cadangan stringify seluruh baris — kuncinya
+    jadi sidik jari semua field, bukan id. Faktur yang sama di halaman berikutnya menghasilkan
+    kunci berbeda, dan barisnya terkumpul dua kali.</li>
+    <li><strong>Kuncinya tidak menyebut ruang asal.</strong> <code>RecordId</code> dan
+    <code>AggregateIdentifier</code> adalah dua penghitung terpisah di portal. Keduanya
+    menghasilkan <code>"5"</code> telanjang, jadi baris dengan <code>RecordId</code> 5 dan baris
+    lain yang tidak berhubungan dengan <code>AggregateIdentifier</code> 5 mendapat kunci yang
+    sama, dan yang kedua diam-diam dibuang sebagai duplikat.</li>
+  </ul>
+
+  <p>Karena itu presence test-nya ditulis eksplisit: <code>undefined</code>, <code>null</code>, dan
+  <code>""</code> diuji satu per satu, bukan dengan <code>||</code>. Kuncinya berbentuk
+  <code>RecordId:5</code>, dengan awalan nama field. <code>0</code> dan <code>"7"</code> tetap
+  menghasilkan kunci yang sama untuk id yang sama, karena <code>String()</code> merapikan
+  pemisahan angka dan teks yang bebas dibuat portal di antara dua respons.</p>
+
+  <p>Daftarnya berhenti di dua. Bukan nomor faktur, dan bukan <code>Reference</code>. Di PPN
+  Masukan, Referensi milik <strong>penjual</strong> dan berulang di banyak faktur milik satu
+  Wajib Pajak — sering kosong. Memakainya sebagai identitas akan menggabungkan baris yang memang
+  berbeda, dan kunci deduplikasi yang membuang faktur asli lebih buruk daripada kunci yang
+  sesekali menyimpan satu duplikat: ekspor kehilangan faktur tanpa jejak. Identitasnya adalah id
+  milik portal per baris, dan tidak lebih dari itu.</p>
+
+  <p>Grid yang tidak membawa kedua id tetap dapat kuncinya: stringify seluruh baris yang mengurutkan
+  kuncinya, sehingga dua baris dengan nilai sama dalam urutan berbeda tetap cocok. Jalur itu benar
+  dan lambat, dan justru alasan untuk menjaga id tetap bekerja daripada melonggarkan daftarnya.</p>
+</section>
+
+<section>
+  <h2><span class="num">5</span>ADR-0030: kolom layar dan kolom file satu deklarasi</h2>
+
+  <p>Hasil Pengecekan sudah punya bentuk yang benar: <code>CheckerColumn</code> memasangkan kolom
+  tabel dengan kolom berkas, dan kolom NPWP/NIK yang hanya ada di file dideklarasikan di sebelahnya
+  dengan <code>screen: null</code>. Komparator adalah pengecualiannya. Grid-nya sebuah daftar
+  <code>ResultColumn</code>, sementara lembarnya larik header kedua yang ditulis tangan di dalam
+  <code>comparer-export.ts</code> — tiga belas label dan tiga belas sel, ditambah aritmetika yang
+  memberi tahu penulis XLSX di mana lima kolom nominal pernah mendarat
+  (<code>refLainEnabled ? 7 : 6</code>).</p>
+
+  <p>Sekarang Komparator mengikuti bentuk yang sama:</p>
+
+<pre><code>interface ComparerColumn {
+  screen: ResultColumn&lt;ComparisonResult&gt; | null;   // grid
+  sheet: SheetColumn&lt;ComparisonResult&gt;;            // file
+}</code></pre>
+
+  <p><code>comparerSchema(refLainEnabled)</code> adalah satu-satunya definisi, dan
+  <code>comparisonColumns</code> serta <code>comparerSheetColumns</code> adalah dua pembacaannya.
+  Tiga kolom yang hanya dibawa file — Tanggal, NIK/NPWP, dan Nomor Faktur Pajak — dideklarasikan
+  di daftar itu sebagai <code>screen: null</code>, pada posisi yang mereka tempati di file, yaitu
+  setelah Nama Pembeli. Referensi Lain disisipkan setelah Referensi di kedua bagian oleh aturan
+  yang sama.</p>
+
+  <p>Kolom lembar juga mendeklarasikan <strong>jenis</strong> angkanya:
+  <code>format: "amount" | "difference"</code>. <code>exporter.resultNumberFormats(columns)</code>
+  mengubahnya menjadi format angka di dalam buku kerja, dengan kunci berupa indeks kolom yang
+  sebenarnya. Hitungan manual <code>firstAmount</code> — dan literal <code>{5…9}</code> di sisi
+  Pengecekan — sudah hilang: menyisipkan kolom di depan nominal tidak lagi menggeser semua format
+  satu tempat ke kiri, yang akan diam-diam memformat kode status sebagai mata uang dan
+  meninggalkan nominal terakhir tanpa format.</p>
+
+  <aside class="pull">
+    <span class="label">Asimetri yang menjaga kedua sisi jujur</span>
+    <p><code>sheet</code> wajib, <code>screen</code> opsional. Jadi sebuah kolom tidak bisa masuk
+    tabel lalu terlupa di file. Dua sisi boleh berbeda dan itu terlihat: file Komparator lebih
+    lebar dan menulis status mentah di tempat tabel menampilkan label; file Pengecekan
+    membawa NPWP/NIK dan menandatangani selisihnya. Keduanya adalah perbedaan antara dua sel
+    satu kolom, atau antara satu kolom dan ketiadaannya — keduanya bisa dinyatakan dalam pasangan
+    itu, tanpa skema sendiri.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Menjawab dua pertanyaan dengan satu berkas</h2>
+
+  <p>Inilah hasil dari empat ADR ini. Kalau ada yang bertanya “dari mana kolom ini berasal?” atau
+  “dari mana nama kolom ini di file berasal?”, jawabannya satu berkas, bukan lima:</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Lima berkas, lima pertanyaan, satu rumah untuk tiap pertanyaan.</caption>
+      <thead>
+        <tr><th>Pertanyaan</th><th>Satu berkas</th><th>Yang tinggal di sana</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Kolom ekspor dari grid portal</td>
+          <td><code>export-source.ts</code></td>
+          <td><code>SPECS</code>, satu <code>ExportSourceSpec</code> per sumber</td>
+        </tr>
+        <tr>
+          <td>Nama kolom di file hasil panel</td>
+          <td><code>result-columns.ts</code></td>
+          <td><code>ComparerColumn</code> dan <code>CheckerColumn</code>, bagian layar dan berkas</td>
+        </tr>
+        <tr>
+          <td>Identitas satu baris</td>
+          <td><code>scraper-helpers.ts</code></td>
+          <td><code>getRowDedupeKey</code> dan daftar id-nya</td>
+        </tr>
+        <tr>
+          <td>Nama berkas ekspor</td>
+          <td><code>export-source.ts</code> dan <code>exporter.ts</code></td>
+          <td>Prefiks dan aturan penamaan di spec; tangga periode di eksportir</td>
+        </tr>
+        <tr>
+          <td>Tanggal dan masa pajak</td>
+          <td><code>tax-date.ts</code></td>
+          <td><code>formatDate</code>, <code>formatPeriod</code>, <code>extractPeriods</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Perhatikan bahwa tidak ada satu pun baris di tabel itu yang berbunyi “tergantung”. Setiap
+  kali sebuah daftar yang sama ditulis di beberapa tempat, daftar itu akan berbeda satu sama
+  lain — dan perbedaannya muncul sebagai hasil yang salah, bukan sebagai galat. Memuahkannya ke
+  satu tempat, lalu menjadikan tempat itu satu-satunya jalan masuk, adalah keputusan yang
+  berulang di hampir setiap ADR di repo ini.</p>
+</section>
+
+<section class="practice">
+  <h2><span class="num">7</span>Uji ingatan</h2>
+  <p>Jawab dulu, baru lihat koreksinya. Jawaban yang benar tidak selalu di posisi pertama.</p>
+
+  <div class="quiz" data-quiz="l06-q1">
+    <p class="q">Apa yang terjadi kalau sebuah ExportSource baru masuk ke union tanpa deklarasi?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Itu persis kegagalan senyap yang lama: lengan bawaan mengekspor kolom PPN Keluaran untuk sumber yang tidak dikenal.">Kode tetap berjalan, sumber baru diekspor sebagai PPN</button></li>
+      <li><button class="opt" data-correct data-why="Tepat. Karena SPECS bertipe Record&lt;ExportSource, …&gt;, sumber tanpa deklarasi adalah galat kompilasi, bukan file yang salah diam-diam.">Kode gagal dikompilasi, karena tabel SPECS wajib lengkap</button></li>
+      <li><button class="opt" data-why="Tidak ada sumber yang diekspor tanpa kolom; deklarasi yang hilang membuat build berhenti, bukan sheet kosong.">Kode berjalan, sumber baru diekspor tanpa kolom sama</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l06-q2">
+    <p class="q">Kenapa Lampiran B2 dan lampiran PPh 21 memakai rencana kolom captured?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Rencana captured justru tidak punya kolom tetap; setiap field yang tertangkap menjadi kolomnya sendiri.">Karena kolomnya harus tetap sama seperti kolom PPN Keluaran</button></li>
+      <li><button class="opt" data-why="Jumlah kolom memang bisa berubah, tapi itu bukan alasan memilih rencana captured; yang menentukan adalah siapa yang memilih kolom.">Karena jumlah kolomnya bisa berubah tiap kali portal diperbarui</button></li>
+      <li><button class="opt" data-correct data-why="Tepat. Kolomnya memang isi respons API, jadi tak ada yang cocok adalah hal normal, bukan tanda skema bergeser.">Karena kolomnya adalah hasil tangkapan, jadi tak ada drift</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l06-q3">
+    <p class="q">Bagaimana getRowDedupeKey menguji keberadaan id baris sekarang?</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Tepat. Presence diuji dengan undefined, null, dan string kosong, sehingga id bernilai 0 tetap dikenali sebagai id.">Dengan memeriksa undefined, null, dan nilai string kosong</button></li>
+      <li><button class="opt" data-why="Itu ekspresi lama: operator OR menguji nilai truthy, sehingga id bernilai 0 justru jatuh ke jalur cadangan.">Dengan operator OR, lalu hasilnya diubah jadi teks</button></li>
+      <li><button class="opt" data-why="Daftarnya dua field: RecordId lalu AggregateIdentifier, berurutan dan dideklarasikan, bukan satu field saja.">Dengan satu field saja, tanpa mencoba kolom kedua</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l06-q4">
+    <p class="q">Kenapa kolom Referensi tidak boleh jadi kunci deduplikasi baris?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Nomor faktur bukan identitas, tapi alasan yang benar soal Referensi adalah pemiliknya, bukan karena kosongnya.">Karena nomor faktur sering kosong pada grid PPN Masukan</button></li>
+      <li><button class="opt" data-correct data-why="Tepat. Di PPN Masukan Referensi milik penjual dan berulang, jadi memakainya sebagai kunci akan menggabungkan faktur yang berbeda.">Karena di PPN Masukan Referensi milik penjual dan berulang</button></li>
+      <li><button class="opt" data-why="ADR-0016 tidak menyebut revisi sebagai alasannya; yang disebut adalah pengulangan Referensi milik penjual.">Karena nomor faktur berubah saat faktur direvisi oleh portal</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l06-q5">
+    <p class="q">Bagaimana kolom file hasil perbandingan dideklarasikan?</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Tepat. Satu pasangan kolom: bagian layar boleh kosong, bagian file wajib ada, dan keduanya berada di satu deklarasi.">Bersama kolom layar, di dalam satu pasangan kolom deklarasi</button></li>
+      <li><button class="opt" data-why="Itu larik header kedua yang ditulis tangan di comparer-export.ts, dan ADR-0030 justru membongkarnya.">Sebagai header kedua yang ditulis manual di berkas ekspor</button></li>
+      <li><button class="opt" data-why="Daftar label dihitung dari skema yang sama untuk kedua bagian; tidak ada hitungan ulang per format.">Sebagai daftar label yang dihitung ulang per setiap format</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l06-q6">
+    <p class="q">Apa arti nilai balik false dari handleExportAction?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Kegagalan menulis berkas ditangani di jalur ekspor XLSX dan dilaporkan lewat debugError, bukan lewat nilai balik ini.">Berkas gagal ditulis karena modul SheetJS gagal termuat di halaman</button></li>
+      <li><button class="opt" data-why="Tidak ada pemeriksaan berkas yang sudah ada di sini; nilai balik ini hanya soal apakah alurnya dimulai.">Berkas sudah ada di disk, jadi pengguna tak perlu mengunduh</button></li>
+      <li><button class="opt" data-correct data-why="Tepat. Penyaringan, peringatan, dan pembaruan panel sudah terjadi di dalam, jadi pemanggil tidak boleh melakukan apa-apa lagi.">Alur tidak dimulai: konfirmasi dibatalkan atau tak ada yang cocok</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz-score" data-score-for="l06">
+    <strong>Skor pelajaran ini</strong>
+    <span data-score-text>0 dari 6 soal dijawab, 0 benar.</span>
+    <button type="button" data-score-reset>Ulangi</button>
+  </div>
+</section>
+
+<aside class="source">
+  <h3>Sumber utama</h3>
+  <ul>
+    <li><a href="../../../docs/adr/0004-export-tree-and-tax-date.md"><code>ADR-0004</code></a>
+    — satu pohon keputusan ekspor, dan aturan parsing masa yang tidak melewati <code>Date</code>.</li>
+    <li><a href="../../../docs/adr/0015-one-declaration-per-export-source.md"><code>ADR-0015</code></a>
+    — satu <code>ExportSourceSpec</code> per sumber, rencana <code>declared</code> dan
+    <code>captured</code>, dan matriks karakterisasi sebagai bukti.</li>
+    <li><a href="../../../docs/adr/0016-stable-row-identity-for-deduplication.md"><code>ADR-0016</code></a>
+    — id baris, namespace-nya, dan kenapa Referensi bukan identitas.</li>
+    <li><a href="../../../docs/adr/0030-the-comparison-file-columns-are-declared-with-its-grid.md"><code>ADR-0030</code></a>
+    — bagian layar dan bagian file dalam satu pasangan kolom, dan format angka yang dibaca dari indeks.</li>
+  </ul>
+</aside>
+
+<div class="ask">
+  <strong>Catatan:</strong> tidak ada yang perlu Anda kirim balik. Tapi kalau ada satu bagian dari
+  pelajaran ini yang masih terasa abstrak — misalnya kenapa
+  <code>getExportSourceSpec</code> masih boleh jatuh ke PPN Keluaran sementara
+  <code>SPECS</code> tidak boleh, atau kenapa “peringatan skema bergeser” hanya ada untuk
+  sebagian sumber saja — tanyakan saja. Saya akan jawab dengan kode yang menyatakannya.
+</div>
+
+<footer class="course-foot">
+  <p>Pelajaran 06 · <a href="index.html">Peta pelajaran</a> · sebelumnya:
+  <a href="0005-fakta-halaman-dan-panel.html">05 · Fakta halaman dan panel</a> · berikutnya:
+  <a href="0007-pdf-dan-item-loop.html">07 · PDF dan loop item</a></p>
+</footer>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

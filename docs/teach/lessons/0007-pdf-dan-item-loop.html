@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pelajaran 07 · PDF, loop item, dan fitur — Kursus ADR Cindieh</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="course-head">
+  <p class="eyebrow">Cindieh · PDF, loop item, dan struktur MAIN world</p>
+  <h1>Pelajaran 07 — PDF, loop item, dan struktur MAIN world</h1>
+  <p class="lede">Jalur unduhan PDF pernah menghasilkan <strong>berkas ganda</strong>,
+  <strong>berkas 0 KB</strong>, dan <strong>berkas bernama portal</strong>. Pelajaran ini menunjuk aturan
+  yang mencegah masing-masing, menjelaskan kenapa satu loop dipakai untuk empat aliran item,
+  memisahkan batas antara alur dan tampilan pada fitur Komparator, dan bagaimana dunia MAIN
+  dirapikan sampai bisa diuji.</p>
+  <p class="meta">Pelajaran 07 dari 09 · waktu baca ± 18 menit · 8 soal uji ingatan</p>
+  <nav class="lesson-nav">
+    <a href="index.html">Peta pelajaran</a>
+    <a href="../reference/adr-peta.html">Peta 38 ADR</a>
+    <a href="../reference/glosarium.html">Glosarium</a>
+    <span class="spacer"></span>
+    <a href="0006-deklarasi-data.html">← 06</a>
+    <span>07 dari 09</span>
+    <a href="0008-membatalkan-keputusan-sendiri.html">08 →</a>
+  </nav>
+</header>
+
+<main>
+
+<section>
+  <h2><span class="num">1</span>Empat tempat memancarkan, satu modul</h2>
+
+  <p>Unduhan PDF punya empat tempat yang memancarkan pesan <code>DOWNLOAD_PDF_ITEM</code>:
+  interceptor <code>fetch</code>, interceptor XHR, unduhan bulk e-Faktur, dan unduhan bulk Bukti Potong.
+  Semuanya kini hidup di satu modul, <code>scraper-pdf.ts</code>: <code>createPdfDownloadSession</code>
+  untuk sesi unduhannya, plus tiga fungsi murni, <code>unwrapPdfData</code>,
+  <code>resolveInvoiceRow</code>, dan <code>buildPdfDownloadMessage</code>. Patch <code>fetch</code> dan
+  XHR di <code>scraper.ts</code> tinggal menjadi adapter tipis.</p>
+
+  <p>Alasan penggabungannya sama seperti yang lain di repo ini: <strong>empat salinan aturan yang
+  pelan-pelan berbeda satu sama lain</strong>. Dan lapisan di bawahnya dipisah lagi karena alasan yang
+  lain: tiap bagian punya satu kontrak yang layak diuji sendiri.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Empat modul, empat tanggung jawab, satu jalur unduhan.</caption>
+      <thead>
+        <tr><th>Modul</th><th>Tanggung jawab</th><th>Kontrak yang dijaganya</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>scraper-pdf.ts</code></td>
+          <td>Sesi unduhan dan helper murni: membuka isi respons, menyelesaikan baris invoice,
+          membangun pesan.</td>
+          <td>Bahwa satu pesan memakai satu sumber item yang benar.</td>
+        </tr>
+        <tr>
+          <td><code>scraper-fetch.ts</code></td>
+          <td>Interceptor jalur <code>fetch</code>.</td>
+          <td><strong>Request dikirim tepat sekali.</strong> Kegagalan saat membaca atau memancarkan
+          tidak boleh mengulang request.</td>
+        </tr>
+        <tr>
+          <td><code>scraper-nets.ts</code></td>
+          <td>Dua jaring cadangan terhadap simpanan native ganda.</td>
+          <td>Blokir, izinkan lewat, dan reset sendiri, dengan target yang disuntikkan.</td>
+        </tr>
+        <tr>
+          <td><code>scraper-xhr-patches.ts</code></td>
+          <td>Tiga patch prototype XHR.</td>
+          <td>Urutan listener saat <code>open()</code>, plus suntikan filter dan tangkapan grid.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Dua bagian yang tidak boleh disentuh</h2>
+
+  <p><a href="../../../docs/adr/0001-pdf-download-emission-module.md">ADR-0001</a> menyebut dua bagian
+  sebagai <em>load-bearing</em>. Keduanya terdengar seperti detail kecil. Keduanya adalah sumber tiga
+  bug unduhan yang pernah benar-benar terjadi.</p>
+
+  <h3>Bagian pertama: sumber item sengaja dipisah</h3>
+
+  <p>Ada dua jalur unduhan yang bukan hal yang sama, dan sumber baris invoice-nya pun berbeda:</p>
+
+  <ul>
+    <li><strong>Unduhan native</strong> (yang dipicu portal, lalu diintercept) hanya membawa
+    <strong>base64</strong> di responsnya. Baris invoice-nya tidak ada di sana, jadi sesi unduhan
+    mengambilnya dari <strong>peta tangkapan grid</strong>, yaitu <code>invoiceRowMap</code>.</li>
+    <li><strong>Unduhan bulk</strong> sudah memegang <strong>baris utuh</strong> sejak awal, dan
+    baris itu harus diteruskan apa adanya.</li>
+  </ul>
+
+  <p>Ketika kedua jalur dicampur, hasilnya <strong>nama berkas <code>TANPA_REFERENSI</code></strong>.
+  ADR-0001 menyebutnya secara eksplisit: jangan "menyederhanakan" keduanya kembali menjadi satu.
+  Dua jalur ini memang harus tetap berbeda, karena mereka memang mengetahui hal berbeda tentang
+  invoice-nya.</p>
+
+  <h3>Bagian kedua: listener XHR dipasang di <code>open()</code>, bukan di <code>send()</code></h3>
+
+  <p>Penanganan respons unduhan native adalah kontrak dua pemanggilan, dan titik pemasangannya
+  menentukan semuanya:</p>
+
+  <ul>
+    <li><code>wireNativeDownloadXhrListener</code> dipanggil dari patch <code>open()</code>, yaitu
+    <strong>sebelum</strong> portal mendaftarkan pembaca responsnya sendiri (portal melakukannya
+    sesudah <code>open()</code> dan sebelum <code>send()</code>). <strong>Urutan pendaftaran listener
+    adalah urutan pemanggilan callback.</strong></li>
+    <li>Listener itu bekerja pada <code>readystatechange</code> saat <code>readyState</code> 4, dan
+    peristiwa itu menyala <strong>sebelum</strong> peristiwa <code>load</code>. Jadi sabotase selalu
+    mendahului pembaca portal, apa pun peristiwa yang didengarkan portal.</li>
+    <li>Listener itu tetap diam sampai <code>send()</code> menyalakan XHR lewat
+    <code>prepareNativeDownloadXhr</code>: request native, body berupa string, bukan bulk (lewat
+    penanda <code>__isCindiehBulk</code>). Penyalaan itu memasang <code>__downloadArmed</code> dan
+    menyimpan <code>__downloadBody</code> untuk penyelesaian baris.</li>
+  </ul>
+
+  <aside class="pull">
+    <span class="label">Kenapa ini penting</span>
+    <p>Kalau listener dipasang di <code>send()</code>, sabotase berjalan <strong>sesudah</strong>
+    pembaca portal. Portal mengunduh PDF-nya sendiri, jadi pengguna mendapat dua berkas: milik portal
+    dan milik ekstensi. Dua listener yang berebut satu respons tidak bisa menyelesaikan masalah
+    ini.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Dummy harus gagal, dan tiga gejala yang berbeda</h2>
+
+  <p>Saat respons diintercept, <strong>dua aksesor</strong> ditulis ulang: <code>responseText</code>
+  dan <code>response</code>. Keduanya diganti dengan <strong>payload kegagalan</strong>: bentuknya
+  <code>{"IsSuccessful": false, "Content": ""}</code>. Portal lalu mengambil jalur errornya dan tidak
+  menulis berkas apa pun.</p>
+
+  <p>Dummy itu <strong>HARUS tetap gagal</strong>. Portal menjalankan rutin simpannya pada setiap
+  respons yang sukses, jadi dummy berbentuk sukses dengan <code>Content</code> kosong membuat portal
+  menyimpan PDF <strong>0 KB</strong> dengan nama Coretax. Kegagalan yang dirancang sebagai blokir
+  berubah menjadi unduhan yang menggantikan berkas milik pengguna.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Tiga kesalahan, tiga gejala yang berbeda. Semuanya pernah terjadi di portal sungguhan.</caption>
+      <thead>
+        <tr><th>Kesalahan</th><th>Gejala yang dilihat pengguna</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Listener dipasang di <code>send()</code>, bukan di <code>open()</code></td>
+          <td><strong>Dua berkas</strong> untuk satu klik: PDF bernama portal dan PDF bernama ekstensi.</td>
+        </tr>
+        <tr>
+          <td>Dummy berbentuk sukses dengan isi kosong</td>
+          <td><strong>PDF 0 KB bernama Coretax</strong> tersimpan berdampingan dengan milik ekstensi.</td>
+        </tr>
+        <tr>
+          <td>Panggilan penyalaan (<code>prepareNativeDownloadXhr</code>) hilang</td>
+          <td><strong>Hanya berkas native yang terunduh</strong>, tanpa pesan
+          <code>DOWNLOAD_PDF_ITEM</code> sama sekali.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Aturan pendeknya: <strong>jangan pindahkan pemasangan listener ke
+  <code>send()</code></strong>, <strong>jadikan dummy payload sukses</strong>, dan <strong>jangan
+  buang panggilan penyalaan demi "kesederhanaan"</strong>. Tiga kalimat itu menutup tiga gejala di
+  tabel.</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Blok utama, jaring cadangan, dan satu hal yang tak boleh dipatch</h2>
+
+  <p>Sabotase respons adalah <strong>blok primer</strong>, dan itu sudah terkonfirmasi di portal
+  sungguhan. Jaring cadangan hanya menutup koridor simpan yang akan tetap terbuka kalau sabotase
+  suatu saat gagal: penolakan <code>defineProperty</code>, respons yang tak bisa diurai, urutan peristiwa
+  yang tak terduga.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Tiga koridor simpan, dan sikap ekstensi terhadap masing-masing.</caption>
+      <thead>
+        <tr><th>Koridor</th><th>Sikap</th><th>Alasannya</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>HTMLAnchorElement.click</code> dengan <code>download</code> atau href <code>blob:</code></td>
+          <td><strong>Jaring cadangan, dipasang.</strong></td>
+          <td>Satu dari dua koridor tempat portal bisa menyimpan PDF kalau sabotase gagal.</td>
+        </tr>
+        <tr>
+          <td><code>window.open</code> dengan URL <code>blob:</code></td>
+          <td><strong>Jaring cadangan, dipasang.</strong></td>
+          <td>Koridor kedua, dan satu-satunya jalan popup dari blob.</td>
+        </tr>
+        <tr>
+          <td><code>URL.createObjectURL</code></td>
+          <td><strong>Sengaja TIDAK dipatch.</strong></td>
+          <td>Berada di koridor yang sama dengan jaring pertama, tapi tidak pernah reset sendiri.
+          Dipatch, ia memblokir diam-diam setiap blob PDF yang sah selama jendela proses 5 detik.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Jaring yang dipertahankan <strong>reset sendiri</strong> lewat <code>clearProcessing</code>
+  saat terpakai, sehingga satu simpanan yang diintercept tak pernah menekan unduhan sah berikutnya.
+  Yang justru <strong>tidak pernah</strong> reset sendiri adalah <code>URL.createObjectURL</code>, dan
+  itu sebabnya ia tidak boleh dipatch: begitu ia berubah menjadi blokir, ia akan menahan setiap blob
+  PDF yang sah sampai jendela prosesnya habis, tanpa pernah melepaskan diri sendiri.</p>
+
+  <p>Tiga penyempurnaan yang berikutnya penting karena ketiganya menutup jalan yang diam-diam:</p>
+
+  <ul>
+    <li><strong>Jalur <code>fetch</code> tidak boleh mengirim request dua kali.</strong> Logikanya
+    sekarang hidup di <code>scraper-fetch.ts</code> supaya kontrak "request tepat sekali" punya
+    cakupan regresi: kegagalan saat membaca atau memancarkan <strong>setelah</strong> respons tiba
+    harus mengembalikan respons yang asli, bukan mengulang request. Pernah begitu, dan hasilnya
+    endpoint unduhan-hit dua kali serta satu respons yang tidak disabotase sempat sampai ke portal.</li>
+    <li><strong>Keadaan penyalaan dilepas sebelum ditangani.</strong>
+    <code>handleNativeDownloadXhrLoad</code> melepas penanda <code>__downloadArmed</code> lebih dulu, jadi satu
+    <code>readyState</code> 4 yang menyala dua kali atau XHR yang dipakai ulang tak pernah
+    menangani satu unduhan dengan body request yang sudah basi.</li>
+    <li><strong>Urutan listener saat <code>open()</code> punya suite-nya sendiri.</strong>
+    Ketiga patch prototype XHR dipindah ke <code>scraper-xhr-patches.ts</code> supaya urutan itu
+    dipin, bukan sekadar ikut berdampingan dengan pemasangan di IIFE.</li>
+  </ul>
+
+  <aside class="warn">
+    <span class="label">Ekstraksi saja tidak cukup</span>
+    <p><code>scraper-boot.unit.test.ts</code> mengimpor <code>scraper.ts</code> yang sungguhan di atas
+    DOM tiruan, lalu memastikan <strong>enam permukaan semuanya berubah acuan saat dipasang dan
+    semuanya dipulihkan saat <code>pagehide</code></strong>, dan bahwa satu pemulihan yang ditolak
+    tak boleh menyisakan yang lain. Tanpa harness itu, hal yang tak teruji adalah hal yang paling
+    penting: <em>apakah adapter memberikan prototipe yang benar ke komponennya?</em> Suite di bawah
+    seam tidak bisa melihat itu.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Satu loop untuk empat aliran item</h2>
+
+  <p>Empat alur di dunia MAIN memproses daftar item satu per satu. Masing-masing
+  menulis ulang lima aturan yang sama dengan tangannya sendiri: kapan berhenti, apa yang dilaporkan ke
+  panel, kapan menyerah, apa nama sebuah kegagalan, dan berapa lama menunggu.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Empat aliran, empat makna item, satu loop.</caption>
+      <thead>
+        <tr><th>Aliran</th><th>Arti satu item</th><th>Ditemukan di</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Grid terpaginasi</td>
+          <td>Satu halaman baris</td>
+          <td><code>scrapePaginated()</code></td>
+        </tr>
+        <tr>
+          <td>Slip Bukti Potong</td>
+          <td>Satu PDF Bukti Potong</td>
+          <td><code>downloadBulkWithholdingPdf()</code></td>
+        </tr>
+        <tr>
+          <td>Baris e-Faktur</td>
+          <td>Satu PDF faktur</td>
+          <td><code>startPdfDownload()</code></td>
+        </tr>
+        <tr>
+          <td>Lookup No. Faktur</td>
+          <td>Satu nomor faktur</td>
+          <td><code>scrapeByInvoices()</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Empat salinan pemeriksaan stop, empat salinan breaker, empat salinan jeda. Dan tanda paling
+  jelas bahwa salinan itu sudah mulai berbeda: kalimat
+  <em>"N kegagalan unduh PDF berturut-turut. Periksa sesi Coretax dan coba lagi."</em> ditulis
+  dua kali, <strong>kata demi kata</strong>, di dua badan fungsi yang sama. Tak ada yang menyuruh
+  keduanya tetap sama, dan perubahan aturan jadi empat suntingan.</p>
+
+  <p><a href="../../../docs/adr/0034-the-main-worlds-item-loops-share-one-loop.md">ADR-0034</a> memindahkannya
+  ke <code>src/content/per-item.ts</code>. Sekarang <code>runItems(flow, deps)</code> adalah loopnya,
+  dan sebuah aliran hanya menyatakan <strong>artinya satu item</strong>:</p>
+
+  <pre><code>export interface ItemFlow&lt;TItem, TResult&gt; {
+  next(): ItemStep&lt;TItem&gt; | null;          // unit kerja berikutnya
+  status(step, attempt, result): string;     // baris yang dilihat panel
+  readonly reportWhen: "before" | "after";   // KAPAN baris itu dikirim
+  attempt(step, attempt): Promise&lt;TResult&gt;; // pekerjaannya; melempar berarti gagal
+  accept(result, step): boolean;             // terima hasilnya; false mengakhiri run
+  recordFailure(step, error): void;          // nama item yang gagal
+  exhausted(failures, error): void;          // seperti menyerah
+  readonly delayMs: number;                  // jeda setelah sukses
+  readonly failureDelayMs?: number;          // jeda setelah gagal
+  readonly retry?: ItemRetry;                // cara satu item diulang
+}</code></pre>
+
+  <p>Loop itu memiliki aturannya sendiri, dan aturannya inilah yang wajib dikuasai:</p>
+
+  <ul>
+    <li><strong>STOP bukan KEGAGALAN.</strong> Stop mengakhiri run seketika dan <strong>tidak mencatat
+    apa pun</strong>. Baris yang sudah terkumpul milik run itu, dan permintaan yang dibatalkan
+    pengguna bukan permintaan yang gagal. Kegagalan punya nama, punya hitungan, dan ditimbang terhadap
+    breaker.</li>
+    <li><strong>Hasil yang datang setelah stop DILEMPAR, bukan diambil.</strong> Loop memeriksa stop
+    antara pekerjaan dan penggabungan, jadi halaman yang tiba setelah pengguna menekan stop tidak
+    menambah baris ke run yang sudah selesai.</li>
+    <li><strong>Retry DIDEKLARASIKAN, bukan ditulis di badan loop.</strong> Lookup No. Faktur
+    mendeklarasikan dua percobaan tambahan dengan backoff linear; grid terpaginasi mendeklarasikan
+    nol, dan sebagai gantinya menyerahkan <strong>halaman yang sama</strong> lagi, yang adalah retry
+    milik grid itu sendiri, dan sebab itu penghitung halamannya menghitung percobaan.</li>
+    <li><strong>Breaker diukur sekali.</strong> <code>breakerTripped(failures, limit)</code> adalah
+    satu-satunya aritmetanya, dan batasnya tetap milik run itu sendiri: dunia menjawab "sudah
+    terputus breaker?", bukan loop membawa angka sendiri.</li>
+    <li><strong>Cara sebuah run menyerah tetap milik alirannya.</strong> Grid terpaginasi
+    <strong>melempar</strong> error, yang oleh orkestratornya diubah menjadi <code>SCRAPE_ERROR</code>.
+    Dua loop PDF dan pencarian No. Faktur <strong>melaporkan</strong> akhir lalu mengembalikan
+    kendali. Perbedaan ini penting: yang pertama adalah satu langkah di dalam Run yang lebih
+    besar, sedangkan tiga yang lain adalah Run yang memang dimulai sendiri oleh pengguna.</li>
+    <li><strong>Kalimat yang dipakai bersama ditulis sekali.</strong> Kalimat kegagalan unduhan PDF
+    adalah satu fungsi, <code>pdfDownloadFailures()</code>, dipakai kedua loop PDF.</li>
+  </ul>
+
+  <aside class="warn">
+    <span class="label">Aturan yang berlaku</span>
+    <p><strong>Jangan menulis loop <code>for</code> baru di dunia MAIN.</strong> Buat adapter.
+    Modul ini murni: tanpa API peramban, tanpa DOM, tanpa portal, jadi <code>per-item.unit.test.ts</code>
+    bisa menjalankannya dengan aliran skrip: pemeriksaan stop sebelum dan sesudah pekerjaan, baris
+    sebelum dan sesudah item, breaker, backoff yang tumbuh, dua jeda, dan aturan bahwa item gagal
+    disebut <strong>satu kali</strong> sebanyak apa pun percobaannya.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Komparator: sesi di logika, tampilan tetap tampilan</h2>
+
+  <p><a href="../../../docs/adr/0003-comparer-session.md">ADR-0003</a> menetapkan batas yang jauh lebih
+  halus daripada "logika di sini, tampilan di situ". Batasnya: <strong>alur</strong> (apa yang
+  dijalankan, dalam urutan apa, dengan prasyarat apa) milik <code>comparer-logic.ts</code>, dan
+  <strong>yang tersisa adalah presentasi</strong>.</p>
+
+  <ul>
+    <li><code>comparer-logic.ts</code> memiliki objek <code>ComparerSession</code> yang dibuat lewat
+    <code>createComparerSession()</code>, dan memiliki orkestrasi perbandingan:
+    <code>runComparison</code>, <code>rerunComparison</code>, dan <code>prepareComparison</code>
+    (keputusan "Periksa").</li>
+    <li><code>ui-comparer.ts</code> <strong>menyimpan nol <code>let</code> sesi di level modul</strong>:
+    ia memakai hasil <code>createComparerSession()</code> secara langsung.</li>
+    <li>Fungsi pembuat sesi itu pernah ada tapi <strong>mati</strong>: pemakainya mengabaikannya dan
+    menyimpan delapan <code>let</code> di level modul.</li>
+  </ul>
+
+  <p>Dan tampilan <strong>bukan</strong> lapisan tipis. Ia boleh menurunkan presentasi dari keadaan
+  sesi: skema kolom, kelas CSS, bagian panel mana yang terlihat, berapa hasil yang dipegang satu
+  halaman. Hanya <em>alur</em> yang milik <code>comparer-logic</code>.</p>
+
+  <aside class="pull">
+    <span class="label">Amandemen 2 Oktober 2026</span>
+    <p>Deskripsi lama menyebut <code>ui-comparer.ts</code> sebagai "tampilan tipis". Deskripsi itu
+    sudah tidak berlaku: ketika ADR itu ditulis, berkas itu 783 baris; setelah tab Pengecekan
+    Keakuratan Nilai ditambahkan lewat perubahan <code>9247efb</code>, berkas itu jadi
+    <strong>1.283 baris</strong>, modul terbesar di proyek, <strong>12,4%</strong> dari seluruh
+    kode sumber. Pelajarannya bukan "tampilan selalu tipis", melainkan <strong>deskripsi yang usang
+    adalah bahaya</strong>: siapa pun yang membacanya sekarang mendapat gambaran yang salah besar
+    tentang modul itu.</p>
+  </aside>
+
+  <p>Yang tersisa dari masalah itu diselesaikan dengan memindahkan skema kolom keluar ke
+  <code>result-columns.ts</code>, yang mendeklarasikan kedua grid sebagai daftar
+  <code>ResultColumn&lt;T&gt;</code>: label, kelas CSS, penanda angka, dan nilai sel. Renderernya
+  hanya mengonsumsi daftar itu. Setelahnya <code>ui-comparer.ts</code> turun ke
+  <strong>1.121 baris</strong>, dan persentase cabangnya justru <strong>turun</strong> dari 41,15% ke
+  34,15%: cabang-cabang yang tadinya separuh tertutup <strong>berpindah ke luar berkas</strong>,
+  sehingga bagian yang belum tertutup tinggal konstruksi DOM.</p>
+
+  <p>Dan perubahannya dibuktikan, bukan diklaim: <strong>matriks render</strong> (label, kelas
+  <code>th</code>, kelas <code>td</code>, teks sel) diambil untuk kelima varian grid sebelum dan
+  sesudah, dan kedua tangkapan itu <strong>sama byte demi byte</strong>.</p>
+
+  <aside class="warn">
+    <span class="label">Yang sengaja tidak dirapikan</span>
+    <p>Dua perilaku dipertahankan dengan sengaja: sel Status pada komparator menampilkan
+    <code>getStatusLabel(...)</code>, sedangkan selnya di Pengecekan menampilkan status mentah. Dan
+    Pengecekan melabeli kolom selisihnya dari <em>benchmark sesi</em>, tetapi menyelesaikan selisih
+    tiap sel dari <em>benchmark barisnya</em>. Semua baris dalam satu run berasal dari satu
+    panggilan, jadi keduanya sejalan; asimetri itu dipertahankan supaya tabelnya tetap bertahan
+    seandainya hal itu tak lagi benar.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">7</span>Pencocokan: hanya referensi utama</h2>
+
+  <p><a href="../../../docs/adr/0006-comparer-reference-matching.md">ADR-0006</a> menutup pintu yang sangat
+  menggoda untuk dibuka: memakai dua kolom referensi sekaligus saat mencocokkan baris tempelan
+  dengan data Coretax.</p>
+
+  <p>Aturannya satu kalimat: <strong>pencocokan memakai HANYA kolom <code>Reference</code> utama</strong>.
+  Kolom kedua, <code>refLain</code> ("Referensi Lain"), tetap diparse dan tetap ditampilkan di tabel
+  hasil sebagai konteks, tapi <strong>tidak masuk kunci pencarian</strong>.</p>
+
+  <p>Alasannya tiga, dan semuanya soal kecocokan yang salah:</p>
+
+  <ol>
+    <li>Pengguna sering menyimpan <strong>dua nomor referensi internal</strong>: nomor voucher ERP
+    di <code>Reference</code>, dan nomor pelacakan internal kedua di <code>refLain</code>.</li>
+    <li>Coretax menyimpan dan mengindeks faktur <strong>berdasarkan nomor referensi utama</strong>.
+    Pencocokan ketat pada <code>Reference</code> menghindari ambiguitas dan pencocokan yang salah
+    ketika pengguna menempelkan nomor internal kedua ke <code>refLain</code>.</li>
+    <li>Menjaga <code>refLain</code> sebagai kolom tampilan saja membiarkan pengguna mencocokkan
+    identitas internal kedua mereka di samping status pencocokan utama, <strong>tanpa mengubah logika
+    pencarian Coretax sama sekali</strong>.</li>
+  </ol>
+
+  <p>Di kode, aturan itu tampak sebagai satu peta: baris hasil scrape dikunci menurut
+  <code>Reference</code> yang sudah dinormalisasi, dan setiap baris tempelan mencari kuncinya di sana.
+  Pencocokan longgar bukan sekadar kurang akurat: ia mengubah "tidak ditemukan" menjadi "ditemukan,
+  tapi baris yang salah", dan itu kesalahan yang paling mahal bagi pengguna yang sedang memeriksa
+  pajaknya sendiri.</p>
+</section>
+
+<section>
+  <h2><span class="num">8</span>ADR-0035: satu seam per dunia, dan graf impor tanpa siklus</h2>
+
+  <p><a href="../../../docs/adr/0035-one-seam-per-world.md"><code>ADR-0035</code></a>
+  <span class="status-pill status-accepted">Accepted</span> menjelaskan kelas bug yang tak terlihat:
+  <strong>siklus impor</strong>. Konteks dunia MAIN pernah tinggal di <code>scraper-actions.ts</code>,
+  di sebelah modul-modul yang memakainya. Begitu modul-modul itu diekstrak <em>di bawahnya</em>,
+  satu-satunya jalan untuk menjangkau konteks itu adalah mengimpor induknya:</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Dari ADR-0035: siklus yang terbentuk karena seekor di bawah harus menjangkau induknya.</caption>
+      <thead><tr><th>Modul</th><th>Yang diambil dari induk</th><th>Siklusnya</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>period-sweep.ts</code></td>
+          <td>tipe <code>ScraperContext</code></td>
+          <td><code>scraper-actions</code> → <code>period-sweep</code> → <code>scraper-actions</code></td>
+        </tr>
+        <tr>
+          <td><code>scraper-xhr.ts</code></td>
+          <td><code>abortError()</code></td>
+          <td><code>scraper-actions</code> → <code>scraper-xhr</code> → <code>scraper-actions</code></td>
+        </tr>
+        <tr>
+          <td><code>scraper-intercept.ts</code></td>
+          <td>separuh konteks</td>
+          <td><code>scraper-actions</code> → <code>scraper-intercept</code> → <code>scraper-actions</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Siklus pertama hanya tipe, jadi type-checker menerimanya. Yang kedua <strong>nilai</strong>:
+  <code>abortError</code> adalah fungsi, jadi <code>scraper-actions.ts</code> dan
+  <code>scraper-xhr.ts</code> saling menginisialisasi. Mana yang kebetulan lebih dulu ditulis
+  esbuild membaca binding yang belum diinisialisasi — dan kegagalannya muncul sebagai
+  <code>undefined</code> <strong>saat sebuah permintaan dibatalkan</strong>, bukan saat impor.
+  Itulah sebabnya tidak ada suite yang menangkapnya tanpa sengaja membatalkan sesuatu.</p>
+
+  <aside class="warn">
+    <span class="label">Aturan yang lahir darinya</span>
+    <p>Seam harus berada <strong>di bawah</strong> pemakainya. Kalau sebuah modul mengimpor induknya
+    untuk mendapat tipe atau helper, pindahkan yang bersama ke bawah — kalau tidak, dependensinya
+    adalah lingkaran. Kuncinya dipagari oleh <code>src/tests/content-imports.unit.test.ts</code>,
+    yang membaca <code>src/content/*.ts</code> dari disk dan memeriksa lima hal: tanpa siklus
+    runtime, closure dunia MAIN tetap DAG (siklus tipe ikut dihitung), tidak ada API browser di
+    dunia MAIN, tiga modul di bawah <code>scraper-actions.ts</code> mengambil seam dari bawah, dan
+    tidak ada modul dunia isolated yang terjangkau dari dunia MAIN.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">9</span>ADR-0038: halaman sebagai satu lingkungan yang diinjeksi</h2>
+
+  <p><a href="../../../docs/adr/0038-the-main-worlds-install-wiring-takes-an-env.md"><code>ADR-0038</code></a>
+  <span class="status-pill status-accepted">Accepted</span> menyelesaikan masalah yang mirip, tapi di
+  lapisan paling bawah: <code>scraper.ts</code> pernah sebuah IIFE yang membaca halaman secara
+  langsung — <code>document</code>, <code>location</code>, <code>window.postMessage</code>,
+  <code>window.setTimeout</code>, <code>window.fetch</code>, dan dua prototype. Semua keputusan di
+  dalamnya berarti keputusan di kode yang tidak bisa disentuh satu pun tes.</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Dari ADR-0038: keputusan yang dulu hidup di kode yang tak bisa diuji.</caption>
+      <thead><tr><th>Keputusan</th><th>Kenapa penting</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>token diambil dari <code>&lt;script src&gt;</code> miliknya sendiri, lalu <code>src</code> dibuang</td>
+          <td>injeksi kedua berarti interceptor kedua (ADR-0008)</td>
+        </tr>
+        <tr>
+          <td>tiap aksi jalan di konteks per-Run yang membuang pesan dari Run lain</td>
+          <td>Run yang dibatalkan tidak boleh melapor ke Run yang menggantikannya (ADR-0010)</td>
+        </tr>
+        <tr>
+          <td><code>RESET_SCRAPER</code> membersihkan request, filter, peta invoice, dan pelanggan</td>
+          <td>tangkapan basi dilayani ke halaman berikutnya</td>
+        </tr>
+        <tr>
+          <td>respons prefix kosong mengunci satu pemberitahuan per field</td>
+          <td>pencarian harus melaporkan sekali, bukan tiap permintaan (ADR-0012)</td>
+        </tr>
+        <tr>
+          <td>teardown memulihkan tiga permukaan secara mandiri</td>
+          <td>satu penolakan tidak boleh menjebak dua lainnya</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Keputusannya: <code>scraper-install.ts</code> memegang seluruh pemasangan lewat
+  <code>installScraper(env)</code> yang mengembalikan <code>{ teardown }</code>, dan
+  <code>ScraperEnv</code> adalah halaman itu sendiri sebagai satu objek — dokumen, window (lokasi,
+  kanal pesan, timer, <code>open</code>, dan <code>fetch</code> saat ini), satu
+  <code>setFetch</code> untuk menggantinya, dua prototype itu, dan <code>isDevelopment</code>.
+  Jendelanya adalah <strong>handle, bukan salinan</strong>: penjaga pesan membandingkan
+  <code>event.source</code> dengan objek yang diberikan, jadi <code>selfWindow</code> itu
+  <code>env.window</code> sendiri. <code>scraper.ts</code> jadi adapter: membangun env dari global
+  yang dimilikinya dan memanggil <code>installScraper</code> sekali — tidak lebih. Teardown-nya pun
+  jadi nilai balik, bukan hanya peristiwa: <code>pagehide</code> tetap memicu teardown, tapi tes
+  bisa memanggilnya langsung, dan panggilan kedua setelah browser sudah memulihkan semuanya bukan
+  kesalahan.</p>
+
+  <aside class="pull">
+    <span class="label">Kenapa ini penting untuk Anda</span>
+    <p>Modul ini duduk di 39,4% statement dan 28,1% branch — terendah di repo — dan satu-satunya cara
+    mengujinya adalah men-stub enam global. Karena itu harness boot-nya 617 baris hanya untuk
+    membuktikan “adapter menyerahkan prototype yang asli”. Setelah <code>scraper-install.ts</code>
+    diambil, <code>scraper-install.unit.test.ts</code> menjalankan pemasangan itu di atas env tiruan,
+    dan harness boot tinggal menjawab satu pertanyaan: apakah prototype asli benar-benar diserahkan,
+    dan apakah <code>pagehide</code> mengembalikannya.</p>
+  </aside>
+</section>
+
+<section class="practice">
+  <h2><span class="num">10</span>Uji ingatan</h2>
+  <p>Jawab dulu, baru lihat koreksinya. Jawaban yang benar tidak selalu di posisi pertama.</p>
+
+  <div class="quiz" data-quiz="l07-q1">
+    <p class="q">Kenapa listener unduhan XHR harus dipasang di <code>open()</code>, bukan di <code>send()</code>?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Justru sebaliknya: peristiwa load menyala SESUDAH readystatechange, jadi sabotase tetap menang lebih dulu.">Peristiwa load menyala lebih dulu, jadi pembaca portal sudah selesai membaca.</button></li>
+      <li><button class="opt" data-correct data-why="Urutan listener sama dengan urutan callback, jadi sabotase mendahului pembaca portal.">Urutan listener sama dengan urutan callback, jadi sabotase mendahului pembaca portal.</button></li>
+      <li><button class="opt" data-why="Body request memang baru ada di send, tetapi itu alasan lain yang tidak menjelaskan urutan callback.">Body request baru ada setelah send, jadi baris tak bisa diselesaikan.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l07-q2">
+    <p class="q">Respons tiruan yang disuntikkan ke portal harus berbentuk apa?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Justru bentuk inilah yang membuat portal menyimpan PDF 0 KB bernama Coretax.">Sukses: IsSuccessful true dan Content berisi PDF kosong dari portal.</button></li>
+      <li><button class="opt" data-why="Bentuk gagal tetap wajib; isi kosong tidak boleh membuat portal menjalankan rutin simpannya.">Gagal: IsSuccessful false dan Content berisi PDF kosong dari portal.</button></li>
+      <li><button class="opt" data-correct data-why="IsSuccessful false dengan Content kosong membuat portal mengambil jalur error dan tidak menyimpan berkas.">Gagal: IsSuccessful false dan Content kosong, biar portal tak menyimpan.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l07-q3">
+    <p class="q">Kenapa sumber item unduhan PDF tidak boleh disatukan?</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Unduhan native hanya membawa base64, jadi barisnya harus diambil dari peta tangkapan grid.">Unduhan native hanya membawa base64, jadi baris diambil dari peta grid.</button></li>
+      <li><button class="opt" data-why="Respons unduhan native memang hanya berisi base64; baris utuh ada di jalur bulk.">Unduhan native membawa baris utuh, jadi baris diambil dari peta grid.</button></li>
+      <li><button class="opt" data-why="Jalur bulk sudah memegang baris utuh sejak awal, jadi tidak perlu peta tangkapan grid.">Unduhan bulk hanya membawa base64, jadi baris diambil dari peta grid.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l07-q4">
+    <p class="q">Dalam loop item, apa yang terjadi ketika pengguna menekan stop?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Item yang dibatalkan pengguna bukan item yang gagal, jadi tak boleh masuk daftar kegagalan.">Run berakhir seketika dan satu item dicatat sebagai gagal oleh breaker.</button></li>
+      <li><button class="opt" data-correct data-why="Stop mengakhiri run dan mencatat tidak ada; kegagalan punya nama dan dihitung ke breaker.">Run berakhir seketika dan tidak ada satu pun dicatat sebagai kegagalan.</button></li>
+      <li><button class="opt" data-why="Stop tidak pernah menjadi kegagalan berurutan; itu sebabnya breaker tidak ikut terpicu.">Run berakhir seketika dan breaker tripped karena item-item gagal beruntun sekali.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l07-q5">
+    <p class="q">Menurut ADR-0003, batas antara alur dan tampilan pada fitur Komparator di mana?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="ADR-0003 memindahkan alur ke comparer-logic; ui-comparer hanya tampilan.">Alur perbandingan hidup di ui-comparer, tampilan menyusun dan merender hasilnya.</button></li>
+      <li><button class="opt" data-why="Tampilan boleh menurunkan presentasi, tetapi bukan memutuskan apa yang dijalankan.">Alur perbandingan hidup di comparer-logic, tampilan juga memutuskan apa dijalankan.</button></li>
+      <li><button class="opt" data-correct data-why="Alur perbandingan milik comparer-logic; tampilan hanya menyusun dan merender.">Alur perbandingan hidup di comparer-logic, tampilan hanya menyusun dan merender.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l07-q6">
+    <p class="q">Kenapa kolom Referensi Lain tidak dipakai sebagai kunci pencocokan ke Coretax?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Kolom Referensi Lain tetap diparse dan ditampilkan sebagai konteks untuk pengguna.">Kolom Referensi Lain sengaja dikosongkan agar semua baris punya kolom sama.</button></li>
+      <li><button class="opt" data-correct data-why="Coretax mengindeks faktur pada nomor referensi utama, jadi pencocokan longgar bisa salah.">Coretax mengindeks faktur pada nomor referensi utama, jadi longgar bisa salah.</button></li>
+      <li><button class="opt" data-why="Indeks Coretax hanya primary reference; kedua nomor tidak bisa dijadikan kunci tambahan.">Coretax mengindeks faktur pada kedua nomor itu, jadi longgar lebih cepat.</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l07-q7">
+    <p class="q">Menurut ADR-0035, kenapa siklus impor berbahaya meski type-checker menerimanya?</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Type-checker memang menerima siklus tipe; masalahnya ada di siklus yang bernilai.">Type-checker menerima siklus tipe, dan siklus nilai lolos</button></li>
+      <li><button class="opt" data-why="Urutan emisi memang menentukan, tapi ADR-0035 menyorot konsekuensi yang lebih halus dari itu.">Siklus nilai muncul dari urutan emisi esbuild tertentu</button></li>
+      <li><button class="opt" data-correct data-why="Tepat. Kegagalan muncul saat permintaan dibatalkan — bukan saat impor — jadi tak ada suite yang menangkapnya.">Keduanya baru terlihat begitu ada permintaan yang dibatalkan</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l07-q8">
+    <p class="q">Menurut ADR-0038, apa yang diberikan <code>ScraperEnv</code> kepada <code>installScraper</code>?</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Tepat. Window-nya handle, bukan salinan: penjaga membandingkan event.source dengan objek yang diberikan.">Halaman itu sendiri, sebagai satu objek utuh</button></li>
+      <li><button class="opt" data-why="Tidak ada salinan: window di dalam env adalah window yang sesungguhnya, supaya perbandingan sumber tetap berlaku.">Salinan halaman, agar tes tidak menyentuh portal</button></li>
+      <li><button class="opt" data-why="Justru sebaliknya: hanya scraper.ts yang boleh menyebut global, dan patch menerimanya lewat env.">Global browser, supaya patch bisa dipasang langsung</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz-score" data-score-for="l07">
+    <strong>Skor pelajaran ini</strong>
+    <span data-score-text>0 dari 8 soal dijawab, 0 benar.</span>
+    <button type="button" data-score-reset>Ulangi</button>
+  </div>
+</section>
+
+<aside class="source">
+  <h3>Sumber utama</h3>
+  <ul>
+    <li><a href="../../../docs/adr/0001-pdf-download-emission-module.md"><code>ADR-0001</code></a> —
+    modul emisi PDF, dua bagian yang <em>load-bearing</em>, bentuk dummy yang wajib gagal, dan jaring
+    cadangan yang tak boleh menyalahi.</li>
+    <li><a href="../../../docs/adr/0034-the-main-worlds-item-loops-share-one-loop.md"><code>ADR-0034</code></a> —
+    satu loop untuk empat aliran item, dan enam aturan yang dipindahkannya ke
+    <code>per-item.ts</code>.</li>
+    <li><a href="../../../docs/adr/0003-comparer-session.md"><code>ADR-0003</code></a> — batas alur dan
+    tampilan, serta amandemen yang menjelaskan kenapa deskripsi "tampilan tipis" tak lagi berlaku.</li>
+    <li><a href="../../../docs/adr/0006-comparer-reference-matching.md"><code>ADR-0006</code></a> — kenapa
+    hanya <code>Reference</code> utama yang menjadi kunci pencarian.</li>
+    <li><a href="../../../src/content/per-item.ts"><code>src/content/per-item.ts</code></a> dan
+    <a href="../../../src/content/scraper-pdf.ts"><code>src/content/scraper-pdf.ts</code></a> — dua modul
+    tempat aturan-aturan itu dipindahkan.</li>
+  </ul>
+</aside>
+
+<div class="ask">
+  <strong>Catatan:</strong> tidak ada yang perlu Anda kirim balik. Tapi kalau ada satu bagian dari
+  pelajaran ini yang masih terasa abstrak — misalnya kenapa jaring cadangan untuk
+  <code>window.open</code> boleh dipasang sementara <code>URL.createObjectURL</code> harus
+  dibiarkan utuh, atau kenapa stop dan kegagalan harus dipisahkan — tanyakan saja. Saya akan jawab
+  dengan gejala nyata yang pernah terjadi.
+</div>
+
+<footer class="course-foot">
+  <p>Pelajaran 07 · <a href="index.html">Peta pelajaran</a> · sebelumnya:
+  <a href="0006-deklarasi-data.html">06 · Deklarasi data</a> · berikutnya:
+  <a href="0008-membatalkan-keputusan-sendiri.html">08 · Membatalkan keputusan sendiri</a></p>
+</footer>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pelajaran 01 · Cara membaca ADR — Kursus ADR Cindieh</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="course-head">
+  <p class="eyebrow">Cindieh · Membaca Architecture Decision Records</p>
+  <h1>Pelajaran 01 — Cara membaca ADR</h1>
+  <p class="lede">Sebelum memahami 38 keputusan teknis Cindieh, pelajari dulu bentuknya. ADR adalah
+  format yang punya konvensi: kalau Anda tahu konvensinya, 38 dokumen itu bukan 38 dokumen panjang,
+  tetapi 38 keputusan yang bisa dibaca, ditanya, dan ditelaah.</p>
+  <p class="meta">Pelajaran 01 dari 09 · waktu baca ± 12 menit · 5 soal uji ingatan</p>
+  <nav class="lesson-nav">
+    <a href="index.html">Peta pelajaran</a>
+    <a href="../reference/adr-peta.html">Peta 38 ADR</a>
+    <a href="../reference/glosarium.html">Glosarium</a>
+    <span class="spacer"></span>
+    <span>01 dari 09</span>
+    <a href="0002-dua-dunia-dan-jembatan.html">02 →</a>
+  </nav>
+</header>
+
+<main>
+
+<section>
+  <h2><span class="num">1</span>Apa itu ADR dan mengapa bentuknya demikian</h2>
+
+  <p>Architecture Decision Record adalah catatan singkat tentang <strong>satu keputusan</strong>
+  arsitektur: apa yang rusak, apa yang diputuskan, dan apa yang ditolak. Format ini dipopularkan
+  oleh Michael Nygard di Cognitect pada 2011 lewat artikel
+  <a href="https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions">Documenting
+  Architecture Decisions</a>, dan cocok dengan cara kerja Cindieh: tiap keputusan penting punya
+  berkas sendiri, bernomor, dan tidak pernah ditimpa — kalau berubah, ADR <em>baru</em> yang
+  menunjuk ke yang lama.</p>
+
+  <p>Perhatikan satu hal penting: <strong>ADR bukan dokumentasi sistem.</strong> Dokumentasi
+  menjelaskan <em>apa yang ada sekarang</em>; ADR menjelaskan <em>apa yang sudah diputuskan
+  sebelumnya, dan mengapa</em>. Kalau Anda membaca ADR, Anda tidak mencari cara kerja kode —
+  Anda mencari <strong>batas tanggung jawab yang sudah disepakati</strong>, supaya Anda tidak menebak ulang
+  keputusan yang sudah diambil, dan tidak "''memperbaiki''" sesuatu yang sengaja dibiarkan.</p>
+
+  <aside class="pull">
+    <span class="label">Kalimat kunci</span>
+    <p>ADR ada bukan untuk menjelaskan apa yang terjadi, melainkan untuk <i>menjaga</i> apa yang
+    sudah diputuskan — supaya perubahan berikutnya sadar akan harga yang harus dibayar.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Anatomi ADR di repo ini</h2>
+
+  <p>Tidak semua ADR di dunia punya format yang sama. Repo ini punya konvensinya sendiri, dan
+  konvensi itu konsisten di 38 berkas. Baca satu ADR apa pun, Anda akan menemukan lima bagian
+  ini:</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Struktur yang dipakai semua ADR di <code>docs/adr/</code>.</caption>
+      <thead>
+        <tr><th>Bagian</th><th>Isinya</th><th>Contoh dari ADR-0027</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Judul</strong></td>
+          <td>Kalimat keputusan, bukan topik. Yang ditulis, bukan sekadar “tentang stop”.</td>
+          <td>“One stop door: every stop control settles a Run the same way, and states its own row decision”</td>
+        </tr>
+        <tr>
+          <td><strong>Konteks</strong></td>
+          <td>Masalah nyata, sering dengan pengukuran di portal sungguhan.</td>
+          <td>Tiga jalur berhenti berbeda (tabel), masing-masing dengan badannya sendiri</td>
+        </tr>
+        <tr>
+          <td><strong>Keputusan</strong></td>
+          <td>Aturannya, dalam bentuk yang bisa dibuktikan salah.</td>
+          <td>Satu fungsi stop per dunia; keputusan baris jadi argumen</td>
+        </tr>
+        <tr>
+          <td><strong>Konsekuensi</strong></td>
+          <td>Apa yang berubah, apa yang sengaja TIDAK diubah, dan verifikasi yang dibutuhkan.</td>
+          <td>“The interface loses a call and gains a question”; <code>main-boot.unit.test.ts</code> menguji flag</td>
+        </tr>
+        <tr>
+          <td><strong>Status</strong></td>
+          <td>Riwayat hidup dokumen, plus rujukan silang ke ADR lain.</td>
+          <td>“Status: accepted.”</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Lima pertanyaan untuk setiap ADR</h3>
+  <p>Setelah membaca sekali, Anda bisa membaca ADR mana pun di repo ini dengan lima pertanyaan
+  yang sama. Lima pertanyaan inilah yang kita pakai sepanjang pelajaran-pelajaran berikutnya.</p>
+
+  <ol>
+    <li><strong>Apa yang rusak?</strong> (konteks) — sering bukan bug, tapi keputusan lama yang
+    sudah tidak lagi muat.</li>
+    <li><strong>Apa yang diputuskan?</strong> (keputusan) — dalam bentuk yang bisa salah.</li>
+    <li><strong>Alternatif apa yang ditolak, dan kenapa?</strong> — bagian yang paling berharga,
+    karena di situlah alasan sebenarnya.</li>
+    <li><strong>Apa yang menopang aturan lain?</strong> — bagian yang kalau dirapikan akan merusak
+    sistem. Repo ini menandainya dengan kalimat seperti “do not simplify”, “do not move”, atau
+    “never”.</li>
+    <li><strong>Apa yang jadi tugas Anda sekarang?</strong> — konsekuensi: berkas mana yang
+    berubah, tes mana yang wajib hijau, verifikasi manual mana yang dibutuhkan.</li>
+  </ol>
+
+  <aside class="warn">
+    <span class="label">Yang sering dilupakan</span>
+    <p>ADR di repo ini sangat sering menyebut <strong>verifikasi portal manual</strong> sebagai
+    konsekuensi. Keputusan yang menyentuh jalur unduhan PDF tidak cukup dengan unit test — perlu
+    bukti di jaringan dan daftar unduhan. Pelajaran 07 membahas kenapa ini penting.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Membaca satu ADR: contoh ADR-0027</h2>
+
+  <p>Mari bongkar satu ADR dengan lima pertanyaan itu, supaya Anda punya pola yang bisa diulang.
+  Sumbernya: <a href="../../../docs/adr/0027-one-stop-door-with-an-explicit-row-decision.md">ADR-0027 —
+  One stop door</a>.</p>
+
+  <ol>
+    <li><strong>Apa yang rusak?</strong> Ada <em>tiga</em> cara mengakhiri sebuah Run lebih awal:
+    <code>abort()</code>, <code>stopKeepingRows()</code>, dan <code>salvage()</code>. Semuanya
+    sudah menjatuhkan permintaan yang dibawa Run (itu aturan ADR-0022), <em>tapi</em> keputusan
+    “baris disimpan atau tidak” tersembunyi di <strong>nama fungsi</strong>-nya. Dan urutan
+    “kirim <code>STOP_SCRAPE</code> → selesaikan Run → laporkan pembatalan” ditulis ulang dua kali,
+    di <code>main.ts</code> dan <code>main-actions.ts</code>, dengan flag berbeda. Kontrol stop
+    berikutnya tidak punya pertanyaan yang dikompilasi — harus menebak mana yang dipakai.</li>
+
+    <li><strong>Apa yang diputuskan?</strong> Satu fungsi stop per dunia, dan keputusan baris
+    menjadi <strong>argumen</strong>: <code>stop({ keepRows })</code>. Pensiunkan
+    <code>abort()</code> dan <code>stopKeepingRows()</code> — bukan sebagai alias, tapi dihapus,
+    supaya tidak ada pintu kedua.</li>
+
+    <li><strong>Alternatif yang ditolak?</strong> ADR-0027 menolak <em>default</em> pada flag itu,
+    dan alasannya brilian: default <code>keepRows: false</code> akan diam-diam membuang baris
+    yang dibutuhkan klik ekspor — klik yang bermaksud mengekspor akan menghapus inputnya sendiri.
+    Default <code>true</code> akan diam-diam menyimpan baris yang seharusnya dibuang oleh tombol
+    stop, dan kegagalannya tak terlihat: tidak ada yang tampak salah sampai ekspor berikutnya
+    menulis berkas yang tidak diminta. <strong>“Tidak ada default yang aman” adalah tanda bahwa
+    keputusan itu milik pemanggil.</strong></li>
+
+    <li><strong>Apa yang menopang aturan lain?</strong> Aturan bahwa pengakhiran permintaan
+    (<em>retirement</em>) <strong>bukan</strong> parameter: setiap stop membatalkan semua
+    permintaan yang dibawa Run-nya. Kalau itu jadi argumen, jalur stop baru bisa lupa
+    membatalkannya.</li>
+
+    <li><strong>Tugas Anda?</strong> Kalau Anda menambah kontrol stop keempat, jangan tulis ulang
+    urutan itu — panggil <code>stopRun(deps, { keepRows: … })</code> yang sudah ada, dan
+    nyatakan keputusan baris di sana.</li>
+  </ol>
+
+  <aside class="pull">
+    <span class="label">Pola yang berulang</span>
+    <p>Hampir setiap ADR di repo ini menyelesaikan masalah yang sama: <strong>beberapa tempat
+    menyalin aturan yang sama, dan salinan itu perlahan berbeda satu sama lain</strong>.
+    Keputusannya hampir selalu: satukan salinan itu di satu tempat, lalu jadikan tempat itu satu
+   -satunya jalan masuk.</p>
+  </aside>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Peta 38 ADR</h2>
+
+  <p><strong>38 ADR</strong> terbagi menjadi tujuh klaster. Pembagian ini bukan kebetulan — masing-masing
+  adalah satu jalur alasan yang berulang, dan ADR di dalamnya saling menguatkan. Peta lengkapnya
+  ada di <a href="../reference/adr-peta.html">Peta ADR</a>; ringkasannya di sini:</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Tujuh klaster ADR. Setiap pelajaran membahas satu atau dua klaster.</caption>
+      <thead>
+        <tr><th>Klaster</th><th>Pertanyaan yang dijawab</th><th>ADR</th><th>Pelajaran</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1. Dua dunia &amp; jembatan</strong></td>
+          <td>Bagaimana dua dunia JavaScript bicara, dan bagaimana tahu pesan itu benar</td>
+          <td><code>0002 0007 0008 0010 0017</code></td>
+          <td>02</td>
+        </tr>
+        <tr>
+          <td><strong>2. Kehidupan Run</strong></td>
+          <td>Siapa yang memegang state Run, dan apa yang terjadi saat Run dihentikan</td>
+          <td><code>0014 0022 0026 0027 0031</code></td>
+          <td>03</td>
+        </tr>
+        <tr>
+          <td><strong>3. Sweep setahun</strong></td>
+          <td>Bagaimana 12 masa jadi satu Run, dan bagaimana berhenti lalu dilanjutkan</td>
+          <td><code>0018 0019 0020 0023 0032</code></td>
+          <td>04</td>
+        </tr>
+        <tr>
+          <td><strong>4. Fakta halaman &amp; panel</strong></td>
+          <td>Bagaimana empat grid PPN punya jawaban berbeda, dan dari mana</td>
+          <td><code>0021 0024 0025 0028 0029 0033 0036</code></td>
+          <td>05</td>
+        </tr>
+        <tr>
+          <td><strong>5. Deklarasi data</strong></td>
+          <td>Dari mana kolom, identitas baris, dan nama file berasal</td>
+          <td><code>0004 0015 0016 0030</code></td>
+          <td>06</td>
+        </tr>
+        <tr>
+          <td><strong>6. Struktur MAIN world &amp; fitur</strong></td>
+          <td>Unduhan PDF, loop item, seam dunia MAIN, dan fitur comparer</td>
+          <td><code>0001 0003 0006 0034 0035 0038</code></td>
+          <td>07</td>
+        </tr>
+        <tr>
+          <td><strong>7. Build, pembatalan, dan preferensi</strong></td>
+          <td>Keputusan build, keputusan yang membatalkan dirinya sendiri, dan preferensi</td>
+          <td><code>0005 0009 0011 0012 0013 0037</code></td>
+          <td>08–09</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Tiga ADR memiliki status bercabang, dan hal itu penting untuk dibaca:</p>
+
+  <ul>
+    <li><span class="status-pill status-superseded">Superseded</span> <strong>ADR-0011</strong> —
+    separuh aturannya (prefix-first) tetap berlaku, separuh lain (pelebaran ke
+    <code>contains</code>) dibatalkan oleh
+    <a href="../../../docs/adr/0012-reference-search-stops-on-empty-prefix.md">ADR-0012</a>.
+    Pelajaran 08 membedah kasus ini.</li>
+    <li><span class="status-pill status-amended">Amended</span> <strong>ADR-0018, 0019, 0022,
+    0023</strong> — keputusan intinya tetap, tetapi rinciannya, namanya, atau cakupannya diubah oleh ADR
+    yang lebih baru. Baca amendemennya: bagian itu yang paling sering berubah dan paling sering
+    dilupakan.</li>
+    <li><span class="status-pill status-accepted">All completed</span> <strong>ADR-0005</strong> —
+    contoh ADR yang “sudah selesai”, jadi isinya dokumentasi sejarah, bukan instruksi.</li>
+  </ul>
+</section>
+
+<section class="practice">
+  <h2><span class="num">5</span>Uji ingatan</h2>
+  <p>Jawab dulu, baru lihat koreksinya. Jawaban yang benar tidak selalu di posisi pertama.</p>
+
+  <div class="quiz" data-quiz="l01-q1">
+    <p class="q">Bagian ADR yang paling memuat alasan MENOLAK sebuah alternatif adalah…</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Konteks menjelaskan masalah dan alternatif yang dipertimbangkan, jadi alasan penolakan terbaca di sana.">Paragraf konteks sebelum keputusan diambil</button></li>
+      <li><button class="opt" data-why="Konsekuensi menjelaskan efeknya, bukan alasan memilih atau menolak sebuah alternatif.">Tabel konsekuensi di akhir file</button></li>
+      <li><button class="opt" data-why="Daftar berkas yang berubah adalah dampak, bukan alasan menolak sebuah alternatif.">Daftar modul yang ikut berubah</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l01-q2">
+    <p class="q">Status “Superseded by 0012” pada sebuah ADR berarti…</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Berkas lamanya tetap ada sebagai catatan; statusnya yang mencatat relasi itu.">Dihapus karena isinya salah sejak awal</button></li>
+      <li><button class="opt" data-correct data-why="ADR yang lebih baru mengambil alih aturan, dan ADR lama menunjuk ke sana.">Diotorisasi oleh keputusan yang lebih baru</button></li>
+      <li><button class="opt" data-why="Tidak ada kode lama yang khas di sini; ADR itu tetap berlaku penuh.">Berlaku hanya untuk modul lama dihapus</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l01-q3">
+    <p class="q">Kalimat “do not simplify this away” di dalam ADR menandai bagian yang…</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Penandaan seperti itu berarti bagian itu terbukti berbahaya bila dirapikan.">Bagian yang berbahaya bila dirapikan sepihak</button></li>
+      <li><button class="opt" data-why="Justru bagian seperti itu yang paling perlu dijaga, bukan dirapikan.">Bagian yang masih boleh dirapikan nanti</button></li>
+      <li><button class="opt" data-why="Bagian seperti itu justru paling sering dirapikan dan paling sering jadi bug.">Bagian yang bisa ditulis ulang sewaktu-waktu</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l01-q4">
+    <p class="q">ADR-0011 masih ada di repo padahal sebagian aturannya dibatalkan ADR-0012. Kenapa?</p>
+    <ul class="options">
+      <li><button class="opt" data-correct data-why="Status di dalam ADR-0011 menunjuk ke penggantinya, jadi pembaca tidak tersesat.">Ditandai superseded, isinya tetap saja</button></li>
+      <li><button class="opt" data-why="ADR-0023 dan ADR-0019 justru menyebut amendemen sebagai hal wajar; ADR lama tidak dihapus.">Dihapus dari folder docs/adr ini</button></li>
+      <li><button class="opt" data-why="Tidak ada penggantian parsial seperti ini di repo ini; aturannya ditimpa penuh.">Diganti total oleh ADR baru</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz" data-quiz="l01-q5">
+    <p class="q">ADR-0011 “Superseded by 0012” menjelaskan bahwa…</p>
+    <ul class="options">
+      <li><button class="opt" data-why="Kalau sebagian masih berlaku, statusnya akan menyebut amendemen, bukan supersedes.">Sebagian aturan lama masih berlaku</button></li>
+      <li><button class="opt" data-correct data-why="ADR-0012 mengambil alih aturan widening; prefix-first tetap, pelebaran dibuang.">Keputusan lama digantikan yang baru</button></li>
+      <li><button class="opt" data-why="Dokumen lamanya tidak dihapus; yang berubah adalah status dan rujukan silangnya.">Dokumen lama dihapus dari arsip</button></li>
+    </ul>
+    <p class="feedback" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="quiz-score" data-score-for="l01">
+    <strong>Skor pelajaran ini</strong>
+    <span data-score-text>0 dari 5 soal dijawab, 0 benar.</span>
+    <button type="button" data-score-reset>Ulangi</button>
+  </div>
+</section>
+
+<aside class="source">
+  <h3>Sumber utama</h3>
+  <ul>
+    <li><a href="../../../docs/adr/README.md"><code>docs/adr/README.md</code></a> — indeks resmi 38 ADR
+    beserta statusnya; baca ini kalau Anda ingin tahu “keputusan apa saja yang sudah ada”.</li>
+    <li><a href="https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions">Michael
+    Nygard, “Documenting Architecture Decisions” (Cognitect, 2011)</a> — asal-usul format ADR
+    dan alasan kenapa keputusan ditulis dalam bentuk konteks → keputusan → konsekuensi.</li>
+    <li><a href="https://adr.github.io/">adr.github.io</a> — kumpulan praktik penulisan ADR;
+    berguna kalau Anda nanti menulis ADR sendiri di repo lain.</li>
+  </ul>
+</aside>
+
+<div class="ask">
+  <strong>Catatan:</strong> tidak ada yang perlu Anda kirim balik. Tapi kalau ada satu istilah dari
+  pelajaran ini yang masih terasa abstrak — misalnya bagian yang menopang aturan lain, atau kenapa ADR lama tidak
+  dihapus — tanyakan saja. Saya akan menjawab dengan contoh dari ADR tertentu.
+</div>
+
+<footer class="course-foot">
+  <p>Pelajaran 01 · <a href="index.html">Peta pelajaran</a> · berikutnya:
+  <a href="0002-dua-dunia-dan-jembatan.html">02 · Dua dunia dan jembatan</a></p>
+</footer>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

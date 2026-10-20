@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peta 38 ADR — Kursus ADR Cindieh</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="course-head">
+  <p class="eyebrow">Cindieh · Referensi</p>
+  <h1>Peta 38 ADR</h1>
+  <p class="lede">Semua keputusan arsitektur Cindieh dalam satu halaman: nomor, judul aslinya,
+  status, dan pelajaran mana yang mengajari ini. Ini dokumen yang akan paling sering Anda buka
+  ulang — bukan pelajaran.</p>
+  <p class="meta">38 ADR · 7 klaster · 9 pelajaran</p>
+  <nav class="lesson-nav">
+    <a href="../lessons/index.html">Peta pelajaran</a>
+    <a href="glosarium.html">Glosarium</a>
+    <span class="spacer"></span>
+    <a href="../../../docs/adr/README.md">Indeks resmi repo</a>
+  </nav>
+</header>
+
+<main>
+
+<section>
+  <h2><span class="num">1</span>Cara membaca tabel ini</h2>
+  <p>Kolom <strong>Keputusan</strong> adalah ringkasan dalam bahasa Anda sendiri; kolom
+  <strong>Judul asli</strong> adalah kalimat yang benar-benar tertulis di berkas ADR — kalimat itu
+  adalah keputusan, jadi jangan diubah. Kolom <strong>Status</strong> meniru
+  <a href="../../../docs/adr/README.md">indeks resmi</a>, dan menandai tiga hal berbeda: keputusan yang
+  berlaku (<code>Accepted</code>), keputusan yang <em>diubah</em> ADR lain
+  (<code>Amended</code> / <code>scope extended</code> / <code>naming amended</code>), keputusan
+  yang <em>digantikan</em> (<code>Superseded</code>), dan keputusan yang <em>sudah selesai</em>
+  (<code>all completed</code>).</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Klaster 1 — Dua dunia dan jembatan</h2>
+  <p>Bagaimana dua dunia JavaScript bicara, dan bagaimana tahu sebuah pesan memang untuk bridge
+  ini. Pelajaran <a href="../lessons/0002-dua-dunia-dan-jembatan.html">02</a>.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Keputusan</th><th>Judul asli</th><th>Status</th><th>Pelajaran</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>0002</code></td>
+          <td>Satu dispatcher guard-lalu-dispatch per dunia</td>
+          <td><a href="../../../docs/adr/0002-message-dispatch-seam.md">Cross-world messaging is a guard-then-dispatch seam per world</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>02</td>
+        </tr>
+        <tr>
+          <td><code>0007</code></td>
+          <td>Paparan token jembatan adalah risiko yang diterima</td>
+          <td><a href="../../../docs/adr/0007-bridge-token-exposure-accepted-risks.md">Bridge token exposure in postMessage payload and script URL is an accepted risk</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>02</td>
+        </tr>
+        <tr>
+          <td><code>0008</code></td>
+          <td>Satu scraper per halaman; elemen skrip jadi penanda</td>
+          <td><a href="../../../docs/adr/0008-scraper-injection-one-time-per-page.md">Scraper injection is one-time per page; the script element stays as the marker</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>02</td>
+        </tr>
+        <tr>
+          <td><code>0010</code></td>
+          <td>Operasi punya identitas Run dan pembatalannya sendiri</td>
+          <td><a href="../../../docs/adr/0010-scrape-run-isolation.md">Scrape operations own cancellation and result identity</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>02–03</td>
+        </tr>
+        <tr>
+          <td><code>0017</code></td>
+          <td>Hasil besar menyeberang jembatan dipecah jadi chunk</td>
+          <td><a href="../../../docs/adr/0017-chunked-scrape-result-transfer.md">A large scrape result crosses the bridge in chunks</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>02</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Klaster 2 — Kehidupan Run</h2>
+  <p>Siapa memegang state Run, dan apa yang terjadi pada permintaan serta baris ketika Run dihentikan.
+  Pelajaran <a href="../lessons/0003-kehidupan-run.html">03</a>.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Keputusan</th><th>Judul asli</th><th>Status</th><th>Pelajaran</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>0014</code></td>
+          <td>State Run hidup di <code>run-lifecycle</code></td>
+          <td><a href="../../../docs/adr/0014-run-lifecycle-owns-run-state.md">Run state lives in run-lifecycle; the bridge keeps run identity</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>03</td>
+        </tr>
+        <tr>
+          <td><code>0022</code></td>
+          <td>Run memiliki permintaan yang dicatatnya</td>
+          <td><a href="../../../docs/adr/0022-a-run-owns-the-requests-it-records.md">A Run owns the requests it records; a stop retires all of them, and the rows survive</a></td>
+          <td><span class="status-pill status-amended">Naming amended by 0027</span></td>
+          <td>03</td>
+        </tr>
+        <tr>
+          <td><code>0026</code></td>
+          <td>Pensiunan permintaan mengumumkan dirinya sendiri</td>
+          <td><a href="../../../docs/adr/0026-a-retirement-announces-the-requests-it-takes.md">A retirement announces the requests it takes, so no tab keeps promising them</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>03</td>
+        </tr>
+        <tr>
+          <td><code>0027</code></td>
+          <td>Satu pintu stop, keputusan baris dinyatakan eksplisit</td>
+          <td><a href="../../../docs/adr/0027-one-stop-door-with-an-explicit-row-decision.md">One stop door: every stop control settles a Run the same way, and states its own row decision</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>01, 03</td>
+        </tr>
+        <tr>
+          <td><code>0031</code></td>
+          <td>Completion diselesaikan jadi laporan sebelum ada yang dicat</td>
+          <td><a href="../../../docs/adr/0031-a-completion-is-settled-into-a-report.md">A completion is settled into a report before anything is painted</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>03</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Klaster 3 — Sweep setahun</h2>
+  <p>Bagaimana dua belas masa jadi satu Run, bagaimana berhenti tanpa kehilangan yang sudah dibayar,
+  dan bagaimana melanjutkan. Pelajaran <a href="../lessons/0004-sweep-setahun.html">04</a>.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Keputusan</th><th>Judul asli</th><th>Status</th><th>Pelajaran</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>0018</code></td>
+          <td>Ekspor setahun = SATU Run atas semua masa pajak</td>
+          <td><a href="../../../docs/adr/0018-year-wide-batch-export-is-one-run.md">A year-wide export is ONE Run over every tax period</a></td>
+          <td><span class="status-pill status-amended">Scope extended by 0019</span></td>
+          <td>04</td>
+        </tr>
+        <tr>
+          <td><code>0019</code></td>
+          <td>Hanya grid dengan filter sweep terukur boleh menyapu setahun</td>
+          <td><a href="../../../docs/adr/0019-year-wide-export-covers-the-vat-grids.md">The year-wide export runs only on grids whose sweep filters were measured</a></td>
+          <td><span class="status-pill status-amended">Amended 2026-10-17</span></td>
+          <td>04</td>
+        </tr>
+        <tr>
+          <td><code>0020</code></td>
+          <td>Sweep yang dihentikan melaporkan apa yang selesai, dan menyimpan barisnya</td>
+          <td><a href="../../../docs/adr/0020-a-stopped-sweep-reports-what-it-finished.md">A stopped year-wide sweep reports what it finished, and keeps the rows</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>04</td>
+        </tr>
+        <tr>
+          <td><code>0023</code></td>
+          <td>Sweep yang dihentikan bisa dilanjutkan: hanya masa yang belum selesai</td>
+          <td><a href="../../../docs/adr/0023-a-stopped-sweep-can-be-resumed.md">A stopped sweep is resumable: only the masa that never finished are re-run, into the rows it kept</a></td>
+          <td><span class="status-pill status-amended">Amended 2026-10-17, 2026-10-19</span></td>
+          <td>04</td>
+        </tr>
+        <tr>
+          <td><code>0032</code></td>
+          <td>Sweep setahun adalah satu modul, dan loop halamannya adalah seam</td>
+          <td><a href="../../../docs/adr/0032-the-period-sweep-is-its-own-module.md">The year-wide sweep is one module, and its page loop is a seam</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>04</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Klaster 4 — Fakta halaman dan panel</h2>
+  <p>Empat grid PPN punya jawaban yang berbeda untuk pertanyaan yang mirip, dan setiap permukaan yang
+  disuntik ke DOM punya satu pemilik. Pelajaran <a href="../lessons/0005-fakta-halaman-dan-panel.html">05</a>.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Keputusan</th><th>Judul asli</th><th>Status</th><th>Pelajaran</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>0021</code></td>
+          <td>Dua fakta Referensi: bisa difilter, dan bisa mengidentifikasi baris</td>
+          <td><a href="../../../docs/adr/0021-referensi-filter-and-identity-are-two-page-facts.md">A grid's Referensi facts are two: it can be filtered by one, and a Referensi identifies a row</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>05</td>
+        </tr>
+        <tr>
+          <td><code>0024</code></td>
+          <td>Pengeculation berjalan di grid Retur, dan identitas baris adalah fakta halaman tersendiri</td>
+          <td><a href="../../../docs/adr/0024-checker-covers-the-retur-grids.md">Pengecekan runs on the Retur grids, and a row's identity is a page fact of its own</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>05</td>
+        </tr>
+        <tr>
+          <td><code>0025</code></td>
+          <td>Tombol panel bertanya fakta panel, dan dinamai untuk tab yang bisa dilayani</td>
+          <td><a href="../../../docs/adr/0025-the-panel-entry-point-is-the-panels-own-fact.md">The panel's toolbar entry point asks the panel's fact, and is named for the tab its page can serve</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>05</td>
+        </tr>
+        <tr>
+          <td><code>0028</code></td>
+          <td>Satu baris per grid untuk fakta halaman panel</td>
+          <td><a href="../../../docs/adr/0028-one-row-per-grid-for-the-panels-page-facts.md">The panel's page facts are one row per grid, and every predicate is a read of it</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>05</td>
+        </tr>
+        <tr>
+          <td><code>0029</code></td>
+          <td>Status line sebuah tab adalah satu modul, dan kind-nya adalah penjaga</td>
+          <td><a href="../../../docs/adr/0029-a-tabs-status-line-is-one-module.md">A tab's status line is one module, and its kind is the guard</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>05</td>
+        </tr>
+        <tr>
+          <td><code>0033</code></td>
+          <td>Setiap permukaan yang disuntik punya satu pemilik</td>
+          <td><a href="../../../docs/adr/0033-every-injected-surface-has-one-owner.md">Every injected surface has one owner</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>05</td>
+        </tr>
+        <tr>
+          <td><code>0036</code></td>
+          <td>Setiap tab panel adalah modul tampilan sendiri, dan cangkangnya tidak tahu isi tab</td>
+          <td><a href="../../../docs/adr/0036-each-panel-tab-is-its-own-view.md">Each panel tab is its own view module, and the shell knows no tab</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>05</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Klaster 5 — Deklarasi data</h2>
+  <p>Dari mana kolom, identitas baris, dan nama berkas berasal — dan kenapa semua jawabannya ada di
+  satu tempat. Pelajaran <a href="../lessons/0006-deklarasi-data.html">06</a>.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Keputusan</th><th>Judul asli</th><th>Status</th><th>Pelajaran</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>0004</code></td>
+          <td>Ekspor lewat satu pohon keputusan; parsing di <code>tax-date</code></td>
+          <td><a href="../../../docs/adr/0004-export-tree-and-tax-date.md">Export goes through one decision tree; parsing lives in tax-date</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>06</td>
+        </tr>
+        <tr>
+          <td><code>0015</code></td>
+          <td>Setiap sumber ekspor adalah satu deklarasi</td>
+          <td><a href="../../../docs/adr/0015-one-declaration-per-export-source.md">Each export source is one declaration</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>06</td>
+        </tr>
+        <tr>
+          <td><code>0016</code></td>
+          <td>Identitas baris hasil scrape adalah id milik portal sendiri</td>
+          <td><a href="../../../docs/adr/0016-stable-row-identity-for-deduplication.md">A scraped row's identity is the portal's own id field</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>06</td>
+        </tr>
+        <tr>
+          <td><code>0030</code></td>
+          <td>Kolom file perbandingan dideklarasikan bersama kolom grid-nya</td>
+          <td><a href="../../../docs/adr/0030-the-comparison-file-columns-are-declared-with-its-grid.md">The comparison's file columns are declared with its grid columns</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>06</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">7</span>Klaster 6 — Struktur MAIN world dan fitur</h2>
+  <p>Jalur unduhan PDF, loop item di dunia MAIN, seam konteksnya, dan pemasangan halamannya, plus fitur
+  Komparator. Pelajaran <a href="../lessons/0007-pdf-dan-item-loop.html">07</a>.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Keputusan</th><th>Judul asli</th><th>Status</th><th>Pelajaran</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>0001</code></td>
+          <td>Emisi unduhan PDF adalah satu modul dengan sumber item terpisah</td>
+          <td><a href="../../../docs/adr/0001-pdf-download-emission-module.md">PDF download emission is one module with split item sourcing</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>07</td>
+        </tr>
+        <tr>
+          <td><code>0003</code></td>
+          <td>State sesi Komparator di <code>comparer-logic</code>; <code>ui-comparer</code> adalah tampilan panel</td>
+          <td><a href="../../../docs/adr/0003-comparer-session.md">Comparer session state lives in comparer-logic; ui-comparer is the panel's view</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>07</td>
+        </tr>
+        <tr>
+          <td><code>0006</code></td>
+          <td>Pencocokan Komparator memakai Reference utama saja</td>
+          <td><a href="../../../docs/adr/0006-comparer-reference-matching.md">Comparer matching uses primary Reference only; refLain is reserved for internal tracking</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>07</td>
+        </tr>
+        <tr>
+          <td><code>0034</code></td>
+          <td>Loop item dunia MAIN berbagi satu loop</td>
+          <td><a href="../../../docs/adr/0034-the-main-worlds-item-loops-share-one-loop.md">The MAIN world's item loops share one loop</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>07</td>
+        </tr>
+        <tr>
+          <td><code>0035</code></td>
+          <td>Satu seam per dunia, dan graf impor tanpa siklus</td>
+          <td><a href="../../../docs/adr/0035-one-seam-per-world.md">One seam per world, and an import graph with no cycles</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>07</td>
+        </tr>
+        <tr>
+          <td><code>0038</code></td>
+          <td>Pemasangan dunia MAIN menerima halaman sebagai satu lingkungan yang diinjeksi</td>
+          <td><a href="../../../docs/adr/0038-the-main-worlds-install-wiring-takes-an-env.md">The MAIN world's install wiring takes the page as one injected environment</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>07</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">8</span>Klaster 7 — Build, pembatalan, dan preferensi</h2>
+  <p>Keputusan build, keputusan yang membatalkan dirinya sendiri, dan preferensi yang cukup ditulis
+  satu kali. Pelajaran <a href="../lessons/0008-membatalkan-keputusan-sendiri.html">08</a> dan
+  <a href="../lessons/0009-preferensi.html">09</a>.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Keputusan</th><th>Judul asli</th><th>Status</th><th>Pelajaran</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>0005</code></td>
+          <td>Refactor yang ditunda: dua antarmuka konteks</td>
+          <td><a href="../../../docs/adr/0005-deferred-refactors.md">Deferred refactors: two context interfaces</a></td>
+          <td><span class="status-pill status-accepted">All completed</span></td>
+          <td>08</td>
+        </tr>
+        <tr>
+          <td><code>0009</code></td>
+          <td>TypeScript 7 adalah kompilator; tooling memakai TypeScript 6 lewat alias</td>
+          <td><a href="../../../docs/adr/0009-typescript-7-native-with-typescript6-api-alias.md">TypeScript 7 is the compiler; tooling consumes TypeScript 6 via the compatibility alias</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>08</td>
+        </tr>
+        <tr>
+          <td><code>0011</code></td>
+          <td>Pencarian Referensi mencoba awalan terlebih dahulu, lalu melebar hanya saat hasilnya kosong</td>
+          <td><a href="../../../docs/adr/0011-reference-search-prefix-first.md">Reference search asks for a prefix match first and widens only on an empty result</a></td>
+          <td><span class="status-pill status-superseded">Superseded by 0012</span></td>
+          <td>08</td>
+        </tr>
+        <tr>
+          <td><code>0012</code></td>
+          <td>Pencarian prefix yang kosong berhenti dengan pemberitahuan</td>
+          <td><a href="../../../docs/adr/0012-reference-search-stops-on-empty-prefix.md">An empty reference prefix search stops with a not-found notice instead of widening to contains</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>08</td>
+        </tr>
+        <tr>
+          <td><code>0013</code></td>
+          <td>SheetJS dimuat sebagai chunk terpisah, bukan digabung ke content script</td>
+          <td><a href="../../../docs/adr/0013-sheetjs-as-a-lazy-chunk.md">SheetJS is loaded as a separate chunk, not bundled into the content script</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>08</td>
+        </tr>
+        <tr>
+          <td><code>0037</code></td>
+          <td>Satu baris per preferensi, dan satu pengikat untuk kontrol popup</td>
+          <td><a href="../../../docs/adr/0037-one-row-per-preference.md">One row per preference, and one binder for the popup's controls</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>09</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">9</span>Peta rujukan silang antar ADR</h2>
+  <p>Relasi antar ADR di repo ini berguna saat Anda membaca satu ADR dan ingin mengetahui keputusan
+  lain yang ikut berubah atau menjadi landasannya.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Dari</th><th>Ke</th><th>Hubungan</th></tr></thead>
+      <tbody>
+        <tr><td><code>0002</code></td><td><code>0007</code>, <code>0013</code></td><td>Kanal runtime yang ditutup ADR-0002 jadi alasan ADR-0013 menolak service worker sebagai tempat pemuatan SheetJS.</td></tr>
+        <tr><td><code>0007</code></td><td><code>0008</code></td><td>ADR-0008 menahan token di URL skrip sebagai penanda injeksi sekali.</td></tr>
+        <tr><td><code>0010</code></td><td><code>0014</code></td><td>Dua separuh Run: ADR-0010 identitas dan pembatalan di dunia MAIN; ADR-0014 hasil dan utang di dunia isolated.</td></tr>
+        <tr><td><code>0014</code></td><td><code>0022</code>, <code>0026</code>, <code>0027</code></td><td>Tiga lanjutan yang mengubah antarmuka <code>run-lifecycle</code>.</td></tr>
+        <tr><td><code>0017</code></td><td><code>0020</code>, <code>0031</code></td><td>Salvage berjalan di atas transfer ber-chunk; transfer sekali pakai jadi aturan modul penyelesaian.</td></tr>
+        <tr><td><code>0018</code></td><td><code>0019</code>, <code>0020</code>, <code>0023</code></td><td>Cakupan, salvage, dan resume — tiga bab lanjutan dari sweep satu-Run.</td></tr>
+        <tr><td><code>0021</code></td><td><code>0024</code>, <code>0028</code></td><td>Pelajaran “satu pertanyaan satu fakta” yang berakhir di satu baris per grid.</td></tr>
+        <tr><td><code>0022</code></td><td><code>0027</code></td><td>ADR-0027 menutup dua pintu stop menjadi satu dan menjadikan keputusan baris sebagai argumen.</td></tr>
+        <tr><td><code>0024</code></td><td><code>0028</code></td><td>Empat fakta checker menjadi baris-baris di <code>PANEL_GRIDS</code>.</td></tr>
+        <tr><td><code>0025</code></td><td><code>0028</code></td><td>Nama dan ikon tombol panel dibaca dari baris yang sama.</td></tr>
+        <tr><td><code>0026</code></td><td><code>0029</code></td><td>“Kind” status line menggantikan perbandingan teks sebagai penjaga penggantian baris.</td></tr>
+        <tr><td><code>0011</code></td><td><code>0012</code></td><td>Superseded: separuh aturan dibatalkan, pengukurannya tetap dipakai.</td></tr>
+        <tr><td><code>0003</code></td><td><code>0030</code></td><td>Skema kolom yang lahir dari amandemen ADR-0003 menjadi tempat kolom file dideklarasikan.</td></tr>
+        <tr><td><code>0003</code></td><td><code>0036</code></td><td>ADR-0036 menyelesaikan pola yang sama di sisi panel: alur di logika, tampilan di modul tab sendiri.</td></tr>
+        <tr><td><code>0034</code></td><td><code>0035</code></td><td>ADR-0035 menjadi landasan ADR-0034: seam-nya dipindah ke bawah agar modul yang diekstrak tidak mengimpor induknya.</td></tr>
+        <tr><td><code>0035</code></td><td><code>0038</code></td><td>Setelah graf impor bersih, ADR-0038 bisa memindahkan pemasangan ke modul sendiri tanpa risiko siklus baru.</td></tr>
+        <tr><td><code>0028</code></td><td><code>0036</code></td><td>Gerbang tab membaca baris per grid yang sama seperti prediksi lainnya.</td></tr>
+        <tr><td><code>0015</code>, <code>0028</code></td><td><code>0037</code></td><td>Pola yang sama: satu tempat untuk satu keputusan, supaya tidak ada daftar kedua yang bisa berbeda.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <aside class="pull">
+    <span class="label">Indeks kini lengkap</span>
+    <p>Deretan ADR menutup tanpa celah: 0001 sampai 0038, dan indeks resmi
+    <a href="../../../docs/adr/README.md"><code>docs/adr/README.md</code></a> memuat semuanya. Empat
+    keputusan terakhir menutup tiga hal yang sebelumnya tersebar: batas konteks dunia MAIN
+    (ADR-0035), tampilan tiap tab panel (ADR-0036), daftar preferensi (ADR-0037), dan pemasangan
+    halaman (ADR-0038). Semuanya perlu dibaca bersama bagian kode yang mereka ubah, bukan sebagai
+    catatan tambahan yang terpisah.</p>
+  </aside>
+</section>
+
+<aside class="source">
+  <h3>Sumber utama</h3>
+  <ul>
+    <li><a href="../../../docs/adr/README.md"><code>docs/adr/README.md</code></a> — indeks resmi; kolom
+    status di halaman ini disalin dari sana, dan harus tetap sinkron.</li>
+    <li><a href="../../../CONTEXT.md"><code>CONTEXT.md</code></a> — kamus istilah domain; pakai
+    <a href="glosarium.html">glosarium</a> ini kalau Anda butuh versinya yang lebih ringkas.</li>
+  </ul>
+</aside>
+
+<footer class="course-foot">
+  <p><a href="../lessons/index.html">Peta pelajaran</a> · <a href="glosarium.html">Glosarium</a></p>
+</footer>
+
+</main>
+</body>
+</html>

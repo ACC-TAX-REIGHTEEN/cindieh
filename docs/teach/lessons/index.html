@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kursus ADR Cindieh — Memahami 38 keputusan arsitektur</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="course-head">
+  <p class="eyebrow">Cindieh · Kursus Architecture Decision Records</p>
+  <h1>Memahami 38 keputusan arsitektur Cindieh</h1>
+  <p class="lede">Sembilan pelajaran pendek, tiga puluh delapan ADR, satu glosarium. Tujuannya bukan
+  menghafal isi ADR — tapi Anda bisa membaca keputusan arsitektur yang belum pernah Anda baca dan
+  langsung tahu: apa yang rusak, apa yang diputuskan, dan apa yang <em>wajib</em> Anda patuhi
+  sebelum menyentuh kodenya.</p>
+  <p class="meta">9 pelajaran · 52 soal uji ingatan · ± 2 jam 15 menit membaca</p>
+  <nav class="lesson-nav">
+    <a href="../reference/adr-peta.html">Peta 38 ADR</a>
+    <a href="../reference/glosarium.html">Glosarium</a>
+    <span class="spacer"></span>
+    <a href="../../../docs/adr/README.md">Indeks resmi repo</a>
+  </nav>
+</header>
+
+<main>
+
+<section>
+  <h2><span class="num">1</span>Mulai dari sini</h2>
+  <p>Kalau ini sesi pertama Anda: baca pelajaran 01 (bentuk ADR), lalu pelajaran 02 dan 03
+  (dua dunia, lalu Run). Pelajaran 04–06 adalah inti sistemnya, pelajaran 07 menutup jalur unduhan
+  dan struktur dunia MAIN, pelajaran 08 sisi “keputusan yang membatalkan dirinya sendiri”, dan
+  pelajaran 09 preferensi.</p>
+
+  <p>Setiap pelajaran berakhir dengan lima sampai delapan soal uji ingatan. Jawab dulu, baru lihat
+  koreksinya — dan jawaban benar tidak selalu ada di posisi pertama, karena posisi jawaban yang
+  benar sengaja bervariasi. Skor Anda tersimpan di browser ini, jadi Anda bisa mengulang kapan saja.</p>
+
+  <div class="quiz-score" data-score-for="">
+    <strong>Progres kursus</strong>
+    <span data-score-text>Belum ada jawaban tercatat.</span>
+    <button type="button" data-score-reset>Reset progres</button>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Daftar pelajaran</h2>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Sembilan pelajaran, dikelompokkan menurut klaster ADR.</caption>
+      <thead>
+        <tr><th>#</th><th>Pelajaran</th><th>ADR yang dibahas</th><th>Setelah pelajaran ini Anda bisa…</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><a href="0001-membaca-adr.html">01</a></td>
+          <td><strong>Cara membaca ADR</strong><br><span class="adr-ref">meta-pelajaran</span></td>
+          <td>semua 38 (peta)</td>
+          <td>Menanku lima pertanyaan yang sama pada ADR mana pun, dan tahu arti setiap status.</td>
+        </tr>
+        <tr>
+          <td><a href="0002-dua-dunia-dan-jembatan.html">02</a></td>
+          <td><strong>Dua dunia dan jembatan</strong><br><span class="adr-ref">klaster 1</span></td>
+          <td><code>0002 0007 0008 0010 0017</code></td>
+          <td>Menjelaskan kenapa token jembatan bukan rahasia, dan apa yang dijamin pemeriksaan token.</td>
+        </tr>
+        <tr>
+          <td><a href="0003-kehidupan-run.html">03</a></td>
+          <td><strong>Kehidupan Run</strong><br><span class="adr-ref">klaster 2</span></td>
+          <td><code>0014 0022 0026 0027 0031</code></td>
+          <td>Menarik satu garis waktu lengkap sebuah Run, dari mulai sampai laporan.</td>
+        </tr>
+        <tr>
+          <td><a href="0004-sweep-setahun.html">04</a></td>
+          <td><strong>Sweep setahun</strong><br><span class="adr-ref">klaster 3</span></td>
+          <td><code>0018 0019 0020 0023 0032</code></td>
+          <td>Menjelaskan kenapa 12 masa adalah satu Run, dan apa yang terjadi pada data saat sweep dihentikan lalu dilanjutkan.</td>
+        </tr>
+        <tr>
+          <td><a href="0005-fakta-halaman-dan-panel.html">05</a></td>
+          <td><strong>Fakta halaman dan panel</strong><br><span class="adr-ref">klaster 4</span></td>
+          <td><code>0021 0024 0025 0028 0029 0033 0036</code></td>
+          <td>Menerima bahwa empat grid PPN punya jawaban berbeda untuk pertanyaan mirip, dan menunjuk tabel yang menjadi satu-satunya sumber.</td>
+        </tr>
+        <tr>
+          <td><a href="0006-deklarasi-data.html">06</a></td>
+          <td><strong>Deklarasi data</strong><br><span class="adr-ref">klaster 5</span></td>
+          <td><code>0004 0015 0016 0030</code></td>
+          <td>Menjawab “kolom ini dari mana?” dan “nama kolom ini di file dari mana?” dengan menunjuk satu berkas.</td>
+        </tr>
+        <tr>
+          <td><a href="0007-pdf-dan-item-loop.html">07</a></td>
+          <td><strong>PDF, loop item, dan struktur MAIN world</strong><br><span class="adr-ref">klaster 6</span></td>
+          <td><code>0001 0003 0006 0034 0035 0038</code></td>
+          <td>Menunjuk bug unduhan PDF yang pernah terjadi ke aturan yang mencegahnya, dan menjelaskan bagaimana dunia MAIN dirapikan sampai bisa diuji.</td>
+        </tr>
+        <tr>
+          <td><a href="0008-membatalkan-keputusan-sendiri.html">08</a></td>
+          <td><strong>Membatalkan keputusan sendiri</strong><br><span class="adr-ref">klaster 7a</span></td>
+          <td><code>0011 0012 0013 0009 0005</code></td>
+          <td>Membaca ADR berstatus superseded dan amended, lalu menulis ADR baru dengan daftar periksa yang tepat.</td>
+        </tr>
+        <tr>
+          <td><a href="0009-preferensi.html">09</a></td>
+          <td><strong>Preferensi: satu baris, satu pengikat</strong><br><span class="adr-ref">klaster 7b</span></td>
+          <td><code>0037</code></td>
+          <td>Menjelaskan kenapa sembilan preferensi cukup ditulis satu kali, dan kenapa dua kontrol sengaja tidak jadi baris.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Referensi</h2>
+  <ul>
+    <li><a href="../reference/adr-peta.html"><strong>Peta 38 ADR</strong></a> — semua keputusan
+    dalam satu tabel, dengan status dan lesson-nya. Plus peta rujukan silang antar ADR.</li>
+    <li><a href="../reference/glosarium.html"><strong>Glosarium</strong></a> — istilah domain,
+    fitur, dan arsitektur; versi ringkas dari <code>CONTEXT.md</code>, ditambah istilah dari ADR
+    terbaru.</li>
+    <li><a href="../../../docs/adr/README.md"><code>docs/adr/README.md</code></a> — indeks resmi di
+    repo; sumber kebenaran untuk status.</li>
+    <li><a href="../../../CONTEXT.md"><code>CONTEXT.md</code></a> — kamus domain lengkap.</li>
+    <li><a href="../../../AGENTS.md"><code>AGENTS.md</code></a> — aturan proyek; bacalah kalau Anda mau
+    tahu mengapa setiap keputusan di atas terlihat seperti sekarang.</li>
+  </ul>
+</section>
+
+<div class="ask">
+  <strong>Tentang cara belajar ini:</strong> pelajaran-pelajaran ini dibuat supaya Anda bisa
+  berhenti di mana saja dan lanjut lagi. Kalau satu istilah tetap terasa abstrak setelah pelajaran
+  yang menyinggungnya, tanyakan bagian itu — jawaban dari ADR tertentu jauh lebih berguna daripada
+  definisi ulang.
+</div>
+
+<footer class="course-foot">
+  <p>Kursus ADR Cindieh · mulai dari <a href="0001-membaca-adr.html">Pelajaran 01 — Cara membaca ADR</a></p>
+</footer>
+
+</main>
+
+<script src="../assets/quiz.js"></script>
+<script>
+  // Course-wide progress line on the front page.
+  (function () {
+    var box = document.querySelector(".quiz-score");
+    var label = box && box.querySelector("[data-score-text]");
+    if (!label) return;
+    function render() {
+      var done = 0;
+      try {
+        for (var i = 0; i < window.localStorage.length; i++) {
+          var key = window.localStorage.key(i);
+          if (key && key.indexOf("cindieh.course.quiz.") === 0) done += 1;
+        }
+      } catch (err) {
+        /* storage refused */
+      }
+      label.textContent = done + " soal sudah dijawab di browser ini.";
+    }
+    window.addEventListener("course:progress", render);
+    render();
+  })();
+</script>
+</body>
+</html>
