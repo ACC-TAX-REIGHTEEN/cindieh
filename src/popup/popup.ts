@@ -6,6 +6,7 @@ import {
 } from "../content/debug-preference";
 import { applyDebugPreference, debugError } from "../content/debug";
 import { clearPreferences, readPreferences, requestScraperReset, writePreferences } from "../content/preferences";
+import type { ExtensionPreferences } from "../content/preferences";
 import { describePortalPage } from "../content/page-context";
 import { EXPORT_MODE_STORAGE_KEY, normalizeExportMode, type StoredExportMode } from "../shared/export-preferences";
 import {
@@ -16,10 +17,18 @@ import {
   normalizeBulkConfirmThreshold,
   normalizeCheckerDefaults,
   normalizeComparerDefaults,
+  normalizeDelayPreset,
   normalizeFilenamePrefix,
+  type CheckerDefaults,
+  type ComparerDefaults,
   type StoredCheckerStatus,
   type StoredComparisonStatus,
 } from "../shared/extension-preferences";
+import {
+  bindPreferenceControls,
+  paintPreferenceControls,
+  type PreferenceControl,
+} from "./preference-controls";
 
 // Every control is looked up defensively: the popup degrades to whatever the
 // document actually contains rather than throwing on a missing element, which is
@@ -83,6 +92,10 @@ function readCheckedStatuses(): StoredComparisonStatus[] {
 }
 
 // ── Export mode ───────────────────────────────────────
+// Its own preference with its own key and its own writer: the export SHAPE
+// (`cleaned` / `raw`) is not one of the managed settings, and a reset of those
+// must not silently change how data is exported. The radio pair below is
+// therefore the one control group this table does not declare.
 
 function setExportModeChecked(mode: StoredExportMode): void {
   setChecked(cleanedInput, mode === "cleaned");
@@ -122,63 +135,19 @@ rawInput?.addEventListener("change", () => {
   if (rawInput.checked) void saveMode("raw");
 });
 
-// ── Extension preferences ─────────────────────────────
-
-/**
- * Paint every preference control from storage, and seed the snapshot the other
- * readers use. Falls back to the documented defaults when storage is
- * unavailable, so the popup always renders a definite state.
- */
-async function loadPreferences(): Promise<void> {
-  const prefs = await readPreferences();
-
-  setChecked(enabledInput, prefs.enabled);
-
-  setChecked(xlsxFormatInput, prefs.exportFormat === "xlsx");
-  setChecked(csvFormatInput, prefs.exportFormat === "csv");
-  setChecked(oneClickExportInput, prefs.oneClickExport);
-
-  if (filenamePrefixInput) filenamePrefixInput.value = prefs.filenamePrefix;
-  if (delayPresetSelect) delayPresetSelect.value = prefs.delayPreset;
-  if (bulkConfirmInput) bulkConfirmInput.value = String(prefs.bulkConfirmThreshold);
-
-  const comparer = normalizeComparerDefaults(prefs.comparerDefaults);
-  if (comparerToleranceInput) {
-    // An empty box for the default 0: the panel treats it as "optional value".
-    comparerToleranceInput.value = comparer.tolerance > 0 ? String(comparer.tolerance) : "";
-  }
-  if (comparerDailyDatesInput) comparerDailyDatesInput.value = comparer.dailyDates;
-  for (const { status, input } of statusCheckboxes) {
-    setChecked(input, comparer.statusFilter.includes(status));
-  }
-
-  const checker = normalizeCheckerDefaults(prefs.checkerDefaults);
-  if (checkerBenchmarkSelect) checkerBenchmarkSelect.value = checker.benchmark;
-  if (checkerToleranceInput) {
-    // Same rule as the comparer's box: an empty field means "no tolerance".
-    checkerToleranceInput.value = checker.tolerance > 0 ? String(checker.tolerance) : "";
-  }
-  for (const { status, input } of checkerStatusCheckboxes) {
-    setChecked(input, checker.statusFilter.includes(status));
-  }
-
-  setChecked(notifyInput, prefs.notifyOnComplete);
-}
-
-/** Re-read and repaint everything, used after a reset. */
-async function refreshPreferences(): Promise<void> {
-  await loadPreferences();
-  await loadMode();
-}
+// ── The preference controls, declared once ────────────
+// One row per control (ADR-0037): which element it is, how it paints, what it
+// stores, and what the status field says about it. The binder in
+// preference-controls.ts owns the lookup, the listener and the write, so a
+// control here cannot forget the normalizer or the defensive lookup.
 
 /** Read the current comparer controls back into the stored defaults shape. */
-function currentComparerDefaults() {
-  const tolerance = normalizeComparerDefaults({
+function currentComparerDefaults(): ComparerDefaults {
+  return normalizeComparerDefaults({
     tolerance: comparerToleranceInput?.value,
     dailyDates: comparerDailyDatesInput?.value,
     statusFilter: readCheckedStatuses(),
   });
-  return tolerance;
 }
 
 /** The checker's status checkboxes that are ticked, in schema order. */
@@ -189,7 +158,7 @@ function readCheckedCheckerStatuses(): StoredCheckerStatus[] {
 }
 
 /** Read the current checker controls back into the stored defaults shape. */
-function currentCheckerDefaults() {
+function currentCheckerDefaults(): CheckerDefaults {
   return normalizeCheckerDefaults({
     benchmark: checkerBenchmarkSelect?.value,
     tolerance: checkerToleranceInput?.value,
@@ -197,113 +166,204 @@ function currentCheckerDefaults() {
   });
 }
 
-// ── Export format default ─────────────────────────────
-// Marks which format the portal's export menu starts from, and — with one-click
-// export on — which format that click downloads.
+/**
+ * One control of a grouped default.
+ *
+ * The comparer's three and the checker's three are ONE stored value each, so
+ * every member writes the whole object — a partial write would have to re-read
+ * the other members, and would store a half-updated filter.
+ */
+function comparerControl(
+  id: string,
+  paint: (defaults: ComparerDefaults) => void,
+): PreferenceControl {
+  return {
+    id,
+    paint: (preferences) => paint(normalizeComparerDefaults(preferences.comparerDefaults)),
+    patch: () => ({ comparerDefaults: currentComparerDefaults() }),
+  };
+}
 
-xlsxFormatInput?.addEventListener("change", () => {
-  if (!xlsxFormatInput.checked) return;
-  setChecked(csvFormatInput, false);
-  void writePreferences({ exportFormat: "xlsx" });
-});
+function checkerControl(
+  id: string,
+  paint: (defaults: CheckerDefaults) => void,
+): PreferenceControl {
+  return {
+    id,
+    paint: (preferences) => paint(normalizeCheckerDefaults(preferences.checkerDefaults)),
+    patch: () => ({ checkerDefaults: currentCheckerDefaults() }),
+  };
+}
 
-csvFormatInput?.addEventListener("change", () => {
-  if (!csvFormatInput.checked) return;
-  setChecked(xlsxFormatInput, false);
-  void writePreferences({ exportFormat: "csv" });
-});
+/**
+ * The popup's preference controls, in the order the markup presents them.
+ *
+ * The rows are declared here rather than in preference-controls.ts because they
+ * mirror popup.html: an id and the element it names belong together, and a
+ * preference's KEY never appears here — only the field it sets.
+ */
+const PREFERENCE_CONTROLS: readonly PreferenceControl[] = [
+  // Master switch.
+  {
+    id: "extension-enabled",
+    paint: (preferences) => setChecked(enabledInput, preferences.enabled),
+    patch: () => ({ enabled: enabledInput?.checked ?? false }),
+    status: (patch) =>
+      patch.enabled
+        ? "Cindieh aktif di tab portal."
+        : "Cindieh dimatikan; UI di portal dibersihkan.",
+  },
 
-// ── One-click export ──────────────────────────────────
-// Opt-in: the portal button exports instead of opening the menu, and the
-// chevron splits off into its own caret. Off by default because two hit targets
-// take toolbar room.
+  // Export FORMAT default: which format the portal's export menu starts from,
+  // and — with one-click export on — which format that click downloads.
+  {
+    id: "format-xlsx",
+    paint: (preferences) => setChecked(xlsxFormatInput, preferences.exportFormat === "xlsx"),
+    patch: () => {
+      // The browser clears `checked` on the losing radio before firing its
+      // `change`; only the newly selected one may write.
+      if (!xlsxFormatInput?.checked) return null;
+      setChecked(csvFormatInput, false);
+      return { exportFormat: "xlsx" };
+    },
+  },
+  {
+    id: "format-csv",
+    paint: (preferences) => setChecked(csvFormatInput, preferences.exportFormat === "csv"),
+    patch: () => {
+      if (!csvFormatInput?.checked) return null;
+      setChecked(xlsxFormatInput, false);
+      return { exportFormat: "csv" };
+    },
+  },
 
-oneClickExportInput?.addEventListener("change", () => {
-  const enabled = oneClickExportInput.checked;
-  void writePreferences({ oneClickExport: enabled }).then(() => {
-    setTransientStatus(
-      enabled
+  // One-click export. Opt-in: the portal button exports instead of opening the
+  // menu, and the chevron splits off into its own caret. Off by default because
+  // two hit targets take toolbar room.
+  {
+    id: "one-click-export",
+    paint: (preferences) => setChecked(oneClickExportInput, preferences.oneClickExport),
+    patch: () => ({ oneClickExport: oneClickExportInput?.checked ?? false }),
+    status: (patch) =>
+      patch.oneClickExport
         ? "Ekspor sekali klik aktif; tombol panah membuka pilihan format."
         : "Tombol ekspor kembali membuka menu.",
-    );
-  });
-});
+  },
 
-// ── Master switch ─────────────────────────────────────
+  // Filename prefix. On `input`, not `change`: a user who types a prefix and
+  // closes the popup without blurring the field would otherwise lose it.
+  {
+    id: "filename-prefix",
+    event: "input",
+    paint: (preferences) => {
+      if (filenamePrefixInput) filenamePrefixInput.value = preferences.filenamePrefix;
+    },
+    patch: () => ({ filenamePrefix: normalizeFilenamePrefix(filenamePrefixInput?.value) }),
+  },
 
-enabledInput?.addEventListener("change", () => {
-  const enabled = enabledInput.checked;
-  void writePreferences({ enabled }).then(() => {
-    setTransientStatus(
-      enabled ? "Cindieh aktif di tab portal." : "Cindieh dimatikan; UI di portal dibersihkan.",
-    );
-  });
-});
+  // Rate-limit pacing.
+  {
+    id: "delay-preset",
+    paint: (preferences) => {
+      if (delayPresetSelect) delayPresetSelect.value = preferences.delayPreset;
+    },
+    patch: () => ({ delayPreset: normalizeDelayPreset(delayPresetSelect?.value) }),
+    status: (patch) => {
+      const preset = normalizeDelayPreset(patch.delayPreset);
+      const multiplier = DELAY_PRESET_MULTIPLIER[preset];
+      return multiplier === 1
+        ? "Jeda normal."
+        : `Jeda ${multiplier}\u00d7 lebih lambat; berlaku di tab portal tanpa reload.`;
+    },
+  },
 
-// ── Filename prefix ───────────────────────────────────
+  // Bulk download confirmation. The normalized value is written back into the
+  // box, so the control shows what is actually stored.
+  {
+    id: "bulk-confirm",
+    paint: (preferences) => {
+      if (bulkConfirmInput) bulkConfirmInput.value = String(preferences.bulkConfirmThreshold);
+    },
+    patch: () => {
+      const threshold = normalizeBulkConfirmThreshold(bulkConfirmInput?.value);
+      if (bulkConfirmInput) bulkConfirmInput.value = String(threshold);
+      return { bulkConfirmThreshold: threshold };
+    },
+    status: (patch) =>
+      patch.bulkConfirmThreshold === NEVER_CONFIRM_THRESHOLD
+        ? "Unduhan massal tanpa konfirmasi."
+        : `Konfirmasi jika lebih dari ${patch.bulkConfirmThreshold} file.`,
+  },
 
-filenamePrefixInput?.addEventListener("input", () => {
-  // On `input`, not `change`: a user who types a prefix and closes the popup
-  // without blurring the field would otherwise lose it.
-  void writePreferences({ filenamePrefix: normalizeFilenamePrefix(filenamePrefixInput.value) });
-});
+  // Comparer defaults — the panel is seeded from these on open.
+  comparerControl("comparer-tolerance", (defaults) => {
+    // An empty box for the default 0: the panel treats it as "optional value".
+    if (comparerToleranceInput) {
+      comparerToleranceInput.value = defaults.tolerance > 0 ? String(defaults.tolerance) : "";
+    }
+  }),
+  comparerControl("comparer-daily-dates", (defaults) => {
+    if (comparerDailyDatesInput) comparerDailyDatesInput.value = defaults.dailyDates;
+  }),
+  ...statusCheckboxes.map(({ status, input }) =>
+    comparerControl(`comparer-status-${status}`, (defaults) => {
+      setChecked(input, defaults.statusFilter.includes(status));
+    }),
+  ),
 
-// ── Pacing ────────────────────────────────────────────
+  // Checker defaults — same shape, one stored value.
+  checkerControl("checker-benchmark", (defaults) => {
+    if (checkerBenchmarkSelect) checkerBenchmarkSelect.value = defaults.benchmark;
+  }),
+  checkerControl("checker-tolerance", (defaults) => {
+    // Same rule as the comparer's box: an empty field means "no tolerance".
+    if (checkerToleranceInput) {
+      checkerToleranceInput.value = defaults.tolerance > 0 ? String(defaults.tolerance) : "";
+    }
+  }),
+  ...checkerStatusCheckboxes.map(({ status, input }) =>
+    checkerControl(`checker-status-${status}`, (defaults) => {
+      setChecked(input, defaults.statusFilter.includes(status));
+    }),
+  ),
 
-delayPresetSelect?.addEventListener("change", () => {
-  const preset = delayPresetSelect.value === "hati-hati" || delayPresetSelect.value === "sabar"
-    ? delayPresetSelect.value
-    : "normal";
-  void writePreferences({ delayPreset: preset });
-  const multiplier = DELAY_PRESET_MULTIPLIER[preset];
-  setTransientStatus(
-    multiplier === 1
-      ? "Jeda normal."
-      : `Jeda ${multiplier}\u00d7 lebih lambat; berlaku di tab portal tanpa reload.`,
-  );
-});
+  // Completion notifications. `notifications` is an OPTIONAL permission,
+  // requested on the user's click rather than declared up front: declaring it
+  // would make every existing install re-consent to a permission the extension
+  // does not need until the user asks for notifications.
+  {
+    id: "notify-on-complete",
+    paint: (preferences) => setChecked(notifyInput, preferences.notifyOnComplete),
+    patch: () => ({ notifyOnComplete: notifyInput?.checked ?? false }),
+    beforeWrite: async (patch) => !patch.notifyOnComplete || ensureNotificationPermission(),
+    // No permission, no switch: leaving it on would promise a notification the
+    // extension cannot deliver.
+    revert: () => setChecked(notifyInput, false),
+    refused: () => "Izin notifikasi ditolak browser.",
+    status: (patch) =>
+      patch.notifyOnComplete ? "Notifikasi selesai aktif." : "Notifikasi selesai nonaktif.",
+  },
+];
 
-// ── Bulk download confirmation ────────────────────────
-
-bulkConfirmInput?.addEventListener("change", () => {
-  const threshold = normalizeBulkConfirmThreshold(bulkConfirmInput.value);
-  // Write the normalized value back so the box shows what is actually stored.
-  bulkConfirmInput.value = String(threshold);
-  void writePreferences({ bulkConfirmThreshold: threshold });
-  setTransientStatus(
-    threshold === NEVER_CONFIRM_THRESHOLD
-      ? "Unduhan massal tanpa konfirmasi."
-      : `Konfirmasi jika lebih dari ${threshold} file.`,
-  );
-});
-
-// ── Comparer defaults ─────────────────────────────────
-// Each control writes the whole defaults object: they are one stored value, and
-// a partial write would have to re-read the other two.
-
-function saveComparerDefaults(): void {
-  void writePreferences({ comparerDefaults: currentComparerDefaults() });
+/**
+ * Paint every preference control from storage, and seed the snapshot the other
+ * readers use. Falls back to the documented defaults when storage is
+ * unavailable, so the popup always renders a definite state.
+ */
+async function loadPreferences(): Promise<void> {
+  paintPreferenceControls(PREFERENCE_CONTROLS, await readPreferences());
 }
 
-comparerToleranceInput?.addEventListener("change", saveComparerDefaults);
-comparerDailyDatesInput?.addEventListener("change", saveComparerDefaults);
-for (const { input } of statusCheckboxes) {
-  input?.addEventListener("change", saveComparerDefaults);
+/** Re-read and repaint everything, used after a reset. */
+async function refreshPreferences(): Promise<void> {
+  await loadPreferences();
+  await loadMode();
 }
 
-// ── Checker defaults ──────────────────────────────────
-// One stored value, three controls: each change writes all of them, exactly as
-// the comparer's defaults do, so a partially-written object is never stored.
-
-function saveCheckerDefaults(): void {
-  void writePreferences({ checkerDefaults: currentCheckerDefaults() });
-}
-
-checkerBenchmarkSelect?.addEventListener("change", saveCheckerDefaults);
-checkerToleranceInput?.addEventListener("change", saveCheckerDefaults);
-for (const { input } of checkerStatusCheckboxes) {
-  input?.addEventListener("change", saveCheckerDefaults);
-}
+bindPreferenceControls(PREFERENCE_CONTROLS, {
+  write: writePreferences,
+  say: setTransientStatus,
+});
 
 // ── Debug logging switch ──────────────────────────────
 // Stores the flag in extension storage, the one place every extension context
@@ -314,6 +374,9 @@ for (const { input } of checkerStatusCheckboxes) {
 // extension storage, so the content script copies the flag into the page's
 // storage for it — which means the scraper's own logs follow this switch from
 // the next page load on, not instantly (it resolves the flag when it loads).
+//
+// Not a row above: the debug flag has its own lifecycle (its own key, not in
+// the managed set, never cleared by a reset) and it applies to this context.
 
 async function loadDebugSwitch(): Promise<void> {
   if (debugInput) debugInput.checked = (await readDebugPreference()) === true;
@@ -327,11 +390,7 @@ debugInput?.addEventListener("change", () => {
   });
 });
 
-// ── Completion notifications ──────────────────────────
-// `notifications` is an OPTIONAL permission, requested from here on the user's
-// click rather than declared up front: declaring it would make every existing
-// install re-consent to a permission the extension does not need until the user
-// asks for notifications. A refused request rolls the switch back.
+// ── Completion notifications: the permission ──────────
 
 async function ensureNotificationPermission(): Promise<boolean> {
   const permissions = browserAPI.permissions;
@@ -347,21 +406,6 @@ async function ensureNotificationPermission(): Promise<boolean> {
     return false;
   }
 }
-
-notifyInput?.addEventListener("change", () => {
-  const wanted = notifyInput.checked;
-  void (async () => {
-    if (wanted && !(await ensureNotificationPermission())) {
-      // No permission, no switch: leaving it on would promise a notification
-      // the extension cannot deliver.
-      setChecked(notifyInput, false);
-      setTransientStatus("Izin notifikasi ditolak browser.");
-      return;
-    }
-    await writePreferences({ notifyOnComplete: wanted });
-    setTransientStatus(wanted ? "Notifikasi selesai aktif." : "Notifikasi selesai nonaktif.");
-  })();
-});
 
 // ── Maintenance ───────────────────────────────────────
 
@@ -411,3 +455,6 @@ void loadMode();
 void loadPreferences();
 void loadDebugSwitch();
 void loadPortalStatus();
+
+/** The preferences this popup manages, for the reset path's own checks. */
+export type ManagedPreferences = ExtensionPreferences;

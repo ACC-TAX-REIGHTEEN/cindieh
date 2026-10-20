@@ -83,7 +83,10 @@ export default defineConfig({
       // back to the schema. The functions floor moves with it, and now
       // 94.77/89.40/92.91/95.77 with each panel tab as its own view module
       // (ADR-0036): the Bandingkan tab can finally be mounted on its own, so
-      // the shell that hosts it has no tab left in it to test.
+      // the shell that hosts it has no tab left in it to test, and now
+      // 94.91/89.89/93.21/95.88 once a preference was declared as ONE row
+      // (ADR-0037): four copies of the key map became one table, and the popup'
+      // nineteen hand-written control blocks became nine rows behind a binder.
       //
       // The cushion is deliberately ~0.4 points, the same gap the floors have
       // always kept: enough that ordinary churn cannot redden the build, small
@@ -97,10 +100,10 @@ export default defineConfig({
       // is covered directly. Do not paper the gap over by lowering a floor; move
       // it by testing the seam underneath.
       thresholds: {
-        statements: 94.4,
-        branches: 89.0,
-        functions: 92.5,
-        lines: 95.4,
+        statements: 94.5,
+        branches: 89.5,
+        functions: 92.8,
+        lines: 95.5,
       },
     },
   },

@@ -19,6 +19,7 @@ import {
   MAX_BULK_CONFIRM_THRESHOLD,
   MAX_FILENAME_PREFIX_LENGTH,
   NEVER_CONFIRM_THRESHOLD,
+  PREFERENCE_FIELDS,
   PREFERENCE_STORAGE_KEYS,
   normalizeBulkConfirmThreshold,
   normalizeComparerDefaults,
@@ -44,6 +45,34 @@ import {
 } from "../content/page-pacing";
 
 // ── Storage keys ──────────────────────────────────────
+
+describe("the preference field table", () => {
+  it("names every key exactly once, and the key list is derived from it", () => {
+    // One table, one list (ADR-0037): a key spelled in a second place is how a
+    // control came to write something no reader looked for.
+    const keys = Object.values(PREFERENCE_FIELDS).map((field) => field.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect([...PREFERENCE_STORAGE_KEYS]).toEqual(keys);
+  });
+
+  it("produces a fresh grouped default on every call", () => {
+    // The two defaults objects hold an array, so a shared literal would let one
+    // reader's edit show up in the next reader's default.
+    const first = PREFERENCE_FIELDS.comparerDefaults.defaultValue() as { statusFilter: unknown[] };
+    const second = PREFERENCE_FIELDS.comparerDefaults.defaultValue() as { statusFilter: unknown[] };
+
+    expect(first).not.toBe(second);
+    expect(first.statusFilter).not.toBe(second.statusFilter);
+  });
+
+  it("reads an unwritten value as the documented default of its own row", () => {
+    // The normalizer and the default are one row, so they cannot disagree about
+    // what "nothing stored" means.
+    for (const [field, spec] of Object.entries(PREFERENCE_FIELDS)) {
+      expect(spec.normalize(undefined), field).toEqual(spec.defaultValue());
+    }
+  });
+});
 
 describe("preference storage keys", () => {
   it("namespaces every key so nothing collides with page storage", () => {

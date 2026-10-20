@@ -12,34 +12,8 @@
 import { browserAPI } from "./browser-shim";
 import { debugError } from "./debug";
 import {
-  BULK_CONFIRM_STORAGE_KEY,
-  CHECKER_DEFAULTS_STORAGE_KEY,
-  COMPARER_DEFAULTS_STORAGE_KEY,
-  DEFAULT_BULK_CONFIRM_THRESHOLD,
-  DEFAULT_CHECKER_DEFAULTS,
-  DEFAULT_COMPARER_DEFAULTS,
-  DEFAULT_DELAY_PRESET,
-  DEFAULT_ENABLED,
-  DEFAULT_EXPORT_FORMAT,
-  DEFAULT_FILENAME_PREFIX,
-  DEFAULT_NOTIFY_ON_COMPLETE,
-  DEFAULT_ONE_CLICK_EXPORT,
-  DELAY_PRESET_STORAGE_KEY,
-  ENABLED_STORAGE_KEY,
-  EXPORT_FORMAT_STORAGE_KEY,
-  FILENAME_PREFIX_STORAGE_KEY,
-  NOTIFY_ON_COMPLETE_STORAGE_KEY,
-  ONE_CLICK_EXPORT_STORAGE_KEY,
+  PREFERENCE_FIELDS,
   PREFERENCE_STORAGE_KEYS,
-  normalizeBulkConfirmThreshold,
-  normalizeCheckerDefaults,
-  normalizeComparerDefaults,
-  normalizeDelayPreset,
-  normalizeEnabled,
-  normalizeExportFormat,
-  normalizeFilenamePrefix,
-  normalizeNotifyOnComplete,
-  normalizeOneClickExport,
   type CheckerDefaults,
   type ComparerDefaults,
   type DelayPreset,
@@ -58,35 +32,38 @@ export interface ExtensionPreferences {
   notifyOnComplete: boolean;
 }
 
-export const DEFAULT_PREFERENCES: ExtensionPreferences = {
-  enabled: DEFAULT_ENABLED,
-  exportFormat: DEFAULT_EXPORT_FORMAT,
-  oneClickExport: DEFAULT_ONE_CLICK_EXPORT,
-  delayPreset: DEFAULT_DELAY_PRESET,
-  bulkConfirmThreshold: DEFAULT_BULK_CONFIRM_THRESHOLD,
-  comparerDefaults: { ...DEFAULT_COMPARER_DEFAULTS, statusFilter: [] },
-  checkerDefaults: { ...DEFAULT_CHECKER_DEFAULTS, statusFilter: [] },
-  filenamePrefix: DEFAULT_FILENAME_PREFIX,
-  notifyOnComplete: DEFAULT_NOTIFY_ON_COMPLETE,
-};
+/**
+ * A fresh copy of the documented defaults.
+ *
+ * Built by CALLING each row's `defaultValue()` rather than spreading a shared
+ * literal: the two defaults objects hold an array, so one instance handed to
+ * two readers would let the first reader's edits reach the second.
+ */
+function defaultPreferences(): ExtensionPreferences {
+  const defaults: Record<string, unknown> = {};
+  for (const [field, spec] of Object.entries(PREFERENCE_FIELDS)) {
+    defaults[field] = spec.defaultValue();
+  }
+  return defaults as unknown as ExtensionPreferences;
+}
+
+export const DEFAULT_PREFERENCES: ExtensionPreferences = defaultPreferences();
 
 /**
  * Turn a raw storage snapshot into validated preferences. Exported because the
  * popup's own load path and the tests both need it, and because a partial
  * snapshot (a key never written) must read exactly like the default.
+ *
+ * The loop is the whole point of the table (ADR-0037): the field, its key and
+ * its normalizer cannot drift apart, so a preference added to the schema is
+ * read here without an edit.
  */
 export function normalizePreferences(raw: Record<string, unknown>): ExtensionPreferences {
-  return {
-    enabled: normalizeEnabled(raw[ENABLED_STORAGE_KEY]),
-    exportFormat: normalizeExportFormat(raw[EXPORT_FORMAT_STORAGE_KEY]),
-    oneClickExport: normalizeOneClickExport(raw[ONE_CLICK_EXPORT_STORAGE_KEY]),
-    delayPreset: normalizeDelayPreset(raw[DELAY_PRESET_STORAGE_KEY]),
-    bulkConfirmThreshold: normalizeBulkConfirmThreshold(raw[BULK_CONFIRM_STORAGE_KEY]),
-    comparerDefaults: normalizeComparerDefaults(raw[COMPARER_DEFAULTS_STORAGE_KEY]),
-    checkerDefaults: normalizeCheckerDefaults(raw[CHECKER_DEFAULTS_STORAGE_KEY]),
-    filenamePrefix: normalizeFilenamePrefix(raw[FILENAME_PREFIX_STORAGE_KEY]),
-    notifyOnComplete: normalizeNotifyOnComplete(raw[NOTIFY_ON_COMPLETE_STORAGE_KEY]),
-  };
+  const preferences: Record<string, unknown> = {};
+  for (const [field, spec] of Object.entries(PREFERENCE_FIELDS)) {
+    preferences[field] = spec.normalize(raw[spec.key]);
+  }
+  return preferences as unknown as ExtensionPreferences;
 }
 
 // ── Live snapshot ─────────────────────────────────────
@@ -95,11 +72,7 @@ export function normalizePreferences(raw: Record<string, unknown>): ExtensionPre
 // with the documented defaults and then kept current by the one asynchronous
 // read and by the storage listener, which both funnel through setPreferences.
 
-let cachedPreferences: ExtensionPreferences = {
-  ...DEFAULT_PREFERENCES,
-  comparerDefaults: { ...DEFAULT_COMPARER_DEFAULTS, statusFilter: [] },
-  checkerDefaults: { ...DEFAULT_CHECKER_DEFAULTS, statusFilter: [] },
-};
+let cachedPreferences: ExtensionPreferences = defaultPreferences();
 
 /** The most recent preference value this context knows about. Never rejects. */
 export function getPreferences(): ExtensionPreferences {
@@ -114,11 +87,7 @@ export function setPreferences(patch: Partial<ExtensionPreferences>): ExtensionP
 
 /** Drop the snapshot back to the documented defaults (used by the reset path). */
 export function resetPreferencesSnapshot(): ExtensionPreferences {
-  cachedPreferences = {
-    ...DEFAULT_PREFERENCES,
-    comparerDefaults: { ...DEFAULT_COMPARER_DEFAULTS, statusFilter: [] },
-    checkerDefaults: { ...DEFAULT_CHECKER_DEFAULTS, statusFilter: [] },
-  };
+  cachedPreferences = defaultPreferences();
   return cachedPreferences;
 }
 
@@ -137,22 +106,15 @@ export async function readPreferences(): Promise<ExtensionPreferences> {
 }
 
 /**
- * Storage key for each preference field. Kept as an explicit table because the
- * field names are the ones the code reads and the storage keys are the ones the
- * popup writes; a `Partial<ExtensionPreferences>` must never be passed straight
- * to `storage.local.set` or it would write keys nothing reads back.
+ * Storage key for each preference field, read off the one table (ADR-0037).
+ *
+ * The field names are the ones the code reads and the storage keys are the ones
+ * the popup writes; a `Partial<ExtensionPreferences>` must never be passed
+ * straight to `storage.local.set` or it would write keys nothing reads back.
  */
-const STORAGE_KEY_BY_FIELD: Record<keyof ExtensionPreferences, string> = {
-  enabled: ENABLED_STORAGE_KEY,
-  exportFormat: EXPORT_FORMAT_STORAGE_KEY,
-  oneClickExport: ONE_CLICK_EXPORT_STORAGE_KEY,
-  delayPreset: DELAY_PRESET_STORAGE_KEY,
-  bulkConfirmThreshold: BULK_CONFIRM_STORAGE_KEY,
-  comparerDefaults: COMPARER_DEFAULTS_STORAGE_KEY,
-  checkerDefaults: CHECKER_DEFAULTS_STORAGE_KEY,
-  filenamePrefix: FILENAME_PREFIX_STORAGE_KEY,
-  notifyOnComplete: NOTIFY_ON_COMPLETE_STORAGE_KEY,
-};
+const STORAGE_KEY_BY_FIELD: Record<keyof ExtensionPreferences, string> = Object.fromEntries(
+  Object.entries(PREFERENCE_FIELDS).map(([field, spec]) => [field, spec.key]),
+) as Record<keyof ExtensionPreferences, string>;
 
 /** Persist a subset of preferences. A failed write reports and is contained. */
 export async function writePreferences(patch: Partial<ExtensionPreferences>): Promise<void> {
@@ -191,45 +153,14 @@ export async function clearPreferences(): Promise<void> {
 export function preferencesFromChanges(
   changes: Record<string, { newValue?: unknown }>,
 ): Partial<ExtensionPreferences> {
-  const patch: Partial<ExtensionPreferences> = {};
-  if (ENABLED_STORAGE_KEY in changes) {
-    patch.enabled = normalizeEnabled(changes[ENABLED_STORAGE_KEY]?.newValue);
+  // One loop over the table (ADR-0037): a key the schema declares is a key this
+  // function can apply, and a key it does not declare is silently not a
+  // preference — including one a build added and this list forgot.
+  const patch: Record<string, unknown> = {};
+  for (const [field, spec] of Object.entries(PREFERENCE_FIELDS)) {
+    if (spec.key in changes) patch[field] = spec.normalize(changes[spec.key]?.newValue);
   }
-  if (EXPORT_FORMAT_STORAGE_KEY in changes) {
-    patch.exportFormat = normalizeExportFormat(changes[EXPORT_FORMAT_STORAGE_KEY]?.newValue);
-  }
-  if (ONE_CLICK_EXPORT_STORAGE_KEY in changes) {
-    patch.oneClickExport = normalizeOneClickExport(
-      changes[ONE_CLICK_EXPORT_STORAGE_KEY]?.newValue,
-    );
-  }
-  if (DELAY_PRESET_STORAGE_KEY in changes) {
-    patch.delayPreset = normalizeDelayPreset(changes[DELAY_PRESET_STORAGE_KEY]?.newValue);
-  }
-  if (BULK_CONFIRM_STORAGE_KEY in changes) {
-    patch.bulkConfirmThreshold = normalizeBulkConfirmThreshold(
-      changes[BULK_CONFIRM_STORAGE_KEY]?.newValue,
-    );
-  }
-  if (COMPARER_DEFAULTS_STORAGE_KEY in changes) {
-    patch.comparerDefaults = normalizeComparerDefaults(
-      changes[COMPARER_DEFAULTS_STORAGE_KEY]?.newValue,
-    );
-  }
-  if (CHECKER_DEFAULTS_STORAGE_KEY in changes) {
-    patch.checkerDefaults = normalizeCheckerDefaults(
-      changes[CHECKER_DEFAULTS_STORAGE_KEY]?.newValue,
-    );
-  }
-  if (FILENAME_PREFIX_STORAGE_KEY in changes) {
-    patch.filenamePrefix = normalizeFilenamePrefix(changes[FILENAME_PREFIX_STORAGE_KEY]?.newValue);
-  }
-  if (NOTIFY_ON_COMPLETE_STORAGE_KEY in changes) {
-    patch.notifyOnComplete = normalizeNotifyOnComplete(
-      changes[NOTIFY_ON_COMPLETE_STORAGE_KEY]?.newValue,
-    );
-  }
-  return patch;
+  return patch as Partial<ExtensionPreferences>;
 }
 
 // ── Popup → content command channel ───────────────────

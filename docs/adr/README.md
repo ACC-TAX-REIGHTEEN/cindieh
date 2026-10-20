@@ -40,3 +40,4 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0034 | [The MAIN world's item loops share one loop](0034-the-main-worlds-item-loops-share-one-loop.md) | Accepted |
 | 0035 | [One seam per world, and an import graph with no cycles](0035-one-seam-per-world.md) | Accepted |
 | 0036 | [Each panel tab is its own view module, and the shell knows no tab](0036-each-panel-tab-is-its-own-view.md) | Accepted |
+| 0037 | [One row per preference, and one binder for the popup's controls](0037-one-row-per-preference.md) | Accepted |

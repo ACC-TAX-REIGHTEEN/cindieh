@@ -302,20 +302,94 @@ export function normalizeNotifyOnComplete(value: unknown): boolean {
   return value === true || value === "true" || value === "1";
 }
 
-// ── Registry ──────────────────────────────────────────
+// ── Registry: one row per preference ─────────────────
 
 /**
- * Every preference key, in the order the popup renders them. `clearPreferences`
- * removes exactly these — never the debug flag, which has its own lifecycle.
+ * Everything a preference needs, in the three facts that used to be written
+ * out separately for each one (ADR-0037).
+ *
+ * The table is what `readPreferences`, `writePreferences`,
+ * `preferencesFromChanges` and the popup's controls all read, so a preference
+ * is added ONCE. A field, a key, a default and a normalizer that disagree are
+ * the failure mode this removes: with four hand-maintained maps, a key spelled
+ * right in three of them stored a value nothing read back.
+ *
+ * `defaultValue` is a FUNCTION, not a value: the two defaults objects hold an
+ * array, and a shared literal would hand the same array to every reader.
  */
-export const PREFERENCE_STORAGE_KEYS = [
-  ENABLED_STORAGE_KEY,
-  EXPORT_FORMAT_STORAGE_KEY,
-  ONE_CLICK_EXPORT_STORAGE_KEY,
-  DELAY_PRESET_STORAGE_KEY,
-  BULK_CONFIRM_STORAGE_KEY,
-  COMPARER_DEFAULTS_STORAGE_KEY,
-  CHECKER_DEFAULTS_STORAGE_KEY,
-  FILENAME_PREFIX_STORAGE_KEY,
-  NOTIFY_ON_COMPLETE_STORAGE_KEY,
-] as const;
+export interface PreferenceFieldSpec {
+  /** The `storage.local` key this preference is written under. */
+  readonly key: string;
+  /** The documented default, produced fresh on every read. */
+  readonly defaultValue: () => unknown;
+  /** The one guard between a stored value and behaviour. */
+  readonly normalize: (value: unknown) => unknown;
+}
+
+/**
+ * Every preference, keyed by the field the code reads it through.
+ *
+ * The order is the order the popup renders them in and the order
+ * `clearPreferences` removes — never the debug flag, which has its own
+ * lifecycle.
+ */
+export const PREFERENCE_FIELDS = {
+  enabled: {
+    key: ENABLED_STORAGE_KEY,
+    defaultValue: () => DEFAULT_ENABLED,
+    normalize: normalizeEnabled,
+  },
+  exportFormat: {
+    key: EXPORT_FORMAT_STORAGE_KEY,
+    defaultValue: () => DEFAULT_EXPORT_FORMAT,
+    normalize: normalizeExportFormat,
+  },
+  oneClickExport: {
+    key: ONE_CLICK_EXPORT_STORAGE_KEY,
+    defaultValue: () => DEFAULT_ONE_CLICK_EXPORT,
+    normalize: normalizeOneClickExport,
+  },
+  delayPreset: {
+    key: DELAY_PRESET_STORAGE_KEY,
+    defaultValue: () => DEFAULT_DELAY_PRESET,
+    normalize: normalizeDelayPreset,
+  },
+  bulkConfirmThreshold: {
+    key: BULK_CONFIRM_STORAGE_KEY,
+    defaultValue: () => DEFAULT_BULK_CONFIRM_THRESHOLD,
+    normalize: normalizeBulkConfirmThreshold,
+  },
+  comparerDefaults: {
+    key: COMPARER_DEFAULTS_STORAGE_KEY,
+    // A fresh object every time: the status filter is an array, and sharing it
+    // would let one reader's edit show up in the next reader's default.
+    defaultValue: () => ({ ...DEFAULT_COMPARER_DEFAULTS, statusFilter: [] }),
+    normalize: normalizeComparerDefaults,
+  },
+  checkerDefaults: {
+    key: CHECKER_DEFAULTS_STORAGE_KEY,
+    defaultValue: () => ({ ...DEFAULT_CHECKER_DEFAULTS, statusFilter: [] }),
+    normalize: normalizeCheckerDefaults,
+  },
+  filenamePrefix: {
+    key: FILENAME_PREFIX_STORAGE_KEY,
+    defaultValue: () => DEFAULT_FILENAME_PREFIX,
+    normalize: normalizeFilenamePrefix,
+  },
+  notifyOnComplete: {
+    key: NOTIFY_ON_COMPLETE_STORAGE_KEY,
+    defaultValue: () => DEFAULT_NOTIFY_ON_COMPLETE,
+    normalize: normalizeNotifyOnComplete,
+  },
+} as const satisfies Record<string, PreferenceFieldSpec>;
+
+/** The field names the preferences object carries, as a type. */
+export type PreferenceField = keyof typeof PREFERENCE_FIELDS;
+
+/**
+ * Every preference key, derived from the table above. `clearPreferences`
+ * removes exactly these.
+ */
+export const PREFERENCE_STORAGE_KEYS: readonly string[] = Object.values(
+  PREFERENCE_FIELDS,
+).map((field) => field.key);

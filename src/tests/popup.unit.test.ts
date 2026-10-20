@@ -125,10 +125,14 @@ async function bootPopup(
     storageThrows?: boolean;
     tabUrl?: string;
     permissionGranted?: boolean;
+    /** Boot over an empty document, the way a markup change would leave it. */
+    withoutControls?: boolean;
   } = {},
 ) {
   const { doc } = stubFakeDom();
-  const controls = mountControls(doc);
+  const controls = options.withoutControls
+    ? ({} as ReturnType<typeof mountControls>)
+    : mountControls(doc);
   const store = options.store ?? new Map<string, unknown>();
 
   const fake = makeFakeBrowser(store);
@@ -173,6 +177,19 @@ async function bootPopup(
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.resetModules();
+});
+
+describe("popup — the markup itself", () => {
+  it("opens without throwing when no control is on the page", async () => {
+    // Every control is looked up defensively, so a renamed or missing element is
+    // a control that does nothing rather than a popup that fails to open — the
+    // one failure mode that leaves the Wajib Pajak with no way to reach any
+    // setting at all.
+    const booted = await bootPopup({ withoutControls: true });
+
+    expect(booted.writes).toEqual([]);
+    expect(booted.removals).toEqual([]);
+  });
 });
 
 describe("popup — export mode", () => {

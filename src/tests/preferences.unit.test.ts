@@ -17,6 +17,7 @@ import {
   FILENAME_PREFIX_STORAGE_KEY,
   NOTIFY_ON_COMPLETE_STORAGE_KEY,
   ONE_CLICK_EXPORT_STORAGE_KEY,
+  PREFERENCE_FIELDS,
   PREFERENCE_STORAGE_KEYS,
 } from "../shared/extension-preferences";
 
@@ -154,6 +155,31 @@ describe("readPreferences", () => {
     const { mod } = await loadPreferencesModule(new Map(), { throws: true });
 
     await expect(mod.readPreferences()).resolves.toEqual(mod.DEFAULT_PREFERENCES);
+  });
+});
+
+describe("the one preference table", () => {
+  it("covers every preference this module carries, in both directions", async () => {
+    // The table is the only place a field is declared (ADR-0037). A field in
+    // one and not the other is a value either read by nothing or stored by
+    // nothing, and this pair of directions is what catches it.
+    const { mod } = await loadPreferencesModule(new Map());
+
+    expect(Object.keys(mod.DEFAULT_PREFERENCES).sort()).toEqual(
+      Object.keys(PREFERENCE_FIELDS).sort(),
+    );
+    for (const [field, spec] of Object.entries(PREFERENCE_FIELDS)) {
+      expect(
+        mod.DEFAULT_PREFERENCES[field as keyof typeof mod.DEFAULT_PREFERENCES],
+        field,
+      ).toEqual(spec.defaultValue());
+    }
+  });
+
+  it("reads an unwritten snapshot as exactly the documented defaults", async () => {
+    const { mod } = await loadPreferencesModule(new Map());
+
+    expect(mod.normalizePreferences({})).toEqual(mod.DEFAULT_PREFERENCES);
   });
 });
 
