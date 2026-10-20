@@ -4,6 +4,7 @@
 
 import { extractYMD } from "./tax-date";
 import { debugWarn } from "./debug";
+import { rowInvoiceNumber, rowName } from "./row-name";
 
 export interface WithholdingSlip {
   WithholdingSlipsNumber: string;
@@ -74,7 +75,10 @@ export function generateWithholdingFilename(item: WithholdingSlip): string {
     }
   }
 
-  const nomor = (item.WithholdingSlipsNumber || "TANPA_NOMOR").replace(
+  // The slip number, in either spelling the portal carries it — the same
+  // ladder the panel reports the slip under, so a failure report and the file
+  // it names cannot disagree about which slip failed.
+  const nomor = (rowName(item, "WITHHOLDING_SLIPS") || "TANPA_NOMOR").replace(
     /[/\\?%*:| "<>]/g,
     "-",
   );
@@ -92,11 +96,14 @@ export function generateOutputTaxFilename(
   item: PdfItem,
   reference?: string,
 ): string {
-  const ref = (reference || item.Reference || "TANPA_REFERENSI")
+  // The row's name and the invoice it belongs to — the two lists the panel
+  // reports the row under, so a failure report and the file it names cannot
+  // disagree about which row failed.
+  const ref = (reference || rowName(item, "OUTPUT_TAX") || "TANPA_REFERENSI")
     .replace(/[/\\?%*:| "<>]/g, "-")
     .trim();
 
-  const invoiceNumber = (item.LetterNumber || item.TaxInvoiceNumber || "000")
+  const invoiceNumber = (rowInvoiceNumber(item, "OUTPUT_TAX") || "000")
     .replace(/[/\\?%*:| "<>]/g, "-")
     .trim();
 
@@ -107,11 +114,11 @@ export function generateOutputTaxFilename(
  * Formats Input Tax PDF filename
  */
 export function generateInputTaxFilename(item: PdfItem): string {
-  const ref = (item.Reference || "TANPA_REFERENSI")
+  const ref = (rowName(item, "INPUT_TAX") || "TANPA_REFERENSI")
     .replace(/[/\\?%*:| "<>]/g, "-")
     .trim();
 
-  const invoiceNumber = (item.TaxInvoiceNumber || item.LetterNumber || "000")
+  const invoiceNumber = (rowInvoiceNumber(item, "INPUT_TAX") || "000")
     .replace(/[/\\?%*:| "<>]/g, "-")
     .trim();
 
@@ -122,21 +129,11 @@ export function generateInputTaxFilename(item: PdfItem): string {
  * Formats Return PDF filename (output return or input return)
  */
 export function generateReturnFilename(item: PdfItem): string {
-  const ref = (
-    item.ReturnNumber ||
-    item.Reference ||
-    item.DocumentNumber ||
-    "TANPA_REFERENSI"
-  )
+  const ref = (rowName(item, "OUTPUT_RETURN") || "TANPA_REFERENSI")
     .replace(/[/\\?%*:| "<>]/g, "-")
     .trim();
 
-  const invoiceNumber = (
-    item.TaxInvoiceNumber ||
-    item.LetterNumber ||
-    item.ReturnInvoiceNumber ||
-    "000"
-  )
+  const invoiceNumber = (rowInvoiceNumber(item, "OUTPUT_RETURN") || "000")
     .replace(/[/\\?%*:| "<>]/g, "-")
     .trim();
 
@@ -155,13 +152,7 @@ export function generateGenericPdfFilename(
     .trim();
 
   const ref = String(
-    item.Reference ||
-      item.TaxInvoiceNumber ||
-      item.LetterNumber ||
-      item.ReturnNumber ||
-      item.DocumentNumber ||
-      item.WithholdingSlipsNumber ||
-      "TANPA_NOMOR",
+    rowName(item, source) || "TANPA_NOMOR",
   )
     .replace(/[/\\?%*:| "<>]/g, "-")
     .trim();

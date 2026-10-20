@@ -154,9 +154,13 @@ _Avoid_: full check, all-rows mode
 The value-accuracy tab of the panel (next to the Comparer): every scraped row's DPP, DPP Nilai Lain, and PPN are tested against the chosen **Acuan**; only rows that differ or carry incomplete data are ever listed. It runs on the four e-Faktur PPN grids — both invoice grids and both Retur grids — because it tests ONE row's arithmetic at a time, never a match between rows, and a retur nota carries the same three amounts (ADR-0024).
 _Avoid_: accuracy check, validation, audit
 
-**Row identity** (of a result row):
+**Row identity** (of a result grid):
 What names one row of a result grid: the **Referensi** (or the No. Faktur where it is empty) on the two PPN invoice grids, the **NO RETUR** (or the No. Faktur where it is empty) on the two Retur grids, which have no Referensi column at all. A page fact of its own — decided per grid, and shared by the panel's table and the exported sheet so the two cannot name a row differently. Not the **Deduplication key** (which field makes two scraped rows the same row) and not `referenceIsIdentity` (whether a Referensi can key a match).
 _Avoid_: row key, unique id, primary key
+
+**Row name** (of a scraped row):
+What names one row of a SCRAPED grid: the label the panel reports a failed download under, and the name the downloaded file carries. One ladder per export source, so the two cannot disagree — a run that says "4 gagal" names four rows the downloads folder also holds, and a failure report and the file it names cannot disagree about which row failed. A grid's row has two names in a file: its own (a Referensi, a return number, a slip number) and the invoice it belongs to. Not the **Row identity** (that names a row of a *result grid*) and not the **Deduplication key** (that makes two scraped rows the same row).
+_Avoid_: row identity, row key, invoice identity
 
 **Counterparty**:
 The other party on a row the Checker lists: the **Buyer** on PPN Keluaran and on Retur PPN Keluaran, the **Seller** on PPN Masukan and on Retur PPN Masukan. The panel's column header and the exported sheet's header both follow it. Which party it is changes no arithmetic — only the words.

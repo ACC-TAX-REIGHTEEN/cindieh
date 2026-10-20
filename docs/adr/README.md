@@ -45,3 +45,4 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0039 | [The comparer's reverse check has one scope: the given days, or the whole grid](0039-the-reverse-check-has-one-scope.md) | Accepted |
 | 0040 | [A sweep carries its plan](0040-a-sweep-carries-its-plan.md) | Accepted |
 | 0041 | [A Grid request's body is read by one module](0041-one-reader-for-a-grid-request-body.md) | Accepted |
+| 0042 | [A scraped row has one name, and it is the name its file carries](0042-a-scraped-row-has-one-name.md) | Accepted |

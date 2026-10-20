@@ -9,9 +9,30 @@ import {
   handlePdfDownload,
   generateWithholdingFilename,
   generateOutputTaxFilename,
+  generateInputTaxFilename,
+  generateReturnFilename,
   generateGenericPdfFilename,
+  type PdfItem,
   type WithholdingSlip,
 } from "../content/downloader";
+import { rowLabel } from "../content/row-name";
+
+/** The file name a row's download lands as, without touching the DOM. */
+function filenameFor(row: Record<string, unknown>, source: string): string {
+  switch (source) {
+    case "OUTPUT_TAX":
+      return generateOutputTaxFilename(row as PdfItem);
+    case "INPUT_TAX":
+      return generateInputTaxFilename(row as PdfItem);
+    case "OUTPUT_RETURN":
+    case "INPUT_RETURN":
+      return generateReturnFilename(row as PdfItem);
+    case "WITHHOLDING_SLIPS":
+      return generateWithholdingFilename(row as WithholdingSlip);
+    default:
+      return generateGenericPdfFilename(row as PdfItem, source);
+  }
+}
 import { stubFakeDom, type FakeDoc, type FakeEl } from "./__mocks__/fake-dom";
 
 // ---------------------------------------------------------------------------
@@ -121,6 +142,19 @@ describe("generateWithholdingFilename", () => {
     const filename = generateWithholdingFilename(item);
 
     expect(filename).toBe("06-2025-TANPA_NOMOR-PT Test.pdf");
+  });
+
+  it("names a slip by the SINGULAR spelling too, the way the panel reports it", () => {
+    // The bulk-PDF flow carries the singular spelling and the grid capture the
+    // plural one. The file used to read only the plural one, so a slip that
+    // arrived singular was reported as "BP-001" and filed as "TANPA_NOMOR".
+    const item = {
+      WithholdingSlipNumber: "BP-001",
+      WithholdingSlipsDate: "2025-06-01T00:00:00+07:00",
+      EmployerName: "PT Test",
+    } as unknown as WithholdingSlip;
+
+    expect(generateWithholdingFilename(item)).toBe("06-2025-BP-001-PT Test.pdf");
   });
 
   it("uses TANPA_NAMA when EmployerName is missing", () => {
@@ -403,5 +437,46 @@ describe("downloadBlob / handlePdfDownload (DOM)", () => {
     expect(() => handlePdfDownload("", { Reference: "X" }, "OUTPUT_TAX")).toThrow();
     expect(createObjectURL).not.toHaveBeenCalled();
     expect(created).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The panel and the downloads folder
+// ---------------------------------------------------------------------------
+// A bulk-download row is named TWICE: in the panel's progress line and failure
+// list, and in the file it lands as. The download ORDER is the only thing that
+// ties a failure back to a row once the run is over, so the label the panel
+// prints has to be a token the file also carries. These are the rows that used
+// to break it, each read through BOTH ladders.
+
+describe("the label the panel reports is a token the file carries", () => {
+  it.each([
+    [
+      "a retur carrying a Referensi AND a return number",
+      { Reference: "REF-001", ReturnNumber: "RET-001", TaxInvoiceNumber: "010.1" },
+      "OUTPUT_RETURN",
+    ],
+    [
+      "a Bukti Potong carrying only the singular slip number",
+      {
+        WithholdingSlipNumber: "BP-001",
+        WithholdingSlipsDate: "2026-01-31T00:00:00+07:00",
+        EmployerName: "PT Contoh",
+      },
+      "WITHHOLDING_SLIPS",
+    ],
+    [
+      "a PPN Keluaran carrying no Referensi",
+      { TaxInvoiceNumber: "TAX-999", LetterNumber: "INV-001" },
+      "OUTPUT_TAX",
+    ],
+    [
+      "a PPN Masukan carrying no Referensi",
+      { TaxInvoiceNumber: "TAX-999", LetterNumber: "INV-001" },
+      "INPUT_TAX",
+    ],
+  ])("%s", (_label, row, source) => {
+    const filename = filenameFor(row, source);
+    expect(filename).toContain(rowLabel(row, source));
   });
 });

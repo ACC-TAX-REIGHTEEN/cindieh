@@ -373,6 +373,13 @@
           <td><span class="status-pill status-accepted">Accepted</span></td>
           <td>04</td>
         </tr>
+        <tr>
+          <td><code>0042</code></td>
+          <td>Baris hasil scrape punya satu nama — yang sama dengan nama berkasnya</td>
+          <td><a href="../../../docs/adr/0042-a-scraped-row-has-one-name.md">A scraped row has one name, and it is the name its file carries</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>04</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -471,16 +478,17 @@
 
   <aside class="pull">
     <span class="label">Indeks kini lengkap</span>
-    <p>Deretan ADR menutup tanpa celah: 0001 sampai 0041, dan indeks resmi
+    <p>Deretan ADR menutup tanpa celah: 0001 sampai 0042, dan indeks resmi
     <a href="../../../docs/adr/README.md"><code>docs/adr/README.md</code></a> memuat semuanya. Empat
     keputusan terakhir menutup tiga hal yang sebelumnya tersebar: batas konteks dunia MAIN
     (ADR-0035), tampilan tiap tab panel (ADR-0036), daftar preferensi (ADR-0037), dan pemasangan
     halaman (ADR-0038). Yang terbaru menutup masalah kecil tapi nyata di Komparator: satu argumen
     yang dua kali kerja membuat pemeriksaan terbalik tak bisa diperlebar, hanya dimatikan
-    (ADR-0039). Dua yang terakhir menutup dua hal yang sebelumnya tersebar di beberapa modul: data
-    yang dibawa melintasi dua dunia (rencana sweep) dan body yang dibaca dari satu permintaan grid —
-    masing-masing harus punya satu pembaca, bukan beberapa pembaca yang bisa berbeda jawaban
-    (ADR-0040, ADR-0041). Semuanya perlu dibaca
+    (ADR-0039). Tiga yang terakhir menutup tiga hal yang tersebar di beberapa modul: data yang
+    dibawa melintasi dua dunia (rencana sweep), body yang dibaca dari satu permintaan grid, dan
+    baris yang dinamai dua kali — di panel dan di nama berkasnya — masing-masing harus punya satu
+    pembaca dan satu tangga, bukan beberapa yang bisa berbeda jawaban (ADR-0040, ADR-0041,
+    ADR-0042). Semuanya perlu dibaca
     bersama bagian kode yang mereka ubah, bukan sebagai catatan tambahan yang terpisah.</p>
   </aside>
 </section>

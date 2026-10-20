@@ -242,6 +242,11 @@
           <td>row key, unique id, primary key</td>
         </tr>
         <tr>
+          <td><strong>Row name</strong> (baris hasil scrape)</td>
+          <td>Nama yang dipakai satu baris hasil scrape: label yang dilaporkan panel untuk unduhan yang gagal, dan nama berkas yang diunduh. Satu tangga per sumber ekspor, sehingga keduanya tidak bisa berbeda — “4 gagal” menyebutkan empat baris yang juga ada di folder unduhan. Satu baris punya dua nama dalam berkasnya: namanya sendiri dan faktur yang terkait. Bukan <strong>Row identity</strong> (yang menamai baris grid <em>hasil</em>) dan bukan <strong>Deduplication key</strong> (yang membuat dua baris hasil scrape menjadi baris yang sama).</td>
+          <td>row identity, row key, invoice identity</td>
+        </tr>
+        <tr>
           <td><strong>Counterparty</strong></td>
           <td>Pihak lain pada baris yang dicatat Pengecekan: <strong>Pembeli</strong> di PPN Keluaran dan Retur PPN Keluaran, <strong>Penjual</strong> di PPN Masukan dan Retur PPN Masukan. Tidak mengubah aritmetika — hanya kata-katanya.</td>
           <td>menyebut counterparty PPN Masukan sebagai “pembeli”</td>

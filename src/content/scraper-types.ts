@@ -82,7 +82,7 @@ export interface ScrapeComplete {
   /**
    * Names of the individual rows whose download failed, in run order. A bare
    * count ("4 gagal") is not actionable across a 300-file run, so the producer
-   * names each one — via describePdfItem(), the same label the progress line
+   * names each one — via row-name.rowLabel(), the same label the progress line
    * used while the run was in flight. Absent means the producer does not name
    * them: a data scrape downloads nothing per row.
    */

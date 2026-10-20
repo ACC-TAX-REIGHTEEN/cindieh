@@ -13,7 +13,8 @@ import { extractFilenameHintFromBody } from "./page-context";
 import type { ExportSource } from "./page-context";
 import { debugLog, debugError } from "./debug";
 import { sendScrapeComplete } from "./scrape-result-transfer";
-import { mergeRows, collectFields, describePdfItem } from "./scraper-helpers";
+import { mergeRows, collectFields } from "./scraper-helpers";
+import { rowLabel } from "./row-name";
 import {
   xhrRequest as xhrRequestFn,
   xhrRequestByInvoice as xhrRequestByInvoiceFn,
@@ -289,7 +290,7 @@ export async function downloadBulkWithholdingPdf(
       if (index >= total) return null;
       const row = allData[index];
       index++;
-      return { value: { row, name: describePdfItem(row, "WITHHOLDING_SLIPS") }, index, total };
+      return { value: { row, name: rowLabel(row, "WITHHOLDING_SLIPS") }, index, total };
     },
     reportWhen: "before",
     status: (item) => `Mengunduh PDF ${item.index}/${total}: ${item.value.name}`,
@@ -586,7 +587,7 @@ export async function startPdfDownload(
       if (index >= total) return null;
       const row = data[index];
       index++;
-      return { value: { row, name: describePdfItem(row, source) }, index, total };
+      return { value: { row, name: rowLabel(row, source) }, index, total };
     },
     reportWhen: "before",
     status: (item) => `Mengunduh PDF ${item.index}/${total}: ${item.value.name}`,

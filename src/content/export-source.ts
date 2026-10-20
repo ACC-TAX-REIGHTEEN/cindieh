@@ -30,6 +30,7 @@
 // ============================================================
 
 import type { ExportSource } from "./page-context";
+import { WITHHOLDING_SLIP_NUMBER_FIELDS } from "./row-name";
 import { extractYear, extractMonth, extractYMD, formatDate, formatIsoDateTime } from "./tax-date";
 
 type Row = Record<string, unknown>;
@@ -196,15 +197,15 @@ const INPUT_RETURN_COLUMNS: readonly ExportColumn[] = [
 
 // Bukti Potong is the one grid whose cleaned column set is not pinned by a
 // settled field list. What the rest of the code does confirm: the slip number
-// arrives as `WithholdingSlipNumber` for the bulk-PDF flow (scraper-xhr.ts) but
-// as `WithholdingSlipsNumber` for the PDF filename builder (downloader.ts), the
-// slip date is `WithholdingSlipsDate`, and the withholding agent is
-// `EmployerName` / `TaxIdentificationNumber`. Hence two spellings for the
-// number, and one date seeding three columns because a slip carries no separate
+// arrives under EITHER of two spellings, the slip date is `WithholdingSlipsDate`,
+// and the withholding agent is `EmployerName` / `TaxIdentificationNumber`. Hence
+// two spellings for the number — read from one list, so the exported column and
+// the name the file carries cannot disagree about which spelling a slip has —
+// and one date seeding three columns because a slip carries no separate
 // tax-period field. The "Asli" export mode still dumps every captured field
 // verbatim for anyone who needs more than these six columns.
 const WITHHOLDING_COLUMNS: readonly ExportColumn[] = [
-  col("NO BUKTI POTONG", ["WithholdingSlipsNumber", "WithholdingSlipNumber"]),
+  col("NO BUKTI POTONG", WITHHOLDING_SLIP_NUMBER_FIELDS),
   col("TANGGAL", "WithholdingSlipsDate", date),
   col("MASA", "WithholdingSlipsDate", dateMonth),
   col("TAHUN", "WithholdingSlipsDate", dateYear),
