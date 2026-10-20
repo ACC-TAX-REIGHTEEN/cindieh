@@ -8,6 +8,7 @@
 // measured spellings, because a lookalike is not a measurement.
 import { describe, expect, it } from "vitest";
 import type { ExportSource } from "../content/page-context";
+import { GRID_FILTER_NAMES } from "../content/grid-request";
 import {
   MEASURED_SWEEP_FILTERS,
   batchMonthCount,
@@ -118,6 +119,15 @@ describe("the measured sweep-filter table", () => {
     });
     expect(PERIOD_PROPERTY).not.toBe("");
     expect(YEAR_PROPERTY).not.toBe("");
+  });
+
+  it("names the filters the FILE's name is read from, so the two cannot disagree", () => {
+    // The sweep's SCOPE finds the period by its measured name; the FILE's name
+    // finds it by the names in grid-request.ts. If a measured name were not
+    // among them, the two would answer differently about the SAME body — the
+    // file named after one filter while the rows came from another.
+    expect(GRID_FILTER_NAMES.period).toContain(PERIOD_PROPERTY);
+    expect(GRID_FILTER_NAMES.year).toContain(YEAR_PROPERTY);
   });
 
   it.each(UNMEASURED)("has no row for %s, which is what refuses the sweep", (source) => {

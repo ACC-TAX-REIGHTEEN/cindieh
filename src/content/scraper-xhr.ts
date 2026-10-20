@@ -7,6 +7,7 @@
 
 import { buildEfakturDownloadUrl, buildEfakturPdfBody } from "./scraper-helpers";
 import { abortError } from "./scraper-context";
+import { filterEntry, filtersKeyOf, parseGridBody } from "./grid-request";
 import { unwrapPdfData, isSuccessfulPdfResponse } from "./scraper-pdf";
 import type { CapturedRequest } from "./scraper-types";
 
@@ -236,28 +237,16 @@ export function xhrRequestByInvoice(
   timeout: number,
   signal?: AbortSignal,
 ): Promise<Record<string, unknown>[]> {
-  let filterKey: "Filters" | "filters" = "Filters";
-  try {
-    const parsed = JSON.parse(captured.rawBody) as Record<string, unknown>;
-    filterKey = "Filters" in parsed ? "Filters" : "filters";
-  } catch {
-    // Invalid or empty rawBody — fall back to the standard "Filters" key;
-    // makeXhrRequest handles the unusable body defensively as well.
-  }
+  // The body is read for the KEY it carries its filters under, and written back
+  // under that same key: answering a `filters` body with `Filters` would send
+  // the portal a body whose filter it never received.
+  const filterKey = filtersKeyOf(parseGridBody(captured.rawBody));
   return makeXhrRequest(
     captured,
     {
       First: 0,
       Rows: 10,
-      [filterKey]: [
-        {
-          PropertyName: "TaxInvoiceNumber",
-          Value: invoiceNumber,
-          MatchMode: "equals",
-          CaseSensitive: false,
-          AsString: false,
-        },
-      ],
+      [filterKey]: [filterEntry("TaxInvoiceNumber", invoiceNumber)],
     },
     timeout,
     signal,

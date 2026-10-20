@@ -9,7 +9,7 @@
 // regression — new logic shipping without tests — does. Raise them as coverage
 // improves; never lower them to make a red build green.
 //
-// Measured 2026-10-20 on the whole suite (2051 tests). The modules that hold
+// Measured 2026-10-20 on the whole suite (2085 tests). The modules that hold
 // the baseline down are recorded in AGENTS.md so a low number reads as a known
 // gap rather than a mystery.
 
@@ -90,10 +90,12 @@ export default defineConfig({
       // and now 95.20/90.10/93.54/96.21 with the MAIN world's install wiring
       // taking the page as one injected env (ADR-0038): the adapter is 100%
       // and the wiring it used to be mixed into can finally be driven. The
-      // floors stay where they are, because the measurement is flat: the
       // sweep's arithmetic MOVED from scrape-batch.ts into sweep.ts (ADR-0040),
-      // which is 100% on its own terms, and the aggregate is unchanged at
-      // 95.19/90.12/93.56/96.22 on 2051 tests.
+      // which is 100% on its own terms, and the Grid request's body MOVED into
+      // grid-request.ts (ADR-0041), which is 100% too — one module now reads
+      // the body four readers used to read four ways. The measured numbers are
+      // 95.20/90.42/93.58/96.22 on 2085 tests, and the branches and functions
+      // floors move with them.
       //
       // The cushion is deliberately ~0.4 points, the same gap the floors have
       // always kept: enough that ordinary churn cannot redden the build, small
@@ -108,8 +110,8 @@ export default defineConfig({
       // it by testing the seam underneath.
       thresholds: {
         statements: 94.8,
-        branches: 89.7,
-        functions: 93.1,
+        branches: 90.0,
+        functions: 93.2,
         lines: 95.8,
       },
     },

@@ -513,6 +513,30 @@ describe("extractFilenameHintFromBody — OUTPUT_TAX", () => {
     const body = makeBody([]);
     expect(extractFilenameHintFromBody(body, "OUTPUT_TAX")).toBeUndefined();
   });
+
+  it("names the file after the PERIOD filter, not after a filter that resembles it", () => {
+    // The name-hint door ADR-0019 closed for the sweep's SCOPE, still open for
+    // the file's NAME: the first filter whose name merely CONTAINS "period"
+    // answered the question, so a body carrying `TaxInvoicePeriodStatus`
+    // BEFORE `TaxInvoicePeriod` named the file after the status while the rows
+    // came from the period.
+    const body = makeBody([
+      { PropertyName: "TaxInvoicePeriodStatus", Value: "CREATED" },
+      { PropertyName: "TaxInvoicePeriod", Value: "TD.00708" },
+    ]);
+    // The period filter's value, with the punctuation the filename drops — and
+    // emphatically NOT the status filter's value.
+    expect(extractFilenameHintFromBody(body, "OUTPUT_TAX")).toBe("TD00708");
+    expect(extractFilenameHintFromBody(body, "OUTPUT_TAX")).not.toContain("CREATED");
+  });
+
+  it("reads no hint from a body whose only period-ish filter is a different one", () => {
+    // The safe failure: a name this module does not know finds NOTHING, and the
+    // file then takes its period from the rows it holds — rather than being
+    // named after a filter the rows never came from.
+    const body = makeBody([{ PropertyName: "TaxInvoicePeriodStatus", Value: "CREATED" }]);
+    expect(extractFilenameHintFromBody(body, "OUTPUT_TAX")).toBeUndefined();
+  });
 });
 
 describe("extractFilenameHintFromBody — INPUT_TAX", () => {

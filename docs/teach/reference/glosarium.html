@@ -126,7 +126,7 @@
         </tr>
         <tr>
           <td><strong>Filename hint</strong></td>
-          <td>Fragmen yang diambil dari filter permintaan grid (masa pajak, tahun) dan menjadi benih nama berkas ekspor dan PDF.</td>
+          <td>Fragmen yang diambil dari filter permintaan grid (masa pajak, tahun) dan menjadi benih nama berkas ekspor dan PDF. Filter dicari dari nama filter yang UTUH, bukan dari petunjuk (ADR-0041).</td>
           <td>filename, name hint</td>
         </tr>
         <tr>
@@ -138,6 +138,11 @@
           <td><strong>Period sweep</strong> (batch masa)</td>
           <td>Mengambil setiap masa pajak satu tahun dari grid PPN e-faktur sebagai SATU Run, sehingga barisnya berbagi satu himpunan dedupe dan tiba sebagai satu berkas. Hanya grid yang filter periode dan taunnya sudah terukur boleh menyapu (ADR-0019).</td>
           <td>batch export, year export, multi-month scrape</td>
+        </tr>
+        <tr>
+          <td><strong>Rencana sweep</strong></td>
+          <td>Kode-kode periode yang dicakup sebuah sweep — yang diminta, bukan yang terkumpul. Ia ikut dibawa bersama hitungan per-masa, bukan dibangun ulang darinya: membangun ulang mengasumsikan hitungan pertama adalah bulan 01, dan setengah sweep yang dilanjutkan justru mulai dari bulan yang sedang dilanjutkan (ADR-0040). Renannyalah yang menentukan masa yang masih hilang, dan gabungan rencana dua setengah itulah setahunnya.</td>
+          <td>planned count, year plan, period plan</td>
         </tr>
         <tr>
           <td><strong>PDF download</strong></td>
@@ -285,7 +290,7 @@
         </tr>
         <tr>
           <td><strong>Grid request</strong></td>
-          <td>Permintaan daftar milik portal (URL + body berisi filter dan halaman) yang ditangkap sekali lalu diputar ulang dengan <code>First</code>/<code>Rows</code> maju untuk scrape sebuah grid.</td>
+          <td>Permintaan daftar milik portal (URL + body berisi filter dan halaman) yang ditangkap sekali lalu diputar ulang dengan <code>First</code>/<code>Rows</code> maju untuk scrape sebuah grid. BODYNya punya satu bentuk — larik <code>Filters</code> — dan <code>grid-request.ts</code> adalah satu-satunya modul yang membaca atau menulisnya (ADR-0041). Sebuah filter dicari berdasarkan nama UTUH, bukan petunjuk: nama yang sekadar mirip gagal dengan unsafe (nama berkas berasal dari filter yang tidak pernah jadi sumber barisnya), sedangkan nama yang tak dikenal gagal dengan safe (berkas mengambil periodenya dari barisnya sendiri).</td>
           <td>request template, captured request</td>
         </tr>
         <tr>

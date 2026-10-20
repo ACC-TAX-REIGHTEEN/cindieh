@@ -46,9 +46,16 @@
 // ============================================================
 
 import type { ExportSource } from "./page-context";
-
-/** The body key the portal's grid requests carry their filters under. */
-const FILTERS_KEY = "Filters";
+import {
+  findFilter,
+  filterName,
+  filterRawValue,
+  filterValue,
+  filtersKeyOf,
+  filtersOf,
+  parseGridBody,
+  type GridFilter,
+} from "./grid-request";
 
 /**
  * One grid's sweep filters, as MEASURED off the live portal.
@@ -106,28 +113,6 @@ export function batchMonthCount(requested: unknown): number | undefined {
 /** A four-digit tax year — the only year shape this module accepts. */
 const YEAR_SHAPE = /^(20|19)\d{2}$/;
 
-/** One entry of the portal's `body.Filters` array. */
-interface GridFilter {
-  PropertyName?: string;
-  Value?: unknown;
-  MatchMode?: string;
-  CaseSensitive?: boolean;
-}
-
-function parseBody(rawBody: string): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(rawBody) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function filtersOf(body: Record<string, unknown>): GridFilter[] {
-  const filters = body[FILTERS_KEY];
-  return Array.isArray(filters) ? (filters as GridFilter[]) : [];
-}
-
 /**
  * Index of the filter that selects the tax period, or -1.
  *
@@ -136,7 +121,7 @@ function filtersOf(body: Record<string, unknown>): GridFilter[] {
  * filter are carried through untouched by `overridesForPeriod`.
  */
 function periodFilterIndex(filters: GridFilter[], measurement: SweepFilterMeasurement): number {
-  return filters.findIndex((f) => f?.PropertyName === measurement.period);
+  return filters.findIndex((f) => filterName(f).toLowerCase() === measurement.period.toLowerCase());
 }
 
 /**
@@ -151,8 +136,8 @@ function yearSide(
   filters: GridFilter[],
   measurement: SweepFilterMeasurement,
 ): SweepFilterSide | null {
-  const filter = filters.find((f) => f?.PropertyName === measurement.year);
-  return filter ? { name: measurement.year, value: String(filter.Value ?? "") } : null;
+  const filter = findFilter(filters, measurement.year);
+  return filter ? { name: measurement.year, value: filterValue(filter) } : null;
 }
 
 /**
@@ -226,7 +211,7 @@ export function overridesForPeriod(
   rows: number,
   source: ExportSource | null | undefined,
 ): Record<string, unknown> {
-  const body = parseBody(capturedRawBody);
+  const body = parseGridBody(capturedRawBody);
   const filters = filtersOf(body);
   const measurement = measuredSweepFilters(source);
   const index = measurement ? periodFilterIndex(filters, measurement) : -1;
@@ -236,7 +221,10 @@ export function overridesForPeriod(
     );
   }
   const next = filters.map((f, i) => (i === index ? { ...f, Value: period } : { ...f }));
-  return { [FILTERS_KEY]: next, First: first, Rows: rows };
+  // Written back under the key the body was read from: a body that spells it
+  // `filters` must not be answered with `Filters`, because the portal would
+  // then read a body whose period filter it never received.
+  return { [filtersKeyOf(body)]: next, First: first, Rows: rows };
 }
 
 /** The period the captured request is currently filtered to, or null. */
@@ -244,7 +232,7 @@ export function capturedPeriod(
   capturedRawBody: string,
   source: ExportSource | null | undefined,
 ): string | null {
-  const filters = filtersOf(parseBody(capturedRawBody));
+  const filters = filtersOf(parseGridBody(capturedRawBody));
   const measurement = measuredSweepFilters(source);
   if (!measurement) return null;
   const index = periodFilterIndex(filters, measurement);
@@ -268,7 +256,7 @@ export function capturedYear(
   capturedRawBody: string,
   source: ExportSource | null | undefined,
 ): string | null {
-  const filters = filtersOf(parseBody(capturedRawBody));
+  const filters = filtersOf(parseGridBody(capturedRawBody));
   const measurement = measuredSweepFilters(source);
   if (!measurement) return null;
   const side = yearSide(filters, measurement);
@@ -302,8 +290,8 @@ export interface SweepFilterReading {
 
 function sideOf(filter: GridFilter | undefined): SweepFilterSide {
   return {
-    name: String(filter?.PropertyName ?? ""),
-    value: String(filter?.Value ?? ""),
+    name: filterName(filter),
+    value: String(filterRawValue(filter) ?? ""),
   };
 }
 
@@ -319,7 +307,7 @@ export function readSweepFilters(
   capturedRawBody: string,
   source: ExportSource | null | undefined,
 ): SweepFilterReading {
-  const body = parseBody(capturedRawBody);
+  const body = parseGridBody(capturedRawBody);
   const filters = filtersOf(body);
   const measurement = measuredSweepFilters(source);
   const periodAt = measurement ? periodFilterIndex(filters, measurement) : -1;
@@ -407,7 +395,7 @@ export function batchScopeError(
   const measurement = measuredSweepFilters(source);
   if (!measurement) return UNMEASURED_GRID_MESSAGE;
 
-  const filters = filtersOf(parseBody(capturedRawBody));
+  const filters = filtersOf(parseGridBody(capturedRawBody));
   const periodAt = periodFilterIndex(filters, measurement);
   if (periodAt < 0) {
     return `Permintaan grid ini tidak punya filter ${measurement.period}, jadi ekspor satu tahun tidak bisa dijalankan.`;

@@ -44,3 +44,4 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0038 | [The MAIN world's install wiring takes the page as one injected environment](0038-the-main-worlds-install-wiring-takes-an-env.md) | Accepted |
 | 0039 | [The comparer's reverse check has one scope: the given days, or the whole grid](0039-the-reverse-check-has-one-scope.md) | Accepted |
 | 0040 | [A sweep carries its plan](0040-a-sweep-carries-its-plan.md) | Accepted |
+| 0041 | [A Grid request's body is read by one module](0041-one-reader-for-a-grid-request-body.md) | Accepted |

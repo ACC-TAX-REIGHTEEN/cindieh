@@ -1,4 +1,5 @@
 import { extractYear, extractMonth } from "./tax-date";
+import { GRID_FILTER_NAMES, filterValueOf, filtersOf, parseGridBody } from "./grid-request";
 
 export type ExportSource =
 	| "OUTPUT_TAX"
@@ -12,13 +13,6 @@ export type ExportSource =
 	| "PPH_21_L2"
 	| "PPH_21_L3"
 	| "WITHHOLDING_SLIPS";
-
-type FilterLike = {
-	PropertyName?: string;
-	propertyName?: string;
-	Value?: unknown;
-	value?: unknown;
-};
 
 function normalizeUrl(url: string): string {
 	return url.toLowerCase();
@@ -399,73 +393,44 @@ export function inferCapturedSource(requestUrl: string, pageUrl = location.href)
 	return getPageExportSource(pageUrl);
 }
 
-function getFiltersFromBody(body: Record<string, unknown>): FilterLike[] {
-	const filters = body.Filters || body.filters;
-	return Array.isArray(filters) ? (filters as FilterLike[]) : [];
-}
-
-function getFilterName(filter: FilterLike): string {
-	return String(filter.PropertyName || filter.propertyName || "").toLowerCase();
-}
-
-function getFilterValue(filter: FilterLike): string {
-	const value = filter.Value ?? filter.value ?? "";
-	return String(value).trim();
-}
-
-function findFirstFilterValue(filters: FilterLike[], patterns: string[]): string {
-	for (const filter of filters) {
-		const name = getFilterName(filter);
-		if (patterns.some((pattern) => name.includes(pattern))) {
-			const value = getFilterValue(filter);
-			if (value) return value;
-		}
-	}
-	return "";
-}
-
 export function extractFilenameHintFromBody(
 	rawBody: string,
 	source: ExportSource,
 ): string | undefined {
-	try {
-		const body = JSON.parse(rawBody) as Record<string, unknown>;
-		const filters = getFiltersFromBody(body);
+	const body = parseGridBody(rawBody);
+	const filters = filtersOf(body);
 
-		if (source === "INPUT_TAX") {
-			const periodValue = findFirstFilterValue(filters, ["period", "masa"]);
-			const monthValue =
-				findFirstFilterValue(filters, ["month", "bulan"]) ||
-				periodValue;
-			const yearValue =
-				findFirstFilterValue(filters, ["year", "tahun"]) ||
-				periodValue;
+	if (source === "INPUT_TAX") {
+		const periodValue = filterValueOf(filters, GRID_FILTER_NAMES.period);
+		const monthValue =
+			filterValueOf(filters, GRID_FILTER_NAMES.month) || periodValue;
+		const yearValue =
+			filterValueOf(filters, GRID_FILTER_NAMES.year) || periodValue;
 
-			const month = extractMonth(monthValue);
-			const year = extractYear(yearValue);
-			if (month && year) return `${year}_${month}`;
-			return undefined;
-		}
-
-		if (source === "OUTPUT_RETURN" || source === "INPUT_RETURN") {
-			const value =
-				findFirstFilterValue(filters, ["year", "tahun", "period", "masa"]) ||
-				String(body.TaxYear || body.Year || body.Tahun || "");
-			const year = extractYear(value);
-			return year || undefined;
-		}
-
-		if (
-			source === "OUTPUT_TAX" ||
-			source === "SPT_A2" ||
-			source === "SPT_B2" ||
-			source.startsWith("PPH_21_")
-		) {
-			const value = findFirstFilterValue(filters, ["period", "masa"]);
-			return value ? value.replace(/[^a-zA-Z0-9_-]/g, "") : undefined;
-		}
-	} catch {
+		const month = extractMonth(monthValue);
+		const year = extractYear(yearValue);
+		if (month && year) return `${year}_${month}`;
 		return undefined;
+	}
+
+	if (source === "OUTPUT_RETURN" || source === "INPUT_RETURN") {
+		const value =
+			filterValueOf(filters, [
+				...GRID_FILTER_NAMES.year,
+				...GRID_FILTER_NAMES.period,
+			]) || String(body?.TaxYear || body?.Year || body?.Tahun || "");
+		const year = extractYear(value);
+		return year || undefined;
+	}
+
+	if (
+		source === "OUTPUT_TAX" ||
+		source === "SPT_A2" ||
+		source === "SPT_B2" ||
+		source.startsWith("PPH_21_")
+	) {
+		const value = filterValueOf(filters, GRID_FILTER_NAMES.period);
+		return value ? value.replace(/[^a-zA-Z0-9_-]/g, "") : undefined;
 	}
 
 	return undefined;

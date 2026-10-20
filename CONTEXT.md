@@ -188,7 +188,7 @@ One of the four e-Faktur PPN grids the panel can open on, as a row of `PANEL_GRI
 _Avoid_: supported page, export page (both are other lists)
 
 **Grid request**:
-The portal's own list request (URL + body with filters and paging) that the scraper captures once and replays with advancing `First`/`Rows` to scrape a grid.
+The portal's own list request (URL + body with filters and paging) that the scraper captures once and replays with advancing `First`/`Rows` to scrape a grid. Its BODY is one shape — a `Filters` array of `{ PropertyName, Value, MatchMode, CaseSensitive, AsString }` — and `grid-request.ts` is the one module that reads or writes it (ADR-0041). A filter is found by its WHOLE name, never by a hint: a name that merely resembles one fails unsafe (it names the file after a filter the rows never came from), while a name nobody knows fails safe (the file takes its period from its rows).
 _Avoid_: request template, captured request
 
 **Surface**:

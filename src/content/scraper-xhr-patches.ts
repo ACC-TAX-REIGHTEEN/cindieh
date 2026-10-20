@@ -24,6 +24,12 @@
 import type { ExportSource } from "./page-context";
 import type { CapturedRequest, InterceptedXHR } from "./scraper-types";
 import { DOWNLOAD_ENDPOINT } from "./scraper-fetch";
+import {
+  filterEntry as gridFilterEntry,
+  filterName,
+  filtersKeyOf,
+  type GridFilter,
+} from "./grid-request";
 import { prepareNativeDownloadXhr, type PdfDownloadSession } from "./scraper-pdf";
 
 /** Filter state owned by the scraper, read fresh on every send(). */
@@ -82,23 +88,19 @@ export function injectFilters(
   parsed: Record<string, unknown>,
   filterState: FilterState,
 ): Record<string, unknown> {
-  const filterKey = "Filters" in parsed ? "Filters" : "filters";
+  const filterKey = filtersKeyOf(parsed);
   if (!parsed[filterKey]) parsed[filterKey] = [];
 
   if (Array.isArray(parsed[filterKey])) {
-    parsed[filterKey] = (parsed[filterKey] as { PropertyName?: string }[]).filter(
-      (f) => !EXTENSION_FILTER_FIELDS.includes(f.PropertyName || ""),
+    parsed[filterKey] = (parsed[filterKey] as GridFilter[]).filter(
+      (f) => !EXTENSION_FILTER_FIELDS.includes(filterName(f)),
     );
 
     for (const [field, config] of Object.entries(filterState)) {
       const values = Array.isArray(config.value) ? config.value : [config.value];
       values.forEach((val: unknown, idx: number) => {
         const filterEntry: Record<string, unknown> = {
-          PropertyName: field,
-          Value: val,
-          MatchMode: config.matchMode,
-          CaseSensitive: false,
-          AsString: false,
+          ...gridFilterEntry(field, val, config.matchMode),
         };
         if (Array.isArray(config.value) && idx > 0) {
           filterEntry.LogicalOperator = "OR";
