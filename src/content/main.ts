@@ -28,7 +28,7 @@ import {
   updatePanelProgress,
   updatePanelStatus,
 } from "./ui-badge";
-import { dropPendingCompare, runPendingCompare } from "./ui-comparer";
+import { dropPendingCompare, runPendingCompare } from "./ui-comparer-view";
 import { dropPendingCheck, runPendingCheck } from "./ui-checker";
 import { openPanel } from "./ui-panel";
 import { splitInvoiceNumbers } from "./ui-filters";

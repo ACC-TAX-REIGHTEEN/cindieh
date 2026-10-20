@@ -136,7 +136,7 @@ export class FakeEl {
     if (this.children.length > 1) {
       this.children[this.children.length - 2].nextSibling = child;
     }
-    this.doc.register(child);
+    child.registerSubtree();
     return child;
   }
 
@@ -147,7 +147,7 @@ export class FakeEl {
     this.detachFromPreviousParent(child);
     this.children.splice(idx, 0, child);
     child.parentElement = this;
-    this.doc.register(child);
+    child.registerSubtree();
     return child;
   }
 
@@ -212,6 +212,23 @@ export class FakeEl {
     this.doc.unregister(this);
     for (const child of this.children) {
       child.unregisterSubtree();
+    }
+  }
+
+  /**
+   * Register this element's WHOLE subtree, the way attaching it to a document
+   * makes every descendant findable by id.
+   *
+   * The pair matters: remove() takes the whole subtree's ids out of the map,
+   * so a surface that was built once and re-attached (the panel's view is
+   * built once and injected again after the page re-renders) has to bring its
+   * ids back. Registering only the attached element would leave the ids of
+   * its descendants unreachable, which no real DOM does.
+   */
+  private registerSubtree(): void {
+    this.doc.register(this);
+    for (const child of this.children) {
+      child.registerSubtree();
     }
   }
 

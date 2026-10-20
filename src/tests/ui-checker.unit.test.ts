@@ -165,6 +165,7 @@ describe("the tab Pengecekan, on its own", () => {
         counterparty: () => "pembeli",
         identity: () => "referensi",
         canSearchInGrid: () => true,
+        available: () => true,
         ...deps,
       },
     };

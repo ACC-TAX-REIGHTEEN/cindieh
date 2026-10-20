@@ -438,6 +438,9 @@ describe("result XLSX rows and AOA readback", () => {
 describe("comparison UI validation and exports", () => {
   let doc: FakeDoc;
   let ui: typeof import("../content/ui-comparer");
+  // The Komparator tab is its own view module now (ADR-0036); the panel above
+  // only hosts it.
+  let comparer: typeof import("../content/ui-comparer-view");
   let actions: typeof import("../content/main-actions");
   let exporter: typeof import("../content/exporter");
   let run: import("../content/run-lifecycle").RunLifecycle;
@@ -501,7 +504,7 @@ describe("comparison UI validation and exports", () => {
     fire("ch-comparer-check-btn");
     expect(el("ch-comparer-status").textContent).toContain("Mohon tunggu");
 
-    ui.dropPendingCompare();
+    comparer.dropPendingCompare();
 
     expect(el("ch-comparer-status").textContent).toContain("Permintaan dibatalkan");
     expect(el("ch-comparer-status").textContent).not.toBe("");
@@ -518,7 +521,7 @@ describe("comparison UI validation and exports", () => {
     const summary = el("ch-comparer-status").textContent;
     expect(summary).not.toBe("");
 
-    ui.dropPendingCompare();
+    comparer.dropPendingCompare();
 
     expect(el("ch-comparer-status").textContent).toBe(summary);
   });
@@ -561,6 +564,7 @@ describe("comparison UI validation and exports", () => {
     vi.spyOn(exporter, "downloadXLSXFile").mockImplementation(async () => {});
     ui = await import("../content/ui-comparer");
     ui.injectComparerModal();
+    comparer = await import("../content/ui-comparer-view");
   });
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
@@ -604,7 +608,7 @@ describe("comparison UI validation and exports", () => {
     // The input changed while the scrape ran: revalidation uses what is there
     // now, not what was there when "Periksa" was clicked.
     el(input === "dates" ? "ch-comparer-daily-dates" : "ch-comparer-textarea").value = "";
-    ui.runPendingCompare();
+    comparer.runPendingCompare();
     expectCleared();
   });
 

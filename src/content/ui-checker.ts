@@ -39,6 +39,7 @@ import {
   checkerRowIdentity,
   counterpartyIsBuyer,
   hasReferenceFilter,
+  isCheckerPage,
   type CheckerRowIdentity,
 } from "./page-context";
 import {
@@ -123,6 +124,14 @@ export interface CheckerViewDeps {
   identity: () => CheckerRowIdentity;
   /** Whether a double-clicked row can actually be searched in the portal grid. */
   canSearchInGrid: () => boolean;
+  /**
+   * Whether this page can serve the tab at all. The check is arithmetic on ONE
+   * invoice, and it runs on the four e-Faktur PPN grids — the two invoice
+   * grids and the two Retur grids, because a retur row carries the same
+   * DPP / DPP Nilai Lain / PPN. The tab owns this question, because the tab is
+   * what the answer is about (ADR-0036).
+   */
+  available: () => boolean;
 }
 
 /** One instance of the tab: its root, its controls, and its rendering. */
@@ -131,6 +140,8 @@ export interface CheckerView {
   readonly root: HTMLElement;
   /** Built by `inject()`; null until then. */
   filterMenu: StatusFilterMenu | null;
+  /** Whether this page can serve this tab. */
+  available(): boolean;
   /** Build the tab's controls and wire their events. Idempotent. */
   inject(): void;
   /** Draw the current results, pagination and filter state. */
@@ -192,6 +203,11 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
   // ── Inject ─────────────────────────────────────────
 
   function inject(): void {
+    // The tab starts hidden, and it starts hidden EVERY time the panel is
+    // built: a panel rebuilt after the last session ended on this tab must not
+    // come back showing it, and the shell decides which tab is showing when
+    // the panel opens.
+    root.classList.add("ch-hidden");
     if (injected) return;
     injected = true;
 
@@ -488,6 +504,7 @@ export function createCheckerView(deps: CheckerViewDeps): CheckerView {
   const view: CheckerView = {
     root,
     filterMenu: null,
+    available: deps.available,
     inject() {
       inject();
       view.filterMenu = filterMenu;
@@ -527,6 +544,9 @@ export const checkerView: CheckerView = createCheckerView({
   // search works, it may just land on several rows that share a seller's
   // reference, so the double-click is offered there too.
   canSearchInGrid: hasReferenceFilter,
+  // The tab's own gate: the check runs on the four e-Faktur PPN grids, and on
+  // no others (ADR-0024).
+  available: isCheckerPage,
 });
 
 /** Run the check a Run owes, from main.ts's `currentRunHandlers` dispatcher. */
