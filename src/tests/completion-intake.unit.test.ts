@@ -6,9 +6,12 @@ import {
   type SurfaceUpdate,
 } from "../content/completion-intake";
 import { createRunLifecycle, type RunLifecycle } from "../content/run-lifecycle";
-import { summarisePeriods } from "../content/scrape-batch";
+import { sweepOf } from "../content/sweep";
 import { addResultChunk, createResultChunkBuffer } from "../content/result-chunks";
 import type { ScrapeComplete, ScrapeDataChunkMessage } from "../content/scraper-types";
+
+/** The twelve codes of one year, oldest first. */
+const YEAR_PLAN = Array.from({ length: 12 }, (_, i) => `TD.007${String(i + 1).padStart(2, "0")}`);
 
 // The report is the one place a completion's MEANING is decided, so these tests
 // assert the rules directly: the order the panel is told to say things in, what
@@ -29,8 +32,8 @@ function completion(overrides: Partial<ScrapeComplete> = {}): ScrapeComplete {
   };
 }
 
-function sweepSummary(counts: { period: string; rows: number; error?: string }[], planned = 12) {
-  return summarisePeriods(counts, planned);
+function sweepSummary(counts: { period: string; rows: number; error?: string }[], plan = YEAR_PLAN) {
+  return sweepOf(counts, plan);
 }
 
 /** A Run already holding a stopped sweep's kept half, as a reload restores it. */

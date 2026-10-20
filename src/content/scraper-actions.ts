@@ -31,8 +31,8 @@ import {
   describeSweepFilters,
   overridesForPeriod,
   planPeriods,
-  type PeriodSummary,
 } from "./scrape-batch";
+import type { Sweep } from "./sweep";
 import { runPeriodSweep } from "./period-sweep";
 import {
   DEFAULT_DELAY_PRESET,
@@ -343,7 +343,7 @@ export async function downloadBulkWithholdingPdf(
  *   bulk PDF download that a withholding scrape otherwise performs.
  * @param options.batchMonths - Sweep this many months of the year, from January.
  * @param options.sweepPeriods - Sweep exactly these period codes instead: the
- *   resume half of a year-wide sweep (see scrape-batch.pendingPeriods).
+ *   resume half of a year-wide sweep (see sweep.missingPeriods).
  * @param options.sweepYear - The year the kept rows belong to, for a resume:
  *   the sweep refuses when the grid's own year filter no longer matches it.
  */
@@ -433,7 +433,7 @@ export async function startScraping(
     let page = 0;
     let truncated = false;
     let expectedTotal: number | null = null;
-    let periodSummary: PeriodSummary | null = null;
+    let periodSummary: Sweep | null = null;
 
     // A sweep is its own module: the period loop, its one retry, the per-period
     // counts and the report a stop owes all live there, so those rules are

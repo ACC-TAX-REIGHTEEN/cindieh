@@ -18,7 +18,7 @@ import { postToScraper } from "./bridge";
 import { debugError, debugLog, debugWarn } from "./debug";
 import { getPreferences } from "./preferences";
 import { findMissingInvoices, skippedInvoicesMessage } from "./scrape-result";
-import { pendingPeriods } from "./scrape-batch";
+import { finishedPeriods, missingPeriods } from "./sweep";
 import { runLifecycle, type StopOptions } from "./run-lifecycle";
 import { shouldConfirmBulkDownload } from "../shared/extension-preferences";
 
@@ -333,10 +333,13 @@ export function startBatchExport(deps: ActionDeps): boolean {
   // only ones worth asking for, and asking for them again as a fresh year would
   // throw away months the taxpayer already paid for in portal requests.
   const kept = runLifecycle.result();
-  const pending = kept?.sweep ? pendingPeriods(kept.sweep) : [];
+  const pending = kept?.sweep ? missingPeriods(kept.sweep) : [];
   const resuming = pending.length > 0 && Boolean(kept?.data?.length);
   const resume = resuming
-    ? { pending: pending.length, finished: kept?.sweep?.counts.filter((c) => !c.error).length ?? 0 }
+    ? {
+        pending: pending.length,
+        finished: kept?.sweep ? finishedPeriods(kept.sweep).length : 0,
+      }
     : undefined;
 
   if (!globalThis.confirm?.(batchConfirmMessage(resume))) return false;
@@ -447,4 +450,4 @@ export function handleExportAction(format: "xlsx" | "csv" | "pdf", deps: ActionD
   runLifecycle.request({ kind: "export", format });
   startScrape(deps, scrapeIntentForFormat(format));
   return true;
-}
+}

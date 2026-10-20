@@ -84,6 +84,10 @@ _Avoid_: row id, unique key, hash
 Fetching every tax period of one year from an e-Faktur PPN grid as a single Run, so the rows share one dedupe set and arrive as one file. Only a grid whose period AND year filters have been measured off the portal may sweep (today PPN Keluaran alone; ADR-0019); anywhere else the entry refuses instead of guessing. The period is a request-body filter, so the sweep re-requests the same grid once per `TD.007MM` code derived from the request the portal itself made. Completeness rests on the per-period row counts rather than a server total, because this endpoint's count is not one (ADR-0018).
 _Avoid_: batch export, year export, multi-month scrape
 
+**Sweep's plan**:
+The period codes a sweep COVERS — what it was asked for, as opposed to what it gathered. It travels with the per-masa counts rather than being rebuilt from them, because a rebuilt plan assumes the first count is month 01 and a resumed sweep's own half starts wherever the resume began (ADR-0040). The plan is what says which masa are still missing, and the union of two halves' plans is the whole year.
+_Avoid_: planned count, year plan, period plan
+
 **PDF download**:
 Getting a PDF (e-faktur or bukti potong) out of Coretax into the browser under extension-owned naming. Comes in two modes that differ only in where the PDF request originates and where the invoice metadata comes from.
 _Avoid_: bulk PDF, PDF export

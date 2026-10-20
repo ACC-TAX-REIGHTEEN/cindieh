@@ -20,8 +20,11 @@ import {
   type ActionDeps,
 } from "../content/main-actions";
 import { runLifecycle } from "../content/run-lifecycle";
-import { summarisePeriods } from "../content/scrape-batch";
+import { sweepOf } from "../content/sweep";
 import type { ExportMode } from "../content/exporter";
+
+/** The twelve codes of one year, oldest first. */
+const YEAR_PLAN = Array.from({ length: 12 }, (_, i) => `TD.007${String(i + 1).padStart(2, "0")}`);
 
 function makeDeps(overrides: Partial<ActionDeps> = {}): ActionDeps {
   return {
@@ -138,9 +141,9 @@ describe("startBatchExport", () => {
       source: "OUTPUT_TAX",
       filenameHint: "2026",
       cancelled: true,
-      periods: summarisePeriods(
+      periods: sweepOf(
         finished.map(([period, rows]) => ({ period, rows })),
-        12,
+        YEAR_PLAN,
       ),
     });
   }
@@ -164,7 +167,42 @@ describe("startBatchExport", () => {
       sweepYear: "2026",
     });
     expect(runLifecycle.result()?.data).toEqual([{ RecordId: "TD.00701" }]);
-    expect(runLifecycle.result()?.sweep?.planned).toBe(12);
+    expect(runLifecycle.result()?.sweep?.plan.length).toBe(12);
+  });
+
+  it("resumes a sweep the stop caught in its FIRST masa, keeping the rows it had", () => {
+    // The stop landed inside the first period: that period is never recorded
+    // (ADR-0020), so the kept half has rows but NO counts. The plan still says
+    // the sweep covers twelve, so all twelve are missing — and the kept rows
+    // must survive into the union rather than be thrown away for a fresh year.
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    runLifecycle.begin("scrape");
+    runLifecycle.complete({
+      type: "SCRAPE_COMPLETE",
+      data: [{ RecordId: "partial" }],
+      fields: ["RecordId"],
+      total: 1,
+      pages: 1,
+      elapsed: "1s",
+      source: "OUTPUT_TAX",
+      filenameHint: "2026",
+      cancelled: true,
+      periods: sweepOf([], YEAR_PLAN),
+    });
+    const deps = makeDeps();
+
+    expect(startBatchExport(deps)).toBe(true);
+
+    // The whole year is asked for, because none of it finished...
+    expect(deps.postToScraper).toHaveBeenCalledWith({
+      type: "START_SCRAPE",
+      skipPdf: true,
+      sweepPeriods: YEAR_PLAN,
+      sweepYear: "2026",
+    });
+    // ...and the rows the interrupted period had are still here to be unioned
+    // in, not dropped for a fresh sweep.
+    expect(runLifecycle.result()?.data).toEqual([{ RecordId: "partial" }]);
   });
 
   it("resumes a sweep whose masa FAILED, because that masa holds no rows yet", () => {
@@ -198,9 +236,9 @@ describe("startBatchExport", () => {
       elapsed: "1s",
       source: "OUTPUT_TAX",
       filenameHint: "2026",
-      periods: summarisePeriods(
+      periods: sweepOf(
         allTwelve.map(([period, rows]) => ({ period, rows })),
-        12,
+        YEAR_PLAN,
       ),
     });
     const deps = makeDeps();

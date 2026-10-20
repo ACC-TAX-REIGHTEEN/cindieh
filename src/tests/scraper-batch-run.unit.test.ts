@@ -19,6 +19,7 @@ import type { OrchestrationContext } from "../content/scraper-context";
 import { xhrRequest } from "../content/scraper-xhr";
 import type { CapturedRequest, ScrapeComplete, ScrapeMessage } from "../content/scraper-types";
 import type { GridPage } from "../content/scraper-xhr";
+import { emptyPeriods, failedPeriods } from "../content/sweep";
 import {
   capturedFilters,
   gridRequest,
@@ -211,8 +212,8 @@ describe("year-wide batch sweep", () => {
     const periods = completionOf(ctx).periods;
     expect(periods?.counts.map((c) => c.period)).toEqual(["TD.00711", "TD.00712"]);
     // The sweep reports its OWN scope; the receiver merges these counts with the
-    // kept ones, and THAT is where the year's 12 comes back (mergePeriodSummaries).
-    expect(periods?.planned).toBe(2);
+    // kept ones, and THAT is where the year's 12 comes back (sweep.mergeSweeps).
+    expect(periods?.plan.length).toBe(2);
   });
 
   it("carries every other filter through untouched -- only the period's Value changes", async () => {
@@ -290,8 +291,8 @@ describe("year-wide batch sweep", () => {
     // February between two populated months is a month that vanished, and the
     // server's count is useless here (it answers Rows + 1), so this flag is the
     // only way the user finds out.
-    expect(periods?.emptyPeriods).toEqual(["TD.00702"]);
-    expect(periods?.failedPeriods).toEqual([]);
+    expect(emptyPeriods(periods!)).toEqual(["TD.00702"]);
+    expect(failedPeriods(periods!)).toEqual([]);
     expect(periods?.totalRows).toBe(2);
   });
 
@@ -301,7 +302,7 @@ describe("year-wide batch sweep", () => {
     await startScraping(async () => capturedWithFilters("TD.00708"), ctx, { batchMonths: 3 });
     // A taxpayer with no data at all is not a fault; flagging it would train
     // the user to ignore the flag that matters.
-    expect(completionOf(ctx).periods?.emptyPeriods).toEqual([]);
+    expect(emptyPeriods(completionOf(ctx).periods!)).toEqual([]);
   });
 
   it("drops the server's per-period count rather than comparing it against the whole year", async () => {
@@ -433,12 +434,12 @@ describe("year-wide batch sweep", () => {
     expect(complete.filenameHint).toBe("2026");
     // How much of the year arrived: a row count cannot say that ten of twelve
     // months are there and two are missing.
-    expect(complete.periods?.planned).toBe(12);
+    expect(complete.periods?.plan.length).toBe(12);
     // Only the month that FINISHED is counted. The interrupted one is not an
     // empty month, and reporting it as one would send the user to the portal to
     // look for data the sweep never finished asking for.
     expect(complete.periods?.counts.map((c) => c.period)).toEqual(["TD.00701"]);
-    expect(complete.periods?.emptyPeriods).toEqual([]);
+    expect(emptyPeriods(complete.periods!)).toEqual([]);
   });
 
   it("keeps the pages of the period the stop interrupted", async () => {
@@ -462,7 +463,7 @@ describe("year-wide batch sweep", () => {
     expect(sent(ctx).find((m) => m.type === "SCRAPE_ERROR")).toBeUndefined();
     // The interrupted period is not a "failed masa": it is the one the user
     // stopped, and it is simply not in the counts.
-    expect(complete.periods?.failedPeriods).toEqual([]);
+    expect(failedPeriods(complete.periods!)).toEqual([]);
     expect(complete.periods?.counts.map((c) => c.period)).toEqual(["TD.00701"]);
   });
 
@@ -505,7 +506,7 @@ describe("year-wide batch sweep", () => {
       ["TD.00701", 1],
       ["TD.00702", 1],
     ]);
-    expect(periods?.failedPeriods).toEqual([]);
+    expect(failedPeriods(periods!)).toEqual([]);
     // The retry pauses first: a second try sent straight after the first is the
     // burst the pacing rules exist to prevent.
     expect(vi.mocked(ctx.delay).mock.calls.map(([ms]) => ms)).toEqual([2000, 100]);
@@ -528,7 +529,7 @@ describe("year-wide batch sweep", () => {
       ["TD.00701", 0],
       ["TD.00702", 1],
     ]);
-    expect(complete.periods?.failedPeriods).toEqual(["TD.00701"]);
+    expect(failedPeriods(complete.periods!)).toEqual(["TD.00701"]);
     expect(complete.total).toBe(1);
   });
 

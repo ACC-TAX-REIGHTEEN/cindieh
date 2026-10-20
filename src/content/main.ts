@@ -625,7 +625,7 @@ function offerResumableSweep(): void {
   );
   debugLog(
     `[Cindieh] restored a resumable sweep: ${snapshot.data.length} rows, ` +
-      `${snapshot.sweep.counts.length}/${snapshot.sweep.planned} periods`,
+      `${snapshot.sweep.counts.length}/${snapshot.sweep.plan.length} periods`,
   );
 }
 

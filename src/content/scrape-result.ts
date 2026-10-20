@@ -5,7 +5,13 @@
 
 import type { MessageHandler } from "./postmessage-guard";
 import type { ScrapeComplete } from "./scraper-types";
-import { pendingPeriods, type PeriodSummary } from "./scrape-batch";
+import {
+  emptyPeriods,
+  failedPeriods,
+  finishedPeriods,
+  missingPeriods,
+  type Sweep,
+} from "./sweep";
 
 /** Runs inside the dispatcher, after its source/origin/token guard. */
 export function currentRunHandlers(
@@ -189,28 +195,25 @@ export function truncatedResultNotice(
  * "no rows" and "could not be fetched" are different problems with different
  * fixes.
  */
-export function batchResultNotice(summary: {
-  counts: { period: string; rows: number; error?: string }[];
-  totalRows: number;
-  emptyPeriods: string[];
-  failedPeriods: string[];
-}): string {
+export function batchResultNotice(summary: Sweep): string {
   const headline =
     `${summary.counts.length} masa pajak, ${summary.totalRows.toLocaleString("id-ID")} baris`;
 
-  if (summary.failedPeriods.length) {
+  const failed = failedPeriods(summary);
+  if (failed.length) {
     return (
       headline +
       ". Masa gagal diambil: " +
-      summary.failedPeriods.join(", ") +
+      failed.join(", ") +
       ". Coba ekspor kembali."
     );
   }
-  if (summary.emptyPeriods.length) {
+  const empty = emptyPeriods(summary);
+  if (empty.length) {
     return (
       headline +
       ". Masa tanpa baris: " +
-      summary.emptyPeriods.join(", ") +
+      empty.join(", ") +
       " -- periksa di portal apakah ada data di masa tersebut."
     );
   }
@@ -233,23 +236,23 @@ export function stoppedSweepMessage(
   complete: Pick<ScrapeComplete, "total" | "periods">,
 ): string {
   const rows = `${complete.total.toLocaleString("id-ID")} baris tetap tersimpan`;
-  const summary: PeriodSummary | undefined = complete.periods;
+  const summary: Sweep | undefined = complete.periods;
   if (!summary) return `Proses dihentikan: ${rows}.`;
 
   // Finished counts what the sweep actually got; a period that failed is not a
   // month of the year to its reader, so it is named separately rather than
   // folded into the progress fraction.
-  const finished = summary.counts.filter((count) => !count.error).length;
-  const failed = summary.failedPeriods.length;
+  const finished = finishedPeriods(summary).length;
+  const failed = failedPeriods(summary).length;
   const failures = failed > 0 ? `, ${failed} masa gagal diambil` : "";
-  const pending = pendingPeriods(summary).length;
+  const pending = missingPeriods(summary).length;
   const resume =
     pending > 0
       ? ` Klik "Ekspor 1 Tahun (12 Masa)" lagi untuk melanjutkan ${pending} masa yang belum selesai; masa yang sudah tersimpan tidak akan diambil ulang.`
       : "";
 
   return (
-    `Proses dihentikan: ${finished} dari ${summary.planned} masa pajak selesai${failures}, ${rows}. ` +
+    `Proses dihentikan: ${finished} dari ${summary.plan.length} masa pajak selesai${failures}, ${rows}. ` +
     "Ekspor otomatis tidak dijalankan; bila data ini diekspor, nama berkasnya ditandai \"sebagian\"." +
     resume
   );
@@ -272,14 +275,14 @@ export function stoppedSweepMessage(
  */
 export function restoredSweepMessage(
   rows: number,
-  summary: PeriodSummary,
+  summary: Sweep,
   partialSweep: boolean,
 ): string {
-  const finished = summary.counts.filter((count) => !count.error).length;
-  const pending = pendingPeriods(summary).length;
+  const finished = finishedPeriods(summary).length;
+  const pending = missingPeriods(summary).length;
   const head =
     "Data ekspor satu tahun dipulihkan setelah halaman dimuat ulang: " +
-    `${finished} dari ${summary.planned} masa pajak, ${rows.toLocaleString("id-ID")} baris tersimpan. `;
+    `${finished} dari ${summary.plan.length} masa pajak, ${rows.toLocaleString("id-ID")} baris tersimpan. `;
 
   if (pending === 0) {
     return (

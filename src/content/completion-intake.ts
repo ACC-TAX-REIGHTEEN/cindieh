@@ -37,7 +37,6 @@ import { describeCompletion, type CompletionKind } from "./completion-notice";
 import type { ResultChunkBuffer } from "./result-chunks";
 import { missingResultChunks, resetResultChunks, resolveResultRows } from "./result-chunks";
 import type { FollowUp, RunLifecycle } from "./run-lifecycle";
-import { mergePeriodSummaries } from "./scrape-batch";
 import {
   batchResultNotice,
   failedItemsNotice,
@@ -48,6 +47,7 @@ import {
 } from "./scrape-result";
 import { unionRows } from "./scraper-helpers";
 import type { ScrapeComplete } from "./scraper-types";
+import { emptyPeriods, failedPeriods, mergeSweeps } from "./sweep";
 
 // ── The report ─────────────────────────────────────────
 
@@ -166,15 +166,12 @@ export function settleCompletion({ completion, transfer, run }: SettleCompletion
     total: mergedRows.length,
     periods:
       resuming && kept?.sweep && completion.periods
-        ? {
-            ...mergePeriodSummaries(kept.sweep, completion.periods),
-            // The union's two halves were counted by two independent
-            // accumulators, so their counts can overlap where a failed masa had
-            // already collected rows that the resumed retry fetched again. The
-            // panel names what the FILE holds, which is the deduplicated union
-            // (ADR-0016), not the sum of the counts.
-            totalRows: mergedRows.length,
-          }
+        ? // The union's two halves were counted by two independent accumulators,
+          // so their counts can overlap where a failed masa had already collected
+          // rows that the resumed retry fetched again. The panel names what the
+          // FILE holds, which is the deduplicated union (ADR-0016), not the sum
+          // of the counts.
+          mergeSweeps(kept.sweep, completion.periods, mergedRows.length)
         : completion.periods,
   };
 
@@ -262,8 +259,8 @@ export function settleCompletion({ completion, transfer, run }: SettleCompletion
         // A batch run's own completeness evidence: the toast must not call a
         // sweep with a failed or vanished month a clean success. The union's
         // lists, so a resumed sweep cannot hide the half that failed first.
-        failedPeriods: settled.periods?.failedPeriods.length,
-        emptyPeriods: settled.periods?.emptyPeriods.length,
+        failedPeriods: settled.periods ? failedPeriods(settled.periods).length : 0,
+        emptyPeriods: settled.periods ? emptyPeriods(settled.periods).length : 0,
         truncated: completion.truncated,
       }),
     },

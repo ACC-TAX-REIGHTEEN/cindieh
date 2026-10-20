@@ -44,12 +44,8 @@ import {
   type DelayPreset,
 } from "../shared/extension-preferences";
 import { debugError, debugLog, debugWarn } from "./debug";
-import {
-  capturedYear,
-  summarisePeriods,
-  type PeriodCount,
-  type PeriodSummary,
-} from "./scrape-batch";
+import { capturedYear } from "./scrape-batch";
+import { emptyPeriods, sweepOf, type PeriodCount, type Sweep } from "./sweep";
 import { sendScrapeComplete } from "./scrape-result-transfer";
 import { collectFields } from "./scraper-helpers";
 import type { CapturedRequest } from "./scraper-types";
@@ -101,7 +97,7 @@ export interface PeriodSweepInput {
 
 export interface PeriodSweepResult {
   /** Every period the sweep recorded, in order. A stopped sweep is partial. */
-  summary: PeriodSummary;
+  summary: Sweep;
   /** Pages fetched by the periods that finished. */
   pages: number;
   /** True when any finished period came back shorter than the server claimed. */
@@ -133,7 +129,10 @@ export async function runPeriodSweep({
   startedAt,
   fetchPeriod,
 }: PeriodSweepInput): Promise<PeriodSweepResult> {
-  const summaryOf = (counts: PeriodCount[]) => summarisePeriods(counts, periods.length);
+  // The plan is the codes this sweep was ASKED for, carried with the counts:
+  // a sweep that was stopped after two masa still says it covers twelve, which
+  // is what names the gap.
+  const summaryOf = (counts: PeriodCount[]): Sweep => sweepOf(counts, periods);
   const elapsed = (): string => `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
 
   // The report a stopped sweep owes, built from what it already has.
@@ -235,8 +234,9 @@ export async function runPeriodSweep({
   }
 
   const summary = summaryOf(counts);
-  if (summary.emptyPeriods.length) {
-    debugWarn(`Masa kosong di tengah periode berisi data: ${summary.emptyPeriods.join(", ")}`);
+  const empty = emptyPeriods(summary);
+  if (empty.length) {
+    debugWarn(`Masa kosong di tengah periode berisi data: ${empty.join(", ")}`);
   }
   return { summary, pages, truncated, stopped: false };
 }

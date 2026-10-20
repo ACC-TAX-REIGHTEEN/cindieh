@@ -149,6 +149,34 @@ confirmation, same union merge, same `pendingPeriods` arithmetic.
   that has since had its last masa filled in is dropped by the pending-masa guard
   instead of being offered as a resume that would fetch nothing.
 
+## Amendment 2026-10-20: the sweep carries its plan
+
+**What changed.** ADR-0040 gave the sweep a PLAN — the period codes it covers — beside
+its counts, and moved the resume's arithmetic into `sweep.ts`. The decisions above are
+unchanged: what is still missing is still derived rather than remembered, the union is
+still the isolated world's job, and a stop still keeps the rows. Only the arithmetic
+moved, and with it the two names this ADR used:
+
+| Was | Is now |
+|---|---|
+| `pendingPeriods(summary)` | `sweep.missingPeriods(sweep)` |
+| `mergePeriodSummaries(previous, incoming)` | `sweep.mergeSweeps(previous, incoming, totalRows)` |
+| `summary.planned` (a number) | `sweep.plan.length` (the plan's own length) |
+| the snapshot's version 1 | version 2 — a version 1 blob has counts but no plan |
+
+**Why it was worth reopening.** "What is missing is derived, never remembered" was true
+only of the DERIVATION: the plan itself was remembered as a number and rebuilt from the
+first count, which assumes that count is month 01. A resumed sweep's own half starts
+wherever the resume began, so the rebuild would have asked for January to March again and
+never for October to December. The union merge hid it — the union's first count is month
+01 again — but only because a merge two modules away, in the other world, happened to run
+first. The plan now travels with the counts, so the derivation is the plan minus the
+periods that finished, and nothing is rebuilt.
+
+The stored snapshot's version moves to 2 for the same reason: a version 1 blob carries
+only the counts, and reading it as a sweep with no plan would be reading a year as if it
+had no missing masa at all.
+
 ## Consequences
 
 - A stop costs a pause. Press the entry again to fetch the missing masa; the

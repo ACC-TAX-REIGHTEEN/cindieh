@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ScrapeComplete } from "../content/scraper-types";
 import { createRunLifecycle, type RunResult } from "../content/run-lifecycle";
-import { summarisePeriods } from "../content/scrape-batch";
+import { sweepOf } from "../content/sweep";
+
+/** The twelve codes of one year, oldest first. */
+const YEAR_PLAN = Array.from({ length: 12 }, (_, i) => `TD.007${String(i + 1).padStart(2, "0")}`);
 
 // A Run owns three things: whether it is in flight, what it still owes, and
 // what it last produced. These tests assert those as RULES of one interface —
@@ -219,7 +222,7 @@ describe("a resumed sweep", () => {
         data: [{ TaxInvoiceNumber: "001" }],
         total: 1,
         filenameHint: "2026",
-        periods: summarisePeriods([{ period: "TD.00701", rows: 1 }], 12),
+        periods: sweepOf([{ period: "TD.00701", rows: 1 }], YEAR_PLAN),
       }),
     );
     return run;
@@ -227,14 +230,14 @@ describe("a resumed sweep", () => {
 
   it("starts from the kept rows AND the counts that say what is missing", () => {
     const run = keptSweep();
-    expect(run.result()?.sweep?.planned).toBe(12);
+    expect(run.result()?.sweep?.plan.length).toBe(12);
     expect(run.result()?.partialSweep).toBe(true);
 
     run.begin("sweep-resume");
 
-    // Neither is dropped: `pendingPeriods` needs the counts and the merge needs
-    // the rows, so a resume that began by forgetting either would be a fresh
-    // sweep wearing the name.
+    // Neither is dropped: the sweep's plan and counts say what is missing and
+    // the merge needs the rows, so a resume that began by forgetting either
+    // would be a fresh sweep wearing the name.
     expect(run.result()?.data).toEqual([{ TaxInvoiceNumber: "001" }]);
     expect(run.result()?.sweep?.counts).toEqual([{ period: "TD.00701", rows: 1 }]);
   });
@@ -247,9 +250,9 @@ describe("a resumed sweep", () => {
       complete({
         data: [{ TaxInvoiceNumber: "001" }, { TaxInvoiceNumber: "002" }],
         total: 2,
-        periods: summarisePeriods(
+        periods: sweepOf(
           [{ period: "TD.00701", rows: 1 }, { period: "TD.00702", rows: 1 }],
-          12,
+          YEAR_PLAN,
         ),
       }),
     );
@@ -293,7 +296,7 @@ describe("a resumed sweep", () => {
     run.stop({ keepRows: true });
 
     expect(run.result()?.data).toEqual([{ TaxInvoiceNumber: "001" }]);
-    expect(run.result()?.sweep?.planned).toBe(12);
+    expect(run.result()?.sweep?.plan.length).toBe(12);
     expect(run.pendingExport()).toBeNull();
   });
 
@@ -619,23 +622,19 @@ describe("onRetired", () => {
 
 /** The per-masa counts a stopped sweep leaves behind. */
 const STOPPED_SWEEP = {
+  plan: YEAR_PLAN,
   counts: [{ period: "TD.00701", rows: 1 }],
   totalRows: 1,
-  planned: 12,
-  emptyPeriods: [],
-  failedPeriods: [],
 };
 
 /** Twelve finished masa: a whole year, so nothing is pending. */
 const WHOLE_SWEEP = {
+  plan: YEAR_PLAN,
   counts: Array.from({ length: 12 }, (_, i) => ({
     period: `TD.007${String(i + 1).padStart(2, "0")}`,
     rows: 1,
   })),
   totalRows: 12,
-  planned: 12,
-  emptyPeriods: [],
-  failedPeriods: [],
 };
 
 describe("onResumable", () => {

@@ -25,8 +25,10 @@ runPeriodSweep({
   ctx,               // stop check, progress channel, delay, pacing
   startedAt,         // elapsed in the progress line and the stop report
   fetchPeriod,       // one whole period, into `rows`
-}): Promise<{ summary: PeriodSummary; pages: number; truncated: boolean; stopped: boolean }>
+}): Promise<{ summary: Sweep; pages: number; truncated: boolean; stopped: boolean }>
 ```
+
+(`summary` is a `Sweep` — the plan beside the counts, ADR-0040.)
 
 Rationale:
 

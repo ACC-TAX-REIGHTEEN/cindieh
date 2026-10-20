@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RunResult } from "../content/run-lifecycle";
-import type { PeriodSummary } from "../content/scrape-batch";
+import type { Sweep } from "../content/sweep";
 import {
   SWEEP_SNAPSHOT_MAX_AGE_MS,
   SWEEP_SNAPSHOT_MAX_CHARS,
@@ -25,17 +25,15 @@ import {
 
 const NOW = Date.UTC(2026, 9, 17, 9, 0, 0);
 
-function summary(overrides: Partial<PeriodSummary> = {}): PeriodSummary {
+function summary(overrides: Partial<Sweep> = {}): Sweep {
   return {
+    plan: Array.from({ length: 12 }, (_, i) => `TD.007${String(i + 1).padStart(2, "0")}`),
     counts: [
       { period: "TD.00701", rows: 3 },
       { period: "TD.00702", rows: 0 },
       { period: "TD.00703", rows: 0, error: "Gagal" },
     ],
     totalRows: 3,
-    planned: 12,
-    emptyPeriods: ["TD.00702"],
-    failedPeriods: ["TD.00703"],
     ...overrides,
   };
 }
@@ -62,16 +60,14 @@ function finishedSweep(overrides: Partial<RunResult> = {}): RunResult {
 }
 
 /** Twelve finished masa: a whole year, so nothing is pending. */
-function wholeSweep(): PeriodSummary {
+function wholeSweep(): Sweep {
   return {
+    plan: Array.from({ length: 12 }, (_, i) => `TD.007${String(i + 1).padStart(2, "0")}`),
     counts: Array.from({ length: 12 }, (_, i) => ({
       period: `TD.007${String(i + 1).padStart(2, "0")}`,
       rows: 1,
     })),
     totalRows: 12,
-    planned: 12,
-    emptyPeriods: [],
-    failedPeriods: [],
   };
 }
 
@@ -219,14 +215,14 @@ describe("readSnapshot", () => {
       },
     ],
     [
-      "period lists that are not arrays of text",
-      { ...stampSnapshot(content(), NOW), sweep: { ...summary(), failedPeriods: [1] } },
+      "a plan that is not an array of text",
+      { ...stampSnapshot(content(), NOW), sweep: { ...summary(), plan: [1] } },
     ],
     [
-      "no planned count",
+      "no plan at all",
       {
         ...stampSnapshot(content(), NOW),
-        sweep: { counts: [], totalRows: 0, emptyPeriods: [], failedPeriods: [] },
+        sweep: { counts: [], totalRows: 0 },
       },
     ],
   ])("refuses %s", (_label, raw) => {

@@ -15,6 +15,7 @@
 //   4. Live reaction to the switch while the page is open, and the safe cleanup
 //      that keeps it from outliving the switch.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { failedPeriods } from "../content/sweep";
 import { stubFakeDom, type FakeEl, type FakeListener } from "./__mocks__/fake-dom";
 
 const MARKER_ID = "__ch_scraper_injected__";
@@ -743,13 +744,12 @@ describe("main boot — completion notifications", () => {
       source: "OUTPUT_TAX",
       truncated: true,
       periods: {
+        plan: ["TD.00701", "TD.00702"],
         counts: [
           { period: "TD.00701", rows: 2 },
           { period: "TD.00702", rows: 0, error: "504 Gateway Timeout" },
         ],
         totalRows: 2,
-        emptyPeriods: [],
-        failedPeriods: ["TD.00702"],
       },
       runId,
     });
@@ -848,11 +848,9 @@ describe("main boot — a chunked scrape result", () => {
       filenameHint: "2026",
       source: "OUTPUT_TAX",
       periods: {
+        plan: Array.from({ length: 12 }, (_, i) => `TD.007${String(i + 1).padStart(2, "0")}`),
         counts: [{ period: "TD.00701", rows: 2 }],
         totalRows: 2,
-        planned: 12,
-        emptyPeriods: [],
-        failedPeriods: [],
       },
       runId,
     });
@@ -885,11 +883,9 @@ describe("main boot — a chunked scrape result", () => {
       filenameHint: "2026",
       source: "OUTPUT_TAX",
       periods: {
+        plan: Array.from({ length: 12 }, (_, i) => `TD.007${String(i + 1).padStart(2, "0")}`),
         counts: [{ period: "TD.00701", rows: 5 }],
         totalRows: 5,
-        planned: 12,
-        emptyPeriods: [],
-        failedPeriods: [],
       },
       runId,
     });
@@ -1099,14 +1095,12 @@ describe("main boot — resuming a stopped sweep", () => {
    * must therefore name the FILE's rows, not the sum of the counts.
    */
   const tenMasa = {
+    plan: Array.from({ length: 12 }, (_, i) => `TD.007${String(i + 1).padStart(2, "0")}`),
     counts: Array.from({ length: 10 }, (_, i) => ({
       period: `TD.007${String(i + 1).padStart(2, "0")}`,
       rows: 1,
     })),
     totalRows: 10,
-    planned: 12,
-    emptyPeriods: [],
-    failedPeriods: [],
   };
 
   const status = (env: Env): string => env.doc.getElementById("ch-f-status")?.textContent ?? "";
@@ -1153,14 +1147,12 @@ describe("main boot — resuming a stopped sweep", () => {
       filenameHint: "2026",
       source: "OUTPUT_TAX",
       periods: {
+        plan: ["TD.00711", "TD.00712"],
         counts: [
           { period: "TD.00711", rows: 2 },
           { period: "TD.00712", rows: 1 },
         ],
         totalRows: 3,
-        planned: 2,
-        emptyPeriods: [],
-        failedPeriods: [],
       },
       runId: resumedRunId,
     });
@@ -1168,7 +1160,7 @@ describe("main boot — resuming a stopped sweep", () => {
     // ONE year's worth of rows and one whole-year report: the kept months were
     // not fetched again, and nothing about the result still says `sebagian`.
     expect(run.result()?.data).toHaveLength(5);
-    expect(run.result()?.sweep?.planned).toBe(12);
+    expect(run.result()?.sweep?.plan.length).toBe(12);
     expect(run.result()?.partialSweep).toBeUndefined();
     expect(status(env)).toContain("12 masa pajak");
     // 5 rows: the union of the kept two and the fetched three — the counts above
@@ -1195,6 +1187,7 @@ describe("main boot — resuming a stopped sweep", () => {
     // partial flag, which is what keeps the file's plain year name.
     const { env, run, runId } = await bootRunningOnGrid();
     const elevenMasa = {
+      plan: Array.from({ length: 12 }, (_, i) => `TD.007${String(i + 1).padStart(2, "0")}`),
       counts: [
         ...Array.from({ length: 11 }, (_, i) => ({
           period: `TD.007${String(i + 1).padStart(2, "0")}`,
@@ -1203,9 +1196,6 @@ describe("main boot — resuming a stopped sweep", () => {
         { period: "TD.00712", rows: 0, error: "504 Gateway Timeout" },
       ],
       totalRows: 11,
-      planned: 12,
-      emptyPeriods: [],
-      failedPeriods: ["TD.00712"],
     };
 
     fromPage(env, {
@@ -1221,14 +1211,14 @@ describe("main boot — resuming a stopped sweep", () => {
     await flush();
 
     expect(run.result()?.partialSweep).toBeUndefined();
-    expect(run.result()?.sweep?.failedPeriods).toEqual(["TD.00712"]);
+    expect(failedPeriods(run.result()!.sweep!)).toEqual(["TD.00712"]);
 
     const payload = env.extensionWrites.filter((written) => SWEEP_SNAPSHOT_KEY in written).at(-1);
     const snapshot = payload?.[SWEEP_SNAPSHOT_KEY];
     expect(snapshot).toMatchObject({
       partialSweep: false,
       source: "OUTPUT_TAX",
-      sweep: { planned: 12, failedPeriods: ["TD.00712"] },
+      sweep: { plan: expect.arrayContaining(["TD.00712"]) },
     });
     // The writer and the reader must agree about what a reload can use, so the
     // blob is validated by the guard that will read it rather than by eye.
@@ -1397,7 +1387,7 @@ describe("main boot — the in-page event seam", () => {
 
   /** A stored half-sweep: two masa of twelve, on PPN Keluaran. */
   const storedSweep = () => ({
-    version: 1,
+    version: 2,
     savedAt: Date.now(),
     partialSweep: true,
     data: [{ RecordId: "1" }, { RecordId: "2" }],
@@ -1405,14 +1395,12 @@ describe("main boot — the in-page event seam", () => {
     filenameHint: "2026",
     source: "OUTPUT_TAX",
     sweep: {
+      plan: Array.from({ length: 12 }, (_, i) => `TD.007${String(i + 1).padStart(2, "0")}`),
       counts: [
         { period: "TD.00701", rows: 1 },
         { period: "TD.00702", rows: 1 },
       ],
       totalRows: 2,
-      planned: 12,
-      emptyPeriods: [],
-      failedPeriods: [],
     },
   });
 
@@ -1425,6 +1413,7 @@ describe("main boot — the in-page event seam", () => {
     ...storedSweep(),
     partialSweep: false,
     sweep: {
+      plan: Array.from({ length: 12 }, (_, i) => `TD.007${String(i + 1).padStart(2, "0")}`),
       counts: [
         ...Array.from({ length: 11 }, (_, i) => ({
           period: `TD.007${String(i + 1).padStart(2, "0")}`,
@@ -1433,9 +1422,6 @@ describe("main boot — the in-page event seam", () => {
         { period: "TD.00712", rows: 0, error: "504 Gateway Timeout" },
       ],
       totalRows: 11,
-      planned: 12,
-      emptyPeriods: [],
-      failedPeriods: ["TD.00712"],
     },
   });
 

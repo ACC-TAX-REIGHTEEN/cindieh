@@ -1,10 +1,16 @@
 // ============================================================
-// SCRAPE-BATCH.TS — one Run across many tax periods
+// SCRAPE-BATCH.TS — the Grid request a sweep is made of
 // ============================================================
 // A year-wide export is the same scrape twelve times over, once per
 // `TaxInvoicePeriod`, and the thing that makes it a feature rather
 // than twelve exports is that it stays ONE Run: the rows land in one
 // dedupe set, one completion, one file.
+//
+// This module is the REQUEST half of that: it reads the portal's own grid
+// request, measures the filters it carries, derives the period codes the
+// sweep may ask for, and rewrites the body for one masa at a time. What a
+// sweep IS — its plan and the counts it gathered — belongs to sweep.ts, which
+// is where the plan is carried instead of reconstructed.
 //
 // Measured on the live portal (2026-10-06) rather than assumed:
 //
@@ -80,44 +86,6 @@ export function measuredSweepFilters(
 ): SweepFilterMeasurement | null {
   if (!source) return null;
   return MEASURED_SWEEP_FILTERS[source] ?? null;
-}
-
-/** How many rows one period contributed, and whether it fetched cleanly. */
-export interface PeriodCount {
-  /** The `TD.` code that was requested. */
-  period: string;
-  /** Rows collected for it, after cross-period dedupe. */
-  rows: number;
-  /** The message when the period could not be fetched at all. */
-  error?: string;
-}
-
-/**
- * What a whole batch produced, in the shape the panel reports it.
- *
- * `emptyPeriods` exists because the server's own count is unusable: with
- * nothing trustworthy to compare against, the one anomaly that is detectable
- * is a period that came back empty while its neighbours did not. That is a
- * month that silently vanished, and it has to be said out loud rather than
- * shipped as a short year.
- */
-export interface PeriodSummary {
-  counts: PeriodCount[];
-  /** Total rows across every period. */
-  totalRows: number;
-  /**
-   * How many periods the sweep was ASKED for.
-   *
-   * Equal to `counts.length` on a finished sweep, and larger on one the user
-   * stopped — which is the whole reason it is carried: the panel can then say
-   * "10 dari 12 masa" instead of leaving the user to work out how much of the
-   * year is missing from a row count alone.
-   */
-  planned: number;
-  /** Periods that returned nothing although others returned something. */
-  emptyPeriods: string[];
-  /** Periods that failed outright. */
-  failedPeriods: string[];
 }
 
 /**
@@ -451,84 +419,4 @@ export function batchScopeError(
     return `Permintaan grid ini tidak punya filter ${measurement.year} yang bisa dibaca, jadi ekspor satu tahun tidak bisa dijalankan.`;
   }
   return null;
-}
-
-/**
- * Roll per-period counts into what the panel reports.
- *
- * A period is called empty only when it produced nothing AND at least one other
- * period produced something — a taxpayer genuinely idle for a month is normal,
- * so flagging every zero would train the user to ignore the flag. A period that
- * FAILED is listed separately: that is a transport problem, not a quiet month.
- *
- * `planned` defaults to what the counts themselves say, which is the finished
- * sweep; a stopped sweep passes the count it was asked for so the report can
- * name the gap (scrape-result.ts).
- */
-export function summarisePeriods(counts: PeriodCount[], planned = counts.length): PeriodSummary {
-  const failedPeriods = counts.filter((c) => c.error).map((c) => c.period);
-  const withRows = counts.filter((c) => !c.error && c.rows > 0).map((c) => c.period);
-  const emptyPeriods =
-    withRows.length > 0
-      ? counts.filter((c) => !c.error && c.rows === 0).map((c) => c.period)
-      : [];
-  return {
-    counts,
-    totalRows: counts.reduce((sum, c) => sum + c.rows, 0),
-    planned,
-    emptyPeriods,
-    failedPeriods,
-  };
-}
-
-/**
- * The masa a resumed sweep must still fetch: the year's plan minus the periods
- * that FINISHED.
- *
- * "Finished" means recorded without an error, so the two states a stopped sweep
- * leaves behind are both resumed:
- *
- *  * a period that FAILED has no rows — the year is missing it entirely;
- *  * a period the stop cut short is not recorded at all (ADR-0020 keeps an
- *    interrupted request out of the counts, because "masa tanpa baris" would
- *    tell the reader to go and check a month the sweep never finished asking
- *    for).
- *
- * Returns an empty list when nothing was kept: with no count there is no year to
- * plan from. Callers then have nothing to resume and must start a fresh sweep
- * rather than send an empty list — a sweep asked for no periods would report a
- * finished year without making a single request.
- */
-export function pendingPeriods(summary: PeriodSummary): string[] {
-  const seed = summary.counts[0]?.period;
-  if (!seed) return [];
-  const plan = planPeriods(seed, summary.planned);
-  const finished = new Set(
-    summary.counts.filter((count) => !count.error).map((count) => count.period),
-  );
-  return plan.filter((code) => !finished.has(code));
-}
-
-/**
- * The union of a kept sweep's summary and the one that came back on top of it.
- *
- * A resumed sweep reports only the masa it fetched, so the panel line, the
- * completion notification and the file's own `-sebagian` question must all be
- * answered from the UNION. The incoming counts win for a period they cover
- * again — a resumed retry of a failed masa replaces that failure with the
- * retry's outcome — and `planned` keeps the larger of the two, because a resumed
- * sweep is asked for a subset of the year it belongs to.
- *
- * The empty/failed lists are not merged by hand: `summarisePeriods` is the one
- * place that decides what counts as empty, so the union goes back through it.
- * Counts come out in code order, which is month order for one year.
- */
-export function mergePeriodSummaries(
-  previous: PeriodSummary,
-  incoming: PeriodSummary,
-): PeriodSummary {
-  const byPeriod = new Map(previous.counts.map((count) => [count.period, count]));
-  for (const count of incoming.counts) byPeriod.set(count.period, count);
-  const counts = [...byPeriod.values()].sort((a, b) => a.period.localeCompare(b.period));
-  return summarisePeriods(counts, Math.max(previous.planned, incoming.planned));
 }

@@ -303,17 +303,24 @@
   href="../../../docs/adr/0023-a-stopped-sweep-can-be-resumed.md">ADR-0023</a> memperbaikinya, dan
  menjawabnya dengan satu pertanyaan: <strong>masa mana yang belum pernah selesai?</strong></p>
 
-  <p>Jawabannya dihitung, bukan diingat. <code>pendingPeriods(summary)</code> membangun ulang rencana
-  tahun dari hitungan yang ada, lalu mengurangi setiap periode yang tercatat <strong>tanpa error</strong>.
-  Karena itu <em>kedua</em> keadaan yang ditinggalkan stop ikut di-resume: masa yang <strong>gagal</strong>
-  (barisnya mungkin ada, bulan itu belum lengkap) dan masa yang <strong>terpotong stop</strong> (tidak
-  tercatat sama sekali). Hitungan itulah seluruh memorinya.</p>
+  <p>Jawabannya dihitung, bukan diingat. <code>missingPeriods(sweep)</code> mengurangi <strong>rencana</strong>
+  sweep dari setiap periode yang tercatat <strong>tanpa error</strong>. Karena itu <em>kedua</em> keadaan yang
+  ditinggalkan stop ikut di-resume: masa yang <strong>gagal</strong> (barisnya mungkin ada, bulan itu belum
+  lengkap) dan masa yang <strong>terpotong stop</strong> (tidak tercatat sama sekali). Hitungan itulah
+  seluruh memorinya.</p>
+
+  <aside class="pull">
+    <p>Rencana itu sendiri ikut dibawa, bukan dibangun ulang dari hitungan (<a
+    href="../../../docs/adr/0040-a-sweep-carries-its-plan.md">ADR-0040</a>). Membangun ulang dari hitungan
+    mengasumsikan hitungan pertama adalah bulan 01 — dan setengah sweep yang dilanjutkan justru mulai dari
+    bulan yang sedang dilanjutkan, jadi asumsi itu tidak berlaku di sana.</p>
+  </aside>
 
   <div class="table-wrap">
     <table>
       <caption>Tiga keadaan sweep, satu pertanyaan yang sama: masih ada masa yang belum?</caption>
       <thead>
-        <tr><th>Keadaan</th><th><code>pendingPeriods</code></th><th>Yang ditawarkan</th><th>Nama berkas</th></tr>
+        <tr><th>Keadaan</th><th><code>missingPeriods</code></th><th>Yang ditawarkan</th><th>Nama berkas</th></tr>
       </thead>
       <tbody>
         <tr>
@@ -355,9 +362,9 @@
     berhenti dengan pesan, bukan mencampur dua tahun dalam satu berkas.</li>
     <li><strong>Union adalah pekerjaan dunia isolated</strong>, karena baris yang disimpan tinggal di
     sana. <code>unionRows</code> mendeduplikasi menurut identitas baris portal (baris lama lebih
-    dulu, supaya urutan ekspor tetap stabil) dan <code>mergePeriodSummaries</code> membiarkan
-    hitungan yang masuk menang untuk masa yang mereka cakup lagi, sementara <code>planned</code>
-    mempertahankan nilai yang lebih besar. Karena itu <strong>jumlah baris yang tampil di panel adalah
+    dulu, supaya urutan ekspor tetap stabil) dan <code>mergeSweeps</code> membiarkan
+    hitungan yang masuk menang untuk masa yang mereka cakup lagi, sementara <code>plan</code>
+    menyimpan gabungan dari kedua rencana. Karena itu <strong>jumlah baris yang tampil di panel adalah
     jumlah baris di berkas</strong>: <code>totalRows</code> diambil dari baris union yang sebenarnya,
     bukan dari penjumlahan dua akumulator yang bisa saling tumpang tindih.</li>
     <li><strong>Resume hanya boleh menambah.</strong> <code>begin("sweep-resume")</code> memasang
@@ -423,7 +430,7 @@
   ctx,               // pemeriksaan stop, kanal progres, jeda, pacing
   startedAt,         // waktu berjalan di baris progres dan laporan stop
   fetchPeriod,       // satu masa utuh, ke dalam `rows`
-}): Promise&lt;{ summary: PeriodSummary; pages: number; truncated: boolean; stopped: boolean }&gt;</code></pre>
+}): Promise&lt;{ summary: Sweep; pages: number; truncated: boolean; stopped: boolean }&gt;</code></pre>
 
   <p>Aturannya menjadi antarmuka modul, bukan komentar di antara urusan yang tidak berkaitan:</p>
 
@@ -494,7 +501,7 @@
     <ul class="options">
       <li><button class="opt" data-correct data-why="Masa terpotong bukan temuan tentang data, jadi tidak boleh direkam sama sekali.">Masa itu tidak direkam, bukan kosong dan bukan gagal.</button></li>
       <li><button class="opt" data-why="Masa terpotong tidak boleh dihitung sebagai kosong, karena itu bukan temuan tentang data.">Masa itu direkam sebagai kosong supaya panel bisa menghitung.</button></li>
-      <li><button class="opt" data-why="Masa yang gagal tetap bisa di-resume lewat pendingPeriods; masa terpotong tidak direkam.">Masa itu direkam sebagai gagal supaya bisa diulang lagi.</button></li>
+      <li><button class="opt" data-why="Masa yang gagal tetap bisa di-resume lewat missingPeriods; masa terpotong tidak direkam.">Masa itu direkam sebagai gagal supaya bisa diulang lagi.</button></li>
     </ul>
     <p class="feedback" role="status" aria-live="polite"></p>
   </div>
@@ -503,7 +510,7 @@
     <p class="q">Ketika sweep dilanjutkan, masa mana yang benar-benar diambil ulang?</p>
     <ul class="options">
       <li><button class="opt" data-why="Yang tercatat dengan error justru pending, bukan yang tercatat tanpa error.">Hanya masa yang tercatat dengan error, jadi masa kosong ikut diambil.</button></li>
-      <li><button class="opt" data-correct data-why="pendingPeriods mengurangi rencana tahun dengan setiap periode yang tercatat tanpa error.">Hanya masa yang belum tercatat tanpa error, masa gagal ikut diambil.</button></li>
+      <li><button class="opt" data-correct data-why="missingPeriods mengurangi rencana sweep dengan setiap periode yang tercatat tanpa error.">Hanya masa yang belum tercatat tanpa error, masa gagal ikut diambil.</button></li>
       <li><button class="opt" data-why="Masa kosong tetap dihitung selesai; yang diulang hanya masa yang gagal.">Hanya masa yang belum tercatat dengan error, masa kosong ikut diambil.</button></li>
     </ul>
     <p class="feedback" role="status" aria-live="polite"></p>
@@ -528,8 +535,11 @@
     salvage: apa yang dilaporkan, apa yang dibatalkan, dan kenapa nama berkasnya ditandai
     <code>-sebagian</code>.</li>
     <li><a href="../../../docs/adr/0023-a-stopped-sweep-can-be-resumed.md"><code>ADR-0023</code></a> —
-    <code>pendingPeriods</code>, union di dunia isolated, dan dua amandemen soal bertahan melewati
+    <code>missingPeriods</code>, union di dunia isolated, dan dua amandemen soal bertahan melewati
     reload.</li>
+    <li><a href="../../../docs/adr/0040-a-sweep-carries-its-plan.md"><code>ADR-0040</code></a> —
+    rencana sweep ikut dibawa bersama hitungannya, jadi tidak ada lagi yang membangun ulang tahun
+    dari hitungan pertama.</li>
     <li><a href="../../../docs/adr/0032-the-period-sweep-is-its-own-module.md"><code>ADR-0032</code></a> —
     <code>period-sweep.ts</code> dan seam <code>fetchPeriod</code>.</li>
     <li><a href="../../../tools/README.md"><code>tools/README.md</code></a> — tabel pengukuran filter per

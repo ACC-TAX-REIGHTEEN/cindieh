@@ -11,7 +11,7 @@
 // STOPPED (whose file is named `-sebagian`) and a sweep that FINISHED with a
 // masa the portal failed to deliver (whose file keeps its plain name while its
 // year is still one month short). What makes rows resumable is masa still
-// missing, not how the sweep ended — `sweepContentOf` asks `pendingPeriods`,
+// missing, not how the sweep ended — `sweepContentOf` asks `sweep.isResumable`,
 // and the stop flag is carried as a fact about the rows, not as the ticket.
 //
 // Two halves, deliberately apart:
@@ -32,7 +32,7 @@
 
 import type { ExportSource } from "./page-context";
 import type { RunResult } from "./run-lifecycle";
-import { pendingPeriods, type PeriodCount, type PeriodSummary } from "./scrape-batch";
+import { isResumable, type PeriodCount, type Sweep } from "./sweep";
 import { browserAPI } from "./browser-shim";
 import { debugError, debugWarn } from "./debug";
 
@@ -42,8 +42,12 @@ import { debugError, debugWarn } from "./debug";
  * Bumped whenever the stored shape changes. A snapshot from an older version is
  * dropped rather than migrated: the rows it holds are reproducible by fetching
  * the missing masa again, which is what a resume does anyway.
+ *
+ * Version 2 carries the sweep's PLAN alongside its counts (sweep.ts), so a
+ * version 1 blob — which had only the counts — is dropped rather than read as a
+ * sweep with no plan and nothing to resume.
  */
-export const SWEEP_SNAPSHOT_VERSION = 1;
+export const SWEEP_SNAPSHOT_VERSION = 2;
 
 /** The one extension-storage key a resumable stopped sweep lives under. */
 export const SWEEP_SNAPSHOT_STORAGE_KEY = "cindiehSweepSnapshot";
@@ -99,7 +103,7 @@ export interface SweepSnapshot {
   fields: string[];
   filenameHint?: string;
   source: ExportSource;
-  sweep: PeriodSummary;
+  sweep: Sweep;
 }
 
 /** A snapshot without its stamp: what the rows' own content amounts to. */
@@ -114,14 +118,14 @@ export type SweepContent = Omit<SweepSnapshot, "version" | "savedAt">;
  * what a resume consumes — the flag only decides whether the file is named
  * `-sebagian`.
  *
- * The test is `pendingPeriods`, not the flag: a whole sweep is not offered for
+ * The test is `isResumable`, not the flag: a whole sweep is not offered for
  * resume because it has nothing pending, and neither is a stop that happened to
  * land after the last masa. A plain scrape has no counts at all.
  */
 export function sweepContentOf(result: RunResult | null): SweepContent | null {
   if (!result) return null;
   if (!result.sweep) return null;
-  if (pendingPeriods(result.sweep).length === 0) return null;
+  if (!isResumable(result.sweep)) return null;
   if (result.data.length === 0) return null;
   if (result.fields.length === 0) return null;
   if (!result.source) return null;
@@ -188,12 +192,12 @@ function isCount(value: unknown): value is PeriodCount {
   return value.error === undefined || typeof value.error === "string";
 }
 
-function isSummary(value: unknown): value is PeriodSummary {
+function isSweep(value: unknown): value is Sweep {
   if (!isRecord(value)) return false;
+  if (!isStringArray(value.plan)) return false;
   if (!Array.isArray(value.counts) || !value.counts.every(isCount)) return false;
   if (typeof value.totalRows !== "number" || !Number.isFinite(value.totalRows)) return false;
-  if (typeof value.planned !== "number" || !Number.isFinite(value.planned)) return false;
-  return isStringArray(value.emptyPeriods) && isStringArray(value.failedPeriods);
+  return true;
 }
 
 /**
@@ -217,11 +221,11 @@ export function readSnapshot(raw: unknown, now: number): SweepSnapshot | null {
   if (typeof raw.source !== "string") return null;
   if (typeof raw.partialSweep !== "boolean") return null;
   if (raw.filenameHint !== undefined && typeof raw.filenameHint !== "string") return null;
-  if (!isSummary(raw.sweep)) return null;
+  if (!isSweep(raw.sweep)) return null;
   // Nothing pending is nothing to resume. Storing one is refused, so a blob that
   // has one was written by something else (or by a stop that landed after the
   // last masa) and is dropped rather than offered.
-  if (pendingPeriods(raw.sweep).length === 0) return null;
+  if (!isResumable(raw.sweep)) return null;
 
   return {
     version: SWEEP_SNAPSHOT_VERSION,

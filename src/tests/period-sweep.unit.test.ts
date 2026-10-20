@@ -7,6 +7,7 @@ import {
   type PeriodSweepInput,
 } from "../content/period-sweep";
 import type { CapturedRequest, ScrapeComplete, ScrapeMessage } from "../content/scraper-types";
+import { emptyPeriods, failedPeriods } from "../content/sweep";
 import { gridRequest, rawBodyWithSweep } from "./__mocks__/grid-requests";
 
 // The sweep's rules are the ones a reader has to know before trusting a year of
@@ -97,12 +98,12 @@ describe("runPeriodSweep — the loop", () => {
       { period: "TD.00701", rows: 1 },
       { period: "TD.00702", rows: 1 },
     ]);
-    // `planned` is the year it was ASKED for, which a stopped sweep needs to say
+    // The plan is the year it was ASKED for, which a stopped sweep needs to say
     // "10 dari 12" later.
-    expect(result.summary.planned).toBe(2);
+    expect(result.summary.plan.length).toBe(2);
     expect(result.pages).toBe(4);
-    expect(result.summary.failedPeriods).toEqual([]);
-    expect(result.summary.emptyPeriods).toEqual([]);
+    expect(failedPeriods(result.summary)).toEqual([]);
+    expect(emptyPeriods(result.summary)).toEqual([]);
     // Nothing to report: an accepted sweep is completed by its caller.
     expect(completionOf(ctx)).toBeUndefined();
   });
@@ -157,7 +158,7 @@ describe("runPeriodSweep — the loop", () => {
       ["TD.00701", "TD.00702", "TD.00703"],
     );
 
-    expect((await run()).summary.emptyPeriods).toEqual(["TD.00702"]);
+    expect(emptyPeriods((await run()).summary)).toEqual(["TD.00702"]);
   });
 });
 
@@ -180,7 +181,7 @@ describe("runPeriodSweep — one retry", () => {
       ["TD.00701", 1],
       ["TD.00702", 1],
     ]);
-    expect(result.summary.failedPeriods).toEqual([]);
+    expect(failedPeriods(result.summary)).toEqual([]);
     // The retry pause is paced like every other delay: 2000 at the default preset.
     expect(vi.mocked(ctx.delay).mock.calls.map(([ms]) => ms)).toEqual([PERIOD_RETRY_DELAY_MS, 100]);
   });
@@ -201,7 +202,7 @@ describe("runPeriodSweep — one retry", () => {
       { period: "TD.00701", rows: 0, error: "504 Gateway Timeout" },
       { period: "TD.00702", rows: 1 },
     ]);
-    expect(result.summary.failedPeriods).toEqual(["TD.00701"]);
+    expect(failedPeriods(result.summary)).toEqual(["TD.00701"]);
     expect(result.stopped).toBe(false);
   });
 
@@ -254,7 +255,7 @@ describe("runPeriodSweep — a stop", () => {
     // A sweep is named for the YEAR, and the receiver adds the partial marker at
     // export time.
     expect(complete?.filenameHint).toBe("2026");
-    expect(complete?.periods?.planned).toBe(2);
+    expect(complete?.periods?.plan.length).toBe(2);
     expect(complete?.periods?.counts.map((count) => count.period)).toEqual(["TD.00701"]);
     // A finished period's truncation finding survives into the stop report.
     expect(complete?.truncated).toBe(true);

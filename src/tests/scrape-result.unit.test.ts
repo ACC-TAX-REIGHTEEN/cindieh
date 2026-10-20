@@ -14,6 +14,10 @@ import {
   stoppedSweepMessage,
   truncatedResultNotice,
 } from "../content/scrape-result";
+import { sweepOf } from "../content/sweep";
+
+/** The twelve codes of one year, oldest first. */
+const YEAR_PLAN = Array.from({ length: 12 }, (_, i) => `TD.007${String(i + 1).padStart(2, "0")}`);
 
 // This module is the PURE half: the missing-invoice diff, the per-caller report
 // wording, and the dispatcher wrapper. Accepting, rejecting and consuming a
@@ -118,13 +122,8 @@ describe("result warnings and errors", () => {
 // two wordings that differ only in the reason they give.
 
 describe("stoppedSweepMessage", () => {
-  const summary = (counts: { period: string; rows: number; error?: string }[], planned = 12) => ({
-    counts,
-    totalRows: counts.reduce((sum, c) => sum + c.rows, 0),
-    planned,
-    emptyPeriods: [],
-    failedPeriods: counts.filter((c) => c.error).map((c) => c.period),
-  });
+  const summary = (counts: { period: string; rows: number; error?: string }[], plan = YEAR_PLAN) =>
+    sweepOf(counts, plan);
 
   it("says how much of the year arrived, that nothing auto-runs, and that the file is named", () => {
     const counts = Array.from({ length: 10 }, (_, i) => ({
@@ -183,13 +182,8 @@ describe("stoppedSweepMessage", () => {
 });
 
 describe("restoredSweepMessage", () => {
-  const summary = (counts: { period: string; rows: number; error?: string }[], planned = 12) => ({
-    counts,
-    totalRows: counts.reduce((sum, c) => sum + c.rows, 0),
-    planned,
-    emptyPeriods: [],
-    failedPeriods: counts.filter((c) => c.error).map((c) => c.period),
-  });
+  const summary = (counts: { period: string; rows: number; error?: string }[], plan = YEAR_PLAN) =>
+    sweepOf(counts, plan);
   const masa = (length: number, error?: (index: number) => string | undefined) =>
     Array.from({ length }, (_, i) => {
       const period = `TD.007${String(i + 1).padStart(2, "0")}`;
@@ -295,4 +289,4 @@ describe("currentRunHandlers", () => {
     expect(isCurrent).toHaveBeenCalledWith({ type });
     expect(handler).toHaveBeenCalledWith({ type });
   });
-});
+});

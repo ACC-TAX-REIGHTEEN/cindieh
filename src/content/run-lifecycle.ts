@@ -18,7 +18,7 @@
 // ============================================================
 
 import type { ExportSource } from "./page-context";
-import { pendingPeriods, type PeriodSummary } from "./scrape-batch";
+import { isResumable, type Sweep } from "./sweep";
 import type { ScrapeComplete } from "./scraper-types";
 import {
   findMissingInvoices,
@@ -45,14 +45,15 @@ export interface RunResult {
    */
   partialSweep?: boolean;
   /**
-   * What each masa of a year-wide sweep contributed, so far.
+   * What each masa of a year-wide sweep contributed, so far, and the plan the
+   * sweep covers.
    *
    * Carried with the rows rather than beside them because it is what makes the
-   * rows RESUMABLE: `pendingPeriods` reads it to say which masa still have to be
-   * fetched, and `mergePeriodSummaries` folds a resumed sweep's own counts back
-   * in. Present only while the rows came from a sweep.
+   * rows RESUMABLE: `sweep.ts` reads it to say which masa still have to be
+   * fetched, and `mergeSweeps` folds a resumed sweep's own counts back in.
+   * Present only while the rows came from a sweep.
    */
-  sweep?: PeriodSummary;
+  sweep?: Sweep;
 }
 
 /** Something the Wajib Pajak asked for before the grid data existed. */
@@ -214,9 +215,9 @@ export interface RunLifecycle {
    * finished with a failed masa was never a stop and keeps its plain name.
    *
    * Two states qualify, and the test is the same one that decided whether to
-   * store them: masa still missing (`pendingPeriods`). A stopped sweep has the
-   * ones it never reached, and a finished sweep has the masa the portal failed to
-   * deliver — the retry of a failed month is the same resume.
+   * store them: masa still missing (`sweep.isResumable`). A stopped sweep has
+   * the ones it never reached, and a finished sweep has the masa the portal
+   * failed to deliver — the retry of a failed month is the same resume.
    *
    * Returns false when nothing was adopted — a result whose year has no masa
    * pending, or a Run already in flight (a page that is already working must not
@@ -288,7 +289,7 @@ interface RunState {
   filenameHint: string | undefined;
   source: ExportSource | undefined;
   partialSweep: boolean;
-  sweep: PeriodSummary | null;
+  sweep: Sweep | null;
 }
 
 function freshState(): RunState {
@@ -571,7 +572,7 @@ export function createRunLifecycle(): RunLifecycle {
       // Only a year with masa still missing is resumable: a whole sweep has
       // nothing to offer, and adopting it would hand every later click a resume
       // to decide against for no reason.
-      if (pendingPeriods(result.sweep).length === 0) return false;
+      if (!isResumable(result.sweep)) return false;
       if (result.data.length === 0 || result.fields.length === 0) return false;
 
       state.data = result.data;

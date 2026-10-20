@@ -9,7 +9,7 @@
 // regression — new logic shipping without tests — does. Raise them as coverage
 // improves; never lower them to make a red build green.
 //
-// Measured 2026-10-16 on the whole suite (1749 tests). The modules that hold
+// Measured 2026-10-20 on the whole suite (2051 tests). The modules that hold
 // the baseline down are recorded in AGENTS.md so a low number reads as a known
 // gap rather than a mystery.
 
@@ -61,8 +61,8 @@ export default defineConfig({
       // 93.2/86.6/90.0/94.5 by the two features that followed, the Referensi
       // filter reaching both PPN grids (ADR-0021), the stop retiring every
       // request a Run carried (ADR-0022) and the resumable stopped sweep
-      // (ADR-0023), whose pure arithmetic (pendingPeriods, mergePeriodSummaries)
-      // is fully covered and whose union merge is driven end to end by the boot
+      // (ADR-0023), whose pure arithmetic (sweep.ts) is fully covered and
+      // whose union merge is driven end to end by the boot
       // harness — and then to the same floors with the accuracy check reaching
       // the two Retur grids (ADR-0024), whose four page facts, identity table
       // and view wiring each brought their own cases — and now raised to
@@ -89,7 +89,11 @@ export default defineConfig({
       // nineteen hand-written control blocks became nine rows behind a binder,
       // and now 95.20/90.10/93.54/96.21 with the MAIN world's install wiring
       // taking the page as one injected env (ADR-0038): the adapter is 100%
-      // and the wiring it used to be mixed into can finally be driven.
+      // and the wiring it used to be mixed into can finally be driven. The
+      // floors stay where they are, because the measurement is flat: the
+      // sweep's arithmetic MOVED from scrape-batch.ts into sweep.ts (ADR-0040),
+      // which is 100% on its own terms, and the aggregate is unchanged at
+      // 95.19/90.12/93.56/96.22 on 2051 tests.
       //
       // The cushion is deliberately ~0.4 points, the same gap the floors have
       // always kept: enough that ordinary churn cannot redden the build, small

@@ -2,7 +2,7 @@
 // These types are used by the injected page-context scraper script.
 
 import type { ExportSource } from "./page-context";
-import type { PeriodSummary } from "./scrape-batch";
+import type { Sweep } from "./sweep";
 
 export interface CapturedRequest {
   url: string;
@@ -96,12 +96,16 @@ export interface ScrapeComplete {
    */
   kind?: "scrape" | "pdf";
   /**
-   * What each period contributed. Present only on a batch run, and it is the
-   * ONLY completeness signal there: the server's count is per period and means
-   * nothing once several are concatenated (and on this endpoint is not a count
-   * at all), so the per-period row counts are what the panel reports.
+   * What each period contributed, and the plan the sweep covers.
+   *
+   * Present only on a batch run, and it is the ONLY completeness signal there:
+   * the server's count is per period and means nothing once several are
+   * concatenated (and on this endpoint is not a count at all), so the per-period
+   * row counts are what the panel reports. The plan travels with them so the
+   * receiver can say which masa are still missing without rebuilding the
+   * year from the counts (sweep.ts).
    */
-  periods?: PeriodSummary;
+  periods?: Sweep;
 }
 
 /**
@@ -172,7 +176,7 @@ export type FromContentMessage = (
        * resume half of a year-wide sweep.
        *
        * The isolated world kept the rows of the masa that finished and sends
-       * back only the codes still missing (scrape-batch.pendingPeriods). The
+       * back only the codes still missing (sweep.missingPeriods). The
        * MAIN world narrows them against the portal's own year plan, so a stale
        * or forged list can never request a period the portal did not offer.
        * Absent means the ordinary count-based sweep, or no sweep at all.
