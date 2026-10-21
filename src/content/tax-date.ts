@@ -50,6 +50,37 @@ export function extractMonth(raw: unknown): string {
   return "";
 }
 
+/** The month names, in Indonesian, in the order the calendar runs. */
+const NAMA_BULAN = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+] as const;
+
+/**
+ * The month a period names, in words — or the value itself when it names none.
+ *
+ * A portal period code (`TD.00703`) is the portal's own spelling; a person
+ * reading a progress line reads "Maret". A value that names no month (a month
+ * the portal spelled out, a bare year, an unreadable value) comes back
+ * unchanged, so a line never invents a month it could not read.
+ */
+export function periodMonthName(periodValue: string): string {
+  const text = String(periodValue ?? "").trim();
+  const month = extractMonth(text);
+  if (!month) return text;
+  return NAMA_BULAN[Number(month) - 1] ?? text;
+}
+
 /**
  * Extract a masa pajak period in MM/YYYY or MM-YYYY form from free text
  * (e.g. "Periode Masa Pajak 04-2026" → "04-2026").

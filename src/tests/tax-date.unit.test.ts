@@ -12,6 +12,7 @@ import {
   formatDate,
   formatIsoDateTime,
   getCurrentYearMonthWIB,
+  periodMonthName,
 } from "../content/tax-date";
 
 // ── extractYear ───────────────────────────────────────────────────────────────
@@ -68,6 +69,26 @@ describe("extractMonth", () => {
 });
 
 // ── extractMasaPajak ──────────────────────────────────────────────────────────
+
+describe("periodMonthName", () => {
+  it("names the month a portal period code stands for", () => {
+    // The badge shows the month in words; the portal's own code is what the
+    // request carries, not what a person reads.
+    expect(periodMonthName("TD.00701")).toBe("Januari");
+    expect(periodMonthName("TD.00703")).toBe("Maret");
+    expect(periodMonthName("TD00711")).toBe("November");
+    expect(periodMonthName("TD.00712")).toBe("Desember");
+  });
+
+  it("returns a value that names no month unchanged", () => {
+    // A month the portal spelled out, a bare year, an unreadable value: the
+    // line must not invent a month it could not read.
+    expect(periodMonthName("Agustus")).toBe("Agustus");
+    expect(periodMonthName("2026")).toBe("2026");
+    expect(periodMonthName("")).toBe("");
+    expect(periodMonthName("TD.007")).toBe("TD.007");
+  });
+});
 
 describe("extractMasaPajak", () => {
   it("extracts an MM/YYYY period from free text", () => {

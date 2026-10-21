@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMessageDispatcher } from "../content/postmessage-guard";
 import {
+  batchResultNotice,
   currentRunHandlers,
   failedItemsDetail,
   failedItemsNotice,
@@ -120,6 +121,41 @@ describe("result warnings and errors", () => {
 // succeeds with an empty payload, so the scrape looks complete and the export
 // comes back short. These cases pin the diff that makes the gap visible, and the
 // two wordings that differ only in the reason they give.
+
+describe("batchResultNotice", () => {
+  const summary = (counts: { period: string; rows: number; error?: string }[], plan = YEAR_PLAN) =>
+    sweepOf(counts, plan);
+
+  it("names the months a sweep could not fetch, in words", () => {
+    // The panel speaks the user's language: a person reads "Maret", not the
+    // portal's own code.
+    const notice = batchResultNotice(
+      summary([
+        { period: "TD.00701", rows: 10 },
+        { period: "TD.00703", rows: 0, error: "504 Gateway Timeout" },
+      ]),
+    );
+    expect(notice).toContain("Masa gagal diambil: Maret");
+    expect(notice).not.toContain("TD.00703");
+  });
+
+  it("names the months that came back empty, in words", () => {
+    const notice = batchResultNotice(
+      summary([
+        { period: "TD.00701", rows: 10 },
+        { period: "TD.00702", rows: 0 },
+      ]),
+    );
+    expect(notice).toContain("Masa tanpa baris: Februari");
+    expect(notice).not.toContain("TD.00702");
+  });
+
+  it("states the count and the rows when nothing went wrong", () => {
+    expect(batchResultNotice(summary([{ period: "TD.00701", rows: 10 }]))).toBe(
+      "1 masa pajak, 10 baris.",
+    );
+  });
+});
 
 describe("stoppedSweepMessage", () => {
   const summary = (counts: { period: string; rows: number; error?: string }[], plan = YEAR_PLAN) =>

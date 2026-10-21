@@ -5,6 +5,7 @@
 
 import type { MessageHandler } from "./postmessage-guard";
 import type { ScrapeComplete } from "./scraper-types";
+import { periodMonthName } from "./tax-date";
 import {
   emptyPeriods,
   failedPeriods,
@@ -204,7 +205,7 @@ export function batchResultNotice(summary: Sweep): string {
     return (
       headline +
       ". Masa gagal diambil: " +
-      failed.join(", ") +
+      failed.map(periodMonthName).join(", ") +
       ". Coba ekspor kembali."
     );
   }
@@ -213,7 +214,7 @@ export function batchResultNotice(summary: Sweep): string {
     return (
       headline +
       ". Masa tanpa baris: " +
-      empty.join(", ") +
+      empty.map(periodMonthName).join(", ") +
       " -- periksa di portal apakah ada data di masa tersebut."
     );
   }

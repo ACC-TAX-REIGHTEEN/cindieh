@@ -129,9 +129,11 @@ describe("runPeriodSweep — the loop", () => {
     await run();
 
     const progress = sent(ctx).filter((message) => message.type === "SCRAPE_PROGRESS");
+    // The month is named in words, not in the portal's own code: a person
+    // reading the badge reads "Januari", not "TD.00701".
     expect(progress.map((message) => (message as { status: string }).status)).toEqual([
-      "Masa 1/2 (TD.00701) — 1 baris",
-      "Masa 2/2 (TD.00702) — 2 baris",
+      "Masa 1/2 (Januari) — 1 baris",
+      "Masa 2/2 (Februari) — 2 baris",
     ]);
     // One gap between two periods, and no pause after the last one.
     expect(vi.mocked(ctx.delay).mock.calls.map(([ms]) => ms)).toEqual([100]);

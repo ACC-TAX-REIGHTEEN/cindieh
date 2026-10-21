@@ -45,6 +45,7 @@ import {
 } from "../shared/extension-preferences";
 import { debugError, debugLog, debugWarn } from "./debug";
 import { capturedYear } from "./scrape-batch";
+import { periodMonthName } from "./tax-date";
 import { emptyPeriods, sweepOf, type PeriodCount, type Sweep } from "./sweep";
 import { sendScrapeComplete } from "./scrape-result-transfer";
 import { collectFields } from "./scraper-helpers";
@@ -216,7 +217,7 @@ export async function runPeriodSweep({
       total: rows.allData.length,
       page: pages,
       elapsed: elapsed(),
-      status: `Masa ${index + 1}/${periods.length} (${period}) — ${rows.allData.length} baris`,
+      status: `Masa ${index + 1}/${periods.length} (${periodMonthName(period)}) — ${rows.allData.length} baris`,
     });
     // Between periods the pause is the run's own, not a page's, so it is paced
     // like every other inter-request delay: it may only ever be slower.
