@@ -235,7 +235,7 @@ describe("column mapping matrix — cleaned mode, all 11 sources", () => {
 			"NO IDENTITAS PEMBELI",
 			"NAMA PEMBELI",
 			"NO FAKTUR",
-			"TANGGAL",
+			"TANGGAL FAKTUR",
 			"NO RETUR",
 			"TANGGAL RETUR",
 			"MASA",
@@ -251,10 +251,13 @@ describe("column mapping matrix — cleaned mode, all 11 sources", () => {
 			"NO IDENTITAS PEMBELI": "0639343490201000",
 			"NAMA PEMBELI": "PT Buyer Clear",
 			"NO FAKTUR": "0400000123",
-			TANGGAL: "18/06/2026",
+			"TANGGAL FAKTUR": "18/06/2026",
 			"NO RETUR": "RET-OUT-001",
 			"TANGGAL RETUR": "01/07/2026",
-			MASA: "6",
+			// The RETUR's own month — July, from the credit note's date — not the
+			// invoice's June. The portal puts the invoice's period in the
+			// invoice's period field.
+			MASA: "7",
 			TAHUN: "2026",
 			"STATUS PEMBELI": "CREDITED",
 			STATUS: "APPROVED",
@@ -291,7 +294,7 @@ describe("column mapping matrix — cleaned mode, all 11 sources", () => {
 			"NO IDENTITAS PENJUAL",
 			"NAMA PENJUAL",
 			"NO FAKTUR",
-			"TANGGAL",
+			"TANGGAL FAKTUR",
 			"NO RETUR",
 			"TANGGAL RETUR",
 			"MASA",
@@ -304,8 +307,11 @@ describe("column mapping matrix — cleaned mode, all 11 sources", () => {
 			"PPNBM",
 		]);
 		expect(result.data[0]["NO IDENTITAS PENJUAL"]).toBe("0016232159201000");
-		expect(result.data[0].TANGGAL).toBe("18/06/2026");
+		expect(result.data[0]["TANGGAL FAKTUR"]).toBe("18/06/2026");
 		expect(result.data[0]["TANGGAL RETUR"]).toBe("02/07/2026");
+		// The credit note's own month, not the invoice's.
+		expect(result.data[0].MASA).toBe("7");
+		expect(result.data[0].TAHUN).toBe("2026");
 	});
 
 	it("WITHHOLDING_SLIPS: both number spellings, MASA/TAHUN derived from the slip date", () => {

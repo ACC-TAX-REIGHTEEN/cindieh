@@ -179,7 +179,7 @@ describe("processData - OUTPUT_RETURN", () => {
       "NO IDENTITAS PEMBELI",
       "NAMA PEMBELI",
       "NO FAKTUR",
-      "TANGGAL",
+      "TANGGAL FAKTUR",
       "NO RETUR",
       "TANGGAL RETUR",
       "MASA",
@@ -197,9 +197,11 @@ describe("processData - OUTPUT_RETURN", () => {
     const result = processData(makeExportData("OUTPUT_RETURN", [row]));
     expect(result.data[0]["NO IDENTITAS PEMBELI"]).toBe("0639343490201000");
     expect(result.data[0]["NAMA PEMBELI"]).toBe("PT Buyer Clear");
-    expect(result.data[0].TANGGAL).toBe("18/06/2026");
+    expect(result.data[0]["TANGGAL FAKTUR"]).toBe("18/06/2026");
     expect(result.data[0]["TANGGAL RETUR"]).toBe("01/07/2026");
-    expect(result.data[0].MASA).toBe("6");
+    // The credit note's own month, read from its own date — the row's invoice
+    // period field carries the INVOICE's month (June), not the return's.
+    expect(result.data[0].MASA).toBe("7");
     expect(result.data[0].TAHUN).toBe("2026");
     expect(result.data[0].DPP).toBe(291215);
     expect(result.data[0]).not.toHaveProperty("ExtraField");
@@ -215,7 +217,7 @@ describe("processData - INPUT_RETURN", () => {
       "NO IDENTITAS PENJUAL",
       "NAMA PENJUAL",
       "NO FAKTUR",
-      "TANGGAL",
+      "TANGGAL FAKTUR",
       "NO RETUR",
       "TANGGAL RETUR",
       "MASA",
@@ -233,9 +235,10 @@ describe("processData - INPUT_RETURN", () => {
     const result = processData(makeExportData("INPUT_RETURN", [row]));
     expect(result.data[0]["NO IDENTITAS PENJUAL"]).toBe("0016232159201000");
     expect(result.data[0]["NAMA PENJUAL"]).toBe("PT Seller");
-    expect(result.data[0].TANGGAL).toBe("18/06/2026");
+    expect(result.data[0]["TANGGAL FAKTUR"]).toBe("18/06/2026");
     expect(result.data[0]["TANGGAL RETUR"]).toBe("02/07/2026");
-    expect(result.data[0].MASA).toBe("6");
+    // The credit note's own month, read from its own date.
+    expect(result.data[0].MASA).toBe("7");
     expect(result.data[0].TAHUN).toBe("2026");
     expect(result.data[0].PPN).toBe(110000);
     expect(result.data[0]).not.toHaveProperty("ExtraField");

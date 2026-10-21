@@ -58,10 +58,13 @@ const periodMonth: FieldReader = (raw) => extractMonth(raw).replace(/^0/, "");
 const periodYear: FieldReader = extractYear;
 
 /**
- * MASA taken from a DATE's own calendar digits. Withholding rows carry no tax
- * period at all — the slip date is the only period signal they have — and
- * `extractMonth` only understands period strings, so a full ISO date has to go
- * through `extractYMD` (ADR-0004: never round-trip through `Date`).
+ * MASA taken from a DATE's own calendar digits. Two grids need it: Bukti
+ * Potong rows carry no tax period at all — the slip date is the only period
+ * signal they have — and a RETUR row's tax period is its OWN credit note's,
+ * not the invoice it credits (which is what the portal puts in the invoice's
+ * period field). `extractMonth` only understands period strings, so a full ISO
+ * date has to go through `extractYMD` (ADR-0004: never round-trip through
+ * `Date`).
  */
 const dateMonth: FieldReader = (raw) => {
   const month = extractYMD(raw)?.month ?? "";
@@ -165,11 +168,15 @@ const OUTPUT_RETURN_COLUMNS: readonly ExportColumn[] = [
   col("NO IDENTITAS PEMBELI", "BuyerTIN"),
   col("NAMA PEMBELI", "BuyerTaxpayerNameClear"),
   col("NO FAKTUR", "TaxInvoiceNumber"),
-  col("TANGGAL", "TaxInvoiceDate", date),
+  col("TANGGAL FAKTUR", "TaxInvoiceDate", date),
   col("NO RETUR", "ReturnNumber"),
   col("TANGGAL RETUR", "ReturnDate", date),
-  col("MASA", PERIOD_SOURCES, periodMonth),
-  col("TAHUN", YEAR_SOURCES, periodYear),
+  // MASA and TAHUN are the RETUR's own period, read from its own date. The
+  // portal puts the INVOICE's period in the invoice's period field, so reading
+  // it there would date every credit note by the document it credits — the
+  // wrong month for a return issued in the month after its invoice.
+  col("MASA", ["ReturnDate"], dateMonth),
+  col("TAHUN", ["ReturnDate"], dateYear),
   col("STATUS PEMBELI", "BuyerStatus"),
   col("STATUS", "TaxInvoiceStatus"),
   col("DPP", "SellingPrice"),
@@ -182,11 +189,12 @@ const INPUT_RETURN_COLUMNS: readonly ExportColumn[] = [
   col("NO IDENTITAS PENJUAL", "SellerTIN"),
   col("NAMA PENJUAL", "SellerTaxpayerName"),
   col("NO FAKTUR", "TaxInvoiceNumber"),
-  col("TANGGAL", "TaxInvoiceDate", date),
+  col("TANGGAL FAKTUR", "TaxInvoiceDate", date),
   col("NO RETUR", "ReturnNumber"),
   col("TANGGAL RETUR", "ReturnDate", date),
-  col("MASA", PERIOD_SOURCES, periodMonth),
-  col("TAHUN", YEAR_SOURCES, periodYear),
+  // The RETUR's own period, not the invoice's — see OUTPUT_RETURN_COLUMNS.
+  col("MASA", ["ReturnDate"], dateMonth),
+  col("TAHUN", ["ReturnDate"], dateYear),
   col("STATUS PEMBELI", "BuyerStatus"),
   col("STATUS", "TaxInvoiceStatus"),
   col("DPP", "SellingPrice"),
@@ -284,16 +292,18 @@ const SPECS: Record<ExportSource, ExportSourceSpec> = {
     prefix: "RET-FPK-",
     columns: { kind: "declared", columns: OUTPUT_RETURN_COLUMNS },
     driftWarning: "API schema may have changed: no OUTPUT_RETURN fields matched in any row",
-    // A retur file is named for the return year, and its period comes from the
-    // request filters rather than the rows: the rows still carry the INVOICE's
-    // masa, which is not the year the retur belongs to.
-    filename: { shape: "tahun", periodDateFields: ["TaxInvoiceDate"] },
+    // A retur file is named for the year, and that year comes from the
+    // request's own year filter rather than from the rows: the rows still carry
+    // the INVOICE's masa, which is not the year the retur belongs to. The
+    // fallback — used when the request carries no year filter — is the credit
+    // note's own date, for the same reason.
+    filename: { shape: "tahun", periodDateFields: ["ReturnDate"] },
   },
   INPUT_RETURN: {
     prefix: "RET-FPM-",
     columns: { kind: "declared", columns: INPUT_RETURN_COLUMNS },
     driftWarning: "API schema may have changed: no INPUT_RETURN fields matched in any row",
-    filename: { shape: "tahun", periodDateFields: ["TaxInvoiceDate"] },
+    filename: { shape: "tahun", periodDateFields: ["ReturnDate"] },
   },
   SPT_A2: {
     prefix: "A2-",
