@@ -8,6 +8,10 @@ Accepted. Amended 2026-10-17: the name-hint door is gone.
 Amended 2026-10-21: PPN Masukan's row is recorded. Its filter NAMES are the
 same, but its period filter carries a LIST of codes — that value shape is
 ADR-0043's subject, and this ADR's table is where the row lives.
+Amended 2026-10-21 (2): phase 2 runs per grid too. The shape of the portal's
+echoed row count is a property of the ENDPOINT, not of the grid family, and
+the two measured so far differ — so a grid cannot be measured with phase 1
+alone.
 
 ## Context
 
@@ -109,12 +113,17 @@ answer is the per-grid table in `tools/README.md`.
 1. On the target grid, pick one masa in the portal's filter, search, and let the
    table render.
 2. Paste `tools/masa-batch-diagnostic.js` into the Console and run
-   `__cindiehMasaDiag.jalankan([1])` (phase 1 and 1b; or `verdictFilter()` when
-   the template is already captured).
+   `__cindiehMasaDiag.jalankan([1, 2])` (phase 1 and 1b, plus phase 2 — the
+   shape of the endpoint's echoed count is per endpoint; or `verdictFilter()`
+   when the template is already captured and the count shape is already
+   known).
 3. Phase 1b prints the grid's measured row (or that it has none), the period and
    year filters the request carries, every filter in the body, the guard's
    verdict, the twelve codes a sweep would request, and a row ready for the
-   table.
+   table. Phase 2 measures the OTHER shape the portal answers with — the row
+   count it echoes — which is a property of the endpoint: PPN Keluaran answers
+   `Rows + 1` and PPN Masukan answers `Rows` itself when a page comes back
+   short (ADR-0043's measurement).
 4. Record that row in `tools/README.md` and add the same two names to
    `MEASURED_SWEEP_FILTERS` here and in this ADR, with a test per grid.
 

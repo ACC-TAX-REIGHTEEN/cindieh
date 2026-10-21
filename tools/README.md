@@ -14,7 +14,7 @@ Skrip console yang ditempel di DevTools untuk menjawab pertanyaan tentang **port
 > **Status: dijalankan pada portal Coretax, Oktober 2026.** Cakupan pengukuran:
 > endpoint e-Faktur PPN Keluaran, masa TD.00701–TD.00703 tahun 2026 (3 dari 12
 > masa — batas tahun baru Des→Jan belum diukur). Hasil lengkap di bagian
-> "Hasil" di bawah. Per grid, hanya fase 1 + 1b yang dijalankan: hasilnya
+> "Hasil" di bawah. Per grid, fase 1 + 1b + 2 yang dijalankan: hasilnya
 > tercatat di tabel **Pengukuran filter per grid**.
 
 ### Pertanyaan yang harus dijawab
@@ -88,6 +88,7 @@ Dua sesi di grid e-Faktur PPN Masukan (`/einvoiceportal/api/inputinvoice/list`):
 | Baris tanpa ID (beban `stableStringify`)? | **0 dari 750** | Semua baris punya `RecordId` — kunci dedupe selalu O(1) |
 | Duplikat antara masa? | **0** | 750 baris = 750 unik, dengan kunci yang persis sama dengan `mergeRows` |
 | Apakah server menghormati filter yang ditulis ulang? | **YA** | Satu kode yang ditulis sebagai **string biasa** (dengan MatchMode milik filter itu sendiri) dikembalikan tepat: 334, 274, dan 142 baris untuk tiga masa berturut-turut, dan `TaxInvoicePeriod` tiap baris sama dengan kode yang diminta |
+| Uji sungguhan di portal? | **YA** | Ekspor satu tahun dijalankan di portal pada 21 Okt 2026: 12 masa tercatat, 2.335 baris, dua masa tanpa baris (November, Desember — belum tiba), tanpa peringatan "mungkin belum lengkap". Dicoba dua kali: filter portal berisi **satu** bulan dan **beberapa** bulan; keduanya menyapu 12 masa |
 
 ### Pengukuran filter per grid (ADR-0019)
 
@@ -97,7 +98,7 @@ Fase 1b menjawabnya per grid, memakai aturan penjaga yang disalin ke dalam skrip
 
 1. Buka halaman grid yang mau diukur, pilih **satu** masa di filter portal → **Cari** → biarkan tabel tampil.
 2. Tempel `masa-batch-diagnostic.js` di Console.
-3. `__cindiehMasaDiag.jalankan([1])` (fase 1 + 1b saja). Kalau templatenya sudah tertangkap: `__cindiehMasaDiag.verdictFilter()`.
+3. `__cindiehMasaDiag.jalankan([1, 2])` (fase 1 + 1b + 2). Kalau templatenya sudah tertangkap: `__cindiehMasaDiag.verdictFilter()`.
 4. Salin baris yang dicetak (formatnya sama dengan tabel di bawah) dan isi barisnya. Selama baris itu belum ada, verdictnya `DITOLAK — grid ini BELUM TERUKUR` — sama persis dengan yang dilakukan penyapu sungguhan.
 
 Yang dicetak fase 1b: apakah grid ini punya baris terukur (dan barisnya apa), nama filter masa + nilainya bila barisnya cocok, nama filter tahun, **semua** filter yang ada di body — termasuk yang berkredit, mis. `PeriodCredit`, dan yang namanya mirip tapi bukan baris terukurnya — keputusan penjaga (DITERIMA/DITOLAK) beserta alasannya, dan dua belas kode masa yang akan disapu. Log yang sama muncul saat ekstensi menjalankan sweep sungguhan (`?chdebug=1`; baris `Sweep filters on <sumber>: …` di `scraper-actions.ts`), jadi penolakan di panel selalu bisa dicocokkan dengan pembacaan yang menyebabkannya.
@@ -111,7 +112,7 @@ Yang dicetak fase 1b: apakah grid ini punya baris terukur (dan barisnya apa), na
 
 Aturan setelah sebuah baris terisi: barisnya masuk ke `MEASURED_SWEEP_FILTERS` di `scrape-batch.ts` **dan** dicatat di ADR-0019, bersama test yang membuktikan grid itu diterima sementara grid yang masih kosong tetap ditolak. Kalau satu grid ternyata memakai nama (atau bentuk nilai) lain, perubahan yang benar adalah **mempelajarinya** — nama filternya masuk baris itu, dan `periodPrefix` diperluas bersama testnya — bukan menambahkan kembali tebakan "petunjuk nama". Itulah yang terjadi di PPN Masukan: **namanya sama, bentuk nilainya yang baru** (daftar kode, bukan satu string), dan pembelajarannya ditulis sebagai ADR-0043 yang merujuk ADR-0019. Sebuah grid tanpa baris berarti fiturnya **mati** di halaman itu, bukan jalan dengan syarat.
 
-> **Catatan cakupan:** fase 2-4 (batas `Rows`, jumlah total yang bisa dipercaya, durasi per masa, kebutuhan `RecordId`) sengaja **tidak** diulang per grid — pertanyaan itu terjawab untuk endpoint e-Faktur dan tidak berubah antar grid e-Faktur. Yang perlu dijalankan per grid hanya fase 1 dan 1b.
+> **Catatan cakupan:** fase 3-4 (durasi per masa, kebutuhan `RecordId`, duplikat antar masa) sengaja **tidak** diulang per grid — pertanyaannya terjawab untuk endpoint e-Faktur dan tidak berubah antar grid e-Faktur. **Fase 2 (batas `Rows` dan jumlah total yang bisa dipercaya) justru wajib diulang per grid**, karena bentuk echo `Payload.TotalRecords` ternyata **per endpoint**: PPN Keluaran menjawab `Rows + 1`, PPN Masukan menjawab `Rows` sendiri saat halamannya pendek (21 Okt 2026). Bentuk yang tidak dikenali akan lolos sebagai "jumlah asli" dan membuat satu tahun yang lengkap dilaporkan "mungkin belum lengkap".
 
 ### Kepatuhan
 
