@@ -520,6 +520,7 @@
     const laporan = {
       url: pathOf(templat.url),
       urlPenuh: templat.url,
+      halaman: location.pathname,
       rowsDiTemplate: parsed.Rows ?? null,
       firstDiTemplate: parsed.First ?? null,
       jumlahFilter: filters.length,
@@ -533,6 +534,7 @@
 
     console.group("%c[Cindieh/diag] FASE 1 — template request dari portal", "color:#0a7;font-weight:bold");
     console.log(`URL grid: ${laporan.url}`);
+    console.log(`Halaman portal: ${laporan.halaman}`);
     const lain = [...perUrl.entries()]
       .filter(([u, info]) => pathOf(u) !== laporan.url)
       .map(([u, info]) => `${pathOf(u)}${info.grid ? "" : " (bukan grid)"}`);
