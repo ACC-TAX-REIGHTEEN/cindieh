@@ -81,7 +81,7 @@ What tells one scraped row from another, so a row that appears on two pages is c
 _Avoid_: row id, unique key, hash
 
 **Period sweep** (batch masa):
-Fetching every tax period of one year from an e-Faktur PPN grid as a single Run, so the rows share one dedupe set and arrive as one file. Only a grid whose period AND year filters have been measured off the portal may sweep (today all four e-Faktur PPN grids; ADR-0019, and the value shape ADR-0043); anywhere else the entry refuses instead of guessing. The period is a request-body filter, so the sweep re-requests the same grid once per `TD.007MM` code derived from the request the portal itself made. Completeness rests on the per-period row counts rather than a server total, because this endpoint's count is not one (ADR-0018).
+Fetching every tax period of one year from an e-Faktur PPN grid as a single Run, so the rows share one dedupe set and arrive as one file. Only a grid whose period AND year filters have been measured off the portal may sweep (today all four e-Faktur PPN grids; ADR-0019, and the value shape ADR-0043); anywhere else the entry refuses instead of guessing. The period is a request-body filter, so the sweep re-requests the same grid once per `TD.007MM` code derived from the request the portal itself made. Completeness rests on the per-period row counts rather than a server total, because this endpoint's count is not one (ADR-0018). When the grid is NOT filtered by month — the portal only sends that filter once a month is selected, and a grid with little data shows a whole year by default — the year it is already showing is taken as it is, in one export (ADR-0044).
 _Avoid_: batch export, year export, multi-month scrape
 
 **Sweep's plan**:

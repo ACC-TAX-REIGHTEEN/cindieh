@@ -457,49 +457,69 @@ const UNMEASURED_GRID_MESSAGE =
   "Filter masa dan tahun grid ini belum pernah diukur dari portal, jadi ekspor satu tahun belum bisa dijalankan di sini. Gunakan ekspor biasa (Excel, CSV, atau PDF) untuk sementara.";
 
 /**
- * Why a sweep may not run against this captured request, or null when it may.
+ * What a batch request may do against one captured request.
  *
- * Four things can go wrong, and each has its own fix:
+ * Three answers, and each has its own reason:
  *
- *  * The grid has no measured row: the feature does not run here at all, and
- *    nothing in this request can change that (ADR-0019).
- *  * A measured grid's request does not carry the measured period filter: the
- *    table is stale, or this is not the request it was written for.
- *  * The period value has left the measured family, so twelve codes cannot be
- *    derived from it.
- *  * No readable year: the period code carries no year of its own (`TD.00708` is
- *    August of whatever year the SEPARATE year filter says), so the sweep would
- *    read that month code across every year the account has — and then write a
- *    file named for a year it never filtered to.
+ *  - `sweep`: the request carries the measured period filter, so the year is
+ *    asked for one masa at a time.
+ *  - `year`: the request carries NO period filter. The portal is then not
+ *    filtering by month, and the grid is showing what it offers for the year —
+ *    a grid with little data shows a whole year by default and sends no
+ *    period filter at all. What it shows IS the year, so it is taken as it is,
+ *    in ONE export. Nothing is asked of the endpoint that has not been
+ *    measured: no filter is injected, no period code is invented, and the
+ *    twelve codes the sweep would derive are simply not needed (ADR-0044).
+ *  - `refused`: the request cannot be turned into a year at all — the grid has
+ *    no measured row (ADR-0019), the period value has left the measured family
+ *    so no code can be derived from it, or there is no year to name the file
+ *    by. The period code carries no year of its own (`TD.00708` is August of
+ *    whatever year the SEPARATE year filter says), so a sweep without a year
+ *    would read that month code across every year the account has.
  *
- * Returns the message instead of throwing, so the rule stays pure and testable;
- * scraper-actions turns it into the SCRAPE_ERROR the panel shows.
+ * The message travels with the refusal instead of the function throwing, so
+ * the rule stays pure and testable; scraper-actions turns it into the
+ * SCRAPE_ERROR the panel shows.
  */
-export function batchScopeError(
+export type BatchScope =
+  | { kind: "sweep" }
+  | { kind: "year" }
+  | { kind: "refused"; message: string };
+
+export function batchScope(
   capturedRawBody: string,
   source: ExportSource | null | undefined,
-): string | null {
+): BatchScope {
   const measurement = measuredSweepFilters(source);
-  if (!measurement) return UNMEASURED_GRID_MESSAGE;
+  if (!measurement) return { kind: "refused", message: UNMEASURED_GRID_MESSAGE };
 
   const filters = filtersOf(parseGridBody(capturedRawBody));
   const periodAt = periodFilterIndex(filters, measurement);
   if (periodAt < 0) {
-    return (
-      `Permintaan grid ini tidak punya filter ${measurement.period}, jadi ekspor satu tahun belum bisa dijalankan. ` +
-      "Pilih satu masa di filter grid lalu ulangi pencarian — grid yang menampilkan setahun penuh " +
-      "harus disaring lebih dulu, dan Cindieh perlu tahu bulan mana yang ditanyakan."
-    );
+    // No period filter: the portal is not filtering by month, so the grid shows
+    // the year as it stands. A year to name the file by is still required —
+    // without it, the file would be named for one month out of the many it
+    // holds.
+    if (capturedYear(capturedRawBody, source) === null) {
+      return {
+        kind: "refused",
+        message: `Permintaan grid ini tidak punya filter ${measurement.year} yang bisa dibaca, jadi ekspor satu tahun belum bisa dijalankan.`,
+      };
+    }
+    return { kind: "year" };
   }
   // The period filter is read as the LIST it may be, and the plan is built from
   // the one code it carries: a grid whose filter holds several codes is still
   // one grid, and the sweep replaces the whole filter with one code at a time.
   const periodCode = periodCodeOf(filters[periodAt]);
   if (periodCode === null || periodPrefix(periodCode) === null) {
-    return UNRECOGNISED_PERIOD_MESSAGE;
+    return { kind: "refused", message: UNRECOGNISED_PERIOD_MESSAGE };
   }
   if (capturedYear(capturedRawBody, source) === null) {
-    return `Permintaan grid ini tidak punya filter ${measurement.year} yang bisa dibaca, jadi ekspor satu tahun tidak bisa dijalankan.`;
+    return {
+      kind: "refused",
+      message: `Permintaan grid ini tidak punya filter ${measurement.year} yang bisa dibaca, jadi ekspor satu tahun belum bisa dijalankan.`,
+    };
   }
-  return null;
+  return { kind: "sweep" };
 }

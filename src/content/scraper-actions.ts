@@ -26,7 +26,7 @@ import { runItems, breakerTripped, type ItemFlow } from "./per-item";
 import type { OrchestrationContext } from "./scraper-context";
 import type { CapturedRequest } from "./scraper-types";
 import {
-  batchScopeError,
+  batchScope,
   capturedPeriod,
   capturedYear,
   describeSweepFilters,
@@ -383,11 +383,14 @@ export async function startScraping(
 
     const { step } = getPaginateConfig(captured.source);
 
-    // Both filters are required before a sweep may touch the grid, and both
-    // fail loudly rather than sweeping something that is not a year: the period
-    // codes come from the request the portal just made (never from anything
-    // invented here), and the year is a SEPARATE filter that decides which year
-    // those codes read. See batchScopeError for what each missing one costs.
+    // A sweep may only touch the grid when the request can answer for a whole
+    // year, and the request says how: with the measured period filter (the
+    // year is then asked for one masa at a time), or without it (the portal is
+    // not filtering by month, and the grid is already showing the year — see
+    // ADR-0044). Anything else is refused loudly rather than swept into
+    // something that is not a year. The period codes come from the request the
+    // portal just made (never from anything invented here), and the year is a
+    // SEPARATE filter that decides which year those codes read.
     //
     // The reading is logged BEFORE that guard can throw, because a grid with no
     // measured row is refused outright and the line says so: it names the filters
@@ -398,8 +401,8 @@ export async function startScraping(
         `Sweep filters on ${captured.source}: ${describeSweepFilters(captured.rawBody, captured.source)}`,
       );
     }
-    const batchError = sweeping ? batchScopeError(captured.rawBody, captured.source) : null;
-    if (batchError) throw new Error(batchError);
+    const scope = sweeping ? batchScope(captured.rawBody, captured.source) : null;
+    if (scope?.kind === "refused") throw new Error(scope.message);
 
     const year = capturedYear(captured.rawBody, captured.source);
     // A resume says which year its kept rows came from. The grid's year filter
@@ -495,11 +498,13 @@ export async function startScraping(
       debugLog("Filename hint from DOM:", filenameHint);
     }
 
-    // A batch covers a whole year, so it is named for the YEAR. The grid's own
-    // hint names one month, and a file called "072026" that holds twelve months
-    // is worse than no name at all. Falls back to the month hint when the
-    // request carries no year filter, which is still honest.
-    if (periods.length > 0) {
+    // A batch covers a whole year, so it is named for the YEAR — whether the
+    // year arrived as twelve monthly requests, or as the grid's own unfiltered
+    // view of it (ADR-0044). The grid's own hint names one month, and a file
+    // called "072026" that holds twelve months is worse than no name at all.
+    // Falls back to the month hint when the request carries no year filter,
+    // which is still honest.
+    if (sweeping) {
       filenameHint = capturedYear(captured.rawBody, captured.source) || filenameHint;
       debugLog("Batch filename hint (year):", filenameHint);
     }

@@ -342,7 +342,7 @@ describe("year-wide batch sweep", () => {
     expect(completionOf(ctx).filenameHint).toBe("2026");
   });
 
-  it("FAILS rather than re-scraping one period twelve times when the request has no period filter", async () => {
+  it("FAILS when the request carries neither a period nor a year — the file could not be named", async () => {
     mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
     const ctx = makeCtx();
     const noPeriod: CapturedRequest = {
@@ -355,6 +355,30 @@ describe("year-wide batch sweep", () => {
     expect(mockedXhrRequest).not.toHaveBeenCalled();
     expect(sent(ctx).find((m) => m.type === "SCRAPE_COMPLETE")).toBeUndefined();
     expect(sent(ctx).find((m) => m.type === "SCRAPE_ERROR")).toBeDefined();
+  });
+
+  it("takes a grid that already shows the year as it is, in ONE export", async () => {
+    // The portal is not filtering by month, so the grid is showing the year — a
+    // grid with little data shows a whole year by default and sends no period
+    // filter at all. What it shows IS the year: it is taken as it is, in one
+    // ordinary export, named for the year (ADR-0044). No filter is injected and
+    // no period code is invented.
+    mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
+    const ctx = makeCtx();
+    const yearOnly: CapturedRequest = {
+      ...capturedWithFilters("TD.00708"),
+      rawBody: rawBodyWithFilters("OUTPUT_TAX", [
+        { PropertyName: "TaxInvoiceYear", Value: "2026" },
+      ]),
+    };
+    await startScraping(async () => yearOnly, ctx, { batchMonths: 12 });
+
+    // ONE scrape — not twelve, and not a refusal.
+    expect(mockedXhrRequest).toHaveBeenCalledTimes(1);
+    expect(sent(ctx).find((m) => m.type === "SCRAPE_ERROR")).toBeUndefined();
+    // Named for the YEAR: a file called for one month that holds a year is
+    // worse than no name at all.
+    expect(completionOf(ctx).filenameHint).toBe("2026");
   });
 
   it("FAILS rather than sweeping a month code across every year when the request has no year filter", async () => {

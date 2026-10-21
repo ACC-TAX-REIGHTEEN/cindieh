@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  batchScopeError,
+  batchScope,
   capturedPeriod,
   capturedYear,
   measuredSweepFilters,
@@ -120,11 +120,15 @@ describe("the capture agrees with the measured table and the guard", () => {
         .filter((name): name is string => typeof name === "string");
       expect(names).toContain(measurement.period);
       expect(names).toContain(measurement.year);
-      expect(batchScopeError(rawBodyOf(source), source)).toBeNull();
+      // A measured grid's own capture carries both filters, so the batch sweeps
+      // it — the twelve months, one request each.
+      expect(batchScope(rawBodyOf(source), source)).toEqual({ kind: "sweep" });
     } else {
       // Not measured ⇒ the year-wide export refuses here, whatever the body
       // looks like. That is the whole promise of MEASURED_SWEEP_FILTERS.
-      expect(batchScopeError(rawBodyOf(source), source)).toMatch(/belum pernah diukur/);
+      const scope = batchScope(rawBodyOf(source), source);
+      expect(scope.kind).toBe("refused");
+      expect(scope.kind === "refused" && scope.message).toMatch(/belum pernah diukur/);
     }
   });
 

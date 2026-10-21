@@ -47,3 +47,4 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0041 | [A Grid request's body is read by one module](0041-one-reader-for-a-grid-request-body.md) | Accepted |
 | 0042 | [A scraped row has one name, and it is the name its file carries](0042-a-scraped-row-has-one-name.md) | Accepted |
 | 0043 | [A period filter may carry a LIST of codes](0043-a-period-filter-may-carry-a-list-of-codes.md) | Accepted — extends 0019 |
+| 0044 | [A grid that already shows the year is taken as it is](0044-a-grid-that-already-shows-the-year-is-taken-as-it-is.md) | Accepted |

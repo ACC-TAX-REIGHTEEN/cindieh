@@ -156,7 +156,7 @@ export async function runPeriodSweep({
       total: rows.allData.length,
       pages,
       elapsed: elapsed(),
-      // The sweep cannot start without a year filter (batchScopeError), so the
+      // The sweep cannot start without a year filter (batchScope), so the
       // year IS the name — the isolated world marks it as partial at export.
       filenameHint: capturedYear(captured.rawBody, captured.source) || undefined,
       source: captured.source,

@@ -159,7 +159,7 @@ Menu **Ekspor** di halaman e-Faktur PPN punya satu entri tambahan: **Ekspor 1 Ta
 | | |
 |---|---|
 | Halaman | Keempat grid e-Faktur PPN: PPN Keluaran, PPN Masukan, Retur PPN Keluaran, dan Retur PPN Masukan. Di halaman lain entri ini tidak muncul. Fiturnya menyala **per grid**: keempatnya yang filter masa dan tahunnya sudah terukur langsung dari portal. |
-| Isi file | Seluruh masa pajak dalam satu tahun pajak. |
+| Isi file | Seluruh masa pajak dalam satu tahun pajak. Kalau grid sedang menampilkan **setahun penuh** (filter bulan kosong), Cindieh mengambilnya apa adanya dalam satu export — portal sudah menampilkan setahun, jadi tidak ada bulan yang perlu ditanyakan satu per satu. |
 | Nama file | Dinamai untuk **tahunnya** (`FPK-2026.xlsx`, `FPM-2026.xlsx`, `RET-FPK-2026.xlsx`, `RET-FPM-2026.xlsx`), bukan untuk satu bulan, karena isinya dua belas bulan. |
 | Perkiraan waktu | Sekitar 4 menit bagi Wajib Pajak besar pada kecepatan pacing normal, memakai jeda antar-halaman yang sama seperti ekspor biasa. Kecepatan yang lebih lambat memperpanjang waktu ini, tidak pernah memendekkannya. |
 | Menghentikan | Tombol ekspor mana pun membatalkan proses, seperti ekspor biasa. Masa yang sudah selesai **tidak dibuang**: panel melaporkan berapa masa dan berapa baris yang tersimpan, dan data itu bisa Anda ekspor sendiri setelahnya — nama berkasnya ditandai `sebagian` (mis. `FPM-2026-sebagian.xlsx`) supaya tidak tertukar dengan satu tahun penuh. Setelah berhenti, Cindieh tidak mengekspor apa pun sendiri. |

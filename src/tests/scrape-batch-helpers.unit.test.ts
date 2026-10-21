@@ -12,7 +12,7 @@ import { GRID_FILTER_NAMES } from "../content/grid-request";
 import {
   MEASURED_SWEEP_FILTERS,
   batchMonthCount,
-  batchScopeError,
+  batchScope,
   capturedPeriod,
   capturedYear,
   describeSweepFilters,
@@ -208,39 +208,62 @@ describe("capturedYear", () => {
   });
 });
 
-describe("batchScopeError — the measured grid", () => {
+/**
+ * The refusal message, or null when the batch may proceed (by sweeping, or by
+ * taking the year the grid is already showing).
+ */
+function refusal(raw: string, source: ExportSource | null | undefined): string | null {
+  const scope = batchScope(raw, source);
+  return scope.kind === "refused" ? scope.message : null;
+}
+
+describe("batchScope — what a batch may do with this request", () => {
   // The measured grid's own capture: it carries both filters, so it is the
   // request that satisfies the guard — a fixture the readers are proved
   // against, not a body built to please them.
   const BOTH = rawBodyOf(SOURCE);
 
-  it("lets a sweep run when the request carries the period and the year", () => {
-    expect(batchScopeError(BOTH, SOURCE)).toBeNull();
+  it("sweeps when the request carries the period and the year", () => {
+    expect(batchScope(BOTH, SOURCE)).toEqual({ kind: "sweep" });
   });
 
-  it("names the missing PERIOD, which would sweep one month twelve times", () => {
+  it("takes the year as it is when the request carries no period filter", () => {
+    // The portal is not filtering by month, so the grid is showing what it
+    // offers for the year — a grid with little data shows a whole year by
+    // default and sends no period filter at all. What it shows IS the year, so
+    // it is taken as it is, in one export (ADR-0044). No filter is injected and
+    // no period code is invented: nothing is asked of the endpoint that has not
+    // been measured.
     const raw = body([{ PropertyName: YEAR_PROPERTY, Value: "2026" }]);
-    // The message names the filter the table expects, so the fix is obvious and
-    // a stale table is visible instead of mysterious.
-    expect(batchScopeError(raw, SOURCE)).toContain(PERIOD_PROPERTY);
+    expect(batchScope(raw, SOURCE)).toEqual({ kind: "year" });
+  });
+
+  it("refuses the year view when there is no year to name the file by", () => {
+    // Without a year, the file would be named for one month out of the many it
+    // holds — the one thing a year-wide export must not be.
+    const raw = body([]);
+    const scope = batchScope(raw, SOURCE);
+    expect(scope.kind).toBe("refused");
+    expect(scope.kind === "refused" && scope.message).toContain(YEAR_PROPERTY);
   });
 
   it("names the missing YEAR, which the period code does not carry itself", () => {
     const raw = body([{ PropertyName: PERIOD_PROPERTY, Value: "TD.00708" }]);
-    expect(batchScopeError(raw, SOURCE)).toContain(YEAR_PROPERTY);
+    const scope = batchScope(raw, SOURCE);
+    expect(scope.kind).toBe("refused");
+    expect(scope.kind === "refused" && scope.message).toContain(YEAR_PROPERTY);
   });
 
   it.each([
     ["unparseable JSON", "{not json"],
     ["an empty string", ""],
     ["a body with no filters", rawBodyWith(SOURCE, { Filters: undefined })],
-    ["an empty filter list", body([])],
     ["a period value that is not a code", body([
       { PropertyName: PERIOD_PROPERTY, Value: "Agustus" },
       { PropertyName: YEAR_PROPERTY, Value: "2026" },
     ])],
   ])("refuses %s rather than sweeping something unnamed", (_label, raw) => {
-    expect(batchScopeError(raw, SOURCE)).not.toBeNull();
+    expect(batchScope(raw, SOURCE).kind).toBe("refused");
   });
 
   it("accepts a numeric year, the way capturedYear does", () => {
@@ -248,7 +271,7 @@ describe("batchScopeError — the measured grid", () => {
       { PropertyName: PERIOD_PROPERTY, Value: "TD.00708" },
       { PropertyName: YEAR_PROPERTY, Value: 2026 },
     ]);
-    expect(batchScopeError(raw, SOURCE)).toBeNull();
+    expect(batchScope(raw, SOURCE)).toEqual({ kind: "sweep" });
   });
 
   it("distinguishes an unreadable period value from a missing filter", () => {
@@ -258,8 +281,11 @@ describe("batchScopeError — the measured grid", () => {
       { PropertyName: PERIOD_PROPERTY, Value: "2026-07" },
       { PropertyName: YEAR_PROPERTY, Value: "2026" },
     ]);
-    expect(batchScopeError(raw, SOURCE)).toMatch(/belum dikenali/);
-    expect(batchScopeError(raw, SOURCE)).not.toContain(`tidak punya filter ${PERIOD_PROPERTY}`);
+    const scope = batchScope(raw, SOURCE);
+    expect(scope.kind === "refused" && scope.message).toMatch(/belum dikenali/);
+    expect(scope.kind === "refused" && scope.message).not.toContain(
+      `tidak punya filter ${PERIOD_PROPERTY}`,
+    );
   });
 });
 
@@ -272,8 +298,9 @@ describe("a grid that was never measured", () => {
   const LOOKS_RIGHT = rawBodyOf(SOURCE);
 
   it.each(UNMEASURED)("refuses %s even when the request carries the measured names", (source) => {
-    const error = batchScopeError(LOOKS_RIGHT, source);
-    expect(error).not.toBeNull();
+    const scope = batchScope(LOOKS_RIGHT, source);
+    expect(scope.kind).toBe("refused");
+    const error = scope.kind === "refused" ? scope.message : "";
     expect(error).toMatch(/belum pernah diukur/);
     // Not a complaint about this request's filters: the grid itself is the
     // reason, and the message has to say so or the user keeps re-trying.
@@ -284,7 +311,7 @@ describe("a grid that was never measured", () => {
     // The removed hint door accepted this on a name plus a value in the measured
     // shape. A lookalike name is not evidence that the endpoint honours it.
     const raw = rawBodyOf(SOURCE);
-    expect(batchScopeError(raw, "SPT_A2")).toMatch(/belum pernah diukur/);
+    expect(refusal(raw, "SPT_A2")).toMatch(/belum pernah diukur/);
     expect(capturedPeriod(raw, "SPT_A2")).toBeNull();
     expect(capturedYear(raw, "SPT_A2")).toBeNull();
   });
@@ -297,7 +324,9 @@ describe("a grid that was never measured", () => {
       { PropertyName: YEAR_PROPERTY, Value: "2026" },
     ]);
     expect(capturedPeriod(raw, SOURCE)).toBeNull();
-    expect(batchScopeError(raw, SOURCE)).toContain(PERIOD_PROPERTY);
+    // No period filter at all — so the grid is showing the year, and the
+    // invoice-number filter is not mistaken for the period.
+    expect(batchScope(raw, SOURCE)).toEqual({ kind: "year" });
   });
 
   it("never sweeps by a credit period, which is a different period entirely", () => {
@@ -311,7 +340,9 @@ describe("a grid that was never measured", () => {
     ]);
     expect(capturedPeriod(raw, "INPUT_TAX")).toBeNull();
     expect(capturedYear(raw, "INPUT_TAX")).toBeNull();
-    expect(batchScopeError(raw, "INPUT_TAX")).toContain("TaxInvoicePeriod");
+    // And there is no YEAR to name the file by either, so the batch is refused
+    // rather than taken as a year it cannot prove.
+    expect(refusal(raw, "INPUT_TAX")).toContain("TaxInvoiceYear");
   });
 });
 
@@ -386,7 +417,7 @@ describe("the reading the guard decides on", () => {
     expect(describeSweepFilters(raw, SOURCE)).toContain(
       `period=${PERIOD_PROPERTY}=, value in no known format`,
     );
-    expect(batchScopeError(raw, SOURCE)).toMatch(/belum dikenali/);
+    expect(refusal(raw, SOURCE)).toMatch(/belum dikenali/);
   });
 
   it.each([
@@ -455,7 +486,7 @@ describe("a period filter that carries a LIST of codes", () => {
         { PropertyName: year, Value: "2026", MatchMode: "equals", CaseSensitive: true },
       ]);
       expect(capturedPeriod(raw, source)).toBe("TD.00709");
-      expect(batchScopeError(raw, source)).toBeNull();
+      expect(batchScope(raw, source)).toEqual({ kind: "sweep" });
     },
   );
 
@@ -466,7 +497,7 @@ describe("a period filter that carries a LIST of codes", () => {
       { PropertyName: year, Value: "2026", MatchMode: "equals", CaseSensitive: true },
     ]);
     expect(capturedPeriod(raw, source)).toBeNull();
-    expect(batchScopeError(raw, source)).toMatch(/belum dikenali/);
+    expect(refusal(raw, source)).toMatch(/belum dikenali/);
   });
 
   it.each(LIST_GRIDS)(
@@ -509,13 +540,18 @@ describe("a period filter that carries a LIST of codes", () => {
     expect(periodPrefix("TD.00708")).toBe("TD.007");
   });
 
-  it.each(LIST_GRIDS)("names the missing PERIOD on $source's own body", ({ source }) => {
-    const { period, year } = names(source);
-    const raw = rawBodyWithFilters(source, [
-      { PropertyName: year, Value: "2026", MatchMode: "equals", CaseSensitive: true },
-    ]);
-    expect(batchScopeError(raw, source)).toContain(period);
-  });
+  it.each(LIST_GRIDS)(
+    "takes the year as it is on $source when the period filter is missing",
+    ({ source }) => {
+      // No period filter: the portal is not filtering by month, so the grid is
+      // showing the year — and the year is taken as it is, in one export.
+      const { year } = names(source);
+      const raw = rawBodyWithFilters(source, [
+        { PropertyName: year, Value: "2026", MatchMode: "equals", CaseSensitive: true },
+      ]);
+      expect(batchScope(raw, source)).toEqual({ kind: "year" });
+    },
+  );
 
   it.each(LIST_GRIDS)("names the missing YEAR on $source's own body", ({ source }) => {
     const { period, year } = names(source);
@@ -527,7 +563,7 @@ describe("a period filter that carries a LIST of codes", () => {
         CaseSensitive: true,
       },
     ]);
-    expect(batchScopeError(raw, source)).toContain(year);
+    expect(refusal(raw, source)).toContain(year);
   });
 
   it.each(LIST_GRIDS)(
@@ -543,7 +579,7 @@ describe("a period filter that carries a LIST of codes", () => {
         },
         { PropertyName: year, Value: "2026", MatchMode: "equals", CaseSensitive: true },
       ]);
-      expect(batchScopeError(raw, source)).toMatch(/belum dikenali/);
+      expect(refusal(raw, source)).toMatch(/belum dikenali/);
     },
   );
 
