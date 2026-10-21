@@ -50,12 +50,13 @@ export const MEASURED_SWEEP_FILTERS: Partial<Record<ExportSource, SweepFilterMea
   OUTPUT_TAX: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
   INPUT_TAX: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
   INPUT_RETURN: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
+  OUTPUT_RETURN: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
 };
 ```
 
-The three rows name the same two filters, but the grids do not send them the same
-way: PPN Masukan and Retur PPN Masukan carry the period as a LIST of codes and
-a `contains` MatchMode, where PPN Keluaran carries one string and `equals`
+The four rows name the same two filters, but the grids do not send them the same
+way: PPN Masukan and both Retur grids carry the period as a LIST of codes and a
+`contains` MatchMode, where PPN Keluaran carries one string and `equals`
 (ADR-0043). The names are what this table holds; the value shape is what
 ADR-0043 holds.
 
@@ -87,13 +88,11 @@ than an untested assumption.
 
 ## Consequences
 
-- **The feature currently runs on PPN Keluaran, PPN Masukan and Retur PPN
-  Masukan.** One grid refuses, and it refuses for a reason that measuring will
-  not change: Retur PPN Keluaran's request carries NO period filter at all
-  (measured 2026-10-21), so it cannot be swept through the server-side filter
-  path this feature uses. That is a loss of coverage in exchange for never
-  shipping a guessed year; the refusal names the grid and offers the ordinary
-  export as the alternative.
+- **The feature runs on all four e-Faktur PPN grids.** PPN Keluaran was
+  measured on 2026-10-06; PPN Masukan, Retur PPN Masukan and Retur PPN
+  Keluaran on 2026-10-21. That is a temporary loss of coverage in exchange for
+  never shipping a guessed year — the refusal names the grid and offers the
+  ordinary export as the alternative.
 - **A refusal is still the measurement.** `readSweepFilters` reports the grid's
   measured row (or its absence) and every filter the request carries;
   `describeSweepFilters` words it; `scraper-actions` logs the line before the
@@ -132,16 +131,20 @@ answer is the per-grid table in `tools/README.md`.
 4. Record that row in `tools/README.md` and add the same two names to
    `MEASURED_SWEEP_FILTERS` here and in this ADR, with a test per grid.
 
-The rows recorded so far: PPN Keluaran (2026-10-06), PPN Masukan and Retur PPN
-Masukan (2026-10-21). The two later grids needed a value shape of their own —
-their period filter is a LIST of codes — so that learning was written as
-ADR-0043 rather than folded into this ADR.
+The rows recorded so far: PPN Keluaran (2026-10-06) and the other three
+(2026-10-21). The three later grids needed a value shape of their own — their
+period filter is a LIST of codes — so that learning was written as ADR-0043
+rather than folded into this ADR.
 
-One grid has been measured and REFUSED: Retur PPN Keluaran (2026-10-21) sends
-no period filter at all — only `TaxInvoiceYear` — so it cannot be swept
-through the server-side filter path, and no row is written for it. A refusal of
-that kind is not a gap waiting to be filled; it is the answer, and the table
-records it rather than a guess.
+One measurement was wrong, and the way it was wrong is worth keeping: Retur
+PPN Keluaran was first measured WITHOUT a month selected, and the request then
+carried no period filter at all — which reads like "this endpoint cannot be
+filtered server-side". It is not that. The portal only sends the period filter
+when a month is actually selected, and a grid with little data shows a whole
+year by default, so the measurement had caught the portal's default rather than
+its capability. A row is only ever written from a capture that CARRIES the
+filter, and the instrument now warns when a body has a year filter but no
+period filter.
 
 Until a row exists, the verdict on that grid is `DITOLAK — grid ini BELUM
 TERUKUR`, which is exactly what a real sweep reports.

@@ -47,12 +47,11 @@
 //
 // The sweep is offered on every e-Faktur PPN grid (Keluaran, Masukan, both
 // Retur), but a grid may only sweep once its filter NAMES have been read off
-// the portal and written into MEASURED_SWEEP_FILTERS. PPN Keluaran, PPN
-// Masukan and Retur PPN Masukan have a row; Retur PPN Keluaran is REFUSED —
-// deliberately: a name hint plus a value in the right shape was enough to find
-// a filter, and not enough to know the endpoint honours it. A sweep that
-// guesses produces a file of months the user cannot trust, which is worse
-// than a feature that says it is not ready.
+// the portal and written into MEASURED_SWEEP_FILTERS. All four have a row
+// now; a grid without one is REFUSED — deliberately: a name hint plus a value
+// in the right shape was enough to find a filter, and not enough to know the
+// endpoint honours it. A sweep that guesses produces a file of months the user
+// cannot trust, which is worse than a feature that says it is not ready.
 //
 // The refusal is still the measurement. `readSweepFilters` reports the grid's
 // measured row (or its absence) and every filter the request carries, and
@@ -91,21 +90,26 @@ export interface SweepFilterMeasurement {
 /**
  * The measured sweep filters, one row per grid that has been measured.
  *
- * PPN Keluaran (2026-10-06), PPN Masukan (2026-10-21) and Retur PPN Masukan
- * (2026-10-21) are the measured grids: `TaxInvoicePeriod` carries the
- * `TD.007MM` code and `TaxInvoiceYear` the four-digit year — the same two
- * NAMES on all three, though Masukan and Retur PPN Masukan carry the period as
- * a LIST of codes (ADR-0043). Retur PPN Keluaran has no row, and no measurement
- * will give it one: its request carries NO period filter at all, so it cannot
- * be swept through the server-side filter path this feature uses (ADR-0019).
- * A grid joins this table when its request has been read off the portal and the
- * row recorded in tools/README.md and ADR-0019 — a code change with a
- * measurement behind it, never a runtime inference.
+ * All four e-Faktur PPN grids are measured (2026-10-06 and 2026-10-21):
+ * `TaxInvoicePeriod` carries the `TD.007MM` code and `TaxInvoiceYear` the
+ * four-digit year — the same two NAMES on all four, though the three newer
+ * ones carry the period as a LIST of codes (ADR-0043) and PPN Keluaran as
+ * one string. A grid joins this table when its request has been read off the
+ * portal and the row recorded in tools/README.md and ADR-0019 — a code change
+ * with a measurement behind it, never a runtime inference.
+ *
+ * A measurement that found NO period filter at all was a measurement error,
+ * not a fact about the grid: the portal only sends that filter when a month
+ * is actually selected, and a grid with little data shows a whole year by
+ * default. The instrument warns about that case now (tools/masa-batch-
+ * diagnostic.js), and the table only ever grew from a capture that carried
+ * the filter.
  */
 export const MEASURED_SWEEP_FILTERS: Partial<Record<ExportSource, SweepFilterMeasurement>> = {
   OUTPUT_TAX: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
   INPUT_TAX: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
   INPUT_RETURN: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
+  OUTPUT_RETURN: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
 };
 
 /** The measurement for a grid, or null when the grid has never been measured. */

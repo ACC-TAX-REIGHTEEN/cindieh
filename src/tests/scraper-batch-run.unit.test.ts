@@ -382,12 +382,9 @@ describe("year-wide batch sweep", () => {
     // lookalike spelling buys a sweep on a grid nobody has read.
     mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
     const ctx = makeCtx();
-    const unmeasured = gridRequest("OUTPUT_RETURN");
     const request: CapturedRequest = {
       ...capturedWithFilters("TD.00708"),
-      url: unmeasured.url ?? "",
-      rawBody: unmeasured.rawBody,
-      source: unmeasured.source,
+      source: "SPT_A2",
     };
     await startScraping(async () => request, ctx, { batchMonths: 12 });
 

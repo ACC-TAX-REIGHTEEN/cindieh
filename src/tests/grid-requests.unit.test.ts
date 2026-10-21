@@ -52,13 +52,18 @@ describe("the fixture covers every e-Faktur grid", () => {
     }
   });
 
-  it("makes a capture exactly a measured row — the two tables hold each other", () => {
-    // A measured grid without a capture is a claim nobody measured, and a
-    // capture of a grid with no row is evidence nobody recorded. The two lists
-    // are the same list, so neither can grow without the other.
-    const captured = EFAKTUR_SOURCES.filter((source) => gridRequest(source).captured);
-    const measured = EFAKTUR_SOURCES.filter((source) => measuredSweepFilters(source) !== null);
-    expect(captured).toEqual(measured);
+  it("makes every measured row an evidence-backed one", () => {
+    // A measured grid without a capture is a claim nobody measured. The other
+    // direction is NOT required: a capture can be the EVIDENCE of a refusal (a
+    // grid whose request carries no period filter is measured — and refused),
+    // so the two lists need not have the same length.
+    for (const source of EFAKTUR_SOURCES) {
+      if (measuredSweepFilters(source) === null) continue;
+      expect(
+        gridRequest(source).captured,
+        `${source} is measured, so its body must be a capture`,
+      ).toBe(true);
+    }
   });
 
   it.each([
@@ -79,6 +84,12 @@ describe("the fixture covers every e-Faktur grid", () => {
       "2026-10-21",
       "https://coretaxdjp.pajak.go.id/einvoiceportal/api/inputreturn/list",
       "TD.00709",
+    ],
+    [
+      "OUTPUT_RETURN",
+      "2026-10-21",
+      "https://coretaxdjp.pajak.go.id/einvoiceportal/api/outputreturn/list",
+      "TD.00702",
     ],
   ] as const)(
     "keeps %s's capture, a body known to be the real thing",

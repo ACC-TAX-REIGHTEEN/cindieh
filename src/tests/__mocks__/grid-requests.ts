@@ -178,44 +178,57 @@ const INPUT_RETURN_RAW_BODY = JSON.stringify({
 });
 
 /**
- * A stand-in body for a grid whose request has never been captured.
+ * The request body the portal sent for Retur PPN Keluaran on 2026-10-21, posted
+ * to /einvoiceportal/api/outputreturn/list.
  *
- * It parses, it carries two filters, and its filter names are deliberately NOT
- * the measured spellings — so no test can pass by quietly assuming this grid
- * behaves like PPN Keluaran, and nobody can read a placeholder and think the
- * portal was asked. Replacing it is the whole job of the measurement loop
- * (ADR-0019, tools/README.md).
+ * Transcribed as captured, with the taxpayer's own aggregate identifier
+ * replaced by a placeholder. The period is a LIST of codes (ADR-0043) and the
+ * year filter's MatchMode is "contains" — the same shape the other two list
+ * grids send.
+ *
+ * This grid is the one that taught the instrument a lesson: the portal only
+ * sends the period filter when a month is actually SELECTED, and a grid with
+ * little data shows a whole year by default. A measurement taken without a
+ * month selected finds no period filter at all — which is a measurement error,
+ * not a fact about the grid.
  */
-function standInBody(): string {
-  return JSON.stringify({
-    First: 0,
-    Rows: 50,
-    SortField: "",
-    SortOrder: "",
-    LanguageId: "id",
-    TaxpayerAggregateIdentifier: "taxpayer-id",
-    Filters: [
-      { PropertyName: "Period", Value: "TD.00708", MatchMode: "equals", CaseSensitive: true },
-      { PropertyName: "Year", Value: "2026", MatchMode: "equals", CaseSensitive: true },
-    ],
-  });
-}
-
-function standIn(source: EfakturSource, rows: Record<string, unknown>[]): GridRequestFixture {
-  return {
-    source,
-    url: null,
-    rawBody: standInBody(),
-    captured: false,
-    capturedOn: null,
-    rows,
-    rowsCaptured: false,
-  };
-}
+const OUTPUT_RETURN_RAW_BODY = JSON.stringify({
+  SellerTaxpayerAggregateIdentifier: "seller-1",
+  First: 0,
+  Rows: 1000,
+  SortField: "",
+  SortOrder: 1,
+  LanguageId: "id-ID",
+  TaxpayerAggregateIdentifier: "taxpayer-1",
+  Filters: [
+    {
+      PropertyName: "TaxInvoicePeriod",
+      Value: ["TD.00702"],
+      MatchMode: "contains",
+      CaseSensitive: true,
+      AsString: false,
+    },
+    {
+      PropertyName: "TaxInvoiceYear",
+      Value: "2026",
+      MatchMode: "contains",
+      CaseSensitive: true,
+      AsString: false,
+    },
+  ],
+});
 
 /**
  * One entry per e-Faktur grid. Typed as a full `Record`, so a grid that joins
  * the e-Faktur family cannot ship without a fixture.
+ *
+ * Every entry is a CAPTURE now: all four grids have been read off the portal
+ * (2026-10-06 and 2026-10-21), so the stand-in that used to sit here — a
+ * placeholder body for a grid nobody had measured — is gone with the last
+ * entry that used it. A grid that joins the family again brings its own
+ * capture: paste the body, set `captured`, `capturedOn` and `url`, and
+ * `grid-requests.unit.test.ts` re-checks the entry against the measured table
+ * and the guard.
  *
  * The `rows` below are the canonical rows the export-column tests used before
  * this seam existed; they are moved verbatim, not re-sourced. None has been
@@ -276,25 +289,33 @@ export const GRID_REQUESTS: Record<EfakturSource, GridRequestFixture> = {
     ],
     rowsCaptured: false,
   },
-  OUTPUT_RETURN: standIn("OUTPUT_RETURN", [
-    {
-      BuyerTIN: "0639343490201000",
-      BuyerTaxpayerNameClear: "PT Buyer Clear",
-      TaxInvoiceNumber: "0400000123",
-      TaxInvoiceDate: "2026-06-18T00:00:00+07:00",
-      ReturnNumber: "RET-OUT-001",
-      ReturnDate: "2026-07-01T00:00:00+07:00",
-      TaxInvoicePeriod: "TD.00706",
-      TaxInvoiceYear: "2026",
-      BuyerStatus: "CREDITED",
-      TaxInvoiceStatus: "APPROVED",
-      SellingPrice: 291215,
-      OtherTaxBase: 266947,
-      VAT: 32034,
-      STLG: 0,
-      ExtraField: "should be dropped",
-    },
-  ]),
+  OUTPUT_RETURN: {
+    source: "OUTPUT_RETURN",
+    url: "https://coretaxdjp.pajak.go.id/einvoiceportal/api/outputreturn/list",
+    rawBody: OUTPUT_RETURN_RAW_BODY,
+    captured: true,
+    capturedOn: "2026-10-21",
+    rows: [
+      {
+        BuyerTIN: "0639343490201000",
+        BuyerTaxpayerNameClear: "PT Buyer Clear",
+        TaxInvoiceNumber: "0400000123",
+        TaxInvoiceDate: "2026-06-18T00:00:00+07:00",
+        ReturnNumber: "RET-OUT-001",
+        ReturnDate: "2026-07-01T00:00:00+07:00",
+        TaxInvoicePeriod: "TD.00706",
+        TaxInvoiceYear: "2026",
+        BuyerStatus: "CREDITED",
+        TaxInvoiceStatus: "APPROVED",
+        SellingPrice: 291215,
+        OtherTaxBase: 266947,
+        VAT: 32034,
+        STLG: 0,
+        ExtraField: "should be dropped",
+      },
+    ],
+    rowsCaptured: false,
+  },
   INPUT_RETURN: {
     source: "INPUT_RETURN",
     url: "https://coretaxdjp.pajak.go.id/einvoiceportal/api/inputreturn/list",

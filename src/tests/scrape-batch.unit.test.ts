@@ -104,9 +104,9 @@ describe("re-requesting the grid for one period", () => {
     // The removed hint door used to sweep this body on a name plus a value in
     // the measured format. With no measured row, nothing may be re-requested:
     // twelve months of a grid nobody has read is a file the user cannot trust.
-    const body = rawBodyOf("OUTPUT_RETURN");
+    const body = rawBodyOf(SOURCE);
 
-    expect(() => overridesForPeriod(body, "TD.00701", 0, 500, "OUTPUT_RETURN")).toThrow();
+    expect(() => overridesForPeriod(body, "TD.00701", 0, 500, "SPT_A2")).toThrow();
   });
 
   it("rewrites PPN Masukan's list-valued period as the one code the portal reads", () => {

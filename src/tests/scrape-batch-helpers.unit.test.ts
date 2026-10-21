@@ -36,10 +36,14 @@ import {
 const SOURCE: EfakturSource = "OUTPUT_TAX";
 
 /** The grids whose filters have been read off the portal. */
-const MEASURED: EfakturSource[] = ["OUTPUT_TAX", "INPUT_TAX", "INPUT_RETURN"];
+const MEASURED: EfakturSource[] = ["OUTPUT_TAX", "INPUT_TAX", "INPUT_RETURN", "OUTPUT_RETURN"];
 
-/** The e-Faktur PPN grids with no measured row yet. */
-const UNMEASURED: EfakturSource[] = ["OUTPUT_RETURN"];
+/**
+ * Sources with no measured row — and the sweep is an e-Faktur feature, so
+ * these are the other families. The guard's answer for them is the one every
+ * unmeasured grid gets, which is what these cases hold.
+ */
+const UNMEASURED: ExportSource[] = ["SPT_A2", "WITHHOLDING_SLIPS"];
 
 /** The measured names, read from the table so a rename cannot drift silently. */
 const PERIOD_PROPERTY = MEASURED_SWEEP_FILTERS.OUTPUT_TAX?.period ?? "";
@@ -192,12 +196,13 @@ describe("capturedYear", () => {
   });
 
   it.each(UNMEASURED)("reads no year on %s, because no study says where it lives", (source) => {
-    // Two bodies: the grid's own fixture, and the PPN Keluaran capture dropped
-    // into it so the request carries the measured spellings as well. Neither is
-    // read, because nobody has confirmed this endpoint honours those names.
-    const measuredNames = rawBodyWithFilters(source, capturedFilters(SOURCE));
-    expect(capturedYear(rawBodyOf(source), source)).toBeNull();
-    expect(capturedPeriod(rawBodyOf(source), source)).toBeNull();
+    // Two bodies: the PPN Keluaran capture, and the same capture with the
+    // measured spellings dropped in — the request looks exactly like a measured
+    // grid's. Neither is read, because nobody has confirmed this endpoint
+    // honours those names.
+    const measuredNames = rawBodyWithFilters(SOURCE, capturedFilters(SOURCE));
+    expect(capturedYear(rawBodyOf(SOURCE), source)).toBeNull();
+    expect(capturedPeriod(rawBodyOf(SOURCE), source)).toBeNull();
     expect(capturedYear(measuredNames, source)).toBeNull();
     expect(capturedPeriod(measuredNames, source)).toBeNull();
   });
@@ -277,13 +282,11 @@ describe("a grid that was never measured", () => {
 
   it("refuses a grid whose filters are spelled differently, which used to pass", () => {
     // The removed hint door accepted this on a name plus a value in the measured
-    // shape. A Retur grid's stand-in carries exactly that — a period-named filter
-    // with a TD.007MM value — and it is now a refusal: a lookalike name is not
-    // evidence that the endpoint honours it.
-    const raw = rawBodyOf("OUTPUT_RETURN");
-    expect(batchScopeError(raw, "OUTPUT_RETURN")).toMatch(/belum pernah diukur/);
-    expect(capturedPeriod(raw, "OUTPUT_RETURN")).toBeNull();
-    expect(capturedYear(raw, "OUTPUT_RETURN")).toBeNull();
+    // shape. A lookalike name is not evidence that the endpoint honours it.
+    const raw = rawBodyOf(SOURCE);
+    expect(batchScopeError(raw, "SPT_A2")).toMatch(/belum pernah diukur/);
+    expect(capturedPeriod(raw, "SPT_A2")).toBeNull();
+    expect(capturedYear(raw, "SPT_A2")).toBeNull();
   });
 
   it("never mistakes an invoice-number filter for the period, however its value ends", () => {
@@ -336,16 +339,18 @@ describe("the reading the guard decides on", () => {
   });
 
   it("says the grid is unmeasured, and names what its request carries", () => {
-    // A Retur grid's own fixture, whose stand-in filters are named Period/Year.
-    const raw = rawBodyOf("OUTPUT_RETURN");
-    expect(readSweepFilters(raw, "OUTPUT_RETURN")).toEqual({
+    // A request that looks like a measured grid's, asked about a source that
+    // has no row: the reading says "unmeasured" and still names the filters
+    // the request carries.
+    const raw = rawBodyOf(SOURCE);
+    expect(readSweepFilters(raw, "SPT_A2")).toEqual({
       measurement: null,
       period: null,
       year: null,
-      seen: ["Period", "Year"],
+      seen: [PERIOD_PROPERTY, YEAR_PROPERTY, "TaxInvoiceStatus"],
     });
-    expect(describeSweepFilters(raw, "OUTPUT_RETURN")).toBe(
-      "grid belum terukur · filters seen: Period, Year",
+    expect(describeSweepFilters(raw, "SPT_A2")).toBe(
+      "grid belum terukur · filters seen: TaxInvoicePeriod, TaxInvoiceYear, TaxInvoiceStatus",
     );
   });
 
@@ -403,14 +408,19 @@ describe("the reading the guard decides on", () => {
 });
 
 describe("a period filter that carries a LIST of codes", () => {
-  // PPN Masukan and Retur PPN Masukan send the selected months as a LIST
-  // (`["TD.00709"]`, MatchMode "contains"), where PPN Keluaran sends one
-  // string. The reader takes the FIRST code — the plan is built from one code
-  // and the sweep writes one code back — and the guard must not mistake a list
-  // for a missing filter (ADR-0043). Both list-shaped grids are driven here,
-  // so a new one cannot learn the shape without a test of its own.
+  // PPN Masukan, Retur PPN Masukan and Retur PPN Keluaran send the selected
+  // months as a LIST (`["TD.00709"]`, MatchMode "contains"), where PPN
+  // Keluaran sends one string. The reader takes the FIRST code — the plan is
+  // built from one code and the sweep writes one code back — and the guard must
+  // not mistake a list for a missing filter (ADR-0043). Every list-shaped grid
+  // is driven here, so a new one cannot learn the shape without a test of its
+  // own.
 
-  const LIST_GRIDS: EfakturSource[] = ["INPUT_TAX", "INPUT_RETURN"];
+  const LIST_GRIDS: { source: EfakturSource; code: string }[] = [
+    { source: "INPUT_TAX", code: "TD.00709" },
+    { source: "INPUT_RETURN", code: "TD.00709" },
+    { source: "OUTPUT_RETURN", code: "TD.00702" },
+  ];
 
   /** The grid's own measured names, read from the table so a rename cannot drift. */
   const names = (source: EfakturSource): { period: string; year: string } => ({
@@ -418,8 +428,8 @@ describe("a period filter that carries a LIST of codes", () => {
     year: MEASURED_SWEEP_FILTERS[source]?.year ?? "",
   });
 
-  it.each(LIST_GRIDS)("reads the one code the plan is built from on %s", (source) => {
-    expect(capturedPeriod(rawBodyOf(source), source)).toBe("TD.00709");
+  it.each(LIST_GRIDS)("reads the one code the plan is built from on $source", ({ source, code }) => {
+    expect(capturedPeriod(rawBodyOf(source), source)).toBe(code);
     expect(capturedYear(rawBodyOf(source), source)).toBe("2026");
     expect(planPeriods(capturedPeriod(rawBodyOf(source), source) ?? "")).toEqual([
       "TD.00701", "TD.00702", "TD.00703", "TD.00704",
@@ -428,25 +438,28 @@ describe("a period filter that carries a LIST of codes", () => {
     ]);
   });
 
-  it.each(LIST_GRIDS)("reads the first code of a list that holds several on %s", (source) => {
-    // The user selected two months in the portal's own filter, so the capture
-    // carries two codes. They share the prefix, so the plan is the same twelve
-    // months — and the sweep replaces the whole filter with one code at a time.
-    const { period, year } = names(source);
-    const raw = rawBodyWithFilters(source, [
-      {
-        PropertyName: period,
-        Value: ["TD.00709", "TD.00710"],
-        MatchMode: "contains",
-        CaseSensitive: true,
-      },
-      { PropertyName: year, Value: "2026", MatchMode: "equals", CaseSensitive: true },
-    ]);
-    expect(capturedPeriod(raw, source)).toBe("TD.00709");
-    expect(batchScopeError(raw, source)).toBeNull();
-  });
+  it.each(LIST_GRIDS)(
+    "reads the first code of a list that holds several on $source",
+    ({ source }) => {
+      // The user selected two months in the portal's own filter, so the capture
+      // carries two codes. They share the prefix, so the plan is the same twelve
+      // months — and the sweep replaces the whole filter with one code at a time.
+      const { period, year } = names(source);
+      const raw = rawBodyWithFilters(source, [
+        {
+          PropertyName: period,
+          Value: ["TD.00709", "TD.00710"],
+          MatchMode: "contains",
+          CaseSensitive: true,
+        },
+        { PropertyName: year, Value: "2026", MatchMode: "equals", CaseSensitive: true },
+      ]);
+      expect(capturedPeriod(raw, source)).toBe("TD.00709");
+      expect(batchScopeError(raw, source)).toBeNull();
+    },
+  );
 
-  it.each(LIST_GRIDS)("refuses a list that carries no code at all on %s", (source) => {
+  it.each(LIST_GRIDS)("refuses a list that carries no code at all on $source", ({ source }) => {
     const { period, year } = names(source);
     const raw = rawBodyWithFilters(source, [
       { PropertyName: period, Value: [], MatchMode: "contains", CaseSensitive: true },
@@ -457,8 +470,8 @@ describe("a period filter that carries a LIST of codes", () => {
   });
 
   it.each(LIST_GRIDS)(
-    "writes one code back as a plain string on %s, which is what the portal reads",
-    (source) => {
+    "writes one code back as a plain string on $source, which is what the portal reads",
+    ({ source }) => {
       // Measured on the portal: the LIST is what the portal sends, the STRING is
       // what it reads. MatchMode, CaseSensitive and every other filter survive.
       const { period, year } = names(source);
@@ -477,12 +490,13 @@ describe("a period filter that carries a LIST of codes", () => {
         AsString: false,
       });
       // The year filter is carried through untouched — including its own
-      // MatchMode, which on Retur PPN Masukan is "contains" where PPN
-      // Masukan's is "equals".
-      expect(overrides.Filters[1]).toMatchObject({
-        PropertyName: year,
-        Value: "2026",
-      });
+      // MatchMode, which is "equals" on PPN Masukan and "contains" on the two
+      // Retur grids. The extension never rewrites it, so the captured one is
+      // what must come back.
+      const capturedYearFilter = capturedFilters(source).find(
+        (filter) => filter.PropertyName === year,
+      );
+      expect(overrides.Filters[1]).toEqual(capturedYearFilter);
     },
   );
 
@@ -495,7 +509,7 @@ describe("a period filter that carries a LIST of codes", () => {
     expect(periodPrefix("TD.00708")).toBe("TD.007");
   });
 
-  it.each(LIST_GRIDS)("names the missing PERIOD on %s's own body", (source) => {
+  it.each(LIST_GRIDS)("names the missing PERIOD on $source's own body", ({ source }) => {
     const { period, year } = names(source);
     const raw = rawBodyWithFilters(source, [
       { PropertyName: year, Value: "2026", MatchMode: "equals", CaseSensitive: true },
@@ -503,7 +517,7 @@ describe("a period filter that carries a LIST of codes", () => {
     expect(batchScopeError(raw, source)).toContain(period);
   });
 
-  it.each(LIST_GRIDS)("names the missing YEAR on %s's own body", (source) => {
+  it.each(LIST_GRIDS)("names the missing YEAR on $source's own body", ({ source }) => {
     const { period, year } = names(source);
     const raw = rawBodyWithFilters(source, [
       {
@@ -517,8 +531,8 @@ describe("a period filter that carries a LIST of codes", () => {
   });
 
   it.each(LIST_GRIDS)(
-    "refuses a period value in no known format on %s's own body",
-    (source) => {
+    "refuses a period value in no known format on $source's own body",
+    ({ source }) => {
       const { period, year } = names(source);
       const raw = rawBodyWithFilters(source, [
         {
@@ -534,18 +548,18 @@ describe("a period filter that carries a LIST of codes", () => {
   );
 
   it.each(LIST_GRIDS)(
-    "reports a list-valued period filter as the one code the plan uses on %s",
-    (source) => {
+    "reports a list-valued period filter as the one code the plan uses on $source",
+    ({ source, code }) => {
       const { period, year } = names(source);
       const raw = rawBodyOf(source);
       expect(readSweepFilters(raw, source)).toEqual({
         measurement: { period, year },
-        period: { name: period, value: "TD.00709" },
+        period: { name: period, value: code },
         year: { name: year, value: "2026" },
         seen: [period, year],
       });
       expect(describeSweepFilters(raw, source)).toBe(
-        `period=${period}=TD.00709 · year=${year}=2026 · ` +
+        `period=${period}=${code} · year=${year}=2026 · ` +
           `filters seen: ${period}, ${year}`,
       );
     },
