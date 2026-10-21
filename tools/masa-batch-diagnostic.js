@@ -124,6 +124,15 @@
   let terpasang = false;
   const templat = { ada: false, url: "", headers: {}, body: "", t: 0 };
 
+  /**
+   * Setiap URL grid yang pernah mengirim request, dengan body TERAKHIR untuk
+   * URL itu. Perekam di bawah hanya menyimpan satu template — yang terakhir
+   * tertangkap — dan di halaman yang memuat lebih dari satu grid (halaman
+   * Retur ikut memuat grid invoice) itu bisa jadi grid yang salah. Peta ini
+   * membuat pilihan itu bisa diperbaiki: `__cindiehMasaDiag.pakai("return")`.
+   */
+  const perUrl = new Map();
+
   /** Heuristik sama seperti isPaginatedGridBody() di skrip referensi. */
   function bodyGrid(teks) {
     try {
@@ -153,6 +162,11 @@
       // Hanya request BERKODE MASA (grid) yang dipakai sebagai template. Portal
       // mengirim banyak XHR lain (lookup, timer) yang bentuknya berbeda.
       if (typeof body === "string" && bodyGrid(body)) {
+        perUrl.set(this.__masaUrl, {
+          body,
+          headers: { ...(this.__masaHeaders || {}) },
+          t: Date.now(),
+        });
         templat.ada = true;
         templat.url = this.__masaUrl;
         templat.headers = { ...(this.__masaHeaders || {}) };
@@ -497,6 +511,7 @@
 
     const laporan = {
       url: pathOf(templat.url),
+      urlPenuh: templat.url,
       rowsDiTemplate: parsed.Rows ?? null,
       firstDiTemplate: parsed.First ?? null,
       jumlahFilter: filters.length,
@@ -510,6 +525,13 @@
 
     console.group("%c[Cindieh/diag] FASE 1 — template request dari portal", "color:#0a7;font-weight:bold");
     console.log(`URL grid: ${laporan.url}`);
+    const lain = [...perUrl.keys()].map(pathOf).filter((p) => p !== laporan.url);
+    if (lain.length) {
+      console.log(
+        `URL grid lain yang ikut tertangkap: ${lain.join(", ")} — pilih yang benar dengan ` +
+          `__cindiehMasaDiag.pakai("...") lalu jalankan ulang __cindiehMasaDiag.jalankan([1, 2])`,
+      );
+    }
     console.log(`Rows di template: ${laporan.rowsDiTemplate} · First: ${laporan.firstDiTemplate}`);
     console.log(`Kunci body lain: ${laporan.kunciBody.join(", ") || "-"}`);
     console.table(filters);
@@ -887,6 +909,7 @@
     templat.url = "";
     templat.headers = {};
     templat.body = "";
+    perUrl.clear();
     diag.hasil.template = null;
     diag.hasil.penjaga = null;
     console.log(
@@ -924,7 +947,38 @@
   diag.fase2 = () => fase2().then(() => fase4());
   diag.fase3 = (masa) => fase3(masa).then(() => fase4());
 
-  diag.jalankan = async function jalankan(fase = [1, 2, 3, 4]) {
+  /**
+   * Pilih template dari URL tertentu — untuk halaman yang memuat lebih dari satu
+   * grid. Tanpa ini template TERAKHIR yang tertangkap menang, dan di halaman
+   * Retur itu bisa jadi grid invoice, bukan grid retur.
+   */
+  diag.pakai = function pakai(needle) {
+    const semua = [...perUrl.keys()];
+    const cocok = [...semua].reverse().find((u) => String(u).includes(needle));
+    if (!cocok) {
+      console.warn(
+        `[Cindieh/diag] Tidak ada request grid dengan URL mengandung "${needle}". Yang tertangkap: ` +
+          (semua.map(pathOf).join(", ") || "-"),
+      );
+      return null;
+    }
+    const ketemu = perUrl.get(cocok);
+    templat.ada = true;
+    templat.url = cocok;
+    templat.headers = { ...ketemu.headers };
+    templat.body = ketemu.body;
+    templat.t = ketemu.t;
+    console.log(`[Cindieh/diag] Template diganti ke ${pathOf(cocok)}`);
+    return templat;
+  };
+
+  /** Semua URL grid yang pernah tertangkap, urut kemunculan. */
+  diag.urlTertangkap = function urlTertangkap() {
+    return [...perUrl.keys()].map(pathOf);
+  };
+
+  diag.jalankan = async function jalankan(fase = [1, 2, 3, 4], needle) {
+    if (needle) diag.pakai(needle);
     if (!templat.ada) {
       console.warn(
         "%c[Cindieh/diag] Belum ada template request grid tertangkap.\n" +

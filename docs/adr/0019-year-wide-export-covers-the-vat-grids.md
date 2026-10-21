@@ -86,9 +86,13 @@ than an untested assumption.
 ## Consequences
 
 - **The feature currently runs on PPN Keluaran and PPN Masukan.** Both Retur
-  grids refuse until their rows are recorded. That is a temporary loss of
-  coverage in exchange for never shipping a guessed year; the refusal names the
-  grid and offers the ordinary export as the alternative.
+  grids refuse, and one of them refuses for a reason that measuring will not
+  change: Retur PPN Keluaran's request carries NO period filter at all
+  (measured 2026-10-21), so it cannot be swept through the server-side filter
+  path this feature uses. Retur PPN Masukan is simply not measured yet. That
+  is a temporary loss of coverage in exchange for never shipping a guessed
+  year; the refusal names the grid and offers the ordinary export as the
+  alternative.
 - **A refusal is still the measurement.** `readSweepFilters` reports the grid's
   measured row (or its absence) and every filter the request carries;
   `describeSweepFilters` words it; `scraper-actions` logs the line before the
@@ -131,6 +135,12 @@ The rows recorded so far: PPN Keluaran (2026-10-06) and PPN Masukan
 (2026-10-21). PPN Masukan's row needed a value shape of its own — its period
 filter is a LIST of codes — so that learning was written as ADR-0043 rather
 than folded into this ADR.
+
+One grid has been measured and REFUSED: Retur PPN Keluaran (2026-10-21) sends
+no period filter at all — only `TaxInvoiceYear` — so it cannot be swept
+through the server-side filter path, and no row is written for it. A refusal of
+that kind is not a gap waiting to be filled; it is the answer, and the table
+records it rather than a guess.
 
 Until a row exists, the verdict on that grid is `DITOLAK — grid ini BELUM
 TERUKUR`, which is exactly what a real sweep reports.

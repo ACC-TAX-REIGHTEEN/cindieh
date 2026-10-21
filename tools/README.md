@@ -90,6 +90,19 @@ Dua sesi di grid e-Faktur PPN Masukan (`/einvoiceportal/api/inputinvoice/list`):
 | Apakah server menghormati filter yang ditulis ulang? | **YA** | Satu kode yang ditulis sebagai **string biasa** (dengan MatchMode milik filter itu sendiri) dikembalikan tepat: 334, 274, dan 142 baris untuk tiga masa berturut-turut, dan `TaxInvoicePeriod` tiap baris sama dengan kode yang diminta |
 | Uji sungguhan di portal? | **YA** | Ekspor satu tahun dijalankan di portal pada 21 Okt 2026: 12 masa tercatat, 2.335 baris, dua masa tanpa baris (November, Desember — belum tiba), tanpa peringatan "mungkin belum lengkap". Dicoba dua kali: filter portal berisi **satu** bulan dan **beberapa** bulan; keduanya menyapu 12 masa |
 
+### Hasil — Retur PPN Keluaran (21 Okt 2026)
+
+| Pertanyaan | Jawaban | Angka pendukung |
+|---|---|---|
+| A. Filter masa di server? | **TIDAK** | Body request `/einvoiceportal/api/outputreturn/list` hanya membawa `TaxInvoiceYear=2026` (MatchMode `contains`) — **tidak ada filter masa sama sekali**, meski satu masa sudah dipilih di portal. Kunci body lain: `SellerTaxpayerAggregateIdentifier`, `First`, `Rows`, `SortField`, `SortOrder`, `LanguageId`, `TaxpayerAggregateIdentifier` |
+| B. Server menghormati `Rows`? | **YA** | 10→10 dan 100→100 tepat; di atas itu seluruh baris yang ada (269 baris untuk 2026) |
+| C. Field total yang bisa dipercaya? | **TIDAK** | Bentuk echo sama seperti PPN Masukan: `Rows + 1` saat halamannya penuh (10→11, 100→101) dan **`Rows` sendiri** saat pendek (500→500, 1000→1000, 2000→2000, 5000→5000) — sudah tertangkap `readGridTotal` yang membuang keduanya |
+| D. Durasi per masa? | — | Tidak diukur: tidak ada masa yang bisa disapu (lihat A) |
+
+**Kesimpulan: Cabang D.** Grid ini tidak bisa disapu lewat jalur filter server, jadi barisnya **tidak** ditulis di `MEASURED_SWEEP_FILTERS` dan fiturnya tetap mati di halaman ini. Ini bukan kekurangannya yang menunggu diisi — ini jawabannya: endpoint-nya memang tidak menerima filter masa dari permintaan grid.
+
+> **Sesi Retur PPN Masukan (21 Okt 2026) BELUM SAHIH.** Request yang tertangkap adalah `/einvoiceportal/api/inputinvoice/list` — endpoint **invoice**, bukan retur — dengan `First: 100` dan 369 baris, yaitu data PPN Masukan yang sama seperti sesinya sebelumnya. Jadi sesi itu mengukur PPN Masukan lagi, bukan grid Retur. Penyebabnya: perekam skrip menyimpan request **terakhir**, dan di halaman Retur request grid invoice-lah yang terakhir. Skrip sekarang menyimpan template **per URL** (`__cindiehMasaDiag.pakai("...")` untuk memilih, `__cindiehMasaDiag.urlTertangkap()` untuk melihat semuanya), jadi grid yang benar bisa dipilih — sesi itu perlu diulang.
+
 ### Pengukuran filter per grid (ADR-0019)
 
 Ekspor satu tahun hanya bisa dijalankan kalau grid-nya punya baris di `MEASURED_SWEEP_FILTERS` ([scrape-batch.ts](../src/content/scrape-batch.ts)) **dan** request yang ditangkap membawa kedua filter itu: masa pajak dan tahun pajak. PPN Keluaran (6 Okt 2026) dan PPN Masukan (21 Okt 2026) yang punya baris — nama filternya sama (`TaxInvoicePeriod`/`TaxInvoiceYear`), tetapi PPN Masukan mengirim nilainya sebagai **daftar** kode, dan itu dicatat terpisah di ADR-0043. Dua grid Retur **ditolak** selama barisnya masih kosong — tidak ada lagi pintu "petunjuk nama": nama yang mirip, nilai yang berbentuk kode `TD.007MM`, atau tahun sebagai field body tidak cukup, karena pertanyaan yang harus dijawab (apakah endpoint ini menghormati filter itu?) hanya terjawab dengan mengukurnya di portal. Baris di bawah masih kosong = grid itu **belum bisa disapu sama sekali**.
@@ -107,8 +120,8 @@ Yang dicetak fase 1b: apakah grid ini punya baris terukur (dan barisnya apa), na
 |---|---|---|---|---|---|
 | e-Faktur PPN Keluaran | `/einvoiceportal/api/outputinvoice/list` | `TaxInvoicePeriod=TD.00708` (nama terukur, `MatchMode` `equals`) | `TaxInvoiceYear=2026` | DITERIMA — menyapu TD.00701..TD.00712 untuk tahun 2026 | TD.00701..TD.00712 |
 | e-Faktur PPN Masukan | `/einvoiceportal/api/inputinvoice/list` | `TaxInvoicePeriod=["TD.00709"]` (nama terukur, `MatchMode` `contains`, nilainya **daftar** kode) | `TaxInvoiceYear=2026` (`equals`) | DITERIMA — menyapu TD.00701..TD.00712 untuk tahun 2026; nilainya ditulis ulang satu kode satu string, yang justru bentuk yang portal menghormati (ADR-0043) | TD.00701..TD.00712 |
-| Retur PPN Keluaran | | | | **DITOLAK — belum terukur** (tidak ada barisnya) | |
-| Retur PPN Masukan | | | | **DITOLAK — belum terukur** (tidak ada barisnya) | |
+| Retur PPN Keluaran | `/einvoiceportal/api/outputreturn/list` | **tidak ada filter masa** di body — hanya `TaxInvoiceYear` | `TaxInvoiceYear=2026` (`contains`) | **DITOLAK — Cabang D**: request-nya tidak membawa filter masa, jadi grid ini tidak bisa disapu lewat jalur filter server (ADR-0019) | — |
+| Retur PPN Masukan | belum terukur — sesi 21 Okt 2026 menangkap grid **invoice**, bukan grid retur (lihat catatan di bawah) | | | **DITOLAK — belum terukur** (tidak ada barisnya) | |
 
 Aturan setelah sebuah baris terisi: barisnya masuk ke `MEASURED_SWEEP_FILTERS` di `scrape-batch.ts` **dan** dicatat di ADR-0019, bersama test yang membuktikan grid itu diterima sementara grid yang masih kosong tetap ditolak. Kalau satu grid ternyata memakai nama (atau bentuk nilai) lain, perubahan yang benar adalah **mempelajarinya** — nama filternya masuk baris itu, dan `periodPrefix` diperluas bersama testnya — bukan menambahkan kembali tebakan "petunjuk nama". Itulah yang terjadi di PPN Masukan: **namanya sama, bentuk nilainya yang baru** (daftar kode, bukan satu string), dan pembelajarannya ditulis sebagai ADR-0043 yang merujuk ADR-0019. Sebuah grid tanpa baris berarti fiturnya **mati** di halaman itu, bukan jalan dengan syarat.
 
