@@ -140,6 +140,44 @@ const INPUT_TAX_RAW_BODY = JSON.stringify({
 });
 
 /**
+ * The request body the portal sent for Retur PPN Masukan on 2026-10-21, posted
+ * to /einvoiceportal/api/inputreturn/list.
+ *
+ * Transcribed as captured, with the taxpayer's own aggregate identifier
+ * replaced by a placeholder. The filters are the same two names as the other
+ * measured grids, and the period is a LIST of codes (ADR-0043) — but the YEAR
+ * filter's MatchMode is "contains" here, where PPN Masukan's is "equals". The
+ * extension carries MatchMode through untouched, so that difference changes
+ * nothing in the sweep; it is recorded because a measurement is a record of
+ * what the portal sent.
+ */
+const INPUT_RETURN_RAW_BODY = JSON.stringify({
+  BuyerTaxpayerAggregateIdentifier: "buyer-1",
+  First: 0,
+  Rows: 50,
+  SortField: "",
+  SortOrder: 1,
+  LanguageId: "id-ID",
+  TaxpayerAggregateIdentifier: "taxpayer-1",
+  Filters: [
+    {
+      PropertyName: "TaxInvoicePeriod",
+      Value: ["TD.00709"],
+      MatchMode: "contains",
+      CaseSensitive: true,
+      AsString: false,
+    },
+    {
+      PropertyName: "TaxInvoiceYear",
+      Value: "2026",
+      MatchMode: "contains",
+      CaseSensitive: true,
+      AsString: false,
+    },
+  ],
+});
+
+/**
  * A stand-in body for a grid whose request has never been captured.
  *
  * It parses, it carries two filters, and its filter names are deliberately NOT
@@ -257,25 +295,33 @@ export const GRID_REQUESTS: Record<EfakturSource, GridRequestFixture> = {
       ExtraField: "should be dropped",
     },
   ]),
-  INPUT_RETURN: standIn("INPUT_RETURN", [
-    {
-      SellerTIN: "0016232159201000",
-      SellerTaxpayerName: "PT Seller",
-      TaxInvoiceNumber: "0100000123",
-      TaxInvoiceDate: "2026-06-18T00:00:00+07:00",
-      ReturnNumber: "RET-IN-001",
-      ReturnDate: "2026-07-02T00:00:00+07:00",
-      TaxInvoicePeriod: "TD.00706",
-      TaxInvoiceYear: "2026",
-      BuyerStatus: "CREDITED",
-      TaxInvoiceStatus: "APPROVED",
-      SellingPrice: 1000000,
-      OtherTaxBase: 916667,
-      VAT: 110000,
-      STLG: 0,
-      ExtraField: "should be dropped",
-    },
-  ]),
+  INPUT_RETURN: {
+    source: "INPUT_RETURN",
+    url: "https://coretaxdjp.pajak.go.id/einvoiceportal/api/inputreturn/list",
+    rawBody: INPUT_RETURN_RAW_BODY,
+    captured: true,
+    capturedOn: "2026-10-21",
+    rows: [
+      {
+        SellerTIN: "0016232159201000",
+        SellerTaxpayerName: "PT Seller",
+        TaxInvoiceNumber: "0100000123",
+        TaxInvoiceDate: "2026-06-18T00:00:00+07:00",
+        ReturnNumber: "RET-IN-001",
+        ReturnDate: "2026-07-02T00:00:00+07:00",
+        TaxInvoicePeriod: "TD.00706",
+        TaxInvoiceYear: "2026",
+        BuyerStatus: "CREDITED",
+        TaxInvoiceStatus: "APPROVED",
+        SellingPrice: 1000000,
+        OtherTaxBase: 916667,
+        VAT: 110000,
+        STLG: 0,
+        ExtraField: "should be dropped",
+      },
+    ],
+    rowsCaptured: false,
+  },
 };
 
 /** One grid's fixture. Throws when asked for a grid that has none — silent

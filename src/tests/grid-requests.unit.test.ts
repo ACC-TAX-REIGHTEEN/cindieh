@@ -74,6 +74,12 @@ describe("the fixture covers every e-Faktur grid", () => {
       "https://coretaxdjp.pajak.go.id/einvoiceportal/api/inputinvoice/list",
       "TD.00709",
     ],
+    [
+      "INPUT_RETURN",
+      "2026-10-21",
+      "https://coretaxdjp.pajak.go.id/einvoiceportal/api/inputreturn/list",
+      "TD.00709",
+    ],
   ] as const)(
     "keeps %s's capture, a body known to be the real thing",
     (source, capturedOn, url, period) => {

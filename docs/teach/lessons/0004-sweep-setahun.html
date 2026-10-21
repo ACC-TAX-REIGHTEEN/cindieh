@@ -209,8 +209,9 @@
         </tr>
         <tr>
           <td>Retur PPN Masukan</td>
-          <td>—</td><td>—</td>
-          <td><strong>DITOLAK</strong>, belum terukur</td>
+          <td><code>TaxInvoicePeriod=[TD.00709]</code> (daftar kode)</td>
+          <td><code>TaxInvoiceYear=2026</code></td>
+          <td><strong>DITERIMA</strong>, menyapu <code>TD.00701</code> sampai <code>TD.00712</code></td>
         </tr>
       </tbody>
     </table>
@@ -491,7 +492,7 @@
     <p class="q">Menurut ADR-0019, syarat sebuah grid boleh menyapu setahun adalah…</p>
     <ul class="options">
       <li><button class="opt" data-why="Nama yang mirip pernah jadi pintu, tapi pintu itu dihapus pada 17 Oktober 2026.">Grid itu punya nama filter yang menyerupai filter PPN Keluaran.</button></li>
-      <li><button class="opt" data-correct data-why="Hanya grid dengan baris terukur yang boleh menyapu; dua grid Retur lain menolak.">Grid itu punya baris di tabel filter yang sudah terukur.</button></li>
+      <li><button class="opt" data-correct data-why="Hanya grid dengan baris terukur yang boleh menyapu; Retur PPN Keluaran menolak karena request-nya tidak membawa filter masa.">Grid itu punya baris di tabel filter yang sudah terukur.</button></li>
       <li><button class="opt" data-why="Nilai yang berbentuk kode bukan bukti; endpoint hanya bisa dijawab dengan mengukurnya.">Grid itu punya nilai masa berbentuk kode bulan dua digit.</button></li>
     </ul>
     <p class="feedback" role="status" aria-live="polite"></p>

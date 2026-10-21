@@ -19,6 +19,10 @@ The value is a **LIST of codes**, and the MatchMode is `contains` rather than
 when the Wajib Pajak selected several in the portal's own filter. The year
 filter is the same on both grids (`TaxInvoiceYear`, `"2026"`, `equals`).
 
+Retur PPN Masukan, measured the same day, sends the same shape — the same
+filter name, the same list of codes, the same `contains` MatchMode — so what
+is learned here covers two of the four grids rather than one.
+
 Two things followed from that, and the first was not a matter of taste.
 
 **The reader saw no period at all.** `capturedPeriod` accepted a string value
@@ -69,8 +73,9 @@ Decision:
 
 Consequences:
 
-- PPN Masukan sweeps. The two Retur grids are untouched — they have no row, so
-  they still refuse, and their value shape is still unknown.
+- PPN Masukan and Retur PPN Masukan sweep. The two Retur grids are not alike:
+  Retur PPN Masukan carries the same list shape, while Retur PPN Keluaran
+  carries no period filter at all and cannot be swept (ADR-0019).
 - The guard's refusal for an unreadable period value now also covers a list
   that carries no code, which is the same failure a moved spelling produces.
 - The sweep's log line names the ONE code the plan uses, not the list: the list
