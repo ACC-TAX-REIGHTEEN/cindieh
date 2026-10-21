@@ -338,12 +338,21 @@
       }));
   }
 
-  /** Deteksi field yang jelas-jelasJvibe periode, dari nama + nilainya. */
+  /** Deteksi field yang jelas-jelas periode, dari nama + nilainya. */
   function kandidatFieldMasa(filters) {
-    const polaNama = /period|masa|taxmonth|taxyear|month|year|tahun|bulan/i;
+    // TAHUN bukan periode. `TaxInvoiceYear` pernah masuk daftar ini, dan
+    // pengukuran Retur PPN Keluaran lalu menyimpulkan "tidak ada filter masa"
+    // — padahal filter masanya hanya BELUM dikirim: portal baru mengirimnya
+    // kalau SEBUAH masa dipilih di filter portal (grid dengan sedikit data
+    // menampilkan setahun penuh secara default, jadi tidak perlu filter).
+    // Pola di bawah memisahkan "ciri masa" dari "ciri tahun" supaya keduanya
+    // tidak tertukar lagi.
+    const polaNama = /period|masa|month|bulan/i;
+    const polaTahun = /taxyear|year|tahun/i;
     return filters.filter(
       (f) =>
         polaNama.test(f.PropertyName) &&
+        !polaTahun.test(f.PropertyName) &&
         f.Value !== null &&
         f.Value !== undefined &&
         f.Value !== "" &&
@@ -551,9 +560,14 @@
       console.log("%cField yang tampak seperti periode:", "color:#0a7;font-weight:bold");
       console.table(kandidat);
     } else {
+      const adaTahun = filters.some((f) => /taxyear|year|tahun/i.test(f.PropertyName || ""));
       console.warn(
-        "Tidak ada filter yang jelas-jelas periode di body ini. Kalau daftar faktur terfilter masa di layar, " +
-          "portal mungkin mengirimnya lewat cookie/session, bukan Filters — itu sendiri jawaban penting.",
+        adaTahun
+          ? "PENTING: body ini tidak punya filter MASA — hanya filter TAHUN. Dua kemungkinan, dan keduanya harus dibedakan: " +
+            "(1) BELUM ADA masa yang dipilih di filter portal → ulangi pengukuran setelah memilih SATU masa; " +
+            "(2) masa sudah dipilih, tapi endpoint ini memang tidak menerima filter masa dari request grid — itu jawaban final (ADR-0019), bukan sesuatu yang bisa diperbaiki dengan mengulang. " +
+            "Grid dengan sedikit data menampilkan setahun penuh secara default, jadi kasus (1) mudah terjadi tanpa disadari."
+          : "Tidak ada filter yang jelas-jelas periode di body ini. Kalau daftar faktur terfilter masa di layar, portal mungkin mengirimnya lewat cookie/session, bukan Filters — itu sendiri jawaban penting.",
       );
     }
     if (CONFIG.verbose) console.log("Body mentah:", templat.body);
