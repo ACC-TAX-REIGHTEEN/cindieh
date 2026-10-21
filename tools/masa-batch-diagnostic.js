@@ -159,14 +159,22 @@
     };
 
     XHR_PROTO.send = function (body) {
+      const url = this.__masaUrl;
+      // SEMUA request dicatat, bukan hanya yang berbentuk grid. Halaman Retur
+      // bisa meminta endpoint retur dengan bentuk body yang BERBEDA, dan itu
+      // yang perlu terlihat — bukan hanya oleh skrip ini, tetapi juga oleh
+      // ekstensi yang hanya menangkap body berpaginasi (`First` + `Rows`).
+      if (url) {
+        perUrl.set(url, {
+          body: typeof body === "string" ? body : "",
+          headers: { ...(this.__masaHeaders || {}) },
+          t: Date.now(),
+          grid: typeof body === "string" && bodyGrid(body),
+        });
+      }
       // Hanya request BERKODE MASA (grid) yang dipakai sebagai template. Portal
       // mengirim banyak XHR lain (lookup, timer) yang bentuknya berbeda.
       if (typeof body === "string" && bodyGrid(body)) {
-        perUrl.set(this.__masaUrl, {
-          body,
-          headers: { ...(this.__masaHeaders || {}) },
-          t: Date.now(),
-        });
         templat.ada = true;
         templat.url = this.__masaUrl;
         templat.headers = { ...(this.__masaHeaders || {}) };
@@ -525,10 +533,12 @@
 
     console.group("%c[Cindieh/diag] FASE 1 — template request dari portal", "color:#0a7;font-weight:bold");
     console.log(`URL grid: ${laporan.url}`);
-    const lain = [...perUrl.keys()].map(pathOf).filter((p) => p !== laporan.url);
+    const lain = [...perUrl.entries()]
+      .filter(([u, info]) => pathOf(u) !== laporan.url)
+      .map(([u, info]) => `${pathOf(u)}${info.grid ? "" : " (bukan grid)"}`);
     if (lain.length) {
       console.log(
-        `URL grid lain yang ikut tertangkap: ${lain.join(", ")} — pilih yang benar dengan ` +
+        `URL lain yang diminta halaman ini: ${lain.join(", ")} — pilih yang mau diukur dengan ` +
           `__cindiehMasaDiag.pakai("...") lalu jalankan ulang __cindiehMasaDiag.jalankan([1, 2])`,
       );
     }
@@ -954,11 +964,19 @@
    */
   diag.pakai = function pakai(needle) {
     const semua = [...perUrl.keys()];
-    const cocok = [...semua].reverse().find((u) => String(u).includes(needle));
+    const cocok = [...semua].reverse().find((u) => {
+      const info = perUrl.get(u);
+      return String(u).includes(needle) && !!info && info.grid;
+    });
     if (!cocok) {
+      const ada = [...semua].filter((u) => String(u).includes(needle));
       console.warn(
-        `[Cindieh/diag] Tidak ada request grid dengan URL mengandung "${needle}". Yang tertangkap: ` +
-          (semua.map(pathOf).join(", ") || "-"),
+        `[Cindieh/diag] Tidak ada request GRID dengan URL mengandung "${needle}".` +
+          (ada.length
+            ? ` URL-nya ada, tapi body-nya bukan grid berpaginasi (First+Rows): ${ada
+                .map(pathOf)
+                .join(", ")}`
+            : ` Yang tertangkap: ${semua.map(pathOf).join(", ") || "-"}`),
       );
       return null;
     }
@@ -972,9 +990,12 @@
     return templat;
   };
 
-  /** Semua URL grid yang pernah tertangkap, urut kemunculan. */
+  /** Semua URL yang pernah diminta halaman ini, dan mana yang berbentuk grid. */
   diag.urlTertangkap = function urlTertangkap() {
-    return [...perUrl.keys()].map(pathOf);
+    return [...perUrl.entries()].map(([url, info]) => ({
+      url: pathOf(url),
+      grid: !!info.grid,
+    }));
   };
 
   diag.jalankan = async function jalankan(fase = [1, 2, 3, 4], needle) {
@@ -1013,7 +1034,8 @@
   }
   pasangPerekam();
   console.log(
-    "%c[Cindieh] Skrip diagnostik batch masa pajak aktif. Tunggu request grid pertama (pilih masa + Cari), lalu otomatis jalan.",
+    "%c[Cindieh] Skrip diagnostik batch masa pajak aktif v1.1 (boleh pilih grid per URL). " +
+      "Tunggu request grid pertama (pilih masa + Cari), lalu otomatis jalan.",
     "color:#0a7;font-weight:bold",
   );
   console.log(
