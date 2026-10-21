@@ -36,7 +36,7 @@ describe("the fixture covers every e-Faktur grid", () => {
     expect(gridRow(source)).toEqual(gridRows(source)[0]);
   });
 
-  it("declares provenance on every entry, and only one entry is a capture today", () => {
+  it("declares provenance on every entry", () => {
     for (const source of EFAKTUR_SOURCES) {
       const fixture = gridRequest(source);
       // A capture has a date and an endpoint; a stand-in has neither. Both
@@ -52,16 +52,39 @@ describe("the fixture covers every e-Faktur grid", () => {
     }
   });
 
-  it("keeps PPN Keluaran's capture, the one body known to be the real thing", () => {
-    const fixture = gridRequest("OUTPUT_TAX");
-    expect(fixture.captured).toBe(true);
-    expect(fixture.capturedOn).toBe("2026-10-06");
-    expect(fixture.url).toBe(
-      "https://coretaxdjp.pajak.go.id/einvoiceportal/api/outputinvoice/list",
-    );
-    expect(capturedPeriod(fixture.rawBody, "OUTPUT_TAX")).toBe("TD.00708");
-    expect(capturedYear(fixture.rawBody, "OUTPUT_TAX")).toBe("2026");
+  it("makes a capture exactly a measured row — the two tables hold each other", () => {
+    // A measured grid without a capture is a claim nobody measured, and a
+    // capture of a grid with no row is evidence nobody recorded. The two lists
+    // are the same list, so neither can grow without the other.
+    const captured = EFAKTUR_SOURCES.filter((source) => gridRequest(source).captured);
+    const measured = EFAKTUR_SOURCES.filter((source) => measuredSweepFilters(source) !== null);
+    expect(captured).toEqual(measured);
   });
+
+  it.each([
+    [
+      "OUTPUT_TAX",
+      "2026-10-06",
+      "https://coretaxdjp.pajak.go.id/einvoiceportal/api/outputinvoice/list",
+      "TD.00708",
+    ],
+    [
+      "INPUT_TAX",
+      "2026-10-21",
+      "https://coretaxdjp.pajak.go.id/einvoiceportal/api/inputinvoice/list",
+      "TD.00709",
+    ],
+  ] as const)(
+    "keeps %s's capture, a body known to be the real thing",
+    (source, capturedOn, url, period) => {
+      const fixture = gridRequest(source);
+      expect(fixture.captured).toBe(true);
+      expect(fixture.capturedOn).toBe(capturedOn);
+      expect(fixture.url).toBe(url);
+      expect(capturedPeriod(fixture.rawBody, source)).toBe(period);
+      expect(capturedYear(fixture.rawBody, source)).toBe("2026");
+    },
+  );
 });
 
 describe("the capture agrees with the measured table and the guard", () => {

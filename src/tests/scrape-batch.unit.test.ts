@@ -57,6 +57,9 @@ describe("the portal's period code", () => {
   it("reads the period the captured request is on", () => {
     expect(capturedPeriod(CAPTURED, SOURCE)).toBe("TD.00708");
     expect(capturedPeriod("{}", SOURCE)).toBeNull();
+    // PPN Masukan sends the selected month as a LIST of codes; the plan is
+    // built from the first one (ADR-0043).
+    expect(capturedPeriod(rawBodyOf("INPUT_TAX"), "INPUT_TAX")).toBe("TD.00709");
   });
 });
 
@@ -101,9 +104,25 @@ describe("re-requesting the grid for one period", () => {
     // The removed hint door used to sweep this body on a name plus a value in
     // the measured format. With no measured row, nothing may be re-requested:
     // twelve months of a grid nobody has read is a file the user cannot trust.
-    const body = rawBodyOf("INPUT_TAX");
+    const body = rawBodyOf("OUTPUT_RETURN");
 
-    expect(() => overridesForPeriod(body, "TD.00701", 0, 500, "INPUT_TAX")).toThrow();
+    expect(() => overridesForPeriod(body, "TD.00701", 0, 500, "OUTPUT_RETURN")).toThrow();
+  });
+
+  it("rewrites PPN Masukan's list-valued period as the one code the portal reads", () => {
+    // Measured on the portal (ADR-0043): the LIST is what the portal sends and
+    // the STRING is what it reads, with the filter's own MatchMode kept.
+    const captured = rawBodyOf("INPUT_TAX");
+    const overrides = overridesForPeriod(captured, "TD.00701", 0, 500, "INPUT_TAX") as {
+      Filters: Record<string, unknown>[];
+    };
+    expect(overrides.Filters[0]).toEqual({
+      PropertyName: "TaxInvoicePeriod",
+      Value: "TD.00701",
+      MatchMode: "contains",
+      CaseSensitive: true,
+      AsString: false,
+    });
   });
 
   it("refuses when the request has no period filter at all", () => {

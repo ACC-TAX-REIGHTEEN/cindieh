@@ -5,6 +5,9 @@ Date: 2026-10-15
 ## Status
 
 Accepted. Amended 2026-10-17: the name-hint door is gone.
+Amended 2026-10-21: PPN Masukan's row is recorded. Its filter NAMES are the
+same, but its period filter carries a LIST of codes — that value shape is
+ADR-0043's subject, and this ADR's table is where the row lives.
 
 ## Context
 
@@ -41,8 +44,14 @@ first precisely because that outcome was possible; this amendment removes it.
 ```ts
 export const MEASURED_SWEEP_FILTERS: Partial<Record<ExportSource, SweepFilterMeasurement>> = {
   OUTPUT_TAX: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
+  INPUT_TAX: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
 };
 ```
+
+The two rows name the same two filters, but the grids do not send them the same
+way: PPN Masukan's period filter carries a LIST of codes and a `contains`
+MatchMode, where PPN Keluaran's carries one string and `equals` (ADR-0043). The
+names are what this table holds; the value shape is what ADR-0043 holds.
 
 - The readers take the grid's `ExportSource` and look up its row. No row means
   no period filter, no year, and no re-request — `overridesForPeriod` throws and
@@ -58,7 +67,7 @@ export const MEASURED_SWEEP_FILTERS: Partial<Record<ExportSource, SweepFilterMea
 - The menu item is still built on the four e-Faktur PPN grids (`isEfakturPage`),
   so the gate and the guard stay two doors: where the entry is offered is a page
   fact, whether this request may be swept is answered from the request and the
-  table. On the three grids with no row, the entry refuses and says why; adding
+  table. On the two grids with no row, the entry refuses and says why; adding
   the row turns it on with no other change.
 
 ### Why a table and not a smarter heuristic
@@ -72,8 +81,8 @@ than an untested assumption.
 
 ## Consequences
 
-- **The feature currently runs on PPN Keluaran only.** PPN Masukan and both
-  Retur grids refuse until their rows are recorded. That is a temporary loss of
+- **The feature currently runs on PPN Keluaran and PPN Masukan.** Both Retur
+  grids refuse until their rows are recorded. That is a temporary loss of
   coverage in exchange for never shipping a guessed year; the refusal names the
   grid and offers the ordinary export as the alternative.
 - **A refusal is still the measurement.** `readSweepFilters` reports the grid's
@@ -108,6 +117,11 @@ answer is the per-grid table in `tools/README.md`.
    table.
 4. Record that row in `tools/README.md` and add the same two names to
    `MEASURED_SWEEP_FILTERS` here and in this ADR, with a test per grid.
+
+The rows recorded so far: PPN Keluaran (2026-10-06) and PPN Masukan
+(2026-10-21). PPN Masukan's row needed a value shape of its own — its period
+filter is a LIST of codes — so that learning was written as ADR-0043 rather
+than folded into this ADR.
 
 Until a row exists, the verdict on that grid is `DITOLAK — grid ini BELUM
 TERUKUR`, which is exactly what a real sweep reports.

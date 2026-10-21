@@ -5,7 +5,7 @@ Skrip console yang ditempel di DevTools untuk menjawab pertanyaan tentang **port
 | Skrip | Pertanyaan yang dijawab | Status |
 |---|---|---|
 | [`reference-search-diagnostic.js`](reference-search-diagnostic.js) | Kenapa pencarian referensi ≤ 6 karakter instan tapi > 6 karakter sangat lambat — lambatnya di server DJP atau di ekstensi/portal? | Sudah dijalankan 24 Sep 2026, hasilnya jadi dasar ADR-0012 |
-| [`masa-batch-diagnostic.js`](masa-batch-diagnostic.js) | Apakah fitur **ekspor satu tahun sekaligus** (batch lintas masa pajak) mungkin di portal, atau terhalang batas portal? Apakah batas halaman server bisa memotong data secara senyap? Filter apa yang dipakai tiap grid, dan apakah penjaga sweep menerima permintaannya? | Dijalankan Okt 2026 di PPN Keluaran — hasilnya menentukan ADR-0018 dan fitur ekspor satu tahun (77dde73). Fase 1b mencetak **verdict penjaga sweep** per grid (`__cindiehMasaDiag.jalankan([1])` atau `__cindiehMasaDiag.verdictFilter()`); jalankan di PPN Masukan dan kedua grid Retur lalu isi tabel **Pengukuran filter per grid** di bawah — itulah satu-satunya cara sebuah grid bisa disapu lagi (ADR-0019) |
+| [`masa-batch-diagnostic.js`](masa-batch-diagnostic.js) | Apakah fitur **ekspor satu tahun sekaligus** (batch lintas masa pajak) mungkin di portal, atau terhalang batas portal? Apakah batas halaman server bisa memotong data secara senyap? Filter apa yang dipakai tiap grid, dan apakah penjaga sweep menerima permintaannya? | Dijalankan Okt 2026 di PPN Keluaran — hasilnya menentukan ADR-0018 dan fitur ekspor satu tahun (77dde73). Fase 1b mencetak **verdict penjaga sweep** per grid (`__cindiehMasaDiag.jalankan([1])` atau `__cindiehMasaDiag.verdictFilter()`); jalankan di kedua grid Retur lalu isi barisnya di tabel **Pengukuran filter per grid** di bawah — itulah satu-satunya cara sebuah grid bisa disapu lagi (ADR-0019). PPN Masukan sudah terukur (21 Okt 2026, ADR-0043) |
 
 ---
 
@@ -14,7 +14,8 @@ Skrip console yang ditempel di DevTools untuk menjawab pertanyaan tentang **port
 > **Status: dijalankan pada portal Coretax, Oktober 2026.** Cakupan pengukuran:
 > endpoint e-Faktur PPN Keluaran, masa TD.00701–TD.00703 tahun 2026 (3 dari 12
 > masa — batas tahun baru Des→Jan belum diukur). Hasil lengkap di bagian
-> "Hasil" di bawah.
+> "Hasil" di bawah. Per grid, hanya fase 1 + 1b yang dijalankan: hasilnya
+> tercatat di tabel **Pengukuran filter per grid**.
 
 ### Pertanyaan yang harus dijawab
 
@@ -70,11 +71,11 @@ Blok **Jawaban singkat** meringkas tiga hal yang harus diputuskan sebelum fitur 
 | Baris tanpa ID (beban `stableStringify`)? | **0 dari 44.237** | Setiap baris punya `RecordId` — kunci dedupe selalu O(1), tanpa fallback hash |
 | Duplikat antara masa (Jan/Feb, Feb/Mar)? | **0** | 44.237 baris = 44.237 unik, dengan kunci yang persis sama dengan `mergeRows` |
 
-**Belum terukur:** masa ke-4 sampai ke-12, khususnya batas tahun baru Des→Jan — kasus bukti kredit yang sempat masuk Januari tahun berikutnya, risiko duplikasi lintas periode yang paling mungkin — dan endpoint selain PPN Keluaran. Fitur yang sudah dikirim menganggap hasil ini berlaku umum untuk masa yang belum diukur.
+**Belum terukur:** masa ke-4 sampai ke-12, khususnya batas tahun baru Des→Jan — kasus bukti kredit yang sempat masuk Januari tahun berikutnya, risiko duplikasi lintas periode yang paling mungkin. Fitur yang sudah dikirim menganggap hasil ini berlaku umum untuk masa yang belum diukur. Per grid, pengukurannya sendiri sudah tercatat di tabel di bawah (fase 1 + 1b) — yang belum diulang per grid hanya fase 2–4, karena pertanyaannya sama untuk seluruh endpoint e-Faktur.
 
 ### Pengukuran filter per grid (ADR-0019)
 
-Ekspor satu tahun hanya bisa dijalankan kalau grid-nya punya baris di `MEASURED_SWEEP_FILTERS` ([scrape-batch.ts](../src/content/scrape-batch.ts)) **dan** request yang ditangkap membawa kedua filter itu: masa pajak dan tahun pajak. Baru PPN Keluaran yang punya baris (`TaxInvoicePeriod`/`TaxInvoiceYear`). Tiga grid lain **ditolak** selama barisnya masih kosong — tidak ada lagi pintu "petunjuk nama": nama yang mirip, nilai yang berbentuk kode `TD.007MM`, atau tahun sebagai field body tidak cukup, karena pertanyaan yang harus dijawab (apakah endpoint ini menghormati filter itu?) hanya terjawab dengan mengukurnya di portal. Baris di bawah masih kosong = grid itu **belum bisa disapu sama sekali**.
+Ekspor satu tahun hanya bisa dijalankan kalau grid-nya punya baris di `MEASURED_SWEEP_FILTERS` ([scrape-batch.ts](../src/content/scrape-batch.ts)) **dan** request yang ditangkap membawa kedua filter itu: masa pajak dan tahun pajak. PPN Keluaran (6 Okt 2026) dan PPN Masukan (21 Okt 2026) yang punya baris — nama filternya sama (`TaxInvoicePeriod`/`TaxInvoiceYear`), tetapi PPN Masukan mengirim nilainya sebagai **daftar** kode, dan itu dicatat terpisah di ADR-0043. Dua grid Retur **ditolak** selama barisnya masih kosong — tidak ada lagi pintu "petunjuk nama": nama yang mirip, nilai yang berbentuk kode `TD.007MM`, atau tahun sebagai field body tidak cukup, karena pertanyaan yang harus dijawab (apakah endpoint ini menghormati filter itu?) hanya terjawab dengan mengukurnya di portal. Baris di bawah masih kosong = grid itu **belum bisa disapu sama sekali**.
 
 Fase 1b menjawabnya per grid, memakai aturan penjaga yang disalin ke dalam skrip:
 
@@ -88,11 +89,11 @@ Yang dicetak fase 1b: apakah grid ini punya baris terukur (dan barisnya apa), na
 | Halaman | Endpoint | Filter masa | Filter tahun | Penjaga | Rencana |
 |---|---|---|---|---|---|
 | e-Faktur PPN Keluaran | `/einvoiceportal/api/outputinvoice/list` | `TaxInvoicePeriod=TD.00708` (nama terukur, `MatchMode` `equals`) | `TaxInvoiceYear=2026` | DITERIMA — menyapu TD.00701..TD.00712 untuk tahun 2026 | TD.00701..TD.00712 |
-| e-Faktur PPN Masukan | | | | **DITOLAK — belum terukur** (tidak ada barisnya) | |
+| e-Faktur PPN Masukan | `/einvoiceportal/api/inputinvoice/list` | `TaxInvoicePeriod=["TD.00709"]` (nama terukur, `MatchMode` `contains`, nilainya **daftar** kode) | `TaxInvoiceYear=2026` (`equals`) | DITERIMA — menyapu TD.00701..TD.00712 untuk tahun 2026; nilainya ditulis ulang satu kode satu string, yang justru bentuk yang portal menghormati (ADR-0043) | TD.00701..TD.00712 |
 | Retur PPN Keluaran | | | | **DITOLAK — belum terukur** (tidak ada barisnya) | |
 | Retur PPN Masukan | | | | **DITOLAK — belum terukur** (tidak ada barisnya) | |
 
-Aturan setelah sebuah baris terisi: barisnya masuk ke `MEASURED_SWEEP_FILTERS` di `scrape-batch.ts` **dan** dicatat di ADR-0019, bersama test yang membuktikan grid itu diterima sementara grid yang masih kosong tetap ditolak. Kalau satu grid ternyata memakai nama (atau bentuk nilai) lain, perubahan yang benar adalah mempelajarinya — nama filternya masuk baris itu, dan `periodPrefix` diperluas bersama testnya — bukan menambahkan kembali tebakan "petunjuk nama". Sebuah grid tanpa baris berarti fiturnya **mati** di halaman itu, bukan jalan dengan syarat.
+Aturan setelah sebuah baris terisi: barisnya masuk ke `MEASURED_SWEEP_FILTERS` di `scrape-batch.ts` **dan** dicatat di ADR-0019, bersama test yang membuktikan grid itu diterima sementara grid yang masih kosong tetap ditolak. Kalau satu grid ternyata memakai nama (atau bentuk nilai) lain, perubahan yang benar adalah **mempelajarinya** — nama filternya masuk baris itu, dan `periodPrefix` diperluas bersama testnya — bukan menambahkan kembali tebakan "petunjuk nama". Itulah yang terjadi di PPN Masukan: **namanya sama, bentuk nilainya yang baru** (daftar kode, bukan satu string), dan pembelajarannya ditulis sebagai ADR-0043 yang merujuk ADR-0019. Sebuah grid tanpa baris berarti fiturnya **mati** di halaman itu, bukan jalan dengan syarat.
 
 > **Catatan cakupan:** fase 2-4 (batas `Rows`, jumlah total yang bisa dipercaya, durasi per masa, kebutuhan `RecordId`) sengaja **tidak** diulang per grid — pertanyaan itu terjawab untuk endpoint e-Faktur dan tidak berubah antar grid e-Faktur. Yang perlu dijalankan per grid hanya fase 1 dan 1b.
 

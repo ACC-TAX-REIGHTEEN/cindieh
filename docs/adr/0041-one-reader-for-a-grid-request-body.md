@@ -61,11 +61,12 @@ the better answer anyway. A name that merely *resembles* a known one fails
 **unsafe** — it names the file after a filter the rows never came from. So the
 table is whole names, and the substring match is gone.
 
-The measurement table itself is untouched: only PPN Keluaran has a row, the
-other three e-Faktur grids still refuse the year-wide export, and a grid with
-no row is given no guess. The other grids' names are in `GRID_FILTER_NAMES` for
-the FILE's name only — a grid with no measured row has no scope either, so
-there is nothing for a name to disagree with.
+The measurement table itself is untouched by this decision: it held one row (PPN
+Keluaran) when this was written, a grid with no row is given no guess, and the
+rows it has since gained are ADR-0043's business rather than this ADR's. The
+other grids' names are in `GRID_FILTER_NAMES` for the FILE's name only — a grid
+with no measured row has no scope either, so there is nothing for a name to
+disagree with.
 
 Consequences:
 

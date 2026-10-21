@@ -158,7 +158,7 @@ Menu **Ekspor** di halaman e-Faktur PPN punya satu entri tambahan: **Ekspor 1 Ta
 
 | | |
 |---|---|
-| Halaman | Keempat grid e-Faktur PPN: PPN Keluaran, PPN Masukan, Retur PPN Keluaran, dan Retur PPN Masukan. Di halaman lain entri ini tidak muncul. Fiturnya menyala **per grid**: baru PPN Keluaran yang filter masa dan tahunnya sudah terukur langsung dari portal. Di tiga grid lain entri itu menjelaskan bahwa grid tersebut belum terukur dan mengarahkan ke ekspor biasa, bukan menebak filternya. |
+| Halaman | Keempat grid e-Faktur PPN: PPN Keluaran, PPN Masukan, Retur PPN Keluaran, dan Retur PPN Masukan. Di halaman lain entri ini tidak muncul. Fiturnya menyala **per grid**: PPN Keluaran dan PPN Masukan yang filter masa dan tahunnya sudah terukur langsung dari portal. Di dua grid Retur entri itu menjelaskan bahwa grid tersebut belum terukur dan mengarahkan ke ekspor biasa, bukan menebak filternya. |
 | Isi file | Seluruh masa pajak dalam satu tahun pajak. |
 | Nama file | Dinamai untuk **tahunnya** (`FPK-2026.xlsx`, `FPM-2026.xlsx`, `RET-FPK-2026.xlsx`, `RET-FPM-2026.xlsx`), bukan untuk satu bulan, karena isinya dua belas bulan. |
 | Perkiraan waktu | Sekitar 4 menit bagi Wajib Pajak besar pada kecepatan pacing normal, memakai jeda antar-halaman yang sama seperti ekspor biasa. Kecepatan yang lebih lambat memperpanjang waktu ini, tidak pernah memendekkannya. |

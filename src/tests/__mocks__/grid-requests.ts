@@ -99,6 +99,47 @@ const OUTPUT_TAX_RAW_BODY = JSON.stringify({
 });
 
 /**
+ * The request body the portal sent for PPN Masukan on 2026-10-21, posted to
+ * /einvoiceportal/api/inputinvoice/list.
+ *
+ * Transcribed as captured, with the taxpayer's own aggregate identifier
+ * replaced by a placeholder. Two things here are NOT the PPN Keluaran shape,
+ * and both were measured on the portal (ADR-0043):
+ *
+ * - `TaxInvoicePeriod` carries a LIST of codes (`["TD.00709"]`) with MatchMode
+ *   "contains" — the portal's own multi-select, one element for the month that
+ *   was selected. The sweep reads the first code and writes ONE code back as a
+ *   plain string, which is the write the portal was measured honouring.
+ * - `SortField` is empty and `SortOrder` the number 1, where PPN Keluaran
+ *   sends "TaxInvoiceDate"/"desc". Nothing in the sweep depends on the sort.
+ */
+const INPUT_TAX_RAW_BODY = JSON.stringify({
+  BuyerTaxpayerAggregateIdentifier: "buyer-1",
+  First: 0,
+  Rows: 50,
+  SortField: "",
+  SortOrder: 1,
+  LanguageId: "id-ID",
+  TaxpayerAggregateIdentifier: "taxpayer-1",
+  Filters: [
+    {
+      PropertyName: "TaxInvoicePeriod",
+      Value: ["TD.00709"],
+      MatchMode: "contains",
+      CaseSensitive: true,
+      AsString: false,
+    },
+    {
+      PropertyName: "TaxInvoiceYear",
+      Value: "2026",
+      MatchMode: "equals",
+      CaseSensitive: true,
+      AsString: false,
+    },
+  ],
+});
+
+/**
  * A stand-in body for a grid whose request has never been captured.
  *
  * It parses, it carries two filters, and its filter names are deliberately NOT
@@ -169,26 +210,34 @@ export const GRID_REQUESTS: Record<EfakturSource, GridRequestFixture> = {
     ],
     rowsCaptured: false,
   },
-  INPUT_TAX: standIn("INPUT_TAX", [
-    {
-      TaxInvoiceDate: "2026-03-10T00:00:00+07:00",
-      TaxInvoicePeriod: "TD.00703",
-      TaxInvoiceYear: "2026",
-      SellerTaxpayerName: "PT Supplier",
-      SellerTIN: "987654321",
-      TaxInvoiceNumber: "0100000999",
-      TaxInvoiceStatus: "APPROVED",
-      BuyerStatus: "CREDITED",
-      PeriodCredit: "TD.00704",
-      YearCredit: "2026",
-      SellingPrice: 1000000,
-      OtherTaxBase: 916667,
-      VAT: 110000,
-      STLG: 0,
-      Reference: "REF-IN-001",
-      ExtraField: "should be dropped",
-    },
-  ]),
+  INPUT_TAX: {
+    source: "INPUT_TAX",
+    url: "https://coretaxdjp.pajak.go.id/einvoiceportal/api/inputinvoice/list",
+    rawBody: INPUT_TAX_RAW_BODY,
+    captured: true,
+    capturedOn: "2026-10-21",
+    rows: [
+      {
+        TaxInvoiceDate: "2026-03-10T00:00:00+07:00",
+        TaxInvoicePeriod: "TD.00703",
+        TaxInvoiceYear: "2026",
+        SellerTaxpayerName: "PT Supplier",
+        SellerTIN: "987654321",
+        TaxInvoiceNumber: "0100000999",
+        TaxInvoiceStatus: "APPROVED",
+        BuyerStatus: "CREDITED",
+        PeriodCredit: "TD.00704",
+        YearCredit: "2026",
+        SellingPrice: 1000000,
+        OtherTaxBase: 916667,
+        VAT: 110000,
+        STLG: 0,
+        Reference: "REF-IN-001",
+        ExtraField: "should be dropped",
+      },
+    ],
+    rowsCaptured: false,
+  },
   OUTPUT_RETURN: standIn("OUTPUT_RETURN", [
     {
       BuyerTIN: "0639343490201000",

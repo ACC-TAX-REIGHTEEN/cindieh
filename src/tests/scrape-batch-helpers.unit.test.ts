@@ -17,6 +17,9 @@ import {
   capturedYear,
   describeSweepFilters,
   measuredSweepFilters,
+  overridesForPeriod,
+  periodPrefix,
+  planPeriods,
   readSweepFilters,
   resumePeriodCodes,
 } from "../content/scrape-batch";
@@ -32,8 +35,11 @@ import {
 /** The only measured grid. */
 const SOURCE: EfakturSource = "OUTPUT_TAX";
 
+/** The grids whose filters have been read off the portal. */
+const MEASURED: EfakturSource[] = ["OUTPUT_TAX", "INPUT_TAX"];
+
 /** The e-Faktur PPN grids with no measured row yet. */
-const UNMEASURED: EfakturSource[] = ["INPUT_TAX", "OUTPUT_RETURN", "INPUT_RETURN"];
+const UNMEASURED: EfakturSource[] = ["OUTPUT_RETURN", "INPUT_RETURN"];
 
 /** The measured names, read from the table so a rename cannot drift silently. */
 const PERIOD_PROPERTY = MEASURED_SWEEP_FILTERS.OUTPUT_TAX?.period ?? "";
@@ -112,11 +118,14 @@ describe("the measured sweep-filter table", () => {
   // portal on 2026-10-06. Pinned literally: a rename without a fresh measurement
   // would be a guess, and a guess here issues twelve requests for months nobody
   // confirmed the endpoint honours.
-  it("records PPN Keluaran's measured filter names", () => {
-    expect(MEASURED_SWEEP_FILTERS.OUTPUT_TAX).toEqual({
+  it.each(MEASURED)("records %s's measured filter names", (source) => {
+    expect(MEASURED_SWEEP_FILTERS[source]).toEqual({
       period: "TaxInvoicePeriod",
       year: "TaxInvoiceYear",
     });
+  });
+
+  it("keeps the measured names readable, so a rename cannot drift silently", () => {
     expect(PERIOD_PROPERTY).not.toBe("");
     expect(YEAR_PROPERTY).not.toBe("");
   });
@@ -268,13 +277,13 @@ describe("a grid that was never measured", () => {
 
   it("refuses a grid whose filters are spelled differently, which used to pass", () => {
     // The removed hint door accepted this on a name plus a value in the measured
-    // shape. The INPUT_TAX fixture's stand-in carries exactly that — a
-    // period-named filter with a TD.007MM value — and it is now a refusal: a
-    // lookalike name is not evidence that the endpoint honours it.
-    const raw = rawBodyOf("INPUT_TAX");
-    expect(batchScopeError(raw, "INPUT_TAX")).toMatch(/belum pernah diukur/);
-    expect(capturedPeriod(raw, "INPUT_TAX")).toBeNull();
-    expect(capturedYear(raw, "INPUT_TAX")).toBeNull();
+    // shape. A Retur grid's stand-in carries exactly that — a period-named filter
+    // with a TD.007MM value — and it is now a refusal: a lookalike name is not
+    // evidence that the endpoint honours it.
+    const raw = rawBodyOf("OUTPUT_RETURN");
+    expect(batchScopeError(raw, "OUTPUT_RETURN")).toMatch(/belum pernah diukur/);
+    expect(capturedPeriod(raw, "OUTPUT_RETURN")).toBeNull();
+    expect(capturedYear(raw, "OUTPUT_RETURN")).toBeNull();
   });
 
   it("never mistakes an invoice-number filter for the period, however its value ends", () => {
@@ -290,16 +299,16 @@ describe("a grid that was never measured", () => {
 
   it("never sweeps by a credit period, which is a different period entirely", () => {
     // PPN Masukan's request may carry the credit period beside the document
-    // period. Even with a row for that grid, only the recorded name would count;
-    // today the grid has no row at all, and the credit spelling is just one more
-    // filter in the reading.
+    // period. The grid is measured now, and only its RECORDED name counts: a
+    // body carrying "PeriodCredit" carries no period at all, so the sweep is
+    // refused rather than run on the credit's month.
     const raw = body([
       { PropertyName: "PeriodCredit", Value: "TD.00703" },
       { PropertyName: "YearCredit", Value: "2026" },
     ]);
     expect(capturedPeriod(raw, "INPUT_TAX")).toBeNull();
     expect(capturedYear(raw, "INPUT_TAX")).toBeNull();
-    expect(batchScopeError(raw, "INPUT_TAX")).toMatch(/belum pernah diukur/);
+    expect(batchScopeError(raw, "INPUT_TAX")).toContain("TaxInvoicePeriod");
   });
 });
 
@@ -327,15 +336,15 @@ describe("the reading the guard decides on", () => {
   });
 
   it("says the grid is unmeasured, and names what its request carries", () => {
-    // The grid's own fixture, whose stand-in filters are named Period/Year.
-    const raw = rawBodyOf("INPUT_TAX");
-    expect(readSweepFilters(raw, "INPUT_TAX")).toEqual({
+    // A Retur grid's own fixture, whose stand-in filters are named Period/Year.
+    const raw = rawBodyOf("OUTPUT_RETURN");
+    expect(readSweepFilters(raw, "OUTPUT_RETURN")).toEqual({
       measurement: null,
       period: null,
       year: null,
       seen: ["Period", "Year"],
     });
-    expect(describeSweepFilters(raw, "INPUT_TAX")).toBe(
+    expect(describeSweepFilters(raw, "OUTPUT_RETURN")).toBe(
       "grid belum terukur · filters seen: Period, Year",
     );
   });
@@ -389,6 +398,130 @@ describe("the reading the guard decides on", () => {
     });
     expect(describeSweepFilters(raw, SOURCE)).toBe(
       "period=none · year=none · filters seen: none",
+    );
+  });
+});
+
+describe("a period filter that carries a LIST of codes", () => {
+  // PPN Masukan's request sends the selected months as a LIST
+  // (`["TD.00709"]`, MatchMode "contains"), where PPN Keluaran sends one
+  // string. The reader takes the FIRST code — the plan is built from one code
+  // and the sweep writes one code back — and the guard must not mistake a list
+  // for a missing filter (ADR-0043).
+
+  const LIST_SOURCE: EfakturSource = "INPUT_TAX";
+  const CAPTURED = rawBodyOf(LIST_SOURCE);
+  const LIST_PERIOD = MEASURED_SWEEP_FILTERS.INPUT_TAX?.period ?? "";
+  const LIST_YEAR = MEASURED_SWEEP_FILTERS.INPUT_TAX?.year ?? "";
+
+  it("reads the one code the plan is built from", () => {
+    expect(capturedPeriod(CAPTURED, LIST_SOURCE)).toBe("TD.00709");
+    expect(planPeriods(capturedPeriod(CAPTURED, LIST_SOURCE) ?? "")).toEqual([
+      "TD.00701", "TD.00702", "TD.00703", "TD.00704",
+      "TD.00705", "TD.00706", "TD.00707", "TD.00708",
+      "TD.00709", "TD.00710", "TD.00711", "TD.00712",
+    ]);
+  });
+
+  it("reads the first code of a list that holds several", () => {
+    // The user selected two months in the portal's own filter, so the capture
+    // carries two codes. They share the prefix, so the plan is the same twelve
+    // months — and the sweep replaces the whole filter with one code at a time.
+    const raw = rawBodyWithFilters(LIST_SOURCE, [
+      {
+        PropertyName: LIST_PERIOD,
+        Value: ["TD.00709", "TD.00710"],
+        MatchMode: "contains",
+        CaseSensitive: true,
+      },
+      { PropertyName: LIST_YEAR, Value: "2026", MatchMode: "equals", CaseSensitive: true },
+    ]);
+    expect(capturedPeriod(raw, LIST_SOURCE)).toBe("TD.00709");
+    expect(batchScopeError(raw, LIST_SOURCE)).toBeNull();
+  });
+
+  it("refuses a list that carries no code at all", () => {
+    const raw = rawBodyWithFilters(LIST_SOURCE, [
+      { PropertyName: LIST_PERIOD, Value: [], MatchMode: "contains", CaseSensitive: true },
+      { PropertyName: LIST_YEAR, Value: "2026", MatchMode: "equals", CaseSensitive: true },
+    ]);
+    expect(capturedPeriod(raw, LIST_SOURCE)).toBeNull();
+    expect(batchScopeError(raw, LIST_SOURCE)).toMatch(/belum dikenali/);
+  });
+
+  it("writes one code back as a plain string, which is what the portal reads", () => {
+    // Measured on the portal: the LIST is what the portal sends, the STRING is
+    // what it reads. MatchMode, CaseSensitive and every other filter survive.
+    const overrides = overridesForPeriod(CAPTURED, "TD.00701", 0, 500, LIST_SOURCE) as {
+      Filters: Record<string, unknown>[];
+      First: number;
+      Rows: number;
+    };
+    expect(overrides.First).toBe(0);
+    expect(overrides.Rows).toBe(500);
+    expect(overrides.Filters[0]).toEqual({
+      PropertyName: LIST_PERIOD,
+      Value: "TD.00701",
+      MatchMode: "contains",
+      CaseSensitive: true,
+      AsString: false,
+    });
+    expect(overrides.Filters[1]).toEqual({
+      PropertyName: LIST_YEAR,
+      Value: "2026",
+      MatchMode: "equals",
+      CaseSensitive: true,
+      AsString: false,
+    });
+  });
+
+  it("refuses a value that is several codes joined into one string", () => {
+    // The false positive this hardening closes: "TD.00709,TD.00710" used to
+    // yield the prefix "TD.00709,TD.007" and twelve codes the portal has never
+    // heard of — every one of them empty, and the sweep reporting a year of
+    // nothing.
+    expect(periodPrefix("TD.00709,TD.00710")).toBeNull();
+    expect(periodPrefix("TD.00708")).toBe("TD.007");
+  });
+
+  it("names the missing PERIOD on PPN Masukan's own body", () => {
+    const raw = rawBodyWithFilters(LIST_SOURCE, [
+      { PropertyName: LIST_YEAR, Value: "2026", MatchMode: "equals", CaseSensitive: true },
+    ]);
+    expect(batchScopeError(raw, LIST_SOURCE)).toContain(LIST_PERIOD);
+  });
+
+  it("names the missing YEAR on PPN Masukan's own body", () => {
+    const raw = rawBodyWithFilters(LIST_SOURCE, [
+      {
+        PropertyName: LIST_PERIOD,
+        Value: ["TD.00709"],
+        MatchMode: "contains",
+        CaseSensitive: true,
+      },
+    ]);
+    expect(batchScopeError(raw, LIST_SOURCE)).toContain(LIST_YEAR);
+  });
+
+  it("refuses a period value in no known format on PPN Masukan's own body", () => {
+    const raw = rawBodyWithFilters(LIST_SOURCE, [
+      { PropertyName: LIST_PERIOD, Value: ["Agustus"], MatchMode: "contains", CaseSensitive: true },
+      { PropertyName: LIST_YEAR, Value: "2026", MatchMode: "equals", CaseSensitive: true },
+    ]);
+    expect(batchScopeError(raw, LIST_SOURCE)).toMatch(/belum dikenali/);
+  });
+
+  it("reports a list-valued period filter as the one code the plan uses", () => {
+    const raw = rawBodyOf(LIST_SOURCE);
+    expect(readSweepFilters(raw, LIST_SOURCE)).toEqual({
+      measurement: { period: LIST_PERIOD, year: LIST_YEAR },
+      period: { name: LIST_PERIOD, value: "TD.00709" },
+      year: { name: LIST_YEAR, value: "2026" },
+      seen: [LIST_PERIOD, LIST_YEAR],
+    });
+    expect(describeSweepFilters(raw, LIST_SOURCE)).toBe(
+      `period=${LIST_PERIOD}=TD.00709 · year=${LIST_YEAR}=2026 · ` +
+        `filters seen: ${LIST_PERIOD}, ${LIST_YEAR}`,
     );
   });
 });

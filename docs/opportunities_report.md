@@ -6,6 +6,8 @@
 Scoring: **Impact** 1–5, **Effort** 1–5 (5 = largest), **Conf.** = how well the evidence supports the claim.
 Priority: **Quick Win** (high impact, low effort) · **Fill-in** (small and bounded) · **Big Bet** · **Deprioritize**.
 
+> **Setelah snapshot ini (2026-10-21):** dua baris di bawah sudah tidak berlaku — **A4 (Pengecekan di grid Retur) sudah selesai** (ADR-0024: keempat grid e-Faktur PPN), dan item #1 ("ukur tiga grid") selesai **satu dari tiga**: **PPN Masukan terukur dan direkam** pada 2026-10-21 (ADR-0043), dengan **bentuk nilai filter masanya yang baru** — daftar kode, bukan satu string. **A2, A3, dan B9 masih terbuka.** Angka, baris "Evidence", dan tabel per-file di bawah sengaja **tidak** diperbarui: report ini adalah catatan keadaan pada `206054a`, dan angka-angkanya menunjuk snapshot itu.
+
 Every row below was re-read against the code at this snapshot rather than carried over. **Eight of the thirteen items closed since the previous revision** — seven in their own commits, and B3 with the stop-salvage change; the status column names each one. Two rows are re-characterised, one up and one down.
 
 ---

@@ -27,16 +27,32 @@
 // - `Payload.TotalRecords` is NOT a row count: it answers every page
 //   size with `Rows + 1`. See scraper-xhr.ts. Nothing below trusts it.
 //
+// Measured again on PPN Masukan (2026-10-21), where the SAME filter names
+// carry a different VALUE shape (ADR-0043):
+//
+// - `TaxInvoicePeriod` arrives as a LIST of codes (`["TD.00709"]`) with
+//   MatchMode "contains", not as one string with "equals". A reader that
+//   understood only the string form saw no period at all on this grid.
+// - The server honours ONE code written back as a plain string: three
+//   consecutive months re-requested that way came back with 334, 274 and
+//   142 rows, and every row's own period field equalled the code asked
+//   for. So the LIST is what the portal sends and the STRING is what it
+//   reads — the two are not the same request.
+// - `Rows` is honoured here too (10 and 100 came back exactly), and one
+//   month held 235 rows — under the 500 asked for, so a short page ends
+//   that month and no data is cut.
+//
 // Pure on purpose: no DOM, no browser API, so every rule here is unit
 // tested rather than discovered on a portal.
 //
 // The sweep is offered on every e-Faktur PPN grid (Keluaran, Masukan, both
 // Retur), but a grid may only sweep once its filter NAMES have been read off
-// the portal and written into MEASURED_SWEEP_FILTERS. Only PPN Keluaran has a
-// row, so the other three are REFUSED — deliberately: a name hint plus a
-// value in the right shape was enough to find a filter, and not enough to know
-// the endpoint honours it. A sweep that guesses produces a file of months the
-// user cannot trust, which is worse than a feature that says it is not ready.
+// the portal and written into MEASURED_SWEEP_FILTERS. PPN Keluaran and PPN
+// Masukan have a row; the two Retur grids are REFUSED — deliberately: a name
+// hint plus a value in the right shape was enough to find a filter, and not
+// enough to know the endpoint honours it. A sweep that guesses produces a file
+// of months the user cannot trust, which is worse than a feature that says it
+// is not ready.
 //
 // The refusal is still the measurement. `readSweepFilters` reports the grid's
 // measured row (or its absence) and every filter the request carries, and
@@ -75,16 +91,18 @@ export interface SweepFilterMeasurement {
 /**
  * The measured sweep filters, one row per grid that has been measured.
  *
- * PPN Keluaran is the measured grid (2026-10-06): `TaxInvoicePeriod` carries the
- * `TD.007MM` code and `TaxInvoiceYear` the four-digit year. The other three
- * e-Faktur grids have no row, so `measuredSweepFilters` answers null and the
- * sweep is refused there rather than run on a lookalike. A grid joins this table
- * when its request has been read off the portal and the row recorded in
- * tools/README.md and ADR-0019 — a code change with a measurement behind it,
- * never a runtime inference.
+ * PPN Keluaran (2026-10-06) and PPN Masukan (2026-10-21) are the measured
+ * grids: `TaxInvoicePeriod` carries the `TD.007MM` code and `TaxInvoiceYear`
+ * the four-digit year — the same two NAMES on both, though Masukan carries the
+ * period as a list of codes (ADR-0043). The two Retur grids have no row, so
+ * `measuredSweepFilters` answers null and the sweep is refused there rather
+ * than run on a lookalike. A grid joins this table when its request has been
+ * read off the portal and the row recorded in tools/README.md and ADR-0019 — a
+ * code change with a measurement behind it, never a runtime inference.
  */
 export const MEASURED_SWEEP_FILTERS: Partial<Record<ExportSource, SweepFilterMeasurement>> = {
   OUTPUT_TAX: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
+  INPUT_TAX: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
 };
 
 /** The measurement for a grid, or null when the grid has never been measured. */
@@ -125,6 +143,44 @@ function periodFilterIndex(filters: GridFilter[], measurement: SweepFilterMeasur
 }
 
 /**
+ * The period codes a period filter carries, in the order the portal sent them.
+ *
+ * A period filter is not always ONE code. PPN Masukan's request carries the
+ * selected months as a LIST (`["TD.00709"]`) — one element when one month is
+ * selected, several when the user selected several — while PPN Keluaran's
+ * carries a single string. A reader that understood only the string form saw
+ * no period at all on Masukan, and the sweep then degenerated into "whatever
+ * the grid is already filtered to" (ADR-0043).
+ */
+function periodCodesOf(filter: GridFilter | undefined): string[] {
+  const value = filterRawValue(filter);
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text ? [text] : [];
+  }
+  if (Array.isArray(value)) {
+    return value
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+  return [];
+}
+
+/**
+ * The ONE code the sweep plans from, or null when the filter carries none.
+ *
+ * The first code is the plan's source, and the first code is what the sweep
+ * writes back. A capture may hold several (the user selected several months):
+ * every code of one grid shares the prefix, so the first is enough to derive
+ * the twelve codes — and the sweep replaces the whole filter with one code at
+ * a time anyway. A filter that carries none is a filter the sweep cannot read.
+ */
+function periodCodeOf(filter: GridFilter | undefined): string | null {
+  return periodCodesOf(filter)[0] ?? null;
+}
+
+/**
  * The year the request pins, or null when it does not carry the measured filter.
  *
  * Returns the side even when its VALUE is unreadable, so a reading can report
@@ -147,9 +203,17 @@ function yearSide(
  * PORTAL's own value may be used as the source: a prefix invented locally
  * would produce twelve period values the portal has never heard of, and every
  * one of them would come back empty.
+ *
+ * ONE code, never several. A value carrying a separator is a LIST that has not
+ * been read as one, and a prefix derived from it produces twelve codes the
+ * portal has never heard of ("TD.00709,TD.00701" → the prefix "TD.00709,TD.007"
+ * → twelve requests that all come back empty). Fail SAFE: no prefix at all, so
+ * the guard refuses instead of sweeping months that do not exist.
  */
 export function periodPrefix(periodValue: string): string | null {
-  const match = String(periodValue ?? "").match(/^(.*\d{3})(0[1-9]|1[0-2])$/);
+  const text = String(periodValue ?? "").trim();
+  if (/[,;|\s]/.test(text)) return null;
+  const match = text.match(/^(.*\d{3})(0[1-9]|1[0-2])$/);
   return match ? match[1] : null;
 }
 
@@ -199,6 +263,13 @@ export function resumePeriodCodes(requested: unknown): string[] | undefined {
  * and every other filter — `TaxInvoiceStatus` and the taxpayer identifiers
  * among them — are carried through untouched.
  *
+ * The rewritten value is ONE CODE as a plain string, whatever the captured
+ * filter held: PPN Masukan's request arrives with the selected months as a
+ * LIST (`["TD.00709"]`, MatchMode "contains"), and the portal was measured
+ * honouring exactly this write — one code, as a string, with its own
+ * MatchMode kept (ADR-0043). The list is what the portal sends; the string is
+ * what it reads.
+ *
  * Throws when the captured body has no measured period filter: a batch
  * silently requested without one would scrape the SAME period twelve times and
  * report twelve periods' worth of one month's rows. An unmeasured grid gets the
@@ -236,8 +307,8 @@ export function capturedPeriod(
   const measurement = measuredSweepFilters(source);
   if (!measurement) return null;
   const index = periodFilterIndex(filters, measurement);
-  const value = index >= 0 ? filters[index]?.Value : undefined;
-  return typeof value === "string" ? value : null;
+  if (index < 0) return null;
+  return periodCodeOf(filters[index]);
 }
 
 /**
@@ -288,10 +359,19 @@ export interface SweepFilterReading {
   seen: string[];
 }
 
-function sideOf(filter: GridFilter | undefined): SweepFilterSide {
+/**
+ * The period side of a reading: the ONE code the sweep would plan from.
+ *
+ * A filter carrying several codes shows the first one, because that is what
+ * the plan is built from and what the sweep writes back. A filter carrying
+ * none reads as an empty value, which the wording reports as a value in no
+ * known format — the distinction that tells the next run whether to look for
+ * a filter or to learn a value shape.
+ */
+function periodSide(filter: GridFilter | undefined): SweepFilterSide {
   return {
     name: filterName(filter),
-    value: String(filterRawValue(filter) ?? ""),
+    value: periodCodeOf(filter) ?? "",
   };
 }
 
@@ -313,7 +393,7 @@ export function readSweepFilters(
   const periodAt = measurement ? periodFilterIndex(filters, measurement) : -1;
   return {
     measurement,
-    period: periodAt >= 0 ? sideOf(filters[periodAt]) : null,
+    period: periodAt >= 0 ? periodSide(filters[periodAt]) : null,
     year: measurement ? yearSide(filters, measurement) : null,
     seen: filters
       .map((filter) => String(filter?.PropertyName ?? ""))
@@ -400,7 +480,11 @@ export function batchScopeError(
   if (periodAt < 0) {
     return `Permintaan grid ini tidak punya filter ${measurement.period}, jadi ekspor satu tahun tidak bisa dijalankan.`;
   }
-  if (periodPrefix(String(filters[periodAt]?.Value ?? "")) === null) {
+  // The period filter is read as the LIST it may be, and the plan is built from
+  // the one code it carries: a grid whose filter holds several codes is still
+  // one grid, and the sweep replaces the whole filter with one code at a time.
+  const periodCode = periodCodeOf(filters[periodAt]);
+  if (periodCode === null || periodPrefix(periodCode) === null) {
     return UNRECOGNISED_PERIOD_MESSAGE;
   }
   if (capturedYear(capturedRawBody, source) === null) {

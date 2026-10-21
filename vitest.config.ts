@@ -9,7 +9,7 @@
 // regression — new logic shipping without tests — does. Raise them as coverage
 // improves; never lower them to make a red build green.
 //
-// Measured 2026-10-20 on the whole suite (2102 tests). The modules that hold
+// Measured 2026-10-21 on the whole suite (2114 tests). The modules that hold
 // the baseline down are recorded in AGENTS.md so a low number reads as a known
 // gap rather than a mystery.
 
@@ -96,8 +96,13 @@ export default defineConfig({
       // the body four readers used to read four ways — and with row-name.ts
       // (ADR-0042), where a row's name and the file it lands as come from one
       // ladder instead of two. The measured numbers are
-      // 95.21/90.50/93.60/96.24 on 2102 tests, and the branches floor moves
-      // with them.
+      // 95.23/90.53/93.64/96.25 on 2114 tests, and the branches floor moves
+      // with them — and now raised to 94.9/90.2/93.3/95.9 by the period
+      // filter learning to carry a LIST of codes (ADR-0043): the reader that
+      // takes one code out of a list, the guard that refuses a value that is
+      // not one code, and the sweep that writes one code back as a string all
+      // arrived with their own cases, so scrape-batch.ts' branches went from
+      // 91.54 to 97.7.
       //
       // The cushion is deliberately ~0.4 points, the same gap the floors have
       // always kept: enough that ordinary churn cannot redden the build, small
@@ -111,10 +116,10 @@ export default defineConfig({
       // is covered directly. Do not paper the gap over by lowering a floor; move
       // it by testing the seam underneath.
       thresholds: {
-        statements: 94.8,
-        branches: 90.1,
-        functions: 93.2,
-        lines: 95.8,
+        statements: 94.9,
+        branches: 90.2,
+        functions: 93.3,
+        lines: 95.9,
       },
     },
   },

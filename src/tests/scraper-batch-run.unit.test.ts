@@ -51,6 +51,24 @@ function capturedWithFilters(period: string, year = "2026"): CapturedRequest {
   };
 }
 
+/**
+ * The captured PPN Masukan request, as the portal sent it: the selected month
+ * as a LIST of codes (ADR-0043).
+ */
+function capturedMasukan(): CapturedRequest {
+  const fixture = gridRequest("INPUT_TAX");
+  return {
+    url: fixture.url ?? "",
+    headers: { "Content-Type": "application/json" },
+    body: null,
+    rawBody: fixture.rawBody,
+    response: null,
+    initialData: [],
+    initialFirst: 0,
+    source: "INPUT_TAX",
+  };
+}
+
 function makeCtx(overrides: Partial<OrchestrationContext> = {}): OrchestrationContext {
   return {
     isStopRequested: () => false,
@@ -364,7 +382,7 @@ describe("year-wide batch sweep", () => {
     // lookalike spelling buys a sweep on a grid nobody has read.
     mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
     const ctx = makeCtx();
-    const unmeasured = gridRequest("INPUT_TAX");
+    const unmeasured = gridRequest("OUTPUT_RETURN");
     const request: CapturedRequest = {
       ...capturedWithFilters("TD.00708"),
       url: unmeasured.url ?? "",
@@ -377,6 +395,37 @@ describe("year-wide batch sweep", () => {
     expect(sent(ctx).find((m) => m.type === "SCRAPE_COMPLETE")).toBeUndefined();
     const error = sent(ctx).find((m) => m.type === "SCRAPE_ERROR");
     expect((error as { message?: string } | undefined)?.message).toMatch(/belum pernah diukur/);
+  });
+
+  it("sweeps PPN Masukan, whose period filter arrives as a LIST of codes", async () => {
+    // The portal sends the selected months as a list (`["TD.00709"]`, MatchMode
+    // "contains") and was measured honouring ONE code written back as a plain
+    // string (ADR-0043). The sweep plans twelve months from that list and asks
+    // for one code at a time.
+    mockedXhrRequest.mockResolvedValue(page([{ RecordId: 1 }]));
+    const ctx = makeCtx();
+    await startScraping(async () => capturedMasukan(), ctx, { batchMonths: 12 });
+
+    const requests = filtersPerRequest();
+    expect(requests.map((f) => f.period)).toEqual([
+      "TD.00701",
+      "TD.00702",
+      "TD.00703",
+      "TD.00704",
+      "TD.00705",
+      "TD.00706",
+      "TD.00707",
+      "TD.00708",
+      "TD.00709",
+      "TD.00710",
+      "TD.00711",
+      "TD.00712",
+    ]);
+    // The list is what the portal SENDS and the string is what it READS — and
+    // the filter's own MatchMode is kept, because the server filters on it.
+    expect(requests.every((f) => f.matchMode === "contains")).toBe(true);
+    expect(sent(ctx).find((m) => m.type === "SCRAPE_ERROR")).toBeUndefined();
+    expect(completionOf(ctx).filenameHint).toBe("2026");
   });
 
   it("does not require a year filter for an ordinary single-period scrape", async () => {
