@@ -5,7 +5,7 @@
 
 import type { MessageHandler } from "./postmessage-guard";
 import type { ScrapeComplete } from "./scraper-types";
-import { periodMonthName } from "./tax-date";
+import { periodMonthName, extractMonth, getCurrentYearMonthWIB } from "./tax-date";
 import {
   emptyPeriods,
   failedPeriods,
@@ -173,16 +173,24 @@ export function failedItemsDetail(items: readonly string[] | undefined): string 
 export function truncatedResultNotice(
   collected: number,
   expected: number | null,
+  sweep = false,
 ): string {
   const target =
     expected === null ? "jumlah yang tidak disebutkan portal" : expected.toLocaleString("id-ID") + " baris";
+  // A sweep already asks one month at a time, so "narrower month filter" is
+  // advice it cannot follow: the month it could not finish is taken on its own
+  // instead — the grid filtered to that month, and the ordinary export.
+  const jalan = sweep
+    ? "Coretax tampaknya membatasi jumlah baris per halaman; bulan yang terpotong bisa diambil sendiri — filter grid ke bulan itu lalu ekspor biasa."
+    : "Coretax tampaknya membatasi jumlah baris per halaman, jadi jalankan scrape ulang dengan filter masa yang lebih sempit.";
+  const kepala = sweep ? "Sebagian bulan mungkin belum lengkap" : "Data mungkin belum lengkap";
   return (
-    "Data mungkin belum lengkap: terkumpul " +
+    `${kepala}: terkumpul ` +
     collected.toLocaleString("id-ID") +
     " dari " +
     target +
-    ". Coretax tampaknya membatasi jumlah baris per halaman, jadi jalankan " +
-    "scrape ulang dengan filter masa yang lebih sempit."
+    ". " +
+    jalan
   );
 }
 
@@ -196,7 +204,43 @@ export function truncatedResultNotice(
  * "no rows" and "could not be fetched" are different problems with different
  * fixes.
  */
-export function batchResultNotice(summary: Sweep): string {
+/**
+ * Whether a period code names a month that has not arrived yet.
+ *
+ * Only for a sweep of the CURRENT year: a month later than this month's is
+ * still to come, and a month of a year that is already past is simply empty —
+ * a different reason, and the panel must not give the same advice for both. So
+ * without the year the answer is "no", and the wording stays the careful one.
+ */
+function isFutureMonth(
+  periodCode: string,
+  year: string | null,
+  now: { year: string; month: string },
+): boolean {
+  if (!year) return false;
+  if (year !== now.year) return false;
+  const month = extractMonth(periodCode);
+  return month !== "" && month > now.month;
+}
+
+/**
+ * What the panel says when a year-wide sweep finished.
+ *
+ * The headline is what the sweep gathered. A month with no rows is the finding
+ * that can change a filing, so it leads — and it is split by WHY it is empty:
+ * a month that has not arrived yet is not a gap, while a month of the past that
+ * came back empty is. A month that FAILED is called out separately, because
+ * "no rows" and "could not be fetched" are different problems with different
+ * fixes.
+ *
+ * The year is what tells the two apart: without it, an empty month of a
+ * finished year would be called "belum tiba", which is the opposite of true.
+ */
+export function batchResultNotice(
+  summary: Sweep,
+  year: string | null = null,
+  now: { year: string; month: string } = getCurrentYearMonthWIB(),
+): string {
   const headline =
     `${summary.counts.length} masa pajak, ${summary.totalRows.toLocaleString("id-ID")} baris`;
 
@@ -211,12 +255,16 @@ export function batchResultNotice(summary: Sweep): string {
   }
   const empty = emptyPeriods(summary);
   if (empty.length) {
-    return (
-      headline +
-      ". Masa tanpa baris: " +
-      empty.map(periodMonthName).join(", ") +
-      " -- periksa di portal apakah ada data di masa tersebut."
-    );
+    const belum = empty.filter((code) => isFutureMonth(code, year, now));
+    const lewat = empty.filter((code) => !belum.includes(code));
+    const catatan = belum.length
+      ? lewat.length
+        ? `${lewat.map(periodMonthName).join(", ")}: periksa di portal; ${belum
+            .map(periodMonthName)
+            .join(", ")}: belum tiba`
+        : `${belum.map(periodMonthName).join(", ")}: belum tiba`
+      : `${lewat.map(periodMonthName).join(", ")} -- periksa di portal apakah ada data di masa tersebut`;
+    return `${headline}. Masa tanpa baris: ${empty.map(periodMonthName).join(", ")}. ${catatan}.`;
   }
   return headline + ".";
 }

@@ -46,6 +46,7 @@ import {
   truncatedResultNotice,
 } from "./scrape-result";
 import { unionRows } from "./scraper-helpers";
+import { extractYear } from "./tax-date";
 import type { ScrapeComplete } from "./scraper-types";
 import { emptyPeriods, failedPeriods, mergeSweeps } from "./sweep";
 
@@ -224,7 +225,15 @@ export function settleCompletion({ completion, transfer, run }: SettleCompletion
   // counts are the completeness evidence and the panel reports them. Says it
   // AFTER the completion line, which owns "selesai".
   if (settled.periods) {
-    updates.push({ kind: "status", topic: "batch", text: batchResultNotice(settled.periods) });
+    // The year is what tells a month that has NOT ARRIVED from a month that
+    // came back empty — and a sweep's own completion carries it in the file
+    // name it was given (the grid's year filter).
+    const sweepYear = extractYear(settled.filenameHint ?? "") || null;
+    updates.push({
+      kind: "status",
+      topic: "batch",
+      text: batchResultNotice(settled.periods, sweepYear),
+    });
   }
 
   // A short page is only the end of the data if the server agrees it is. When
@@ -234,7 +243,11 @@ export function settleCompletion({ completion, transfer, run }: SettleCompletion
     updates.push({
       kind: "status",
       topic: "truncated",
-      text: truncatedResultNotice(completion.total, completion.expectedTotal ?? null),
+      text: truncatedResultNotice(
+        completion.total,
+        completion.expectedTotal ?? null,
+        Boolean(settled.periods),
+      ),
     });
   }
 

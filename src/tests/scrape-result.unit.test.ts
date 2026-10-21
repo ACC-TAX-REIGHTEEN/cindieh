@@ -90,6 +90,17 @@ describe("result warnings and errors", () => {
     expect(message).not.toContain("undefined");
   });
 
+  it("advises a sweep differently from an ordinary export", () => {
+    // A sweep already asks one month at a time, so "a narrower month filter"
+    // is advice it cannot follow: the month it could not finish is taken on
+    // its own instead.
+    const sweep = truncatedResultNotice(2335, null, true);
+    expect(sweep).toContain("Sebagian bulan mungkin belum lengkap");
+    expect(sweep).toContain("filter grid ke bulan itu");
+    expect(sweep).not.toContain("filter masa yang lebih sempit");
+    expect(truncatedResultNotice(500, 9000)).toContain("filter masa yang lebih sempit");
+  });
+
   it("includes every failed invoice and actionable Indonesian instructions", () => {
     const message = incompleteResultMessage({ failedInvoices: ["001", "002"], failureCount: 2 });
     expect(message).toContain("Faktur gagal: 001, 002.");
@@ -121,6 +132,60 @@ describe("result warnings and errors", () => {
 // succeeds with an empty payload, so the scrape looks complete and the export
 // comes back short. These cases pin the diff that makes the gap visible, and the
 // two wordings that differ only in the reason they give.
+
+describe("batchResultNotice — why a month is empty", () => {
+  const summary = (counts: { period: string; rows: number; error?: string }[], plan = YEAR_PLAN) =>
+    sweepOf(counts, plan);
+
+  // The clock is pinned: "a month that has not arrived yet" only means
+  // anything against a known now.
+  const NOW = { year: "2026", month: "10" };
+
+  it("calls a month that has not arrived yet what it is", () => {
+    // October 2026: February is empty and overdue, November is still to come.
+    const notice = batchResultNotice(
+      summary([
+        { period: "TD.00701", rows: 10 },
+        { period: "TD.00702", rows: 0 },
+        { period: "TD.00711", rows: 0 },
+      ]),
+      "2026",
+      NOW,
+    );
+    expect(notice).toContain("Masa tanpa baris: Februari, November");
+    expect(notice).toContain("Februari: periksa di portal");
+    expect(notice).toContain("November: belum tiba");
+  });
+
+  it("keeps the careful wording when the year is not known", () => {
+    // Without the year, "not arrived yet" cannot be told from "empty" — and
+    // telling a finished year's month "belum tiba" would be the opposite of
+    // true.
+    const notice = batchResultNotice(
+      summary([
+        { period: "TD.00701", rows: 10 },
+        { period: "TD.00711", rows: 0 },
+      ]),
+      null,
+      NOW,
+    );
+    expect(notice).toContain("periksa di portal");
+    expect(notice).not.toContain("belum tiba");
+  });
+
+  it("does not call a month of a finished year one that has not arrived", () => {
+    const notice = batchResultNotice(
+      summary([
+        { period: "TD.00701", rows: 10 },
+        { period: "TD.00711", rows: 0 },
+      ]),
+      "2025",
+      NOW,
+    );
+    expect(notice).toContain("periksa di portal");
+    expect(notice).not.toContain("belum tiba");
+  });
+});
 
 describe("batchResultNotice", () => {
   const summary = (counts: { period: string; rows: number; error?: string }[], plan = YEAR_PLAN) =>
