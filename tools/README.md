@@ -71,7 +71,23 @@ Blok **Jawaban singkat** meringkas tiga hal yang harus diputuskan sebelum fitur 
 | Baris tanpa ID (beban `stableStringify`)? | **0 dari 44.237** | Setiap baris punya `RecordId` — kunci dedupe selalu O(1), tanpa fallback hash |
 | Duplikat antara masa (Jan/Feb, Feb/Mar)? | **0** | 44.237 baris = 44.237 unik, dengan kunci yang persis sama dengan `mergeRows` |
 
-**Belum terukur:** masa ke-4 sampai ke-12, khususnya batas tahun baru Des→Jan — kasus bukti kredit yang sempat masuk Januari tahun berikutnya, risiko duplikasi lintas periode yang paling mungkin. Fitur yang sudah dikirim menganggap hasil ini berlaku umum untuk masa yang belum diukur. Per grid, pengukurannya sendiri sudah tercatat di tabel di bawah (fase 1 + 1b) — yang belum diulang per grid hanya fase 2–4, karena pertanyaannya sama untuk seluruh endpoint e-Faktur.
+**Belum terukur:** masa ke-4 sampai ke-12, khususnya batas tahun baru Des→Jan — kasus bukti kredit yang sempat masuk Januari tahun berikutnya, risiko duplikasi lintas periode yang paling mungkin. Fitur yang sudah dikirim menganggap hasil ini berlaku umum untuk masa yang belum diukur. Per grid, pengukurannya sendiri sudah tercatat di tabel dan di blok Hasil di bawah.
+
+> **Fasa 2 tidak boleh diasumsikan sama antar endpoint.** Di PPN Masukan (21 Okt 2026) bentuk echo `Payload.TotalRecords`-nya **berbeda** dari PPN Keluaran, dan itu sempat membuat satu tahun yang lengkap dilaporkan "mungkin belum lengkap". Yang boleh diasumsikan sama hanya **bentuknya** (jawaban A dan bentuk kode masanya) — bentuk echo, durasi, dan jumlah baris per masa harus diukur per endpoint.
+
+### Hasil — PPN Masukan (21 Okt 2026)
+
+Dua sesi di grid e-Faktur PPN Masukan (`/einvoiceportal/api/inputinvoice/list`): satu dengan dua bulan dipilih di filter portal, satu dengan satu bulan.
+
+| Pertanyaan | Jawaban | Angka pendukung |
+|---|---|---|
+| A. Filter masa di server? | **YA** | `TaxInvoicePeriod` ada di `body.Filters`, tapi nilainya **daftar** kode (`["TD.00709"]`) dengan MatchMode `contains` — bukan satu string seperti di PPN Keluaran. `TaxInvoiceYear` = `"2026"`, `equals` |
+| B. Server menghormati `Rows`? | **YA** | 10→10 dan 100→100 tepat; di atas itu server mengembalikan **seluruh baris yang ada** (235 baris untuk satu masa, 369 untuk dua bulan) — bukan pemotongan diam-diam |
+| C. Field total yang bisa dipercaya? | **TIDAK — dan bentuknya berbeda** | `Payload.TotalRecords` mengikuti permintaan: `Rows + 1` saat halamannya penuh (10→11, 100→101) dan **`Rows` sendiri** saat halamannya pendek (500→500, 1000→1000, 2000→2000, 5000→5000). Semuanya echo permintaan, tidak pernah jumlah baris. `readGridTotal` membuang keduanya — sebelumnya hanya bentuk `Rows + 1`, sehingga tiap masa yang lebih pendek dari 500 baris dilaporkan "mungkin belum lengkap" |
+| D. Durasi per masa? | ~1,6 detik per masa | 3 masa dalam 5,0 detik pada jeda 1,2 dtk; satu tahun ≈ 0,5 menit |
+| Baris tanpa ID (beban `stableStringify`)? | **0 dari 750** | Semua baris punya `RecordId` — kunci dedupe selalu O(1) |
+| Duplikat antara masa? | **0** | 750 baris = 750 unik, dengan kunci yang persis sama dengan `mergeRows` |
+| Apakah server menghormati filter yang ditulis ulang? | **YA** | Satu kode yang ditulis sebagai **string biasa** (dengan MatchMode milik filter itu sendiri) dikembalikan tepat: 334, 274, dan 142 baris untuk tiga masa berturut-turut, dan `TaxInvoicePeriod` tiap baris sama dengan kode yang diminta |
 
 ### Pengukuran filter per grid (ADR-0019)
 

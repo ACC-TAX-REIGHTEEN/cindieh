@@ -57,6 +57,20 @@ describe("readGridTotal", () => {
       expect(readGridTotal({ Payload: { Data: [], TotalRecords: reported } }, rows)).toBeNull();
     });
 
+    // Measured against PPN Masukan on 2026-10-21: a page that came back SHORT
+    // was answered with the request itself — Rows=500 with 235 rows answered
+    // 500. Read as a total, that says the grid holds exactly what we asked for,
+    // so every month shorter than the page size would be reported as truncated
+    // and a finished year would be called "mungkin belum lengkap".
+    it.each([
+      [500, 500],
+      [1000, 1000],
+      [2000, 2000],
+      [5000, 5000],
+    ])("rejects the page size echoed back as TotalRecords %i against Rows %i", (rows, reported) => {
+      expect(readGridTotal({ Payload: { Data: [], TotalRecords: reported } }, rows)).toBeNull();
+    });
+
     it("still believes a count that is not the echo", () => {
       // The real grid holds at least 5000 rows, so anything else is a count.
       expect(readGridTotal({ Payload: { Data: [], TotalRecords: 8421 } }, 500)).toBe(8421);

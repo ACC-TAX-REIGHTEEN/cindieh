@@ -127,19 +127,29 @@ export const TOTAL_COUNT_FIELDS = [
  * Pull the count out of a parsed grid payload, or null when there is none.
  *
  * `rowsRequested` is what the request asked for, and it exists to throw away one
- * specific lie. Coretax's `/einvoiceportal/api/outputinvoice/list` answers EVERY
- * page size with `Payload.TotalRecords = Rows + 1` — measured across Rows of 10,
- * 100, 500, 1000, 2000 and 5000, where the count tracked the request and not the
- * grid (a 500-row page reported 501 and a 5000-row page reported 5001, so the
- * grid holds at least 5000 rows and the "count" was never its size). Read as a
- * total, it says the grid has one row more than we asked to see, which is true
- * of every export and would have made the truncation notice fire on every
- * complete one.
+ * specific lie. Coretax's grid endpoints answer every page size with a count
+ * that is the REQUEST, not the grid:
  *
- * So a value of exactly `rowsRequested + 1` is discarded and the search
- * continues. Discarding it costs the caller nothing they can rely on anyway: a
- * grid that genuinely holds `Rows + 1` rows still ends when its second page
- * comes back short, and a genuinely truncated run is still caught by the
+ * - `/einvoiceportal/api/outputinvoice/list` answered `Payload.TotalRecords =
+ *   Rows + 1` — measured across Rows of 10, 100, 500, 1000, 2000 and 5000,
+ *   where the count tracked the request and not the grid (a 500-row page
+ *   reported 501 and a 5000-row page reported 5001, so the grid holds at least
+ *   5000 rows and the "count" was never its size).
+ * - `/einvoiceportal/api/inputinvoice/list` answers the same way, except that
+ *   a page that came back SHORT was answered with `Rows` itself (measured
+ *   2026-10-21: Rows=500 with 235 rows answered 500, while Rows=10 and
+ *   Rows=100 answered 11 and 101) — so the echo is either `Rows` or `Rows + 1`,
+ *   and never the grid's size.
+ *
+ * Read as a total, either shape says the grid holds what we asked to see — and
+ * would have made the truncation notice fire on every complete export. On a
+ * year-wide sweep it fired on EVERY month shorter than the page size, and
+ * called a finished year "mungkin belum lengkap".
+ *
+ * So a value of exactly `rowsRequested` or `rowsRequested + 1` is discarded and
+ * the search continues. Discarding it costs the caller nothing they can rely on
+ * anyway: a grid that genuinely holds that many rows still ends when its second
+ * page comes back short, and a genuinely truncated run is still caught by the
  * no-progress guard. Passing no `rowsRequested` keeps the old behaviour for any
  * caller that cannot say what it asked for.
  */
@@ -153,7 +163,9 @@ export function readGridTotal(payload: unknown, rowsRequested?: number): number 
     for (const field of TOTAL_COUNT_FIELDS) {
       const value = (source as Record<string, unknown>)[field];
       if (typeof value !== "number" || !Number.isFinite(value) || value < 0) continue;
-      if (rowsRequested !== undefined && value === rowsRequested + 1) continue;
+      if (rowsRequested !== undefined && (value === rowsRequested || value === rowsRequested + 1)) {
+        continue;
+      }
       return value;
     }
   }
