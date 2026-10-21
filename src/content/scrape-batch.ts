@@ -485,7 +485,11 @@ export function batchScopeError(
   const filters = filtersOf(parseGridBody(capturedRawBody));
   const periodAt = periodFilterIndex(filters, measurement);
   if (periodAt < 0) {
-    return `Permintaan grid ini tidak punya filter ${measurement.period}, jadi ekspor satu tahun tidak bisa dijalankan.`;
+    return (
+      `Permintaan grid ini tidak punya filter ${measurement.period}, jadi ekspor satu tahun belum bisa dijalankan. ` +
+      "Pilih satu masa di filter grid lalu ulangi pencarian — grid yang menampilkan setahun penuh " +
+      "harus disaring lebih dulu, dan Cindieh perlu tahu bulan mana yang ditanyakan."
+    );
   }
   // The period filter is read as the LIST it may be, and the plan is built from
   // the one code it carries: a grid whose filter holds several codes is still
