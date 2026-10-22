@@ -53,11 +53,11 @@ di sini supaya sesi berikutnya tidak terus mengusulkannya.
 
 ## Keterbatasan sumber
 
-- **Tidak ada sumber tepercaya untuk keputusan “hanya PPN Keluaran boleh menyapu setahun”.**
-  Sumbernya adalah pengukuran internal terhadap portal Coretax, yang tercatat di
-  `tools/README.md` dan ADR-0019. Tidak ada publikasi eksternal yang bisa diverifikasi.
+- **Tidak ada sumber tepercaya untuk keputusan “hanya grid yang filter masanya sudah terukur
+  boleh menyapu setahun”.** Sumbernya adalah pengukuran internal terhadap portal Coretax, yang
+  tercatat di `tools/README.md` dan ADR-0019. Tidak ada publikasi eksternal yang bisa diverifikasi.
   Implikasi: jangan mencari pembenaran dari luar; rujuk tabel pengukuran.
-- **Indeks ADR sudah lengkap 0001–0039**, jadi jumlah ADR di kursus ini berubah dari waktu ke waktu.
+- **Indeks ADR sudah lengkap 0001–0044**, jadi jumlah ADR di kursus ini berubah dari waktu ke waktu.
   Sebelum menyimpulkan “ada ADR untuk ini”, periksa indeks resmi
   (`docs/adr/README.md`) — bukan catatan lama di dokumen lain. Angka pada materi kursus selalu
    menyatakan jumlah pada saat materi itu ditulis.

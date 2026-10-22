@@ -44,11 +44,21 @@ Perintah:
 __cindiehMasaDiag.jalankan()            // seluruh fase 1-4
 __cindiehMasaDiag.jalankan([1, 3])      // hanya fase yang dipilih
 __cindiehMasaDiag.fase2()               // probe batas Rows saja
-__cindiehMasaDiag.fase3(["TD.00701"])  // satu masa, diukur
+__cindiehMasaDiag.config.masaUji = ["TD.00701"]  // pilih satu masa (format portal TD.007MM)
+__cindiehMasaDiag.fase3()               // fase 3; daftar masanya dibaca dari CONFIG.masaUji
 __cindiehMasaDiag.hasil                 // data mentah (JSON)
 __cindiehMasaDiag.templateUlang()       // kosongkan template, ambil lagi
 __cindiehMasaDiag.pulihkan()            // lepas semua patch skrip
 ```
+
+> **Catatan soal `fase3()`.** Argumennya **diabaikan** — skrip membaca daftar masa
+> dari `CONFIG.masaUji` (diisi lewat `__cindiehMasaDiag.config.masaUji`), dan kalau
+> kosong, menurunkannya dari kode periode milik portal sendiri sebanyak
+> `CONFIG.jumlahMasa` masa (default 3). Jadi `fase3(["TD.00701"])` TIDAK mengukur
+> satu masa: ia mengukur tiga masa turunan. Untuk mengukur tepat satu masa, isi
+> `CONFIG.masaUji` lebih dulu. Kode masanya harus format portal (`TD.007MM`,
+> contoh `TD.00701`) — bukan `2026-01`, yang tidak pernah ada pada portal dan
+> hanya akan membalikkan 0 baris per bulan.
 
 ### Cara membaca KESIMPULAN
 
@@ -160,10 +170,10 @@ Skrip console untuk menyelidiki laporan: **pencarian referensi dengan ≤ 6 kara
 ### Alur pencarian referensi (untuk konteks)
 
 1. `main.ts` menangkap `keyup` Enter pada `#ch-toolbar-filter-reference` / `#ch-grid-filter-reference`.
-2. `postToScraper({ type: "SET_SERVER_FILTER", field: "Reference", value, matchMode: "startswith" })` → `scraper.ts` menyimpan `filterState.Reference` dengan mode tersebut.
+2. `postToScraper({ type: "SET_SERVER_FILTER", field: "Reference", value, matchMode: "startswith" })` → MAIN world menyimpan `filterState.Reference` dengan mode tersebut — state itu milik [scraper-install.ts](../src/content/scraper-install.ts) (MAIN-world adapter-nya `scraper.ts` sudah cuma adapter tipis, ADR-0038).
 3. `triggerSearch()` mengklik tombol cari portal setelah 100 ms.
 4. Request grid milik portal lewat patch XHR `injectFilters()` (`scraper-xhr-patches.ts`) menyuntikkan filter `Reference` bermode `startswith` ke body, lalu portal merender hasilnya.
-5. Bila hasilnya 0 baris, `scraper.ts` mengirim `REFERENCE_SEARCH_NOT_FOUND` dan panel melaporkan "tidak ditemukan" — pencarian berhenti, tanpa pencarian ulang (lihat `docs/adr/0012-reference-search-stops-on-empty-prefix.md`).
+5. Bila hasilnya 0 baris, MAIN world mengirim `REFERENCE_SEARCH_NOT_FOUND` dan panel melaporkan "tidak ditemukan" — pencarian berhenti, tanpa pencarian ulang (lihat `docs/adr/0012-reference-search-stops-on-empty-prefix.md`).
 
 Jadi durasi pencarian = waktu server menjawab query filter + waktu portal merender + waktu ekstensi mengklik. Skrip ini memisahkan ketiganya.
 

@@ -15,19 +15,19 @@ ADRs are numbered in `docs/adr/` (one per decision). Each file states its own de
 | 0009 | [TypeScript 7 is the compiler; tooling consumes TypeScript 6 via the compatibility alias](0009-typescript-7-native-with-typescript6-api-alias.md) | Accepted |
 | 0010 | [Scrape operations own cancellation and result identity](0010-scrape-run-isolation.md) | Accepted |
 | 0011 | [Reference search asks for a prefix match first and widens only on an empty result](0011-reference-search-prefix-first.md) | Superseded by 0012 (prefix-first remains) |
-| 0012 | [An empty reference prefix search stops with a not-found notice instead of widening](0012-reference-search-stops-on-empty-prefix.md) | Accepted |
+| 0012 | [An empty reference prefix search stops with a not-found notice instead of widening to `contains`](0012-reference-search-stops-on-empty-prefix.md) | Accepted |
 | 0013 | [SheetJS is loaded as a separate chunk, not bundled into the content script](0013-sheetjs-as-a-lazy-chunk.md) | Accepted |
 | 0014 | [Run state lives in run-lifecycle; the bridge keeps run identity](0014-run-lifecycle-owns-run-state.md) | Accepted |
 | 0015 | [Each export source is one declaration](0015-one-declaration-per-export-source.md) | Accepted |
 | 0016 | [A scraped row's identity is the portal's own id field](0016-stable-row-identity-for-deduplication.md) | Accepted |
 | 0017 | [A large scrape result crosses the bridge in chunks](0017-chunked-scrape-result-transfer.md) | Accepted |
 | 0018 | [A year-wide export is ONE Run over every tax period](0018-year-wide-batch-export-is-one-run.md) | Accepted — scope extended by 0019 |
-| 0019 | [The year-wide export covers every e-Faktur VAT grid](0019-year-wide-export-covers-the-vat-grids.md) | Accepted |
+| 0019 | [The year-wide export runs only on grids whose sweep filters were measured](0019-year-wide-export-covers-the-vat-grids.md) | Accepted — amended 2026-10-17 and 2026-10-21 (scope: the four e-Faktur PPN grids) |
 | 0020 | [A stopped year-wide sweep reports what it finished, and keeps the rows](0020-a-stopped-sweep-reports-what-it-finished.md) | Accepted |
 | 0021 | [A grid's Referensi facts are two: it can be filtered by one, and a Referensi identifies a row](0021-referensi-filter-and-identity-are-two-page-facts.md) | Accepted |
 | 0022 | [A Run owns the requests it records; a stop retires all of them, and the rows survive](0022-a-run-owns-the-requests-it-records.md) | Accepted — naming amended by 0027 |
 | 0023 | [A stopped sweep is resumable: only the masa that never finished are re-run, into the rows it kept](0023-a-stopped-sweep-can-be-resumed.md) | Accepted |
-| 0024 | [Pengecekan covers the four e-Faktur PPN grids, and a row's identity is a page fact of its own](0024-checker-covers-the-retur-grids.md) | Accepted |
+| 0024 | [Pengecekan runs on the Retur grids, and a row's identity is a page fact of its own](0024-checker-covers-the-retur-grids.md) | Accepted |
 | 0025 | [The panel's toolbar entry point asks the panel's fact, and is named for the tab its page can serve](0025-the-panel-entry-point-is-the-panels-own-fact.md) | Accepted |
 | 0026 | [A retirement announces the requests it takes, so no tab keeps promising them](0026-a-retirement-announces-the-requests-it-takes.md) | Accepted |
 | 0027 | [One stop door: every stop control settles a Run the same way, and states its own row decision](0027-one-stop-door-with-an-explicit-row-decision.md) | Accepted |

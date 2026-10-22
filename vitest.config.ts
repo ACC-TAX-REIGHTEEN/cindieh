@@ -9,9 +9,9 @@
 // regression — new logic shipping without tests — does. Raise them as coverage
 // improves; never lower them to make a red build green.
 //
-// Measured 2026-10-21 on the whole suite (2114 tests). The modules that hold
-// the baseline down are recorded in AGENTS.md so a low number reads as a known
-// gap rather than a mystery.
+// Measured 2026-10-22 on the whole suite (2148 tests, 68 test files). The
+// modules that hold the baseline down are recorded in AGENTS.md so a low number
+// reads as a known gap rather than a mystery.
 
 import { defineConfig } from "vitest/config";
 
@@ -96,13 +96,13 @@ export default defineConfig({
       // the body four readers used to read four ways — and with row-name.ts
       // (ADR-0042), where a row's name and the file it lands as come from one
       // ladder instead of two. The measured numbers are
-      // 95.23/90.53/93.64/96.25 on 2114 tests, and the branches floor moves
-      // with them — and now raised to 94.9/90.2/93.3/95.9 by the period
-      // filter learning to carry a LIST of codes (ADR-0043): the reader that
-      // takes one code out of a list, the guard that refuses a value that is
-      // not one code, and the sweep that writes one code back as a string all
-      // arrived with their own cases, so scrape-batch.ts' branches went from
-      // 91.54 to 97.7.
+      // The measured numbers are 95.27/90.59/93.66/96.29 on 2148 tests, and
+      // the branches floor moves with them — and now raised to 94.9/90.2/93.3/95.9
+      // by the period filter learning to carry a LIST of codes (ADR-0043): the
+      // reader that takes one code out of a list, the guard that refuses a value
+      // that is not one code, and the sweep that writes one code back as a string
+      // all arrived with their own cases, so scrape-batch.ts' branches went from
+      // 91.54 to 97.75.
       //
       // The cushion is deliberately ~0.4 points, the same gap the floors have
       // always kept: enough that ordinary churn cannot redden the build, small

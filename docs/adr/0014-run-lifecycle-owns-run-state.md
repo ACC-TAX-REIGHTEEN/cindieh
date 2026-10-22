@@ -1,6 +1,6 @@
 # Run state lives in run-lifecycle; the bridge keeps run identity
 
-`run-lifecycle.ts` owns everything a Run knows in the isolated world: whether it is in flight, what it still owes, and what it last produced. It exposes eleven calls and nothing outside it may read or write that state:
+`run-lifecycle.ts` owns everything a Run knows in the isolated world: whether it is in flight, what it still owes, and what it last produced. It exposes eleven calls and nothing outside it may read or write that state (the interface has since grown to thirteen — ADR-0023 added `restore` and `onResumable`, ADR-0026 added `onRetired`):
 
 | | |
 |---|---|
@@ -28,7 +28,7 @@ Shortfall = { count: number; notice: string | null }
 
 The design predicted eight calls. Three were added because the existing behaviour is not uniform, and flattening it would have been a silent regression:
 
-- `stopKeepingRows()` — the export click that doubles as a stop keeps the last good rows, so a following export can still use them. That is deliberately unlike `abort()`, and merging them would have dropped reusable data. **Amended by ADR-0022**: this call was named `cancelExport()`, and the second half of its original justification — that it also keeps a pending comparison, "which outlives the run carrying it" — was wrong. A request dies with the Run that recorded it, so this path now drops every request it carried, like the other two stop paths; only the rows survive. **Amended by ADR-0027**: with the request half settled, the two calls differed only in whether the rows survive, so they are one call — `stop({ keepRows })` — and `salvage()` and `reset()` go through it too. The interface is ten calls.
+- `stopKeepingRows()` — the export click that doubles as a stop keeps the last good rows, so a following export can still use them. That is deliberately unlike `abort()`, and merging them would have dropped reusable data. **Amended by ADR-0022**: this call was named `cancelExport()`, and the second half of its original justification — that it also keeps a pending comparison, "which outlives the run carrying it" — was wrong. A request dies with the Run that recorded it, so this path now drops every request it carried, like the other two stop paths; only the rows survive. **Amended by ADR-0027**: with the request half settled, the two calls differed only in whether the rows survive, so they are one call — `stop({ keepRows })` — and `salvage()` and `reset()` go through it too. The interface is ten calls. (It is thirteen today: ADR-0023 added `restore` and `onResumable`, ADR-0026 added `onRetired`.)
 - `cancelPending(kind)` — the panel's "Hapus" must drop a pending comparison without disturbing a pending export of the same grid.
 - `pendingExport()` — the readiness resend in `main.ts` must repeat the original request's intent when the first message reached the page before the Scraper did.
 
@@ -50,7 +50,7 @@ What stays in `scrape-result.ts` is the missing-invoice **diff** (`findMissingIn
 
 ## Consequences
 
-- **The interface is longer than the ten fields it replaces, and that is the trade.** Eleven calls, nothing writable from outside. Depth here means a longer interface over a shorter implementation, not a smaller surface.
+- **The interface is longer than the ten fields it replaces, and that is the trade.** Thirteen calls today (eleven when this ADR was written), nothing writable from outside. Depth here means a longer interface over a shorter implementation, not a smaller surface.
 - `main-actions.ts` keeps `ActionDeps` and its `makeDeps()` harness unchanged; ADR-0004's single export decision tree stays put. `run-lifecycle.ts` has no browser or DOM dependency, so the whole module is testable without a page.
 - `lastState` disappears. Its only reader was SCRAPE_COMPLETE's rejected branch, which read back from state a message `acceptScrapeResult` had just computed — making the `lastState?.type === "SCRAPE_ERROR"` guard there always true.
 - The `scrape-result.ts → main-actions.ts` type-only import cycle is removed; the module imports the pure report helpers instead.

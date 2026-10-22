@@ -6,7 +6,7 @@ name: CI
 #
 # The microsite drift guard lives here too. It used to be a separate workflow
 # with its own path filters, but `pnpm test` runs the whole suite and
-# src/tests/microsite-sync.unit.test.ts is one of the 46 files in it — so that
+# src/tests/microsite-sync.unit.test.ts is one of the 68 files in it — so that
 # workflow was paying a second `pnpm install` to run a strict subset of what
 # this one already runs. Merging them makes the guard run on EVERY change
 # rather than only the ones someone thought to list, at one install instead of

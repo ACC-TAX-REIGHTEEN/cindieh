@@ -19,7 +19,7 @@
   <p class="meta">Pelajaran 09 dari 09 · waktu baca ± 12 menit · 5 soal uji ingatan</p>
   <nav class="lesson-nav">
     <a href="index.html">Peta pelajaran</a>
-    <a href="../reference/adr-peta.html">Peta 37 ADR</a>
+    <a href="../reference/adr-peta.html">Peta 44 ADR</a>
     <a href="../reference/glosarium.html">Glosarium</a>
     <span class="spacer"></span>
     <a href="0008-membatalkan-keputusan-sendiri.html">← 08</a>
@@ -72,11 +72,14 @@
   “tersimpan” dan tidak melakukan apa pun — persis kegagalan yang
   <code>preferences.unit.test.ts</code> ditulis untuk cegah, satu nilai demi satu nilai.</p>
 
-  <p>Popup membawa branch coverage terendah di repo (61,7%), karena tiap blok menguji
+  <p>Dulu popup membawa branch coverage terendah di repo (61,7%), karena tiap blok menguji
   <code>if (element)</code> sendiri-sendiri dan tiap pilihan normalizer diuji manual. Komentarnya di
   <code>src/popup/preference-controls.ts</code> menyebutnya apa adanya: sembilan belas blok berarti
   sembilan belas kesempatan untuk lupa melakukan lookup defensif, melewatkan normalizer, atau
-  lupa menulis.</p>
+  lupa menulis. Sekarang branch coverage popup ada di 77,4%, dan modul yang paling rendah di repo
+  bukan lagi popup melainkan dua modul tampilan panel (<code>ui-comparer-view.ts</code> 68,3% dan
+  <code>ui-comparer.ts</code> 66,7%) — sisa yang belum tertutup di sana hampir seluruhnya
+  konstruksi DOM.</p>
 </section>
 
 <section>
@@ -193,8 +196,12 @@
   kedua yang bisa terlupa dan tidak bisa berbeda.</p>
 
   <p>Yang paling memuaskan: branch coverage popup naik dari <strong>61,7%</strong> ke
-  <strong>77,4%</strong> tanpa satu pun perilaku baru, dan total coverage mencapai
-  94,91/89,89/93,21/95,88 pada 2018 tes. Popup juga tetap boleh terbuka saat halamannya tidak punya
+  <strong>77,4%</strong> tanpa satu pun perilaku baru, dan total coverage saat itu sudah mencapai
+  94,91/89,89/93,21/95,88 pada 2018 tes. Angka hari ini lebih tinggi lagi:
+  <strong>95,27/90,59/93,66/96,29</strong> pada <strong>2148 tes</strong> di 68 berkas tes, dengan
+  lantai yang dipaksakan <code>vitest.config.ts</code> di 94,9/90,2/93,3/95,9 — jadi angka yang
+  diukur boleh turun sedikit tanpa membuat build merah, sementara logika baru tanpa tes tetap
+  merah. Popup juga tetap boleh terbuka saat halamannya tidak punya
   kontrol sama sekali — kontrak defensif yang sebelumnya hanya tertulis di prosa, kini diikat satu
   kasus tes.</p>
 

@@ -34,9 +34,13 @@
   - 36 ADR — setelah ADR-0035 dan ADR-0036 masuk (versi yang sempat ditulis di pelajaran);
   - 38 ADR — versi sebelum ADR-0039: 0001–0038, tanpa celah. Pelajaran 09 (ADR-0037), ADR-0036 di
     pelajaran 05, dan ADR-0035 + ADR-0038 di pelajaran 07 adalah tambahan terbaru.
-  - 39 ADR — sekarang: 0001–0039, tanpa celah. ADR-0039 (satu scope untuk pemeriksaan terbalik
-    Komparator) masuk di pelajaran 07 dan di peta ADR; peta rujukan silang menambah baris
+  - 39 ADR — versi sebelum ADR-0040: 0001–0039, tanpa celah. ADR-0039 (satu scope untuk pemeriksaan
+    terbalik Komparator) masuk di pelajaran 07 dan di peta ADR; peta rujukan silang menambah baris
     `0039 → 0003, 0006`.
+  - 44 ADR — sekarang: 0001–0044, tanpa celah. ADR-0040 (sweep membawa rencananya), ADR-0041
+    (body grid dibaca satu modul), ADR-0042 (satu nama untuk satu baris), ADR-0043 (filter masa
+    boleh berupa daftar kode), dan ADR-0044 (grid yang sudah menampilkan setahun diambil apa adanya)
+    masuk di peta ADR; klaster sweep di pelajaran 01 dan 04 memakai 0043–0044.
   - Saat ditulis ulang, angka yang disebut pengguna adalah “36”, padahal indeks sudah 37 lalu 38.
     Kursus memakai angka yang terverifikasi dari indeks resmi, bukan angka yang diberikan lisan.
 - Pengguna sedang menggarap dunia MAIN: `src/content/scraper-install.ts` dan
@@ -54,9 +58,9 @@
   `scraper-actions.ts` tampaknya melempar pada alur bulk Bukti Potong. Perlu diverifikasi apakah
   ADR-nya yang perlu diamendemen atau kodenya.
 - **Angka historis di ADR-0003** (1.283 → 1.121 baris) sudah usang: `ui-comparer.ts` kini
-  ± 696 baris setelah tab Pengecekan dipisah ke `ui-checker.ts`, dan pengguna sedang memisahkannya
-  lagi menjadi `ui-comparer-view.ts`. Pelajaran 07 menyebutnya sebagai “angka yang ADR itu catat”,
-  bukan kondisi sekarang.
+  **226 baris** setelah tab Komparator dipisah ke `ui-comparer-view.ts` (**716 baris**) lewat
+  ADR-0036, dan `ui-comparer.ts` tinggal jadi composition root. Pelajaran 07 menyebut angka ADR
+  sebagai “angka yang ADR itu catat”, bukan kondisi sekarang.
 
 ## Pertanyaan yang masih terbuka untuk pengguna
 

@@ -3,8 +3,9 @@
 `comparer-logic.ts` owns the `ComparerSession` object (created via
 `createComparerSession()`) and the comparison orchestration — `runComparison`,
 `rerunComparison`, and `prepareComparison` (the "Periksa" decision tree).
-`ui-comparer.ts` holds no module-level session `let`s: it takes
-`createComparerSession()`'s result directly.
+`ui-comparer-view.ts` — the tab's own view module since ADR-0036 — holds no
+module-level session `let`s: it takes `createComparerSession()`'s result
+directly.
 
 The session factory existed but was dead code (its consumer ignored it and kept
 8 module-level `let`s). Do not move comparison flow logic back into the view;
@@ -60,7 +61,10 @@ per grid collapsed into one declarative list, the duplicated pagination block
 became a single `appendPagination`, and the class-by-header-name sniffing
 (`headerName.includes("NL")`) is now an explicit `wide` flag.
 
-`ui-comparer.ts` is 1.121 lines, down from 1.283. Its own branch percentage went
+`ui-comparer.ts` is 1.121 lines, down from 1.283 (the measurement of 2026-10-02;
+the file has since been split again — `ui-comparer.ts` is now the panel's
+composition root at 226 lines, and the tab itself lives in `ui-comparer-view.ts`,
+ADR-0036). Its own branch percentage went
 **down** (41.15% to 34.15%), which is the point worth stating plainly: the
 partially-covered ternary branches left the file, so the uncovered remainder —
 `injectComparerModal`'s 573 lines of DOM building and the event wiring — is now

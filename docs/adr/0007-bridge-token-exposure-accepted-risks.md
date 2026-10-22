@@ -2,7 +2,7 @@
 
 The bridge token is exposed twice while crossing from the isolated world into the MAIN world, and both exposures are accepted:
 
-1. **postMessage payload** — `postToScraper` (`bridge.ts`) attaches the token as a plaintext `token` field on every message sent into the page, and `sendToContent`/`emitPdfDownload` (`scraper.ts`) do the same on the way back. Any MAIN-world script that has installed `window.addEventListener("message", ...)` can read it from `event.data.token`.
+1. **postMessage payload** — `postToScraper` (`bridge.ts`) attaches the token as a plaintext `token` field on every message sent into the page, and `sendToContent`/`emitPdfDownload` (`scraper-install.ts` since ADR-0038) do the same on the way back. Any MAIN-world script that has installed `window.addEventListener("message", ...)` can read it from `event.data.token`.
 2. **Script URL** — `injectScraper` (`main.ts`) passes the token to the scraper via `?token=` on the injected `<script src>`. The token is observable in the shared DOM until scraper initialization removes `src`. The element and its id remain as the one-time injection marker (ADR-0008); load failure removes the element to allow retry. Script loading and scheduling determine the attribute's lifetime; there is no guaranteed sub-frame exposure window.
 
 Both are inherent to the two-worlds architecture, not accidents to be fixed away:

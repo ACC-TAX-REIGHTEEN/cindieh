@@ -135,7 +135,7 @@ The Wajib Pajak's own invoice rows, pasted as tab-separated text (Referensi, DPP
 _Avoid_: pasted data, source data, Excel data
 
 **Comparison status**:
-The verdict per matched row: **Cocok**, **DPP Berbeda**, **PPN Berbeda**, **Berbeda**, **Tidak Ditemukan**, **Hanya di Coretax**.
+The verdict per matched row: **Cocok**, **DPP Berbeda**, **PPN Berbeda**, **Berbeda**, **Tidak ditemukan**, **Hanya di Coretax**.
 _Avoid_: match state, result type
 
 **Tolerance**:

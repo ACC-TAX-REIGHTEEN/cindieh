@@ -74,9 +74,11 @@ Decision:
 
 Consequences:
 
-- PPN Masukan, Retur PPN Masukan and Retur PPN Keluaran sweep. The one grid
-  that does not is PPN Keluaran, whose period filter is a single string — the
-  shape this ADR replaced rather than extended (ADR-0019).
+- All four e-Faktur PPN grids sweep. PPN Masukan, Retur PPN Masukan and Retur
+  PPN Keluaran send the period filter as a LIST of codes; PPN Keluaran sends one
+  string — and the list reader reads that string as a one-element list, so the
+  string shape is the special case the list reader EXTENDS, not a grid that is
+  left out (ADR-0019).
 - The guard's refusal for an unreadable period value now also covers a list
   that carries no code, which is the same failure a moved spelling produces.
 - The sweep's log line names the ONE code the plan uses, not the list: the list

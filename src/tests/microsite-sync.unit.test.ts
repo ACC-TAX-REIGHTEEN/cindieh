@@ -932,6 +932,9 @@ describe("microsite — site URL", () => {
     const declared = robotsTxt.match(/^Sitemap:\s*(\S+)/m)?.[1];
     expect(declared, "robots.txt lost its Sitemap: line").toBeDefined();
     expect(new URL(String(declared)).pathname).toBe("/sitemap.xml");
+    // The host matters as much as the path: a robots.txt that points at another
+    // site is a dead sitemap line, and the path-only check would not see it.
+    expect(new URL(String(declared)).origin).toBe(new URL(String(origin)).origin);
     expect(robotsTxt).toContain("https://");
   });
 
@@ -985,7 +988,11 @@ describe("microsite — colour contrast", () => {
   const isColour = (v: string) => /^#[0-9a-f]{3,8}$/i.test(v.trim()) || /^rgba?\(/i.test(v.trim());
   const tokensOf = (css: string): Record<string, string> => {
     const out: Record<string, string> = {};
-    for (const [, name, value] of css.matchAll(/(--[a-z-]+)\s*:\s*([^;]+);/g)) {
+    // Comments are stripped first: a prose mention of a token inside /* … */
+    // swallows the real declaration that follows it (injected.css's header
+    // comment ends with one), which would hide that token from the mirror check.
+    const source = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const [, name, value] of source.matchAll(/(--[a-z-]+)\s*:\s*([^;]+);/g)) {
       if (isColour(value)) out[name] = value.trim();
     }
     return out;
@@ -1211,10 +1218,16 @@ describe("microsite — colour contrast", () => {
     // or a reading of a rule rather than a selector, and about a quarter of
     // the table reads that way. A brand-new coloured rule is therefore not
     // caught here; adding one still means adding its entry to TEXT_PAIRS.
+    // The privacy policy's own <style> block is here for the same reason the
+    // 404's is: its rules (`.legal .none`, `.legal .stamp-note`) are on nobody's
+    // radar otherwise, so the two TEXT_PAIRS entries that name them were
+    // silently SKIPPED -- a rule could swap its `-ink` twin back for a failing
+    // base hue and the audit would never look.
     const sources = [
       micrositeCss,
       ...microsite.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g),
       ...notFoundPage.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g),
+      ...privacyPolicy.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g),
     ]
       .map((s) => (typeof s === "string" ? s : s[1]))
       .join("\n");
@@ -1707,7 +1720,7 @@ describe("microsite — legal copy matches the published audit", () => {
   });
 
   it("carries no 'the review is still running' wording anywhere", () => {
-    // Each phrase is wording this page actually used while the audit was
+    // Each phrase is wording one of the pages actually used while the audit was
     // already finished. Matching them here is what makes the correction
     // durable: re-adding "we cannot answer that yet" is a one-word edit, and
     // without this check it would silently undo the fix.
@@ -1717,16 +1730,27 @@ describe("microsite — legal copy matches the published audit", () => {
       "halaman ini masih pratinjau",
       "akan diperbarui setelah tinjauan",
       "memerlukan tinjauan hukum",
+      "masih berjalan",
     ];
 
-    for (const phrase of PENDING) {
-      // Compared as a boolean on purpose: `expect(page).not.toContain(...)`
-      // prints all 44 KB of the page into the failure output, which buries the
-      // one sentence that actually regressed.
-      expect(
-        page.includes(phrase),
-        `the page still says "${phrase}" — LEGAL_COMPLIANCE.md has published its conclusions, so this is stale`,
-      ).toBe(false);
+    // BOTH pages. The landing page's copy was corrected first, and the privacy
+    // policy kept calling the review "masih berjalan" for several commits
+    // afterwards, because this sweep only ever read the landing page. The
+    // privacy policy is where a reader checks before installing, so it is the
+    // page that must not contradict the audit either.
+    for (const [name, html] of [
+      ["index.html", microsite],
+      ["privacy.html", privacyPolicy],
+    ] as const) {
+      for (const phrase of PENDING) {
+        // Compared as a boolean on purpose: `expect(html).not.toContain(...)`
+        // prints all 44 KB of the page into the failure output, which buries the
+        // one sentence that actually regressed.
+        expect(
+          html.includes(phrase),
+          `${name} still says "${phrase}" — LEGAL_COMPLIANCE.md has published its conclusions, so this is stale`,
+        ).toBe(false);
+      }
     }
   });
 
@@ -2038,11 +2062,13 @@ describe("microsite, house style", () => {
   });
 
   it("prints no em-dash a reader can see", () => {
-    // The em-dash was the page's signature tic: 59 of them across three files,
-    // almost all of them the same "X, Y" the comma already says. Comments are
-    // stripped first, because a developer note is not shown to anyone and must
-    // not redden the build; <style> and <script> bodies are not stripped, since
-    // the JSON-LD answers are what search engines print.
+    // The em-dash was the page's signature tic: 77 em-dashes (and one en-dash)
+    // across three files, almost all of them the same "X, Y" the comma already
+    // says. That is the historical count of what the redesign had to remove;
+    // none are left. Comments are stripped first, because a developer note is
+    // not shown to anyone and must not redden the build; <style> and <script>
+    // bodies are not stripped, since the JSON-LD answers are what search
+    // engines print.
     const offenders: string[] = [];
     for (const [name, html] of [
       ["index.html", microsite],

@@ -81,7 +81,7 @@ Cara kerja: cukup **copy dari Excel, lalu paste** ke panel Komparator. Tidak per
 | **DPP Berbeda** | Hanya DPP yang tidak sesuai |
 | **PPN Berbeda** | Hanya PPN yang tidak sesuai |
 | **Berbeda** | DPP dan PPN keduanya tidak sesuai |
-| **Tidak Ditemukan** | Referensi dari Excel tidak ditemukan di Coretax |
+| **Tidak ditemukan** | Referensi dari Excel tidak ditemukan di Coretax |
 | **Hanya di Coretax** | Ada di Coretax tapi tidak ada di data Excel (pada tanggal yang dipilih, atau di seluruh periode bila Mode Harian tidak dicentang) |
 
 **Opsi tambahan:**

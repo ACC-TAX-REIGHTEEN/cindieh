@@ -19,7 +19,7 @@
   <p class="meta">Pelajaran 07 dari 09 · waktu baca ± 20 menit · 9 soal uji ingatan</p>
   <nav class="lesson-nav">
     <a href="index.html">Peta pelajaran</a>
-    <a href="../reference/adr-peta.html">Peta 39 ADR</a>
+    <a href="../reference/adr-peta.html">Peta 44 ADR</a>
     <a href="../reference/glosarium.html">Glosarium</a>
     <span class="spacer"></span>
     <a href="0006-deklarasi-data.html">← 06</a>
@@ -379,7 +379,10 @@
   hanya mengonsumsi daftar itu. Setelahnya <code>ui-comparer.ts</code> turun ke
   <strong>1.121 baris</strong>, dan persentase cabangnya justru <strong>turun</strong> dari 41,15% ke
   34,15%: cabang-cabang yang tadinya separuh tertutup <strong>berpindah ke luar berkas</strong>,
-  sehingga bagian yang belum tertutup tinggal konstruksi DOM.</p>
+  sehingga bagian yang belum tertutup tinggal konstruksi DOM. Pematahan itu diteruskan lagi oleh
+  ADR-0036: tab Komparator pindah ke <code>ui-comparer-view.ts</code>
+  (<strong>716 baris</strong>), dan <code>ui-comparer.ts</code> kini hanya
+  <strong>226 baris</strong> — composition root yang tidak tahu isi tab mana pun.</p>
 
   <p>Dan perubahannya dibuktikan, bukan diklaim: <strong>matriks render</strong> (label, kelas
   <code>th</code>, kelas <code>td</code>, teks sel) diambil untuk kelima varian grid sebelum dan
@@ -533,12 +536,14 @@
 
   <aside class="pull">
     <span class="label">Kenapa ini penting untuk Anda</span>
-    <p>Modul ini duduk di 39,4% statement dan 28,1% branch — terendah di repo — dan satu-satunya cara
-    mengujinya adalah men-stub enam global. Karena itu harness boot-nya 617 baris hanya untuk
-    membuktikan “adapter menyerahkan prototype yang asli”. Setelah <code>scraper-install.ts</code>
-    diambil, <code>scraper-install.unit.test.ts</code> menjalankan pemasangan itu di atas env tiruan,
-    dan harness boot tinggal menjawab satu pertanyaan: apakah prototype asli benar-benar diserahkan,
-    dan apakah <code>pagehide</code> mengembalikannya.</p>
+    <p><code>scraper-install.ts</code> — tempat seluruh wiring dunia MAIN sekarang tinggal —
+    duduk di <strong>49,7% statement dan 34,8% branch</strong>, terendah di repo, sementara
+    <code>scraper.ts</code> sendiri kini <strong>100%</strong> karena ia hanya adapter 35 baris.
+    Dulu satu-satunya cara menguji modul itu adalah men-stub enam global. Karena itu harness bootnya
+    617 baris hanya untuk membuktikan “adapter menyerahkan prototype yang asli”. Setelah
+    <code>scraper-install.ts</code> diambil, <code>scraper-install.unit.test.ts</code> menjalankan
+    pemasangan itu di atas env tiruan, dan harness boot tinggal menjawab satu pertanyaan: apakah
+    prototype asli benar-benar diserahkan, dan apakah <code>pagehide</code> mengembalikannya.</p>
   </aside>
 </section>
 

@@ -24,7 +24,7 @@ A default answers the question the wrong way round. `keepRows: false` defaulted 
 
 ## Consequences
 
-- **The interface loses a call and gains a question.** ADR-0014 counted eleven calls; it is ten now, with `stop` covering the two that ended a Run early.
+- **The interface loses a call and gains a question.** ADR-0014 counted eleven calls; it is ten now, with `stop` covering the two that ended a Run early. (The interface has since grown to thirteen: ADR-0023 added `restore` and `onResumable`, ADR-0026 added `onRetired`.)
 - **A stop is one behaviour with one documented exception.** The resume rule (ADR-0023) is read inside `stop` — a `sweep-resume` keeps the union it was adding to even under `keepRows: false`, because that union belongs to an earlier Run that never failed — so both row decisions inherit it instead of only one of them.
 - **The call sites read as decisions.** `stopRun(actionDeps, { keepRows: false })` at a stop button and `stopRun(deps, { keepRows: true })` behind an export click say what happens to the rows without opening `run-lifecycle`.
 - **The row decision is testable where it is made.** `main-boot.unit.test.ts` fires the real toolbar toggle and the real export event and asserts the rows after each, which is the layer a fourth control would be added to; `run-lifecycle.unit.test.ts` pins both flags against the same retirement.

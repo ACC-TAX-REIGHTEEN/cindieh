@@ -141,6 +141,7 @@
       Semuanya dapat diperiksa langsung di <code>manifest.json</code> repositori:
     </p>
     <table class="perm-table">
+      <caption class="sr-only">Izin browser yang diminta Cindieh, jenisnya, dan tujuan masing-masing.</caption>
       <thead>
         <tr><th>Izin</th><th>Jenis</th><th>Untuk apa</th></tr>
       </thead>
@@ -180,18 +181,23 @@
     </p>
     <ul>
       <li>saklar utama Cindieh</li>
+      <li>pilihan format export (Dirapikan atau Asli)</li>
       <li>format file bawaan (XLSX atau CSV)</li>
+      <li>opsi ekspor sekali klik</li>
       <li>awalan nama berkas kustom</li>
       <li>preset kecepatan (Normal / Hati-hati / Sabar)</li>
       <li>ambang konfirmasi unduhan massal</li>
       <li>preferensi Komparator (toleransi, tanggal mode harian, filter status)</li>
+      <li>preferensi Pengecekan (acuan, toleransi nilai, filter status)</li>
       <li>saklar notifikasi saat selesai</li>
+      <li>saklar log debug</li>
     </ul>
     <p>
       Hasil pengambilan data hanya tersimpan sementara di memori tab, lalu hilang
       ketika tab ditutup atau Anda menekan <strong>Bersihkan cache</strong>.
       Menu <strong>Reset preferensi</strong> mengembalikan seluruh daftar di atas
-      ke nilai bawaan.
+      ke nilai bawaan, kecuali pilihan format export (Dirapikan atau Asli) dan
+      saklar log debug yang tidak ikut direset.
     </p>
 
     <h2>6. Berapa lama data disimpan</h2>
@@ -229,8 +235,11 @@
       <p><strong>Catatan status hukum.</strong> Halaman ini menjelaskan perilaku teknis
       Cindieh apa adanya, dan seluruh klaimnya bisa diperiksa di
       <a href="https://github.com/allababbot/cindieh/blob/main/LEGAL_COMPLIANCE.md">LEGAL_COMPLIANCE.md</a>.
-      Peninjauan hukum terhadap Syarat &amp; Ketentuan Coretax/DJP masih berjalan; Cindieh
-      bukan produk resmi Direktorat Jenderal Pajak dan tidak berafiliasi dengannya.</p>
+      Peninjauan hukum terhadap UU ITE dan ketentuan portal Coretax/DJP sudah selesai
+      dan tidak menemukan pelanggaran: seluruh fitur Cindieh bersifat baca-saja,
+      tidak ada instruksi yang mengubah, memanipulasi, memalsukan, atau menghapus
+      data di server DJP. Cindieh bukan produk resmi Direktorat Jenderal Pajak dan
+      tidak berafiliasi dengannya.</p>
     </div>
   </div>
 </main>

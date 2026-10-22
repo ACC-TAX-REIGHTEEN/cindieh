@@ -17,7 +17,7 @@
   <p class="meta">Pelajaran 02 dari 09 · waktu baca ± 14 menit · 5 soal uji ingatan</p>
   <nav class="lesson-nav">
     <a href="index.html">Peta pelajaran</a>
-    <a href="../reference/adr-peta.html">Peta 39 ADR</a>
+    <a href="../reference/adr-peta.html">Peta 44 ADR</a>
     <a href="../reference/glosarium.html">Glosarium</a>
     <span class="spacer"></span>
     <a href="0001-membaca-adr.html">← 01</a>
@@ -103,7 +103,10 @@
   <a href="../../../docs/adr/0002-message-dispatch-seam.md"><code>ADR-0002</code></a>: satu
   batas tanggung jawab berupa guard lalu dispatch di setiap dunia, yang diimplementasikan di
   <code>postmessage-guard.ts</code>. <code>main.ts</code> menjalankan satu dispatcher, dan
-  <code>scraper.ts</code> menjalankan satu dispatcher juga. Bentuknya kira-kira begini:</p>
+  dunia MAIN menjalankannya juga — dispatcher itu dibuat di
+  <code>scraper-install.ts</code> (ADR-0038), karena <code>scraper.ts</code> kini hanya adapter
+  yang membangun lingkungan halaman lalu memanggil <code>installScraper(env)</code> sekali.
+  Bentuknya kira-kira begini:</p>
 
 <pre><code>const dispatcher = createMessageDispatcher({
   direction: "FROM_PAGE",
@@ -144,16 +147,78 @@ data.token === expectedToken</code></pre>
     <table>
       <caption>Daftar pesan yang hidup di antara kedua dunia.</caption>
       <thead>
-        <tr><th>Arah</th><th>Tipe pesan</th></tr>
+        <tr><th>Arah</th><th>Tipe pesan</th><th>Arti</th></tr>
       </thead>
       <tbody>
         <tr>
-          <td><strong>isolated → MAIN</strong></td>
-          <td><code>START_SCRAPE</code>, <code>STOP_SCRAPE</code>, <code>SCRAPE_BY_INVOICES</code>, <code>SET_SERVER_FILTER</code>, <code>RESET_SCRAPER</code>, <code>START_PDF_DOWNLOAD</code></td>
+          <td>isolated → MAIN</td>
+          <td><code>START_SCRAPE</code></td>
+          <td>Mulai scrape satu grid; <code>skipPdf</code> meminta baris saja, <code>batchMonths</code>/<code>sweepPeriods</code> meminta sweep setahun.</td>
         </tr>
         <tr>
-          <td><strong>MAIN → isolated</strong></td>
-          <td><code>INJECTED_READY</code>, <code>SCRAPE_PROGRESS</code>, <code>SCRAPE_COMPLETE</code>, <code>SCRAPE_ERROR</code>, <code>DOWNLOAD_PDF_ITEM</code>, <code>SCRAPE_DATA_CHUNK</code></td>
+          <td>isolated → MAIN</td>
+          <td><code>STOP_SCRAPE</code></td>
+          <td>Batalkan Run yang sedang jalan.</td>
+        </tr>
+        <tr>
+          <td>isolated → MAIN</td>
+          <td><code>SCRAPE_BY_INVOICES</code></td>
+          <td>Cari baris untuk daftar nomor faktur tertentu (pencarian terarah).</td>
+        </tr>
+        <tr>
+          <td>isolated → MAIN</td>
+          <td><code>SET_SERVER_FILTER</code></td>
+          <td>Setel filter server pada satu field, beserta nilai dan mode pencocokannya.</td>
+        </tr>
+        <tr>
+          <td>isolated → MAIN</td>
+          <td><code>CLEAR_FILTERS</code></td>
+          <td>Kosongkan filter server pada daftar field yang disebut.</td>
+        </tr>
+        <tr>
+          <td>isolated → MAIN</td>
+          <td><code>RESET_SCRAPER</code></td>
+          <td>Buang state scraper (request tertangkap, filter, peta invoice) saat halaman berpindah.</td>
+        </tr>
+        <tr>
+          <td>isolated → MAIN</td>
+          <td><code>START_PDF_DOWNLOAD</code></td>
+          <td>Mulai unduhan PDF massal untuk sekumpulan baris grid.</td>
+        </tr>
+        <tr>
+          <td>MAIN → isolated</td>
+          <td><code>INJECTED_READY</code></td>
+          <td>Skrip MAIN sudah terpasang dan siap menerima perintah.</td>
+        </tr>
+        <tr>
+          <td>MAIN → isolated</td>
+          <td><code>SCRAPE_PROGRESS</code></td>
+          <td>Kemajuan Run: halaman ke berapa, totalnya, statusnya, dan jumlah kegagalannya.</td>
+        </tr>
+        <tr>
+          <td>MAIN → isolated</td>
+          <td><code>SCRAPE_COMPLETE</code></td>
+          <td>Hasil akhir satu Run: barisnya (atau berapa chunk yang harus datang), field, dan hitungannya.</td>
+        </tr>
+        <tr>
+          <td>MAIN → isolated</td>
+          <td><code>SCRAPE_ERROR</code></td>
+          <td>Run gagal, dan pesannya menyebut penyebabnya.</td>
+        </tr>
+        <tr>
+          <td>MAIN → isolated</td>
+          <td><code>DOWNLOAD_PDF_ITEM</code></td>
+          <td>Satu PDF siap diunduh, beserta baris asal dan sumber ekspornya.</td>
+        </tr>
+        <tr>
+          <td>MAIN → isolated</td>
+          <td><code>SCRAPE_DATA_CHUNK</code></td>
+          <td>Irisan hasil besar yang berindeks; penerima merakitnya menurut <code>index</code>.</td>
+        </tr>
+        <tr>
+          <td>MAIN → isolated</td>
+          <td><code>REFERENCE_SEARCH_NOT_FOUND</code></td>
+          <td>Pencarian awalan Referensi kosong; pencarian berhenti di situ tanpa melebar (ADR-0012).</td>
         </tr>
       </tbody>
     </table>
@@ -181,7 +246,7 @@ data.token === expectedToken</code></pre>
     <li><strong>Di dalam payload pesan.</strong> <code>postToScraper</code> di
     <code>bridge.ts</code> menempelkan field <code>token</code> sebagai teks biasa pada setiap
     pesan yang dikirim ke halaman; <code>sendToContent</code> dan <code>emitPdfDownload</code> di
-    <code>scraper.ts</code> melakukan hal sama saat arahnya dibalik. Skrip MAIN mana pun yang
+    <code>scraper-install.ts</code> melakukan hal sama saat arahnya dibalik. Skrip MAIN mana pun yang
     memasang <code>window.addEventListener("message", …)</code> bisa membaca
     <code>event.data.token</code>. Bukan bisa menduga: bisa membacanya.</li>
     <li><strong>Di URL skrip.</strong> <code>injectScraper</code> di <code>main.ts</code>

@@ -31,10 +31,10 @@
  *      yang mengisi baris tersebut, bukan lagi pintu "petunjuk nama" yang
  *      menebak.
  *
- *   Untuk mengukur grid yang belum terukur (PPN Masukan, kedua grid Retur):
- *   jalankan `jalankan([1])` saja. Fase 2-4 mengukur perilaku server yang sudah
- *   terjawab untuk PPN Keluaran dan tidak perlu diulang per grid; fase 1 dan 1b
- *   cukup.
+ *   Untuk mengukur grid yang BELUM punya baris di tabel penjaga (jadi grid
+ *   baru, di luar keempat grid e-Faktur PPN): jalankan `jalankan([1])` saja.
+ *   Fase 2-4 mengukur perilaku server yang sudah terjawab untuk PPN Keluaran
+ *   dan tidak perlu diulang per grid; fase 1 dan 1b cukup.
  *
  * CARA PAKAI
  *   1. Buka halaman e-Faktur PPN Keluaran (atau PPN Masukan/SPT/Bukti Potong).
@@ -61,7 +61,9 @@
  *   __cindiehMasaDiag.jalankan()            -> seluruh fase 1-4
  *   __cindiehMasaDiag.jalankan([2,3])       -> hanya fase yang dipilih
  *   __cindiehMasaDiag.fase2()               -> probe batas Rows saja
- *   __cindiehMasaDiag.fase3(["2026-01"])    -> satu masa, diukur
+ *   __cindiehMasaDiag.config.masaUji = ["TD.00701"]   -> pilih satu masa, format portal (TD.007MM)
+ *   __cindiehMasaDiag.fase3()               -> fase 3; daftar masanya dibaca dari
+ *                                             CONFIG.masaUji — ARGUMEN fase3 DIABAIKAN
  *   __cindiehMasaDiag.hasil                 -> data mentah (JSON)
  *   __cindiehMasaDiag.verdictFilter()       -> verdict penjaga + baris siap-tempel
  *   __cindiehMasaDiag.templateUlang()       -> kosongkan template, ambil lagi
@@ -73,7 +75,11 @@
 
   // ── Konfigurasi (boleh diubah sebelum menjalankan) ───────────────────────
   const CONFIG = {
-    /** Masa yang diuji di fase 3, dalam format yang-dimethylkan di dialog. Kosong = pakai masa aktif. */
+    /**
+     * Masa yang diuji di fase 3, dalam format kode portal (TD.007MM — contoh
+     * "TD.00701"). Kosong = masa diturunkan dari kode periode yang portal
+     * sendiri kirim, sebanyak CONFIG.jumlahMasa masa.
+     */
     masaUji: [],
     /** Berapa banyak masa yang dicoba dialihkan bila CONFIG.masaUji kosong. */
     jumlahMasa: 3,
@@ -362,7 +368,7 @@
 
   // ── Salinan tabel penjaga sweep (src/content/scrape-batch.ts) ────────────
   /**
-   * Fase 1b menilai apakah penjaga sweep Cindieh (batchScopeError) akan
+   * Fase 1b menilai apakah penjaga sweep Cindieh (batchScope) akan
    * MENERIMA permintaan grid ini.
    *
    * ATURAN DI BAWAH ADALAH SALINAN dari scrape-batch.ts (MEASURED_SWEEP_FILTERS
@@ -372,20 +378,79 @@
    * tidak bisa mengimpor modul itu, jadi salinannya memang sengaja — kalau tabel
    * di sana bertambah, tambahkan barisnya di sini juga, kalau tidak verdictnya
    * menyesatkan. Baris yang dicetak fase ini adalah bahan untuk baris berikutnya.
+   *
+   * TABEL INI MIRROR MEASURED_SWEEP_FILTERS di src/content/scrape-batch.ts —
+   * keduanya harus diubah BERSAMA, satu baris per grid, dengan nama filter yang
+   * sama persis. Kalau hanya tabel di sana yang bertambah, tool ini akan
+   * menolak grid yang sebenarnya boleh disapu, dan sebaliknya.
+   *
+   * `pola` mengenali grid dari URL, dan setiap baris memakai DUA ejaan:
+   *   - slug HALAMAN, dari page-context.ts (isOutputTaxPage → "output-tax" /
+   *     "keluaran" / "vat-out", isInputTaxPage → "input-tax", isOutputReturnPage
+   *     → "output-return", isInputReturnPage → "input-return");
+   *   - slug ENDPOINT, nama endpoint yang PORTAL sendiri pakai — "outputinvoice"
+   *     sudah dipakai page-context.ts (inferCapturedSource), dan tiga lainnya
+   *     tercatat di tabel pengukuran di README ini (kolom Endpoint).
+   * Yang diuji adalah URL request grid yang tertangkap, jadi ejaan endpoint
+   * itulah yang biasanya cocok; ejaan halaman dipakai sebagai cadangan.
+   *
+   * PENTING: tidak ada satu pun pola di bawah yang cocok dengan URL grid lain.
+   * "outputinvoice" bukan bagian dari "inputinvoice"/"outputreturn"/"inputreturn",
+   * "inputinvoice" bukan bagian dari "inputreturn", dan slug halaman tiap grid
+   * berbeda satu sama lain — jadi pencarian first-match (barisTerukur) tidak
+   * pernah salah memilih grid.
+   *
+   * Urutannya sengaja sama dengan getPageExportSource() di page-context.ts:
+   *OutputTax dicek lebih dulu, jadi grid yang URL-nya memuat "keluaran" pun
+   * terhitung OutputTax — persis seperti mesin aslinya.
    */
   const TABEL_TERUKUR = [
     {
       sumber: "OUTPUT_TAX",
-      // Deteksi grid dari URL halaman; pola yang sama dipakai page-context.ts.
       pola: /output-tax|keluaran|vat-out|outputinvoice/i,
+      masa: "TaxInvoicePeriod",
+      tahun: "TaxInvoiceYear",
+    },
+    {
+      sumber: "INPUT_TAX",
+      pola: /input-tax|inputinvoice/i,
+      masa: "TaxInvoicePeriod",
+      tahun: "TaxInvoiceYear",
+    },
+    {
+      sumber: "OUTPUT_RETURN",
+      pola: /output-return|outputreturn/i,
+      masa: "TaxInvoicePeriod",
+      tahun: "TaxInvoiceYear",
+    },
+    {
+      sumber: "INPUT_RETURN",
+      pola: /input-return|inputreturn/i,
       masa: "TaxInvoicePeriod",
       tahun: "TaxInvoiceYear",
     },
   ];
 
-  /** Baris terukur untuk halaman ini, atau null kalau grid-nya belum diukur. */
+  /**
+   * Baris terukur untuk request grid ini, atau null kalau grid-nya belum diukur.
+   *
+   * URL yang diukur adalah REQUEST grid yang tertangkap (endpoint-nya), jadi
+   * itu yang menentukan gridnya — itulah yang dicetak di kolom "Endpoint" tabel
+   * pengukuran. URL HALAMAN portal hanya dipakai sebagai cadangan kalau
+   * endpoint-nya tidak dikenali.
+   *
+   * Dua tahap, bukan satu: request dulu untuk SEMUA baris, baru halaman.
+   * Kalau keduanya digabung per baris, halaman grid yang satu bisa mengalahkan
+   * endpoint grid yang lain, dan tabel pengukurannya lalu salah menunjuk.
+   */
   function barisTerukur(url) {
-    return TABEL_TERUKUR.find((b) => b.pola.test(String(url || ""))) || null;
+    const endpoint = String(url || "");
+    const halaman = String((typeof location !== "undefined" && location.href) || "");
+    return (
+      TABEL_TERUKUR.find((b) => b.pola.test(endpoint)) ||
+      TABEL_TERUKUR.find((b) => b.pola.test(halaman)) ||
+      null
+    );
   }
 
   /** Bagian tetap kode masa (TD.007), atau null kalau nilainya bukan kode masa. */
@@ -696,6 +761,14 @@
   }
 
   // ── Fase 3: memutar balik beberapa masa, seperti yang akan dilakukan fitur ─
+  /**
+   * @param {string[]} [masaTersedia] DIABAIKAN. Daftar masa yang diuji berasal
+   *   dari CONFIG.masaUji (kalau diisi) atau diturunkan dari kode periode milik
+   *   portal sendiri sebanyak CONFIG.jumlahMasa masa. Parameter ini sengaja
+   *   tidak dipakai: bentuk nilainya (kode "TD.007MM" vs "2026-01") tidak
+   *   boleh bergantung pada pemanggil, dan menebak nilai periode berarti
+   *   meminta bulan yang tidak pernah ada pada portal.
+   */
   async function fase3(masaTersedia) {
     if (!templat.ada) {
       diag.temuan.push("FASE 3 GAGAL: belum ada template request grid.");

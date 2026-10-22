@@ -34,9 +34,10 @@ A sweep that is stopped **with rows collected** reports them.
   rows, not empty, not failed. Only masa that FINISHED are counted, because
   "masa tanpa baris" is a finding about the taxpayer's data and a stopped span is
   not one. The last page of an interrupted request is dropped with the request,
-  which is the stop's job; `planned` (the period count asked for) travels with
-  the counts so the panel can say "10 dari 12" rather than leaving the gap to be
-  inferred from a row count.
+  which is the stop's job; the sweep's PLAN (the period codes it covers) travels
+  with the counts so the panel can say "10 dari 12" rather than leaving the gap
+  to be inferred from a row count. The plan replaced the `planned` NUMBER later
+  (ADR-0040).
 - **How it lands.** A stop retires the run id (`bridge.postToScraper`), so the
   report necessarily arrives under a retired id. `bridge.isStoppedRunMessage`
   remembers the id the last STOP_SCRAPE retired, and `main.ts` admits exactly one

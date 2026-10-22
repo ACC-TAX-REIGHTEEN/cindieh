@@ -118,7 +118,7 @@
           "name": "Browser apa saja yang didukung?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Chrome dan Edge versi Chromium modern, serta Firefox 109+. Instalasi via \"Load Unpacked\" untuk Chrome/Edge, atau file .xpi untuk Firefox."
+            "text": "Chrome dan Edge versi Chromium modern, serta Firefox versi modern (MV3). Instalasi via \"Load Unpacked\" untuk Chrome/Edge, atau file .xpi untuk Firefox."
           }
         },
         {
@@ -186,9 +186,9 @@
 <body>
 
 <!-- The first thing a keyboard user reaches. Off-screen until focused
-     (see .skip-link), then it jumps past the sticky topbar's eight links
+     (see .skip-link), then it jumps past the sticky topbar's six links
      straight to the page's content. It has to be FIRST: a skip link that
-     sits behind eight links in the tab order is not a skip link. -->
+     sits behind six links in the tab order is not a skip link. -->
 <a class="skip-link btn btn-primary" href="#konten">Lompat ke konten utama</a>
 
 <!-- Icon sprite (toolbar mockup). The six glyphs are Feather Icons paths
@@ -462,7 +462,7 @@
               <p class="feat-problem">Mencocokkan data penjualan internal dengan faktur di Coretax biasanya berarti memakai vlookup manual atau membandingkan dua file satu per satu di Excel. Pekerjaan berulang yang rawan salah.</p>
               <ol class="feat-steps">
                 <li>Klik tombol <strong>Bandingkan data penjualan</strong> (ikon daftar) di toolbar PPN Keluaran.</li>
-                <li>Copy data dari Excel, paste ke textarea, 3 kolom (Referensi, DPP, PPN) atau 4 kolom dengan mode <strong>Ref Lain</strong>.</li>
+                <li>Copy data dari Excel, paste ke textarea, <strong>4 kolom</strong> (Referensi, Referensi Lain, DPP, PPN) selama mode <strong>Ref Lain</strong> menyala (bawaannya menyala), atau <strong>3 kolom</strong> (Referensi, DPP, PPN) setelah mode itu dimatikan.</li>
                 <li>Atur Toleransi selisih, opsi Ref Lain / Mode Harian, dan Filter Status sesuai kebutuhan.</li>
                 <li>Klik <strong>Periksa</strong> (atau <span class="kbd">Ctrl+Enter</span>).</li>
                 <li>Hasil tampil per baris + ringkasan; klik ganda baris untuk langsung mencari referensi itu di grid Coretax.</li>
@@ -739,7 +739,7 @@
     <div class="install-grid reveal">
       <div class="install-card">
         <h3>Chrome &amp; Edge</h3>
-        <p class="ic-lead">Load unpacked: memuat ekstensi langsung dari folder build, tanpa perakitan dan tanpa sertifikat.</p>
+        <p class="ic-lead"><span lang="en">Load unpacked</span>: memuat ekstensi langsung dari folder build, tanpa perakitan dan tanpa sertifikat.</p>
         <ol>
           <li>Unduh <span class="filechip">cindieh-chrome.zip</span> lewat tombol di bawah, lalu ekstrak, atau bangun sendiri dengan satu perintah.</li>
           <li>Buka <code>chrome://extensions/</code>.</li>
@@ -779,7 +779,7 @@ pnpm run build</pre>
       <p class="dl-note">Tautan selalu menunjuk ke rilis terbaru. Arsip dibangun otomatis oleh <code>pnpm run release:assets</code> dan diunggah sebagai aset GitHub Release setiap kali versi baru diterbitkan.</p>
     <p class="roadmap-note reveal">
       <span class="tag">Direncanakan</span>
-      Distribusi ke Chrome Web Store dan Firefox Add-ons. Arsip rilis di atas sudah dibangun
+      Distribusi ke <span lang="en">Chrome Web Store</span> dan <span lang="en">Firefox Add-ons</span>. Arsip rilis di atas sudah dibangun
       otomatis oleh <code>pnpm run release:assets</code> dan diunggah sebagai aset GitHub
       Release setiap versi baru, jadi saat store siap, cara mengunduhnya tidak berubah.
     </p>
@@ -808,7 +808,7 @@ pnpm run build</pre>
       </details>
       <details class="faq-item">
         <summary>Browser apa saja yang didukung?</summary>
-        <p class="faq-a">Chrome dan Edge versi Chromium modern, serta Firefox 109+. Instalasi via <span lang="en">"Load Unpacked"</span> untuk Chrome/Edge, atau file <code>.xpi</code> untuk Firefox.</p>
+        <p class="faq-a">Chrome dan Edge versi Chromium modern, serta Firefox versi modern (MV3). Instalasi via <span lang="en">"Load Unpacked"</span> untuk Chrome/Edge, atau file <code>.xpi</code> untuk Firefox.</p>
       </details>
       <details class="faq-item">
         <summary>Kok "Cari Referensi" tidak menemukan faktur saya?</summary>
@@ -834,7 +834,7 @@ pnpm run build</pre>
       </details>
       <details class="faq-item">
         <summary>Bagaimana cara memasang Cindieh?</summary>
-        <p class="faq-a">Lihat bagian <a href="#unduhan" style="color:var(--stamp-dark);font-weight:600;text-decoration:none;">Instalasi &amp; unduhan</a>. Ringkasnya: unduh <code>cindieh-chrome.zip</code> (ekstrak, lalu <em>Load unpacked</em> di <code>chrome://extensions/</code>) atau <code>cindieh-firefox.xpi</code> (<em>Install Add-on From File…</em> di <code>about:addons</code>). Kalau lebih suka membangun sendiri, semuanya tersedia dalam satu perintah: <code>pnpm run release:assets</code>.</p>
+        <p class="faq-a">Lihat bagian <a href="#unduhan" style="color:var(--stamp-dark);font-weight:600;text-decoration:none;">Instalasi &amp; unduhan</a>. Ringkasnya: unduh <code>cindieh-chrome.zip</code> (ekstrak, lalu <em lang="en">Load unpacked</em> di <code>chrome://extensions/</code>) atau <code>cindieh-firefox.xpi</code> (<em lang="en">Install Add-on From File…</em> di <code>about:addons</code>). Kalau lebih suka membangun sendiri, semuanya tersedia dalam satu perintah: <code>pnpm run release:assets</code>.</p>
       </details>
       <details class="faq-item">
         <summary>Apakah file ekspor kompatibel dengan Excel versi lama?</summary>

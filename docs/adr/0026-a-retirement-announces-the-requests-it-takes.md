@@ -8,7 +8,7 @@ runLifecycle.onRetired((kinds) => { … });   // kinds: "compare" | "check" | "e
 
 - It fires from `stop()` — which every stop control, a failed scrape, the refusal inside `complete()` and `reset()` all go through since ADR-0027 — carrying the kinds in the order the panel runs them, and stays SILENT when there was nothing to take.
 - `cancelPending(kind)` does not raise it: a tab dropping the request it queued itself is not a retirement, and nothing was taken from a tab that is still waiting on something else.
-- `main.ts` registers the one listener and routes each kind to the tab that queued it — `dropPendingCompare()` in `ui-comparer.ts`, `dropPendingCheck()` in `ui-checker.ts` — which replace that line with one short reason (`RETIRED_REQUEST_NOTICE`, owned by `ui-panel.ts`), and only while the line still holds that tab's `waiting` promise.
+- `main.ts` registers the one listener and routes each kind to the tab that queued it — `dropPendingCompare()` in `ui-comparer-view.ts` (the tab's own view module since ADR-0036), `dropPendingCheck()` in `ui-checker.ts` — which replace that line with one short reason (`RETIRED_REQUEST_NOTICE`, owned by `ui-panel.ts`), and only while the line still holds that tab's `waiting` promise.
 
 Rationale:
 

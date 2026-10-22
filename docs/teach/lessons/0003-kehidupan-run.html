@@ -17,7 +17,7 @@
   <p class="meta">Pelajaran 03 dari 09 · waktu baca ± 14 menit · 5 soal uji ingatan</p>
   <nav class="lesson-nav">
     <a href="index.html">Peta pelajaran</a>
-    <a href="../reference/adr-peta.html">Peta 39 ADR</a>
+    <a href="../reference/adr-peta.html">Peta 44 ADR</a>
     <a href="../reference/glosarium.html">Glosarium</a>
     <span class="spacer"></span>
     <a href="0002-dua-dunia-dan-jembatan.html">← 02</a>
@@ -106,7 +106,10 @@
   tentang Run di dunia isolated, dan tidak ada modul lain yang boleh membaca atau menulis keadaan itu
   dari luar. Antarmukanya bukan data, melainkan kumpulan perintah yang tidak bisa ditulis dari
   luar modul. ADR-0014 menghitung sebelas perintah; ADR-0027 menurunkannya menjadi sepuluh, dengan
-  menggabungkan dua perintah yang sama-sama mengakhiri Run lebih awal.</p>
+  menggabungkan dua perintah yang sama-sama mengakhiri Run lebih awal. Dua pintu dari ADR-0023
+  datang belakangan — <code>restore(result)</code> dan <code>onResumable(listener)</code> — dan
+  ADR-0026 menambah <code>onRetired(listener)</code>, jadi antarmukanya hari ini <strong>tiga belas
+  perintah</strong>.</p>
 
   <div class="table-wrap">
     <table>
@@ -138,6 +141,10 @@
         <tr>
           <td><code>stop({ keepRows })</code> / <code>reset()</code></td>
           <td>Mengakhiri Run lebih awal: satu pintu dengan keputusan baris dinyatakan oleh pemanggil (ADR-0027), dan satu jalan melupakan tanpa suara.</td>
+        </tr>
+        <tr>
+          <td><code>restore(result)</code> / <code>onResumable(listener)</code> / <code>onRetired(listener)</code></td>
+          <td>Tiga pintu yang datang belakangan: menerima kembali hasil sweep yang bertahan hidup halaman, memberi tahu apa yang akan dimulai sebuah resume, dan memberi tahu permintaan mana yang ditarik saat Run berhenti.</td>
         </tr>
       </tbody>
     </table>

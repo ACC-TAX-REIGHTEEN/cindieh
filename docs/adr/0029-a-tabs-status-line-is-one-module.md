@@ -45,7 +45,7 @@ Rationale:
    a warning) is one entry in the kind map, and every tab gets it.
 
 Consequences: both tabs construct their line once (`createStatusLine(<their id>)`) and every
-status write in `ui-checker.ts`, `ui-comparer.ts` and `result-grid-view.ts` goes through it;
+status write in `ui-checker.ts`, `ui-comparer-view.ts` and `result-grid-view.ts` goes through it;
 the `waitingNotice` string each tab carried is gone. `status-line.ts` is pure DOM with no
 browser API, so it unit-tests directly: the class per kind, the missing-element refusal, the
 `replace` guard in both directions, one-shot replacement, and writing to a re-injected

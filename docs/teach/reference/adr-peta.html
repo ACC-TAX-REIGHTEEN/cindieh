@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Peta 39 ADR — Kursus ADR Cindieh</title>
+<title>Peta 44 ADR — Kursus ADR Cindieh</title>
 <link rel="stylesheet" href="../assets/course.css">
 </head>
 <body>
 
 <header class="course-head">
   <p class="eyebrow">Cindieh · Referensi</p>
-  <h1>Peta 39 ADR</h1>
+  <h1>Peta 44 ADR</h1>
   <p class="lede">Semua keputusan arsitektur Cindieh dalam satu halaman: nomor, judul aslinya,
   status, dan pelajaran mana yang mengajari ini. Ini dokumen yang akan paling sering Anda buka
   ulang — bukan pelajaran.</p>
-  <p class="meta">39 ADR · 7 klaster · 9 pelajaran</p>
+  <p class="meta">44 ADR · 7 klaster · 9 pelajaran</p>
   <nav class="lesson-nav">
     <a href="../lessons/index.html">Peta pelajaran</a>
     <a href="glosarium.html">Glosarium</a>
@@ -182,6 +182,20 @@
           <td><code>0032</code></td>
           <td>Sweep setahun adalah satu modul, dan loop halamannya adalah seam</td>
           <td><a href="../../../docs/adr/0032-the-period-sweep-is-its-own-module.md">The year-wide sweep is one module, and its page loop is a seam</a></td>
+          <td><span class="status-pill status-accepted">Accepted</span></td>
+          <td>04</td>
+        </tr>
+        <tr>
+          <td><code>0043</code></td>
+          <td>Filter masa boleh membawa DAFTAR kode</td>
+          <td><a href="../../../docs/adr/0043-a-period-filter-may-carry-a-list-of-codes.md">A period filter may carry a LIST of codes</a></td>
+          <td><span class="status-pill status-amended">Accepted — extends 0019</span></td>
+          <td>04</td>
+        </tr>
+        <tr>
+          <td><code>0044</code></td>
+          <td>Grid yang sudah menampilkan setahun diambil apa adanya</td>
+          <td><a href="../../../docs/adr/0044-a-grid-that-already-shows-the-year-is-taken-as-it-is.md">A grid that already shows the year is taken as it is</a></td>
           <td><span class="status-pill status-accepted">Accepted</span></td>
           <td>04</td>
         </tr>
@@ -361,7 +375,7 @@
         </tr>
         <tr>
           <td><code>0040</code></td>
-          <td>Sweep membawa-renyukanya sendiri</td>
+          <td>Sweep membawa-rencana sendiri</td>
           <td><a href="../../../docs/adr/0040-a-sweep-carries-its-plan.md">A sweep carries its plan</a></td>
           <td><span class="status-pill status-accepted">Accepted</span></td>
           <td>04</td>
@@ -472,23 +486,26 @@
         <tr><td><code>0028</code></td><td><code>0036</code></td><td>Gerbang tab membaca baris per grid yang sama seperti prediksi lainnya.</td></tr>
         <tr><td><code>0015</code>, <code>0028</code></td><td><code>0037</code></td><td>Pola yang sama: satu tempat untuk satu keputusan, supaya tidak ada daftar kedua yang bisa berbeda.</td></tr>
         <tr><td><code>0039</code></td><td><code>0003</code>, <code>0006</code></td><td>Scope pemeriksaan terbalik diturunkan dari sesi Komparator (ADR-0003) dan tetap memakai satu kunci Referensi utama (ADR-0006).</td></tr>
+        <tr><td><code>0019</code></td><td><code>0043</code>, <code>0044</code></td><td>Dua lanjutan yang menyempitkan cara mengukur sweep: bentuk nilai filter masa (ADR-0043) dan grid yang sudah menampilkan setahun penuh (ADR-0044).</td></tr>
       </tbody>
     </table>
   </div>
 
   <aside class="pull">
     <span class="label">Indeks kini lengkap</span>
-    <p>Deretan ADR menutup tanpa celah: 0001 sampai 0042, dan indeks resmi
+    <p>Deretan ADR menutup tanpa celah: 0001 sampai 0044, dan indeks resmi
     <a href="../../../docs/adr/README.md"><code>docs/adr/README.md</code></a> memuat semuanya. Empat
     keputusan terakhir menutup tiga hal yang sebelumnya tersebar: batas konteks dunia MAIN
     (ADR-0035), tampilan tiap tab panel (ADR-0036), daftar preferensi (ADR-0037), dan pemasangan
     halaman (ADR-0038). Yang terbaru menutup masalah kecil tapi nyata di Komparator: satu argumen
     yang dua kali kerja membuat pemeriksaan terbalik tak bisa diperlebar, hanya dimatikan
-    (ADR-0039). Tiga yang terakhir menutup tiga hal yang tersebar di beberapa modul: data yang
+    (ADR-0039). Tiga yang berikutnya menutup tiga hal yang tersebar di beberapa modul: data yang
     dibawa melintasi dua dunia (rencana sweep), body yang dibaca dari satu permintaan grid, dan
     baris yang dinamai dua kali — di panel dan di nama berkasnya — masing-masing harus punya satu
     pembaca dan satu tangga, bukan beberapa yang bisa berbeda jawaban (ADR-0040, ADR-0041,
-    ADR-0042). Semuanya perlu dibaca
+    ADR-0042). Dua yang terakhir menyempitkan lagi cara membaca filter masa: nilainya boleh berupa
+    DAFTAR kode, bukan satu string (ADR-0043), dan grid yang sudah menampilkan setahun penuh tanpa
+    filter masa diambil apa adanya dalam satu export (ADR-0044). Semuanya perlu dibaca
     bersama bagian kode yang mereka ubah, bukan sebagai catatan tambahan yang terpisah.</p>
   </aside>
 </section>

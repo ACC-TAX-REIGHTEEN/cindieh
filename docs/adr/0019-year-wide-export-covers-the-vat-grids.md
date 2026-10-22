@@ -74,8 +74,9 @@ ADR-0043 holds.
 - The menu item is still built on the four e-Faktur PPN grids (`isEfakturPage`),
   so the gate and the guard stay two doors: where the entry is offered is a page
   fact, whether this request may be swept is answered from the request and the
-  table. On the two grids with no row, the entry refuses and says why; adding
-  the row turns it on with no other change.
+  table. On a grid with no row, the entry refuses and says why; adding the row
+  turns it on with no other change. All four e-Faktur PPN grids have a row today
+  (PPN Keluaran measured 2026-10-06, the other three 2026-10-21).
 
 ### Why a table and not a smarter heuristic
 

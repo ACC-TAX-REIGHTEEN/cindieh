@@ -137,11 +137,13 @@
      tokens (--ch-match, --ch-diff, --ch-bad, --ch-text-muted, --ch-blue) and
      that mirror is the point: the microsite depicts the product's palette. But
      the base hues were chosen as fills, and as TEXT on their own 12-14% tints
-     they measure 2.4:1 to 4.2:1, a fail under WCAG AA. Each `-ink` is the same
-     hue and saturation with only the lightness reduced, solved to clear 5:1
-     (AA needs 4.5) against the tint on BOTH --paper and --card, so it keeps a
-     margin that rounding cannot take back. Rule: `-ink` owns every `color:`,
-     the base token keeps every `background:`, border and swatch. */
+     they measure 2.4:1 to 4.2:1, a fail under WCAG AA. Each of the four status
+     inks is the same hue and saturation with only the lightness reduced, solved
+     to clear 5:1 (AA needs 4.5) against its tint, so it keeps a margin that
+     rounding cannot take back. The fifth, the only-CT ink, is an alias: that
+     base hue already cleared AA on its own tint (4.72:1 on --paper, 5.17:1 on
+     --card) and needed no darkening. Rule: `-ink` owns every `color:`, the
+     base token keeps every `background:`, border and swatch. */
   --match-ink:#296152;
   --diff-ink:#72521D;
   --bad-ink:#9A3228;
@@ -211,7 +213,8 @@ p{margin:0;}
    oblique, which IBM Plex Sans renders visibly wrong at 14px. Emphasis is
    therefore drawn as weight instead: the same meaning, no fake slant. The
    literal identifiers that used to be <em> (startswith, contains,
-   case-sensitive) became <code> instead, because mono is what those are. */
+   case-sensitive) are no longer on the page at all: that copy was rewritten in
+   plain Indonesian, so there is nothing left to set in mono. */
 em{font-style:normal;font-weight:600;}
 code{font-family:var(--mono);font-size:0.92em;background:rgba(27,36,54,0.06);padding:1px 5px;border-radius:4px;}
 

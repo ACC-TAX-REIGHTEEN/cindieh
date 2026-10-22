@@ -18,7 +18,7 @@
   <p class="meta">Pelajaran 04 dari 09 · waktu baca ± 15 menit · 5 soal uji ingatan</p>
   <nav class="lesson-nav">
     <a href="index.html">Peta pelajaran</a>
-    <a href="../reference/adr-peta.html">Peta 39 ADR</a>
+    <a href="../reference/adr-peta.html">Peta 44 ADR</a>
     <a href="../reference/glosarium.html">Glosarium</a>
     <span class="spacer"></span>
     <a href="0003-kehidupan-run.html">← 03</a>
@@ -69,6 +69,8 @@
     <li><span class="adr-ref">ADR-0020</span> <a href="../../../docs/adr/0020-a-stopped-sweep-reports-what-it-finished.md">A stopped year-wide sweep reports what it finished, and keeps the rows</a></li>
     <li><span class="adr-ref">ADR-0023</span> <a href="../../../docs/adr/0023-a-stopped-sweep-can-be-resumed.md">A stopped sweep is resumable</a></li>
     <li><span class="adr-ref">ADR-0032</span> <a href="../../../docs/adr/0032-the-period-sweep-is-its-own-module.md">The year-wide sweep is one module, and its page loop is a seam</a></li>
+    <li><span class="adr-ref">ADR-0043</span> <a href="../../../docs/adr/0043-a-period-filter-may-carry-a-list-of-codes.md">A period filter may carry a LIST of codes</a></li>
+    <li><span class="adr-ref">ADR-0044</span> <a href="../../../docs/adr/0044-a-grid-that-already-shows-the-year-is-taken-as-it-is.md">A grid that already shows the year is taken as it is</a></li>
   </ul>
 </section>
 
@@ -76,9 +78,13 @@
   <h2><span class="num">2</span>Kode masa diturunkan, bukan disintesis</h2>
 
   <p>Ada satu hal yang tidak boleh dikarang: <strong>kode masa</strong>. Filter masa milik portal
-  bernama <code>TaxInvoicePeriod</code>, ada di <code>body.Filters</code>, memakai
-  <code>MatchMode: "equals"</code>, dan nilainya berbentuk <code>TD.007MM</code>: awalan tiga digit
-  tetap plus dua digit bulan. Filter tahun, <code>TaxInvoiceYear</code>, terpisah dari itu.</p>
+  bernama <code>TaxInvoicePeriod</code>, ada di <code>body.Filters</code>, dan nilainya berbentuk
+  <code>TD.007MM</code>: awalan tiga digit tetap plus dua digit bulan. Bentuk nilainya tidak
+  seragam: PPN Keluaran mengirimnya sebagai satu string dengan
+  <code>MatchMode: "equals"</code>, sedangkan tiga grid lain mengirimnya sebagai
+  <strong>daftar kode</strong> (ADR-0043) — dan sweep menulisnya kembali satu kode satu string,
+  seperti bentuk yang portal menghormati. Filter tahun, <code>TaxInvoiceYear</code>, terpisah dari
+  itu.</p>
 
   <p>Aturan ADR-0018: kode masa <strong>diturunkan dari request yang portal kirim sendiri</strong>,
   tidak pernah disintesis. Request menyeberang dari dunia isolated ke dunia MAIN, dan kode-kode
@@ -86,11 +92,18 @@
   menurunkan kode-kodenya dari apa yang portal kirim.</p>
 
   <aside class="warn">
-    <span class="label">Kalau tidak ada filternya, gagal keras</span>
-    <p>Request yang body-nya tidak membawa filter <code>TaxInvoicePeriod</code> <strong>gagal dengan
-    keras</strong>. Bukan menyapu satu masa dua belas kali lalu melaporkan isi satu bulan
-    seolah-olah itu isi setahun. Kegagalan yang kedengaran jauh lebih murah daripada berkas yang
-    isinya tidak bisa diperiksa siapa pun.</p>
+    <span class="label">Tiga scope, bukan dua</span>
+    <p>Tidak adanya filter <code>TaxInvoicePeriod</code> <strong>bukan</strong> kegagalan, dan
+    menggambarnya sebagai “gagal dengan keras” menyesatkan. Cakupan yang dihitung
+    <code>batchScope()</code> punya <strong>tiga jawaban</strong>: <strong><code>sweep</code></strong>
+    — request membawa filter masa terukur, jadi setahun ditanyakan satu masa pada satu waktu;
+    <strong><code>year</code></strong> — request <em>tidak</em> membawa filter masa, jadi portal
+    tidak memfilter per bulan dan grid yang tampil memang sudah menampilkan setahun: tahun itu
+    <strong>diambil apa adanya dalam satu export</strong>, tanpa filter yang disuntik dan tanpa
+    kode masa yang dikarang (ADR-0044); dan <strong><code>refused</code></strong> — gridnya belum
+    pernah diukur, nilai filter masanya tak terbaca, atau tidak ada tahun yang bisa dipakai untuk
+    menamai berkasnya. Yang paling berbahaya bukan penolakan, melainkan menyapu satu masa dua belas
+    kali lalu melaporkan isi satu bulan seolah-olah itu isi setahun.</p>
   </aside>
 
   <p>Dua aturan kecil lain yang menyertai:</p>
@@ -171,6 +184,9 @@
 
   <pre><code>export const MEASURED_SWEEP_FILTERS: Partial&lt;Record&lt;ExportSource, SweepFilterMeasurement&gt;&gt; = {
   OUTPUT_TAX: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
+  INPUT_TAX: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
+  INPUT_RETURN: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
+  OUTPUT_RETURN: { period: "TaxInvoicePeriod", year: "TaxInvoiceYear" },
 };</code></pre>
 
   <p>Versi pertama ADR-0019 menutup celah itu dengan <strong>pintu "petunjuk nama"</strong>: di grid

@@ -39,7 +39,13 @@ microsite/
 
 ## House style
 
-Seven rules the page is now held to, three of them by the suite. They exist
+Eleven rules the page is now held to, twelve entries if the nested one under the
+grouped-lists rule is counted, and three of them are enforced by the suite: the
+eyebrow budget, the no-em-dash rule for rendered text, and the
+no-synthesised-italic rule. The other eight are house rules only, and it is worth
+saying so plainly: nothing in `microsite-sync` checks a table's caption, a
+`scope="rowgroup"`, a `lang="en"`, one card treatment per idea, or a section's
+height, so those hold by review rather than by machine. All of them exist
 because each one was a real habit of this page rather than a hypothetical
 temptation: the redesign had to remove 11 eyebrows, 77 em-dashes, a synthetic
 italic, a number sequence and a repeated card treatment before the layout read
@@ -50,18 +56,24 @@ as designed rather than assembled.
   and this page had eleven of them for ten heads. The hero keeps its label
   because there the one thing a visitor cannot infer from the headline is what
   kind of thing the product is; everywhere else the section's position in the
-  page already says what the section is. The budget is one per three heads, and
-  `microsite-sync` counts both sides. The label also lost its decorative dot,
-  which said nothing the words did not.
-- **No em-dash in rendered text.** There were 77 across the three pages, almost
-  all of them the same "X, Y" the comma already says. Comments are exempt, which
-  is what keeps the rule about the reader rather than the author; the JSON-LD is
-  not exempt, because its FAQ answers are exactly the visible ones.
+  page already says what the section is. There is one now, over eight heads
+  (seven sections plus the hero), and the budget is one per three heads, so
+  three; `microsite-sync` counts both sides. The label also lost its decorative
+  dot, which said nothing the words did not.
+- **No em-dash in rendered text.** There were 77 across the three pages before
+  the redesign (and one en-dash besides), almost all of them the same "X, Y" the
+  comma already says; none are left, and the suite fails the build if one comes
+  back. That is a historical count of what the redesign had to remove, not a
+  count of what remains. Comments are exempt, which is what keeps the rule about
+  the reader rather than the author; the JSON-LD is not exempt, because its FAQ
+  answers are exactly the visible ones.
 - **No italic that the fonts do not ship.** None of the five woff2 files is an
   italic cut, so every `<em>` was drawn as a *synthesised* oblique, which IBM
-  Plex Sans renders visibly wrong at 14px. Emphasis is weight now, and the
-  literals that were set as `<em>` (`startswith`, `contains`, `case-sensitive`)
-  became `<code>`, which is what they are.
+  Plex Sans renders visibly wrong at 14px. Emphasis is weight now: the sheet
+  resets `em` to `font-style:normal` with a heavier weight, and the code
+  identifiers that used to be set as `<em>` (`startswith`, `contains`,
+  `case-sensitive`) left the page altogether when that copy was rewritten in
+  plain Indonesian, so there is nothing left to set in mono.
 - **One card treatment per idea.** The settings table is a card; the before /
   after table is a bare ruled table; the compliance block is one ruled row with
   an uneven first column and no numbering. Two adjacent sections sharing a
@@ -73,10 +85,13 @@ as designed rather than assembled.
   all. What survived is one sentence each: the host restriction joined the
   install section's sub, and the store listing is now a status line under the
   download buttons. Seven sections, not nine.
-- **Every table has a caption.** Seven of them, all `.sr-only` (`.pref-table`
-  plus the four mini-tables, the compare table, the permissions table). The
-  cluster rows in `.pref-table` carry `scope="rowgroup"`. Without captions a
-  screen reader in table-navigation mode had nothing to announce for any of them.
+- **Every table has a caption.** Eight of them on the landing page, all
+  `.sr-only` (`.pref-table`, the five mini-tables including the `.grid-claims`
+  table that names the Pengecekan columns per grid, the compare table and the
+  permissions table), and the privacy policy's own permissions table carries one
+  too, so the rule holds across the whole site. The cluster rows in
+  `.pref-table` carry `scope="rowgroup"`. Without captions a screen reader in
+  table-navigation mode had nothing to announce for any of them.
 - **English UI literals carry `lang="en"`.** `Load unpacked`, `Mode Developer`,
   `Install Add-on From File…`, the store names. The page is `lang="id"`, and an
   Indonesian screen-reader voice mispronounces every one of them. The tags are
@@ -98,10 +113,10 @@ as designed rather than assembled.
   - **One answer may be several paragraphs.** The legality FAQ used to be a
     single `<p class="faq-a">` holding all 944 characters, which made it the
     least scannable thing on the page. It is now three, one per legal ground,
-    and not one word was cut. Both suites that read it had to widen too: they
+    and not one word was cut. Both checks that read it had to widen too: they
     matched `<summary>…</summary><p class="faq-a">(.*?)</p>`, so they read only
-    the FIRST paragraph and would have passed silently on a version that had lost
-    the other two. They now read the whole `<details>` body.
+    the FIRST paragraph and would have passed silently on a version that had
+    lost the other two. They now read the whole `<details>` body.
 - **The mobile nav is a strip, not a menu.** Below 760px the nav used to be
   `display:none`, which left a phone user with a download button and no way to
   reach any section except the footer's copy. It is now a second compact row
@@ -120,12 +135,13 @@ as designed rather than assembled.
   the generated export filenames, and the popup controls are copied from
   `README.md`, `manifest.json`, `popup/popup.html`, and the source. When those
   change, this page must change with them —
-  `src/tests/microsite-sync.unit.test.ts` fails the build when it doesn't. Each
-  fact is checked **inside its own container** on this page (the prefix table,
-  the permission table, the tab panel that owns it, `.pref-table`), because the
-  prose repeats many of these words; several of the facts are also checked in
-  reverse, so nothing here may advertise a page, status, or control the code
-  does not have.
+  `src/tests/microsite-sync.unit.test.ts` fails the build when it doesn't. Four
+  of those facts are checked **inside their own container** on this page (the
+  prefix table, the permission table, the tab panel that owns the status
+  legend, and `.pref-table`), because the prose repeats many of these words; the
+  shortcut and export-menu-entry checks are page-wide, and several of the facts
+  are also checked in reverse, so nothing here may advertise a page, status, or
+  control the code does not have.
 - **Feature tabs are CSS-only** (radio technique) so they work without
   JavaScript; tab inputs carry `.sr-only` (hidden but focusable, never
   `display:none`) plus the `opacity:0` the technique needs. One utility does the
@@ -166,7 +182,7 @@ as designed rather than assembled.
 
 - **One `<main>`, and a skip link that actually skips.** The landing page had
   nine `<section>`s and nothing wrapping them, so there was no main landmark
-  to jump to and a keyboard user had to tab through the topbar's eight links
+  to jump to and a keyboard user has to tab through the topbar's six links
   before reaching any content. `index.html` and `404.html` now wrap their body
   in `<main>`; `privacy.html` already had one. The topbar became a `<header>`
   in the same change, because it used to be a `<div>` and the only `<header>`
@@ -177,7 +193,7 @@ as designed rather than assembled.
   screen reader keeps reading from the topbar.
 
   The skip link is the first thing in `<body>`, and "first" is the whole claim:
-  one behind eight links is not a skip link. `microsite-sync.unit.test.ts`
+  one behind six links is not a skip link. `microsite-sync.unit.test.ts`
   asserts each page has exactly one `<main>`, that **nothing focusable precedes
   the skip link**, and that its `href="#…"` target exists. A page is only
   *required* to have one when focusable content precedes its `<main>`, which is
@@ -229,11 +245,14 @@ as designed rather than assembled.
   whether to install an extension on a government portal was told "unknown".
   The suite now parses the audit's `**Kesimpulan**` lines and requires the FAQ
   to name every article they cover, forbids the "still under review" wording
-  outright, and cites the audit from both the FAQ and the footer. Two properties
-  make it durable: the articles are **parsed, not hand-listed**, so a new one in
-  the audit reddens the build until the page names it too; and a conclusion that
-  stops finding Cindieh compliant also reddens it, because the copy would then
-  be claiming a clean bill of health the audit no longer gives.
+  outright, and cites the audit from both the FAQ and the footer. The forbidden
+  wording is swept for on the privacy policy as well as the landing page: the
+  landing page's own copy was corrected first, and the privacy policy kept
+  saying the review was still under way until the sweep looked at it too. Two
+  properties make it durable: the articles are **parsed, not hand-listed**, so a
+  new one in the audit reddens the build until the page names it too; and a
+  conclusion that stops finding Cindieh compliant also reddens it, because the
+  copy would then be claiming a clean bill of health the audit no longer gives.
 - **`privacy.html` is a real page, not a file in the repo, because a store
   listing cannot link to GitHub.** Chrome Web Store and Firefox Add-ons both
   ask for a privacy policy **URL** at review time, so it lives at
@@ -272,11 +291,11 @@ as designed rather than assembled.
   `--ink-soft`↔`--ch-text-dark`, `--card`↔`--ch-white`, `--paper`↔`--ch-paper`,
   `--paper-alt`↔`--ch-paper-alt`, `--stamp`↔`--ch-primary` `#C23B22`). Those
   hues were chosen as **fills**, and as text on their own 12–14% tints they
-  measured 2.4:1 to 4.2:1 — a clear WCAG AA failure. Each status colour
-  therefore has a `-ink` twin: the same hue and saturation with only the
-  lightness reduced, solved to clear **5:1** against its tint on both `--paper`
-  and `--card`. The margin over AA's 4.5 is deliberate, so a rounding change
-  cannot silently put a pair back under the line.
+  measured 2.4:1 to 4.2:1 — a clear WCAG AA failure. Each of the four status
+  colours therefore has a `-ink` twin: the same hue and saturation with only the
+  lightness reduced, solved to clear **5:1** against its tint. The margin over
+  AA's 4.5:1 is deliberate for those four, so a rounding change cannot silently
+  put one of them back under the line.
 
   | Role | Base (fills, borders, swatches) | Text-safe | Was | Now |
   |---|---|---|---|---|
@@ -284,11 +303,20 @@ as designed rather than assembled.
   | diff | `--diff` `#B8842F` | `--diff-ink` `#72521D` | 2.41:1 | 5.23:1 |
   | bad | `--bad` `#B23A2E` | `--bad-ink` `#9A3228` | 4.16:1 | 5.14:1 |
   | miss | `--miss` `#8A8677` | `--miss-ink` `#5D5A50` | 2.65:1 | 5.02:1 |
-  | only Coretax | `--only-ct` `#3E5D8A` | `--only-ct-ink` `#3E5D8A` | 5.17:1 | 5.17:1 |
+  | only Coretax | `--only-ct` `#3E5D8A` | `--only-ct-ink` `#3E5D8A` | 4.72:1 on `--paper`, 5.17:1 on `--card` | 4.72:1 on `--paper`, 5.17:1 on `--card` |
+
+  The two columns are one hue's ratio against its own tint, before and after the
+  twin, measured on `--paper` where the tint composites over the page. The four
+  status hues also clear 5:1 on `--card` (5.59:1, 5.71:1, 5.64:1 and 5.49:1).
+  `--only-ct` is the odd one out: that base hue already cleared AA on its own
+  tint, so it needed no darkening, and `--only-ct-ink` is simply an alias. Its
+  two numbers therefore differ, because the two surfaces differ: **4.72:1 on
+  `--paper` and 5.17:1 on `--card`**, against AA's 4.5:1 floor. It is the one
+  pair in the table that does not clear 5:1, and it clears AA on both surfaces
+  anyway.
 
   **The rule: `-ink` owns every `color:`; the base token keeps every
-  `background:`, border and swatch.** `--only-ct` needed no darkening and
-  `--only-ct-ink` is simply an alias — the rule stays uniform so nobody has to
+  `background:`, border and swatch.** The rule stays uniform so nobody has to
   remember which hues happened to be dark enough.
 - **`--line-strong` is a hairline; `--control-line` is a control boundary.**
   WCAG 1.4.11 wants 3:1 for anything that identifies a control, and
@@ -307,7 +335,10 @@ as designed rather than assembled.
 
   `404.html` is included because it carries its **own** `<style>` block, and
   that is exactly how `.nf .code` slipped through at 4.42:1 while the table
-  still showed `--stamp` as covered elsewhere. A fifth guard therefore checks
+  still showed `--stamp` as covered elsewhere. The privacy policy's own block
+  is audited the same way now, which is what makes its two `.legal` entries
+  (`.legal .none` and `.legal .stamp-note`) real checks instead of labels the
+  audit skipped. A fifth guard therefore checks
   the table against the source: for every entry whose label is a real selector,
   the rule block must still name the token the table claims to have tested —
   so swapping a passing `-ink` back for a failing base hue goes red even though
@@ -331,8 +362,8 @@ files in `pnpm test` — on every push to `main` and every pull request (the sam
 workflow also runs `test:coverage`, both browser builds, and `package`). Editing this page
 or the code it documents therefore fails the build rather than quietly drifting.
 
-Everything in this folder is served exactly as committed. Three files only do
-anything because Cloudflare Pages recognises them by name:
+Everything in this folder is served exactly as committed. Four of the files here
+only do anything because Cloudflare Pages recognises them by name:
 
 - **`_headers`** — cache and security rules. The fonts get a one-year
   `immutable` cache (there is no bundler to hash filenames, so a font change
@@ -342,8 +373,14 @@ anything because Cloudflare Pages recognises them by name:
   way: they are hand-edited too, so making them immutable would pin a corrected
   file for a year of returning visitors. Without their own rule they fell
   through to the `/*` catch-all and were revalidated on **every** page view —
-  about 31 KB, which is why `microsite-sync` asserts they have a rule, that it
+  about 38 KB (the stylesheet is ~34 KB and the script ~5 KB), which is why
+  `microsite-sync` asserts they have a rule, that it
   revalidates, and that it is not `immutable`.
+- **`404.html`** — served for any missing path.
+- **`robots.txt` / `sitemap.xml`** — plain files, no framework involved.
+
+And one claim the landing page makes has a guard of its own:
+
 - **The toolbar mockup is one `role="img"`, not a list of buttons.** It reads
   like a literal toolbar, and for a while it was announced as one — with two
   items silently missing, because the icon-only buttons were labelled by `title`
@@ -353,8 +390,6 @@ anything because Cloudflare Pages recognises them by name:
   visible caption is unchanged; the `aria-label` carries the same claim for
   anyone who cannot see it. `microsite-sync` fails on any element that reaches
   for `title` as its only label, so the pattern cannot come back.
-- **`404.html`** — served for any missing path.
-- **`robots.txt` / `sitemap.xml`** — plain files, no framework involved.
 
 ### The hostname lives in four places
 

@@ -17,7 +17,7 @@
   <p class="meta">Istilah portal dan pajak · Istilah fitur · Istilah arsitektur · Istilah ADR terbaru</p>
   <nav class="lesson-nav">
     <a href="../lessons/index.html">Peta pelajaran</a>
-    <a href="adr-peta.html">Peta 39 ADR</a>
+    <a href="adr-peta.html">Peta 44 ADR</a>
     <span class="spacer"></span>
     <a href="../../../CONTEXT.md">CONTEXT.md (asli)</a>
   </nav>
@@ -49,8 +49,8 @@
         </tr>
         <tr>
           <td><strong>Masa pajak</strong></td>
-          <td>Periode pajak — tahun plus bulan (mis. <code>2026-07</code>) — yang memfilter grid, menjadi nama berkas, dan dipecah jadi kolom bulan/tahun saat ekspor.</td>
-          <td>period, masa, tax period</td>
+          <td>Masa pajak — tahun plus bulan (mis. <code>2026-07</code>) — yang memfilter grid, menjadi nama berkas, dan dipecah jadi kolom bulan/tahun saat ekspor.</td>
+          <td>period, periode, masa, tax period</td>
         </tr>
         <tr>
           <td><strong>E-faktur</strong></td>
@@ -136,7 +136,7 @@
         </tr>
         <tr>
           <td><strong>Period sweep</strong> (batch masa)</td>
-          <td>Mengambil setiap masa pajak satu tahun dari grid PPN e-faktur sebagai SATU Run, sehingga barisnya berbagi satu himpunan dedupe dan tiba sebagai satu berkas. Hanya grid yang filter periode dan taunnya sudah terukur boleh menyapu (ADR-0019).</td>
+          <td>Mengambil setiap masa pajak satu tahun dari grid PPN e-faktur sebagai SATU Run, sehingga barisnya berbagi satu himpunan dedupe dan tiba sebagai satu berkas. Hanya grid yang filter masa dan tahunnya sudah terukur boleh menyapu — hari ini keempat grid PPN e-faktur sudah punya baris terukur (ADR-0019), dan nilai filter masanya boleh berupa DAFTAR kode, bukan satu string (ADR-0043); grid lain ditolak, bukan ditebak. Masa adalah filter di body request, jadi sweep meminta grid yang sama satu kali per kode <code>TD.007MM</code> yang diturunkan dari request yang portal sendiri kirim. Kalau gridnya <em>tidak</em> difilter per bulan — portal hanya mengirim filter itu setelah ada masa yang dipilih, dan grid yang isinya sedikit menampilkan setahun penuh sejak awal — tahun yang sudah ditunjukkan itu <strong>diambil apa adanya dalam satu export</strong> (ADR-0044).</td>
           <td>batch export, year export, multi-month scrape</td>
         </tr>
         <tr>
@@ -374,7 +374,7 @@
 </aside>
 
 <footer class="course-foot">
-  <p><a href="../lessons/index.html">Peta pelajaran</a> · <a href="adr-peta.html">Peta 39 ADR</a></p>
+  <p><a href="../lessons/index.html">Peta pelajaran</a> · <a href="adr-peta.html">Peta 44 ADR</a></p>
 </footer>
 
 </main>

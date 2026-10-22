@@ -182,9 +182,10 @@ had no missing masa at all.
 - A stop costs a pause. Press the entry again to fetch the missing masa; the
   file that comes out of the resumed run is one whole year with no `-sebagian`,
   and no month is fetched twice.
-- The menu entry needs no new control and no new label: `isBatchPage` gates where
-  it is offered, exactly as before, and the resume is decided from the Run's own
-  state at click time.
+- The menu entry needs no new control and no new label: `isEfakturPage` gates
+  where it is offered, exactly as before (`isBatchPage` was a second name for the
+  same answer and was removed by ADR-0035), and the resume is decided from the
+  Run's own state at click time.
 - Resuming is a deliberate click with its own confirmation, so ADR-0020's "a stop
   runs nothing automatically" is intact: the stop itself still fetches nothing.
 - `RunResult.sweep` now has a second reason to exist beside the panel line and
