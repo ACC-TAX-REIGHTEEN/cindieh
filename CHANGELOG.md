@@ -1,5 +1,56 @@
 # Changelog
 
+## [2.3.0](https://github.com/allababbot/cindieh/compare/v2.2.0...v2.3.0) (2026-10-22)
+
+### Features
+
+* **batch:** a grid that already shows the year is taken as it is ([4933b68](https://github.com/allababbot/cindieh/commit/4933b68ac0b81c285c735b9eebb45c13bdc1cb8d))
+* **batch:** offer the year-wide export on every e-Faktur VAT grid ([206054a](https://github.com/allababbot/cindieh/commit/206054a74d8bd70e2eee3801eaa48dca2d8eb4e7))
+* **comparer:** show coretax-only rows monthly ([6e9759d](https://github.com/allababbot/cindieh/commit/6e9759d6e69942504333e31f03755c9203bdb160))
+* **notice:** name a sweep's lost masa and a truncated result in the toast ([2793ede](https://github.com/allababbot/cindieh/commit/2793ede5bfae0e4bb2322d9a382345bdb1b114d1))
+* **panel:** give the panel's page facts one row per grid (ADR-0028) ([795b85f](https://github.com/allababbot/cindieh/commit/795b85fe2b3d09cda259bb3f24176ef0afa4dedb))
+* **panel:** give the panel's toolbar entry to every grid that can use it ([9639df2](https://github.com/allababbot/cindieh/commit/9639df298ce971de66eb45f18ec331a8792fb31e))
+* **panel:** take a tab's waiting line back when a stop retires its request ([d2225bc](https://github.com/allababbot/cindieh/commit/d2225bc9c120aacce8bbd3ad60e2755d83aca5f9))
+* **popup:** link to the Coretax portal from the popup footer ([cd35024](https://github.com/allababbot/cindieh/commit/cd3502469b557949f2d9f011c729df071e9027b8))
+* **shortcuts:** open the Bandingkan panel with Ctrl+Shift+B ([d921003](https://github.com/allababbot/cindieh/commit/d9210034767d46a7c726e7e5feb9484fbc6f450a))
+* **sweep:** keep a stopped sweep's rows, resume it, and widen the check ([c585db9](https://github.com/allababbot/cindieh/commit/c585db9c475dc3873f0f89503f27ab7ea970fe82))
+* **sweep:** let a resumable sweep outlive the page (ADR-0023) ([b57aa7f](https://github.com/allababbot/cindieh/commit/b57aa7f09227986547d6c11d83b1e2ea1fe2bdd6))
+* **sweep:** sweep a grid only after its filters were measured ([453ad12](https://github.com/allababbot/cindieh/commit/453ad12660778fe3d86cc62b4c1a4a0eaf7271da))
+* **sweep:** sweep PPN Masukan after its measurement ([4567e3c](https://github.com/allababbot/cindieh/commit/4567e3cfa7b4da353378ea1f48186e5f2b61b2ef))
+* **sweep:** sweep Retur PPN Keluaran after its filters were measured ([f6e53e5](https://github.com/allababbot/cindieh/commit/f6e53e57865ae24d77af8000198fc9d7021679d5))
+* **sweep:** sweep Retur PPN Masukan after its filters were measured ([6dca4e8](https://github.com/allababbot/cindieh/commit/6dca4e81144fc5af2ebcffa969bc79f6e81ef0ca))
+* **tools:** record every request the page makes, not just grid bodies ([db4fa2b](https://github.com/allababbot/cindieh/commit/db4fa2bb6e4480bdbf8b085cd2fa2210b7d07fac))
+* **tools:** the measurement says which portal page it measured ([655f0c5](https://github.com/allababbot/cindieh/commit/655f0c575fbaf9d7b6d4a805f1fb8c3eea68ce6e))
+* **ui:** name the month in words, not in the portal's code ([bcbbb20](https://github.com/allababbot/cindieh/commit/bcbbb20f5fdbb532deabc5030bcc06a713065534))
+
+### Bug Fixes
+
+* **a11y:** name the icon controls and the result grids ([8770ed5](https://github.com/allababbot/cindieh/commit/8770ed5f3ad431e5bcec4ffc330d825b04ea99fb))
+* **checker:** treat OtherTaxBase 0 as "DPP Nilai Lain does not apply" ([7c5b915](https://github.com/allababbot/cindieh/commit/7c5b9152e79f94c6fef42e6dbe12fd2679a535ef))
+* **export:** a retur file's MASA is the credit note's own month ([142033a](https://github.com/allababbot/cindieh/commit/142033a49f4456f2da0ea4b16a1178ccd8ac29dd))
+* **microsite:** declare the shipped version in the JSON-LD ([6a84cf4](https://github.com/allababbot/cindieh/commit/6a84cf4425e9db34e27247fb92e90cd130399c46))
+* **panel:** keep Tab inside the dialog and hand focus back on close ([2abc018](https://github.com/allababbot/cindieh/commit/2abc0180fabb1146b9879944877b52e957709579))
+* **panel:** make the clipboard pre-fill report its own failures ([8a8a2f8](https://github.com/allababbot/cindieh/commit/8a8a2f83ba799121adb0ac7ac5e1974162cb4a65))
+* **panel:** say WHY a month came back empty ([c18f76e](https://github.com/allababbot/cindieh/commit/c18f76efbb9a1bd9a08e007848c1e079708ba4ce))
+* **panel:** unregister the filter menus' click-outside handler ([1f90b7a](https://github.com/allababbot/cindieh/commit/1f90b7a836bef222a481817ff83e0a3a13803b4e))
+* **panel:** withhold the Komparator on pages it cannot serve ([ec16d0c](https://github.com/allababbot/cindieh/commit/ec16d0c8412130b593f8b9395f4fa9e2725275bd))
+* **release:** sync microsite version with manifest ([ad1540c](https://github.com/allababbot/cindieh/commit/ad1540ca0ff5b13e210bc6e6f3457a704bdbe316))
+* **scrape:** give a failed masa one retry inside a year sweep ([7ba6614](https://github.com/allababbot/cindieh/commit/7ba66142ac60f77b8ab40898b3f9f16a6e0eb707))
+* **scrape:** refuse a year sweep whose request names no tax year ([75f9c87](https://github.com/allababbot/cindieh/commit/75f9c8715b5872ec66ff1c22f88215c2228c49a5))
+* **shortcuts:** settle the run when the stop key cancels it ([8d5aed9](https://github.com/allababbot/cindieh/commit/8d5aed9237ef461711645434c89074eca9b4e006))
+* **sweep:** name the way out when the request carries no period filter ([fcd5c0f](https://github.com/allababbot/cindieh/commit/fcd5c0f3790c263913743592e139b202fd959600))
+* **tools:** a year filter is not a period filter, and a missing one is a question ([6f23307](https://github.com/allababbot/cindieh/commit/6f23307061044002d52095d063a7c33c3e9d18fb))
+* **ui:** paint the tint pill text from text-safe -ink twins ([0c2fc06](https://github.com/allababbot/cindieh/commit/0c2fc06cfcb5f57c9aab49e898f4036557bb98ed))
+* **xhr:** discard the page size echoed back as the grid's count ([8757f06](https://github.com/allababbot/cindieh/commit/8757f06fa2abb65ff79794a28621bf3429b24ce7))
+
+### Performance Improvements
+
+* **comparer:** look a pasted reference up in a map instead of scanning the grid ([bcb0d80](https://github.com/allababbot/cindieh/commit/bcb0d80d6e32275e3e2a53d22731f5eb8c70cbec))
+
+### Reverts
+
+* Revert "chore(release): 2.3.0" ([2387e2a](https://github.com/allababbot/cindieh/commit/2387e2a434eaff02ac6b6584edab54d4741a2ba4))
+
 ## [2.2.0](https://github.com/allababbot/cindieh/compare/v2.1.0...v2.2.0) (2026-10-13)
 
 ### Features
